@@ -46,6 +46,7 @@ public class NativeBackend implements Backend {
         Path asmFile = outputDir.resolve(sourceName + ".s");
         Path binFile = outputDir.resolve(sourceName);
         generateAssembly(clazz, asmFile);
+        System.err.println("NativeBackend: Generated " + asmFile + " (" + Files.size(asmFile) + " bytes)");
         assemble(asmFile, binFile);
     }
 
@@ -427,10 +428,17 @@ public class NativeBackend implements Backend {
 
     private void assemble(Path asmFile, Path binFile) throws IOException {
         Path objFile = asmFile.resolveSibling(asmFile.getFileName() + ".o");
-        runCommand(new String[]{"as", "-o", objFile.toString(), asmFile.toString()}, "as");
+        System.err.println("NativeBackend: assembling " + asmFile);
+        try {
+            runCommand(new String[]{"as", "-o", objFile.toString(), asmFile.toString()}, "as");
+        } catch (IOException e) {
+            System.err.println("NativeBackend: as failed: " + e.getMessage());
+            // Keep .s file for debugging
+            throw e;
+        }
         runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
         Files.deleteIfExists(objFile);
-        
+        Files.deleteIfExists(asmFile);
         binFile.toFile().setExecutable(true);
     }
 
