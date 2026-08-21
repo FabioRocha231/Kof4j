@@ -1,0 +1,16 @@
+target/
+*.class
+*.jar
+*.log
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+.DS_Store
+build/
+*.env
+dependency-reduced-pom.xml
+docs/
+docs/
+

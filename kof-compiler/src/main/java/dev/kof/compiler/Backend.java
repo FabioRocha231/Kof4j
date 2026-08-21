@@ -1,0 +1,8 @@
+package dev.kof.compiler;
+
+import java.io.IOException;
+import java.nio.file.Path;
+
+public interface Backend {
+    void emit(IRModule module, Path outputDir) throws IOException;
+}
