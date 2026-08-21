@@ -11,6 +11,4 @@ target/
 build/
 *.env
 dependency-reduced-pom.xml
-docs/
-docs/
 
