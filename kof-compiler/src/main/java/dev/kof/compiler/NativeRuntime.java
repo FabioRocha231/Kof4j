@@ -20,6 +20,8 @@ final class NativeRuntime {
         emitPrint(sb);
         emitPrintln(sb);
         emitPrintInt(sb);
+        emitIntToString(sb);
+        emitBoolToString(sb);
         emitAlloc(sb);
         emitFree(sb);
         emitPanic(sb);
@@ -126,6 +128,99 @@ final class NativeRuntime {
                 call kof_print
                 popq %rbx
                 ret
+            """);
+    }
+
+    /**
+     * kof_int_to_string(value) — converts an int to a KofString.
+     * %rdi = int value
+     * returns %rax = KofString*
+     */
+    private static void emitIntToString(StringBuilder sb) {
+        sb.append("""
+            .globl kof_int_to_string
+            .type kof_int_to_string, @function
+            kof_int_to_string:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movl %edi, %eax
+                movq $0, %r12
+                testl %eax, %eax
+                jns .Lkof_int_to_str_pos
+                movq $1, %r12
+                negl %eax
+            .Lkof_int_to_str_pos:
+                movl %eax, %r13d
+                movq $0, %rbx
+                movl $10, %ecx
+            .Lkof_int_to_str_count:
+                xorl %edx, %edx
+                divl %ecx
+                incq %rbx
+                testl %eax, %eax
+                jnz .Lkof_int_to_str_count
+                testq %r12, %r12
+                jz .Lkof_int_to_str_count_done
+                incq %rbx
+            .Lkof_int_to_str_count_done:
+                leaq 25(%rbx), %rdi
+                call kof_alloc
+                pushq %rax
+                leaq 23(%rax), %rsi
+                addq %rbx, %rsi
+                movl %r13d, %eax
+                movl $10, %ecx
+            .Lkof_int_to_str_loop:
+                xorl %edx, %edx
+                divl %ecx
+                addb $48, %dl
+                movb %dl, (%rsi)
+                decq %rsi
+                testl %eax, %eax
+                jnz .Lkof_int_to_str_loop
+                testq %r12, %r12
+                jz .Lkof_int_to_str_negdone
+                movb $45, (%rsi)
+            .Lkof_int_to_str_negdone:
+                testq %r12, %r12
+                jnz .Lkof_int_to_str_ready
+                incq %rsi
+            .Lkof_int_to_str_ready:
+                popq %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl %ebx, 16(%r13)
+                movl $0, 20(%r13)
+                movq %r13, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_bool_to_string(value) — converts a bool to a KofString ("true"/"false").
+     * %rdi = int value (0/1)
+     * returns %rax = KofString*
+     */
+    private static void emitBoolToString(StringBuilder sb) {
+        sb.append("""
+            .globl kof_bool_to_string
+            .type kof_bool_to_string, @function
+            kof_bool_to_string:
+                testl %edi, %edi
+                jz .Lkof_bool_to_str_false
+                leaq .Lkof_str_true(%rip), %rdi
+                movl $4, %esi
+                jmp .Lkof_bool_to_str_make
+            .Lkof_bool_to_str_false:
+                leaq .Lkof_str_false(%rip), %rdi
+                movl $5, %esi
+            .Lkof_bool_to_str_make:
+                jmp kof_string_from_literal
             """);
     }
 
@@ -556,6 +651,7 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 movq %rdi, %rbx
                 movl %esi, %r12d
                 movl %edx, %r13d
@@ -571,13 +667,13 @@ final class NativeRuntime {
                 movl %edi, %r14d
                 leal 25(%r14), %edi
                 call kof_alloc
-                movq %rax, %rcx
-                movl $1, (%rcx)
-                movl $0, 4(%rcx)
-                movq $0, 8(%rcx)
-                movl %r14d, 16(%rcx)
-                movl $0, 20(%rcx)
-                movq %rcx, %rdi
+                movq %rax, %r15
+                movl $1, (%r15)
+                movl $0, 4(%r15)
+                movq $0, 8(%r15)
+                movl %r14d, 16(%r15)
+                movl $0, 20(%r15)
+                movq %r15, %rdi
                 addq $24, %rdi
                 movq %rbx, %rsi
                 addq $24, %rsi
@@ -585,8 +681,9 @@ final class NativeRuntime {
                 addq %rax, %rsi
                 movl %r14d, %edx
                 call kof_memcpy
-                movb $0, 24(%rcx,%r14)
-                movq %rcx, %rax
+                movb $0, 24(%r15,%r14)
+                movq %r15, %rax
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
@@ -721,7 +818,7 @@ final class NativeRuntime {
                 movzbl 24(%rbx,%rcx), %eax
                 movl %ecx, %edx
                 addl %r13d, %edx
-                subl $1, %edx
+                subl %r14d, %edx
                 movzbl 24(%r12,%rdx), %edx
                 cmpl %edx, %eax
                 jne .Lkof_strends_no
@@ -1033,9 +1130,9 @@ final class NativeRuntime {
 
     /**
      * kof_instanceof(obj_ptr, target_type_id) → bool
-     * Checks if object's type_id matches target_type_id.
+     * Walks the class hierarchy using kof_super_table.
      * %rdi = obj_ptr, %esi = target_type_id
-     * Returns 1 if match, 0 otherwise.
+     * Returns 1 if object's type is target or a subtype, 0 otherwise.
      */
     private static void emitInstanceof(StringBuilder sb) {
         sb.append("""
@@ -1045,9 +1142,25 @@ final class NativeRuntime {
                 testq %rdi, %rdi
                 jz .Lkof_instanceof_null
                 movl (%rdi), %eax
+            .Lkof_instanceof_loop:
                 cmpl %esi, %eax
-                sete %al
-                movzbl %al, %eax
+                je .Lkof_instanceof_found
+                testl %eax, %eax
+                jz .Lkof_instanceof_null
+                leaq kof_super_table(%rip), %rcx
+            .Lkof_instanceof_search:
+                movl (%rcx), %edx
+                testl %edx, %edx
+                jz .Lkof_instanceof_null
+                cmpl %edx, %eax
+                je .Lkof_instanceof_got_super
+                addq $8, %rcx
+                jmp .Lkof_instanceof_search
+            .Lkof_instanceof_got_super:
+                movl 4(%rcx), %eax
+                jmp .Lkof_instanceof_loop
+            .Lkof_instanceof_found:
+                movl $1, %eax
                 ret
             .Lkof_instanceof_null:
                 xorl %eax, %eax

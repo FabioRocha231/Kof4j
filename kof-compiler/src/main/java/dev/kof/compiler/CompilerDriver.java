@@ -623,16 +623,34 @@ public class CompilerDriver {
                 }
                 yield Type.UnknownType.UNKNOWN;
             }
+            case UnaryExpr ue -> inferExprType(ue.operand(), locals);
             case BinaryExpr bin -> {
                 Type leftType = inferExprType(bin.left(), locals);
                 Type rightType = inferExprType(bin.right(), locals);
                 if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
                     yield BuiltinTypes.STRING;
                 }
+                if ("instanceof".equals(bin.operator())) yield Type.PrimitiveType.BOOL;
+                if ("as".equals(bin.operator())) yield rightType;
                 yield leftType;
             }
             case MethodCallExpr mc -> {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                if (mc.receiver() != null) {
+                    Type recvType = inferExprType(mc.receiver(), locals);
+                    if (Type.isString(recvType)) {
+                        String mn = mc.methodName();
+                        if ("charAt".equals(mn)) yield Type.PrimitiveType.CHAR;
+                        if ("length".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn) || "equals".equals(mn)) {
+                            yield Type.PrimitiveType.BOOL;
+                        }
+                        if ("substring".equals(mn) || "concat".equals(mn) || "trim".equals(mn)
+                                || "toUpperCase".equals(mn) || "toLowerCase".equals(mn) || "valueOf".equals(mn)) {
+                            yield BuiltinTypes.STRING;
+                        }
+                    }
+                }
                 SymbolTable.MethodSymbol resolvedMethod = semanticAnalyzer.getResolvedMethod(mc);
                 if (resolvedMethod != null) yield resolvedMethod.returnType();
                 SymbolTable.ClassSymbol cs = semanticAnalyzer != null ? semanticAnalyzer.getClass(mc.methodName()) : null;

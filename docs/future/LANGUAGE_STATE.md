@@ -1,7 +1,7 @@
 # Estado Atual da Linguagem Kof
 
 **Data:** 22 de agosto de 2026
-**Testes:** 176/176 passando
+**Testes:** 204/204 passando (incluindo execução real de binários nativos)
 **Status:** Compilador funcional com backends JVM e Native, web server funcional
 
 ---
@@ -206,6 +206,11 @@ record Point(Int x, Int y)
 - Sem GC (memória reclaim pelo SO no exit)
 - Strings: KofString (header + UTF-8)
 - Arrays: KofArray (header + elementos)
+- Objetos, herança, virtual dispatch e instanceof com hierarquia:
+  execução real validada por testes E2E (compile → assemble → link → run)
+- String methods nativos: length, charAt, substring, contains, startsWith,
+  endsWith, concat
+- valueOf (int/char/bool → KofString) implementado no runtime
 
 ### Object Model
 

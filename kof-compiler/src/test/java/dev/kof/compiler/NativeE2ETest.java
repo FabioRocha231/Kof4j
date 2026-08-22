@@ -120,4 +120,224 @@ class NativeE2ETest {
         CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
         assertTrue(result.success(), "Compilation should succeed");
     }
+
+    // ── Real Execution Tests ──────────────────────────────────────
+    // These tests compile → assemble → link → RUN the native binary
+    // and assert on stdout + exit code.
+
+    private String runNative(Path source, Path outDir, String expected) throws IOException {
+        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        Path binFile = outDir.resolve("Default/Main");
+        assertTrue(Files.exists(binFile), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
+    @Test
+    void execVirtualDispatchOverride(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                fun speak(): String = "animal"
+            }
+            class Dog extends Animal {
+                fun speak(): String = "dog"
+            }
+            fun main() {
+                var a = new Dog()
+                println(a.speak())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "dog");
+    }
+
+    @Test
+    void execVirtualDispatchNoOverride(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                fun speak(): String = "animal"
+            }
+            class Dog extends Animal {
+            }
+            fun main() {
+                var a = new Dog()
+                println(a.speak())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "animal");
+    }
+
+    @Test
+    void execInstanceMethod(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class User {
+                fun name(): String = "Mel"
+            }
+            fun main() {
+                var user = new User()
+                println(user.name())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "Mel");
+    }
+
+    @Test
+    void execFieldAssignment(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class User {
+                String name
+            }
+            fun main() {
+                var u = new User()
+                u.name = "Mel"
+                println(u.name)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "Mel");
+    }
+
+    @Test
+    void execVirtualDispatchWithArg(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                fun describe(Int n): String = "animal"
+            }
+            class Dog extends Animal {
+                fun describe(Int n): String = "dog"
+            }
+            fun main() {
+                var a = new Dog()
+                println(a.describe(7))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "dog");
+    }
+
+    @Test
+    void execStringLength(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.length)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "5");
+    }
+
+    @Test
+    void execStringCharAt(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.charAt(0))
+                println(s.charAt(4))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "72\n111");
+    }
+
+    @Test
+    void execStringSubstring(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.substring(1, 4))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "ell");
+    }
+
+    @Test
+    void execStringContains(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.contains("ell"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "true");
+    }
+
+    @Test
+    void execStringStartsWith(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.startsWith("He"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "true");
+    }
+
+    @Test
+    void execStringEndsWith(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.endsWith("lo"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "true");
+    }
+
+    @Test
+    void execStringConcat(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello"
+                println(s.concat(" World"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "Hello World");
+    }
+
+    @Test
+    void execNegativeInt(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println(-42)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "-42");
+    }
+
+    @Test
+    void execInstanceOf(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+            }
+            class Dog extends Animal {
+            }
+            fun main() {
+                var a = new Dog()
+                println(a instanceof Dog)
+                println(a instanceof Animal)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "true\ntrue");
+    }
 }

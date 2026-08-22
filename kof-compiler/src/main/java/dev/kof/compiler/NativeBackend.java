@@ -225,6 +225,26 @@ public class NativeBackend implements Backend {
             sb.append(label).append(": .asciz \"").append(escaped).append("\"\n");
         }
         sb.append(".Lnewline: .asciz \"\\n\"\n");
+        sb.append(".Lkof_str_true: .asciz \"true\"\n");
+        sb.append(".Lkof_str_false: .asciz \"false\"\n");
+        sb.append(".balign 8\n");
+        sb.append("kof_super_table:\n");
+        for (IRClass clazz : allClassesMap.values()) {
+            if (clazz.typeId() == 0) continue;
+            int superTypeId = 0;
+            if (clazz.superName() != null && !clazz.superName().isEmpty()) {
+                String superSimple = clazz.superName().substring(clazz.superName().lastIndexOf('/') + 1);
+                for (IRClass other : allClassesMap.values()) {
+                    if (other.name().equals(clazz.superName()) || other.name().endsWith("/" + superSimple)
+                            || superSimple.equals(sanitizeName(other.name()))) {
+                        superTypeId = other.typeId();
+                        break;
+                    }
+                }
+            }
+            sb.append("    .long ").append(clazz.typeId()).append(", ").append(superTypeId).append("\n");
+        }
+        sb.append("    .long 0, 0\n");
     }
 
     private void emitMethod(StringBuilder sb, IRClass clazz, IRMethod method) {
@@ -251,13 +271,13 @@ public class NativeBackend implements Backend {
         int intArgIdx = 0;
         for (IRLocalVariable lv : method.localVariables()) {
             if (lv.name().equals("this")) {
-                sb.append("    movq %rdi, ").append(lv.index() * 8).append("(%rbp)\n");
+                sb.append("    movq %rdi, -").append((lv.index() + 1) * 8).append("(%rbp)\n");
                 intArgIdx++;
                 continue;
             }
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             if (intArgIdx < 6) {
-                sb.append("    movq ").append(intRegs[intArgIdx]).append(", ").append(lv.index() * 8).append("(%rbp)\n");
+                sb.append("    movq ").append(intRegs[intArgIdx]).append(", -").append((lv.index() + 1) * 8).append("(%rbp)\n");
             }
             intArgIdx++;
         }
@@ -290,17 +310,19 @@ public class NativeBackend implements Backend {
             lastPushedType = kb.operandType();
         } else if (op instanceof KofUnary ku) {
             lastPushedType = ku.operandType();
+        } else if (op instanceof KofCall kc) {
+            lastPushedType = kc.returnType();
         }
 
         switch (op) {
             case KofLoadLiteral lit -> emitLoadLiteral(sb, lit);
             case KofLoadLocal ll -> {
-                sb.append("    movq ").append(ll.index() * 8).append("(%rbp), %rax\n");
+                sb.append("    movq -").append((ll.index() + 1) * 8).append("(%rbp), %rax\n");
                 sb.append("    pushq %rax\n");
             }
             case KofStoreLocal sl -> {
                 sb.append("    popq %rax\n");
-                sb.append("    movq %rax, ").append(sl.index() * 8).append("(%rbp)\n");
+                sb.append("    movq %rax, -").append((sl.index() + 1) * 8).append("(%rbp)\n");
             }
             case KofLoadField lf -> {
                 sb.append("    popq %rax\n");
@@ -348,8 +370,7 @@ public class NativeBackend implements Backend {
                         }
                     }
                 }
-                sb.append("    popq %rax\n");
-                sb.append("    movl (%rax), %edi\n");
+                sb.append("    popq %rdi\n");
                 sb.append("    movl $").append(targetTypeId).append(", %esi\n");
                 sb.append("    call kof_instanceof\n");
                 sb.append("    pushq %rax\n");
@@ -504,13 +525,14 @@ public class NativeBackend implements Backend {
 
     private void emitCall(StringBuilder sb, KofCall kc) {
         if (kc.kind() == KofCallKind.INSTANCE && "println".equals(kc.methodName())) {
-            if (lastPushedType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
+            Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
+            if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name()))) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_print_int\n");
                 sb.append("    pushq $0\n");
                 sb.append("    leaq .Lnewline(%rip), %rdi\n");
                 sb.append("    call kof_print\n");
-            } else if (BuiltinTypes.isString(lastPushedType)) {
+            } else if (BuiltinTypes.isString(argType)) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_println_string\n");
                 sb.append("    pushq $0\n");
@@ -522,7 +544,8 @@ public class NativeBackend implements Backend {
             return;
         }
         if (kc.kind() == KofCallKind.INSTANCE && "print".equals(kc.methodName())) {
-            if (BuiltinTypes.isString(lastPushedType)) {
+            Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
+            if (BuiltinTypes.isString(argType)) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_print_string\n");
                 sb.append("    pushq $0\n");
@@ -537,7 +560,7 @@ public class NativeBackend implements Backend {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i]).append("\n");
+                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
@@ -549,7 +572,7 @@ public class NativeBackend implements Backend {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i]).append("\n");
+                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
@@ -561,7 +584,7 @@ public class NativeBackend implements Backend {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i]).append("\n");
+                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
@@ -573,7 +596,7 @@ public class NativeBackend implements Backend {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i]).append("\n");
+                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
@@ -585,7 +608,7 @@ public class NativeBackend implements Backend {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i]).append("\n");
+                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
@@ -593,7 +616,29 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        if (kc.kind() == KofCallKind.INSTANCE && "concat".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %rdi\n");
+            sb.append("    call kof_string_concat\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
+            Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
+            if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name()))) {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_int_to_string\n");
+                sb.append("    pushq %rax\n");
+            } else if (argType instanceof Type.PrimitiveType pt && "bool".equals(pt.name())) {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_bool_to_string\n");
+                sb.append("    pushq %rax\n");
+            }
             return;
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR && "<init>".equals(kc.methodName())) {
@@ -606,13 +651,14 @@ public class NativeBackend implements Backend {
                 int argCount = kc.parameterTypes().size();
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 for (int i = argCount - 1; i >= 0; i--) {
-                    if (i < 6) {
-                        sb.append("    popq ").append(intRegs[i]).append("\n");
+                    if (i < 5) {
+                        sb.append("    popq ").append(intRegs[i + 1]).append("\n");
                     } else {
                         sb.append("    addq $8, %rsp\n");
                     }
                 }
                 sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
                 sb.append("    movq 8(%rax), %rbx\n");
                 sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
                 sb.append("    movq (%rbx), %rbx\n");
@@ -627,13 +673,14 @@ public class NativeBackend implements Backend {
                 int argCount = kc.parameterTypes().size();
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 for (int i = argCount - 1; i >= 0; i--) {
-                    if (i < 6) {
-                        sb.append("    popq ").append(intRegs[i]).append("\n");
+                    if (i < 5) {
+                        sb.append("    popq ").append(intRegs[i + 1]).append("\n");
                     } else {
                         sb.append("    addq $8, %rsp\n");
                     }
                 }
                 sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
                 sb.append("    movq 8(%rax), %rbx\n");
                 sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
                 sb.append("    movq (%rbx), %rbx\n");
