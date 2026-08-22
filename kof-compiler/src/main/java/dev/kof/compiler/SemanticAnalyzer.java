@@ -419,6 +419,20 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.VOID;
                 }
+                if (mc.receiver() == null && "now".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    yield Type.PrimitiveType.LONG;
+                }
+                if (mc.receiver() == null && "readLine".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    yield BuiltinTypes.STRING;
+                }
+                if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield BuiltinTypes.STRING;
+                }
+                if (mc.receiver() == null && "writeFile".equals(mc.methodName()) && mc.arguments().size() == 2) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield Type.PrimitiveType.INT;
+                }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
                     if (recvType instanceof Type.FunctionType ft) {
@@ -452,6 +466,8 @@ class SemanticAnalyzer {
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())
                         && !"listOf".equals(mc.methodName())
+                        && !"now".equals(mc.methodName()) && !"readLine".equals(mc.methodName())
+                        && !"readFile".equals(mc.methodName()) && !"writeFile".equals(mc.methodName())
                         && !"super".equals(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));

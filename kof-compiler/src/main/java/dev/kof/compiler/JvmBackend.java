@@ -131,7 +131,7 @@ class JvmBackend implements Backend {
             emitClass(clazz, outputDir);
         }
         if (usesJson) {
-            JvmJsonRuntime.ensureCompiled(outputDir, module.classes());
+            JvmRuntime.ensureCompiled(outputDir, module.classes());
         }
     }
 
@@ -539,11 +539,11 @@ class JvmBackend implements Backend {
                 mv.visitMethodInsn(INVOKEVIRTUAL, boxedName, unboxMethodName(boxed),
                         "()" + JvmTypeMapper.toDescriptor(kc.returnType()), false);
             }
-        } else if (op instanceof KofCall kc && JvmJsonRuntime.hasJson(kc.methodName())) {
+        } else if (op instanceof KofCall kc && JvmRuntime.hasRuntimeFn(kc.methodName())) {
             usesJson = true;
-            mv.visitMethodInsn(INVOKESTATIC, "dev/kof/runtime/KofJson", kc.methodName(),
-                    JvmJsonRuntime.callDescriptor(kc.methodName()), false);
-            if ("Ljava/lang/Object;".equals(JvmJsonRuntime.callReturnDescriptor(kc.methodName()))
+            mv.visitMethodInsn(INVOKESTATIC, "dev/kof/runtime/KofRuntime", kc.methodName(),
+                    JvmRuntime.callDescriptor(kc.methodName()), false);
+            if ("Ljava/lang/Object;".equals(JvmRuntime.callReturnDescriptor(kc.methodName()))
                     && kc.returnType() instanceof Type.ClassType ct && !BuiltinTypes.isString(kc.returnType())) {
                 mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
             }

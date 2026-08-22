@@ -597,17 +597,6 @@ public class NativeBackend implements Backend {
             return;
         }
         if (kc.kind() == KofCallKind.INSTANCE && "charAt".equals(kc.methodName())) {
-            int argCount = kc.parameterTypes().size();
-            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
-            for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
-            }
-            sb.append("    popq %rax\n");
-            sb.append("    movq %rax, %rdi\n");
-            sb.append("    call kof_string_char_at\n");
-            sb.append("    pushq %rax\n");
-            return;
-        }
         if (kc.kind() == KofCallKind.INSTANCE && "substring".equals(kc.methodName())) {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};

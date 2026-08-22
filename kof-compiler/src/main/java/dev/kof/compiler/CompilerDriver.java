@@ -547,7 +547,9 @@ public class CompilerDriver {
                     case "+", "-", "*", "/", "%" -> true;
                     default -> false;
                 };
-                if (isArithmetic && isNumeric(leftType) && isNumeric(rightType)) {
+                boolean isNumericComparison = isComparisonOp(bin.operator())
+                        && isNumeric(leftType) && isNumeric(rightType);
+                if ((isArithmetic || isNumericComparison) && isNumeric(leftType) && isNumeric(rightType)) {
                     Type commonType = commonNumericType(leftType, rightType);
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     emitWideningIfNeeded(ops, leftType, commonType);
@@ -625,6 +627,29 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case MethodCallExpr mc -> {
+                if (mc.receiver() == null && "now".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    ops.add(new KofCall(new Type.ClassType("kof", "time", List.of()), "kof_now",
+                            List.of(), Type.PrimitiveType.LONG, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "readLine".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_line",
+                            List.of(), BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_file",
+                            List.of(BuiltinTypes.STRING), BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "writeFile".equals(mc.methodName()) && mc.arguments().size() == 2) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(mc.arguments().get(1), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_write_file",
+                            List.of(BuiltinTypes.STRING, BuiltinTypes.STRING), Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
                             : inferExprType(mc.arguments().get(0), locals);
@@ -1032,6 +1057,16 @@ public class CompilerDriver {
             }
             case MethodCallExpr mc -> {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                if ("now".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
+                    yield Type.PrimitiveType.LONG;
+                }
+                if (("readLine".equals(mc.methodName()) || "readFile".equals(mc.methodName()))
+                        && mc.receiver() == null) {
+                    yield BuiltinTypes.STRING;
+                }
+                if ("writeFile".equals(mc.methodName()) && mc.receiver() == null) {
+                    yield Type.PrimitiveType.INT;
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
                             : inferExprType(mc.arguments().get(0), locals);
