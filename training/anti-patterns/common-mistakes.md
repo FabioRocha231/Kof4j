@@ -6,7 +6,7 @@
 // WRONG
 class User {
     private String name
-    public fun getName(): String { return name }
+    public getName(): String { return name }
 }
 
 // RIGHT
@@ -45,7 +45,7 @@ println(result)
 ```kof
 // WRONG
 class ServiceFactory {
-    fun create(): Service {
+    create(): Service {
         return new Service()
     }
 }

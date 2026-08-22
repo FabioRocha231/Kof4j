@@ -9,12 +9,12 @@ class User {
         this.name = name
         this.age = age
     }
-    public fun greet(): String {
+    public greet(): String {
         return "Hello, " + name
     }
 }
 
-fun main() {
+main() {
     var p = Point(10, 20)
     println("Point: " + p.x() + ", " + p.y())
     

@@ -110,7 +110,7 @@ O backend nativo já está funcional. Aqui está o que já foi implementado:
 
 **Input:**
 ```kof
-fun main() = print("Hello World")
+main() = print("Hello World")
 ```
 
 **Output:**
@@ -145,7 +145,7 @@ Hello World
 
 **Exemplo:**
 ```kof
-fun main() {
+main() {
     var x = 42
     var y = 3.14
     var z = true
@@ -183,11 +183,11 @@ fun main() {
 
 **Exemplo:**
 ```kof
-fun add(Int a, Int b) -> Int {
+add(Int a, Int b): Int {
     return a + b
 }
 
-fun main() {
+main() {
     var result = add(3, 4)
     print(result)
 }
@@ -236,7 +236,7 @@ struct String {
 
 **Exemplo:**
 ```kof
-fun main() {
+main() {
     var name = "World"
     print("Hello, " + name)
 }
@@ -264,7 +264,7 @@ fun main() {
 
 **Exemplo:**
 ```kof
-fun main() {
+main() {
     var i = 0
     while (i < 10) {
         print(i)
@@ -339,13 +339,13 @@ struct Point {
 **Exemplo:**
 ```kof
 class Animal(String nome) {
-    fun falar() -> String {
+    falar(): String {
         return nome
     }
 }
 
 class Cachorro(String raca) extends Animal {
-    override fun falar() -> String {
+    override falar(): String {
         return nome + " late"
     }
 }
@@ -386,7 +386,7 @@ class Cachorro(String raca) extends Animal {
 
 ```kof
 class Box<T>(T value) {
-    fun get() -> T = value
+    get(): T = value
 }
 ```
 

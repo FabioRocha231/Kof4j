@@ -140,7 +140,7 @@ O projeto está em fase inicial, mas funcional:
 - Lexer completo com 55+ keywords
 - Parser recursivo descendente funcional
 - Records, classes e interfaces
-- Funções com `fun main()`
+- Funções com `main()`
 - CLI com build, run, version
 - Backend JVM via ASM — gera `.class` funcionais
 - Backend Nativo — gera ELF x86-64

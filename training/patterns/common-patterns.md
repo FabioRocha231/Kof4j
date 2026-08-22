@@ -12,11 +12,11 @@ record User(String name, String email)
 class UserService {
     User[] users = new User[0]
     
-    fun find(Int id): User {
+    find(Int id): User {
         // implementation
     }
     
-    fun create(String name, String email): User {
+    create(String name, String email): User {
         // implementation
     }
 }
@@ -25,7 +25,7 @@ class UserService {
 ## Web Handler
 
 ```kof
-fun handle(String method, String path, String body): String {
+handle(String method, String path, String body): String {
     if (path == "/users") {
         return "{\"users\": []}"
     }
@@ -74,14 +74,14 @@ println(s.endsWith("World"))   // true
 
 ```kof
 interface Serializable {
-    fun serialize(): String
+    serialize(): String
 }
 class Entity implements Serializable {
     String id
     public constructor(String id) {
         this.id = id
     }
-    public fun serialize(): String {
+    public serialize(): String {
         return "{\"id\": \"" + id + "\"}"
     }
 }

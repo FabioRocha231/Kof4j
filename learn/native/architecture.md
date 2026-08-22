@@ -143,7 +143,7 @@ ld → Executável (ELF)
 ### Exemplo de assembly gerado
 
 ```kf
-fun main() = print("Hello")
+main() = print("Hello")
 ```
 
 ```asm

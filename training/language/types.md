@@ -39,7 +39,7 @@ var strings = new String[5]
 ### Interfaces
 ```kof
 interface Speaker {
-    fun speak(): String
+    speak(): String
 }
 ```
 

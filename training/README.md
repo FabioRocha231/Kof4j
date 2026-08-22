@@ -30,6 +30,12 @@ training/
 ├── reference/             # Referência técnica
 │   ├── compiler.md
 │   └── targets.md
+├── distribution/          # Instalação e distribuição
+│   └── install.md
+├── tooling/               # CLI, LSP e editor support
+│   └── cli.md
+├── releases/              # Versionamento e pipeline de release
+│   └── versioning.md
 ├── patterns/              # Padrões idiomáticos
 │   └── common-patterns.md
 ├── examples/              # Exemplos executáveis

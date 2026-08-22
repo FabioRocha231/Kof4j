@@ -134,7 +134,7 @@ ld → Executável (ELF)
 ### Geração de assembly para Hello World
 
 ```kf
-fun main() = print("Hello, World!")
+main() = print("Hello, World!")
 ```
 
 ```asm

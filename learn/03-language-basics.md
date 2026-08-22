@@ -157,7 +157,7 @@ package com.example
 
 record Point(Int x, Int y)
 
-fun main() {
+main() {
     var p = Point(3, 7)
     print(p)
 }
@@ -169,7 +169,7 @@ fun main() {
 ✅ Ponto e vírgula opcional
 ✅ Package e imports funcionam
 ✅ Records funcionam
-✅ Funções com `fun main()` funcionam
+✅ Funções com `main()` funcionam
 
 ## Próximo passo
 

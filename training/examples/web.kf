@@ -1,6 +1,6 @@
 // web.kf — Web Server Example
 
-fun main() {
+main() {
     println("Starting web server...")
     println("Server ready at http://localhost:8080")
 }

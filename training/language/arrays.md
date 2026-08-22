@@ -37,7 +37,7 @@ var matrix = new Int[3]
 ## Array as Parameter
 
 ```kof
-fun sum(Int[] arr): Int {
+sum(Int[] arr): Int {
     var total = 0
     for (var i = 0; i < arr.length; i++) {
         total = total + arr[i]
@@ -49,7 +49,7 @@ fun sum(Int[] arr): Int {
 ## Array as Return
 
 ```kof
-fun createArray(): Int[] {
+createArray(): Int[] {
     var a = new Int[3]
     a[0] = 10
     a[1] = 20

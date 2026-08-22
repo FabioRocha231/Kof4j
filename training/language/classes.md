@@ -40,10 +40,10 @@ class Dog extends Animal {
 
 ```kof
 interface Speaker {
-    fun speak(): String
+    speak(): String
 }
 class Dog implements Speaker {
-    public fun speak(): String {
+    public speak(): String {
         return "woof"
     }
 }
@@ -53,12 +53,12 @@ class Dog implements Speaker {
 
 ```kof
 class Animal {
-    public fun speak(): String { return "animal" }
+    public speak(): String { return "animal" }
 }
 class Dog extends Animal {
-    public fun speak(): String { return "dog" }
+    public speak(): String { return "dog" }
 }
-fun main() {
+main() {
     Animal a = new Dog()
     println(a.speak())  // prints "dog" (virtual dispatch)
 }

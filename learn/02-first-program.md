@@ -52,18 +52,18 @@ p.y()  // retorna 7
 
 ## Um programa completo
 
-Agora Kof suporta `fun main()`. Você pode criar um programa completo:
+Agora Kof suporta `main()`. Você pode criar um programa completo:
 
 Arquivo `main.kf`:
 
 ```kf
-fun main() = print("Olá, mundo!")
+main() = print("Olá, mundo!")
 ```
 
 Compilando e executando:
 
 ```bash
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar run main.kf
+kof run main.kf
 ```
 
 Resultado:
@@ -79,7 +79,7 @@ Arquivo `ponto.kf`:
 ```kf
 record Ponto(Int x, Int y)
 
-fun main() {
+main() {
     var p = Ponto(3, 7)
     print(p)
 }
@@ -88,7 +88,7 @@ fun main() {
 Executando:
 
 ```bash
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar run ponto.kf
+kof run ponto.kf
 ```
 
 Resultado:

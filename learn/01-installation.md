@@ -1,50 +1,46 @@
 # 01 — Instalação
 
-## O que você precisa
+## Instalação oficial (recomendado)
 
-- **JDK 21 ou superior** — Kof é uma linguagem para a JVM. Você precisa de um JDK.
-- **Maven** — o compilador Kof é construído com Maven.
-- **Um editor** — qualquer um serve. VS Code, IntelliJ, vim, nano.
+O Kof é distribuído como uma plataforma autocontida. O pacote oficial
+inclui compilador, CLI, runtime, stdlib, tooling e um **OpenJDK embutido** —
+não é necessário instalar Java separadamente.
 
-## Verificando o JDK
+1. Baixe o artefato do GitHub Releases (ex.: `kof-0.0.4-alpha-linux-x86_64.tar.gz`).
+2. Verifique a integridade:
 
-Abra o terminal e execute:
+   ```bash
+   sha256sum -c SHA256SUMS
+   ```
 
-```bash
-java -version
-```
+3. Extraia e adicione ao PATH:
 
-Você deve ver algo como:
+   ```bash
+   tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
+   export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+   ```
 
-```
-openjdk version "21.0.x" ...
-```
+4. Verifique:
 
-Se não tiver JDK instalado, baixe em [adoptium.net](https://adoptium.net/).
+   ```bash
+   kof version
+   kof info
+   ```
 
-## Verificando o Maven
+O `kof info` mostra a versão, Tooling API (21), target, JVM (embutida, quando
+aplicável) e a localização da instalação.
 
-```bash
-mvn -version
-```
-
-Se não tiver Maven, baixe em [maven.apache.org](https://maven.apache.org/download.cgi).
-
-## Instalando o compilador Kof
-
-Clone o repositório e construa:
+## Build a partir do código-fonte (para desenvolvedores)
 
 ```bash
-git clone https://github.com/seu-usuario/kof.git
-cd kof
+git clone https://github.com/KofLang/Kof4j.git
+cd Kof4j
 mvn clean package -DskipTests
+bin/kof version
 ```
 
-O compilador estará em:
-
-```
-kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar
-```
+Em builds de desenvolvimento, o launcher `bin/kof` usa o `java` do sistema
+(JDK 21+). No pacote oficial, o JDK embutido é usado automaticamente.
 
 ## Criando seu primeiro projeto
 
@@ -59,39 +55,29 @@ meu-projeto/
 No arquivo `main.kf`:
 
 ```kf
-record Point(Int x, Int y)
+main() {
+    println("Hello, World!")
+}
 ```
 
 ## Compilando
 
 ```bash
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar build src/
+kof build src/
 ```
 
-Isso gera um arquivo `Point.class` na pasta de saída.
+Gera classes JVM na pasta de saída padrão (`build/classes`).
 
-## Verificando
+Para nativo (Linux x86-64):
 
 ```bash
-javap -v Point.class
+kof build src/ --target=native
 ```
-
-Você verá uma classe JVM válida que estende `java.lang.Record`.
 
 ## Rodando
 
-### Com a CLI (recomendado)
-
-Crie um arquivo `main.kf`:
-
-```kf
-fun main() = print("Hello, World!")
-```
-
-Execute:
-
 ```bash
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar run main.kf
+kof run main.kf
 ```
 
 Resultado:
@@ -100,67 +86,30 @@ Resultado:
 Hello, World!
 ```
 
-### Chamando de Java
-
-Crie um arquivo `Test.java`:
-
-```java
-import java.lang.reflect.Method;
-
-public class Test {
-    public static void main(String[] args) throws Exception {
-        Class<?> cls = Class.forName("Point");
-        Object point = cls.getConstructor(int.class, int.class).newInstance(3, 7);
-        Method x = cls.getMethod("x");
-        Method y = cls.getMethod("y");
-        System.out.println("x = " + x.invoke(point));
-        System.out.println("y = " + y.invoke(point));
-    }
-}
-```
-
-Compile e execute:
-
-```bash
-javac Test.java
-java -cp .: Point Test
-```
-
-Resultado:
-
-```
-x = 3
-y = 7
-```
-
-Seu primeiro programa Kof está rodando na JVM.
-
-## Compilando para nativo
-
-Kof também pode gerar binários nativos para Linux x86-64:
-
-```bash
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar build main.kf --target=native
-```
-
-Isso gera um executável ELF que pode rodar sem JVM:
-
-```bash
-./main
-```
-
 ## Comandos da CLI
 
 | Comando | Descrição |
 |---------|-----------|
-| `kof build <arquivo>` | Compila para JVM (padrão) |
-| `kof build <arquivo> --target=native` | Compila para nativo |
+| `kof build <dir>` | Compila para JVM (padrão) |
+| `kof build <dir> --target=native` | Compila para nativo |
 | `kof run <arquivo>` | Compila e executa |
+| `kof serve <arquivo>` | Web server HTTP básico |
+| `kof check <arquivo\|dir>` | Type-check sem emitir código |
+| `kof info [--json]` | Relatório do ambiente |
+| `kof lsp` | Language Server (stdio) |
 | `kof version` | Mostra a versão |
 
 ## Status atual
 
-> **O compilador está funcional.** A CLI compila arquivos `.kf` que contenham records, classes, interfaces e funções. O backend JVM gera `.class` funcionais. O backend nativo gera ELF x86-64.
+> **O compilador está funcional.** A CLI compila arquivos `.kf` que contenham
+> records, classes, interfaces e funções. O backend JVM gera `.class`
+> funcionais. O backend nativo gera ELF x86-64. A distribuição oficial é
+> autocontida (JDK embutido, tooling e editor support).
+
+## Referências
+
+- [docs/distribution/INSTALL.md](../docs/distribution/INSTALL.md)
+- [docs/distribution/ARCHITECTURE.md](../docs/distribution/ARCHITECTURE.md)
 
 ## Próximo passo
 

@@ -50,7 +50,7 @@ kof build point.kf --target=jvm
 O backend nativo gera executáveis ELF x86-64 para Linux.
 
 ```kf
-fun main() = print("Hello, World!")
+main() = print("Hello, World!")
 ```
 
 ```bash
@@ -132,7 +132,7 @@ A representação intermediária (IR) é compartilhada entre todos os backends. 
 ```kf
 record Point(Int x, Int y)
 
-fun main() {
+main() {
     var p = Point(3, 7)
     println(p)
 }

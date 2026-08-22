@@ -15,7 +15,7 @@ import java.util.*
 
 ### Function
 ```kof
-fun add(Int a, Int b): Int {
+add(Int a, Int b): Int {
     return a + b
 }
 ```
@@ -27,7 +27,7 @@ class User {
     public constructor(String name) {
         this.name = name
     }
-    public fun getName(): String {
+    public getName(): String {
         return name
     }
 }
@@ -41,7 +41,7 @@ record Point(Int x, Int y)
 ### Interface
 ```kof
 interface Speaker {
-    fun speak(): String
+    speak(): String
 }
 ```
 

@@ -130,14 +130,15 @@ static Int count
 
 ### Funções
 
-Funções usam `fun`:
+Funções são declaradas sem palavra-chave — o nome vem primeiro. O tipo de
+retorno pode ser prefixado (`String nome()`) ou sufixado (`nome(): String`):
 
 ```kf
-fun main() = print("Hello")
+main() = print("Hello")
 
-fun dobro(Int x) = x * 2
+dobro(Int x) = x * 2
 
-fun somar(Int a, Int b) -> Int {
+somar(Int a, Int b): Int {
     return a + b
 }
 ```

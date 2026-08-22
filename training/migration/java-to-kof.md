@@ -85,10 +85,10 @@ public class Dog implements Speaker {
 ### Kof
 ```kof
 interface Speaker {
-    fun speak(): String
+    speak(): String
 }
 class Dog implements Speaker {
-    public fun speak(): String {
+    public speak(): String {
         return "woof"
     }
 }
