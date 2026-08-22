@@ -536,6 +536,17 @@ class Parser {
         SourcePosition p = pos();
         advance();
         expect(TokenType.LPAREN, "Expected '(' after 'for'", "PARSE032");
+        if (check(TokenType.VAR, TokenType.VAL) && checkNext(TokenType.IDENTIFIER)
+                && pos + 2 < tokens.size() && tokens.get(pos + 2).is(TokenType.IDENTIFIER)
+                && "in".equals(tokens.get(pos + 2).value())) {
+            advance();
+            String varName = advance().value();
+            advance();
+            ExpressionNode collection = parseExpression();
+            expect(TokenType.RPAREN, "Expected ')'", "PARSE035");
+            StatementNode body = parseStatement();
+            return new ForInStmt(p, varName, collection, body);
+        }
         StatementNode init;
         if (check(TokenType.SEMICOLON)) {
             advance();

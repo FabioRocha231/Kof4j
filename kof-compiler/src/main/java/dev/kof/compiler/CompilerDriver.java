@@ -68,6 +68,7 @@ public class CompilerDriver {
         return switch (target) {
             case JVM -> new JvmBackend();
             case NATIVE -> new NativeBackend();
+            case JS -> new JsBackendStub();
         };
     }
 
@@ -361,6 +362,56 @@ public class CompilerDriver {
                 ops.add(new KofLabel(endLabel));
                 yield localIdx;
             }
+            case ForInStmt fis -> {
+                LabelId startLabel = LabelId.create();
+                LabelId bodyLabel = LabelId.create();
+                LabelId endLabel = LabelId.create();
+                Type collType = inferExprType(fis.collection(), locals);
+                Type elemType = Type.UnknownType.UNKNOWN;
+                boolean isList = BuiltinTypes.isList(collType);
+                if (isList) elemType = listElementType(collType);
+                else if (collType instanceof Type.ArrayType at) elemType = at.componentType();
+                int collIdx = localIdx++;
+                int idxIdx = localIdx++;
+                int varIdx = localIdx++;
+                locals.add(new IRLocalVariable(collIdx, "#coll", collType));
+                locals.add(new IRLocalVariable(idxIdx, "#idx", Type.PrimitiveType.INT));
+                locals.add(new IRLocalVariable(varIdx, fis.varName(), elemType));
+                localIdx = emitExpression(fis.collection(), ops, owner, localIdx, locals);
+                ops.add(new KofStoreLocal(collType, collIdx));
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                ops.add(new KofStoreLocal(Type.PrimitiveType.INT, idxIdx));
+                ops.add(new KofLabel(startLabel));
+                ops.add(new KofLoadLocal(Type.PrimitiveType.INT, idxIdx));
+                ops.add(new KofLoadLocal(collType, collIdx));
+                if (isList) {
+                    ops.add(new KofCall(collType, "kof_list_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
+                } else {
+                    ops.add(new KofArrayLength());
+                }
+                ops.add(new KofConditionalJump(KofComparison.LT, bodyLabel, endLabel));
+                ops.add(new KofLabel(bodyLabel));
+                ops.add(new KofLoadLocal(collType, collIdx));
+                ops.add(new KofLoadLocal(Type.PrimitiveType.INT, idxIdx));
+                if (isList) {
+                    ops.add(new KofCall(collType, "kof_list_get", List.of(Type.PrimitiveType.INT), elemType, KofCallKind.INSTANCE));
+                } else {
+                    ops.add(new KofArrayLoad(elemType));
+                }
+                ops.add(new KofStoreLocal(elemType, varIdx));
+                breakLabels.push(endLabel);
+                continueLabels.push(startLabel);
+                localIdx = emitStatement(fis.body(), ops, owner, localIdx, locals, returnType);
+                breakLabels.pop();
+                continueLabels.pop();
+                ops.add(new KofLoadLocal(Type.PrimitiveType.INT, idxIdx));
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                ops.add(new KofBinary(KofBinaryOp.ADD, Type.PrimitiveType.INT));
+                ops.add(new KofStoreLocal(Type.PrimitiveType.INT, idxIdx));
+                ops.add(new KofJump(startLabel));
+                ops.add(new KofLabel(endLabel));
+                yield localIdx;
+            }
             case ThrowStmt ts -> {
                 localIdx = emitExpression(ts.expression(), ops, owner, localIdx, locals);
                 Type excType = inferExprType(ts.expression(), locals);
@@ -650,6 +701,10 @@ public class CompilerDriver {
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING), Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
+                if (mc.receiver() == null && KofIo.isConstructor(mc.methodName()) && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    yield localIdx;
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
                             : inferExprType(mc.arguments().get(0), locals);
@@ -706,9 +761,36 @@ public class CompilerDriver {
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofIo.isConstructor(rid.name())) {
+                    KofIo.IoCall ioCall = KofIo.staticMethod(rid.name(), mc.methodName(), mc.arguments().size());
+                    if (ioCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.io", "Io", List.of()),
+                                ioCall.function(), ioCall.parameterTypes(), ioCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofIo.isIoType(recvType)) {
+                        if (KofIo.isIdentityMethod(mc.methodName())) {
+                            yield localIdx;
+                        }
+                        KofIo.IoCall ioCall = KofIo.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
+                        if (ioCall != null) {
+                            for (ExpressionNode arg : mc.arguments()) {
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
+                            List<Type> ioParams = new ArrayList<>();
+                            ioParams.add(BuiltinTypes.STRING);
+                            ioParams.addAll(ioCall.parameterTypes());
+                            ops.add(new KofCall(new Type.ClassType("kof.io", "Io", List.of()),
+                                    ioCall.function(), ioParams, ioCall.returnType(), KofCallKind.FUNCTION));
+                            yield localIdx;
+                        }
+                    }
                     if (recvType instanceof Type.FunctionType ft) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -964,6 +1046,10 @@ public class CompilerDriver {
                     ops.add(new KofCall(recvType, "kof_list_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
                     yield localIdx;
                 }
+                if (Type.isString(recvType) && ("name".equals(fa.fieldName()) || "path".equals(fa.fieldName()))) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    yield localIdx;
+                }
                 localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                 if (recvType instanceof Type.ArrayType && "length".equals(fa.fieldName())) {
                     ops.add(new KofArrayLength());
@@ -1067,6 +1153,9 @@ public class CompilerDriver {
                 if ("writeFile".equals(mc.methodName()) && mc.receiver() == null) {
                     yield Type.PrimitiveType.INT;
                 }
+                if (mc.receiver() == null && KofIo.isConstructor(mc.methodName()) && mc.arguments().size() == 1) {
+                    yield KofIo.constructorType(mc.methodName());
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
                             : inferExprType(mc.arguments().get(0), locals);
@@ -1079,8 +1168,17 @@ public class CompilerDriver {
                     }
                     yield Type.UnknownType.UNKNOWN;
                 }
+                if (mc.receiver() instanceof IdentifierExpr rid2 && KofIo.isConstructor(rid2.name())) {
+                    KofIo.IoCall ioCall = KofIo.staticMethod(rid2.name(), mc.methodName(), mc.arguments().size());
+                    if (ioCall != null) yield ioCall.returnType();
+                }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofIo.isIoType(recvType)) {
+                        KofIo.IoCall ioCall = KofIo.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
+                        if (ioCall != null) yield ioCall.returnType();
+                        if (KofIo.isIdentityMethod(mc.methodName())) yield recvType;
+                    }
                     if (recvType instanceof Type.FunctionType ft) {
                         yield ft.returnType();
                     }
@@ -1185,6 +1283,9 @@ public class CompilerDriver {
                 }
                 if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
+                }
+                if (Type.isString(recvType) && ("name".equals(fa.fieldName()) || "path".equals(fa.fieldName()))) {
+                    yield BuiltinTypes.STRING;
                 }
                 if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
                     SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(ct.name(), fa.fieldName());

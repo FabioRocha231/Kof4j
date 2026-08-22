@@ -332,6 +332,18 @@ class SemanticAnalyzer {
                 analyzeStatement(fs.body(), forScope, returnType);
                 if (fs.update() != null) inferType(fs.update(), forScope);
             }
+            case ForInStmt fis -> {
+                SymbolTable forScope = scope.enterScope();
+                Type collType = inferType(fis.collection(), forScope);
+                Type elemType = Type.UnknownType.UNKNOWN;
+                if (collType instanceof Type.ClassType ct && "List".equals(ct.name()) && !ct.typeArguments().isEmpty()) {
+                    elemType = ct.typeArguments().get(0);
+                } else if (collType instanceof Type.ArrayType at) {
+                    elemType = at.componentType();
+                }
+                forScope.define(new SymbolTable.LocalVariableSymbol(fis.varName(), elemType, 0));
+                analyzeStatement(fis.body(), forScope, returnType);
+            }
             case SwitchStmt ss -> {
                 inferType(ss.expression(), scope);
                 SymbolTable switchScope = scope.enterScope();
@@ -433,6 +445,10 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.INT;
                 }
+                if (mc.receiver() == null && KofIo.isConstructor(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofIo.constructorType(mc.methodName());
+                }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
                     if (recvType instanceof Type.FunctionType ft) {
@@ -468,7 +484,8 @@ class SemanticAnalyzer {
                         && !"listOf".equals(mc.methodName())
                         && !"now".equals(mc.methodName()) && !"readLine".equals(mc.methodName())
                         && !"readFile".equals(mc.methodName()) && !"writeFile".equals(mc.methodName())
-                        && !"super".equals(mc.methodName())) {
+                        && !"super".equals(mc.methodName())
+                        && !KofIo.isConstructor(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                     boolean found = false;
@@ -523,6 +540,9 @@ class SemanticAnalyzer {
                 }
                 if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
+                }
+                if (Type.isString(recvType) && ("name".equals(fa.fieldName()) || "path".equals(fa.fieldName()))) {
+                    yield BuiltinTypes.STRING;
                 }
                 if (recvType instanceof Type.ClassType ct) {
                     SymbolTable.Symbol field = resolveInHierarchy(ct.name(), fa.fieldName());

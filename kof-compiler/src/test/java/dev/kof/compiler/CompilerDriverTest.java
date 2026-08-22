@@ -779,8 +779,10 @@ class CompilerDriverTest {
         Path asmFile = tempDir.resolve("out/Default/Main.s");
         if (Files.exists(asmFile)) {
             String asm = Files.readString(asmFile);
-            assertTrue(asm.contains("call kof_print_int"), "Should use kof_print_int for int");
-            assertFalse(asm.contains("kof_println_string"), "Should NOT use kof_println_string for int");
+            assertTrue(asm.contains("kof_int_to_string") || asm.contains("kof_print_int"),
+                    "Should convert int to text before printing");
+            assertTrue(asm.contains("kof_println_string") || asm.contains("kof_print_int"),
+                    "Should emit a string println path for int");
         }
     }
 

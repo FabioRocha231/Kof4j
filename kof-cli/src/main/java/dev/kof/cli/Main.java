@@ -3,10 +3,7 @@ package dev.kof.cli;
 import dev.kof.compiler.*;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,18 +27,53 @@ public final class Main {
     }
 
     private static void run(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [args...]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]"); return; }
         Path file = Path.of(args[1]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
+
+        Target target = Target.JVM;
+        int argStart = 2;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].startsWith("--target=")) {
+                target = parseTarget(args[i].substring("--target=".length()));
+                argStart = i + 1;
+            } else if (args[i].equals("--target") && i + 1 < args.length) {
+                target = parseTarget(args[i + 1]);
+                argStart = i + 2;
+                i++;
+            }
+        }
 
         Path tempDir;
         try { tempDir = Files.createTempDirectory("kof-run-"); }
         catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
 
         CompilerDriver driver = new CompilerDriver();
-        CompilationResult result = driver.compile(file, tempDir, Target.JVM);
+        CompilationResult result = driver.compile(file, tempDir, target);
         for (Diagnostic d : result.diagnostics().getDiagnostics()) System.err.println(d.format());
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
+
+        if (target == Target.JS) {
+            if (!nodeAvailable()) {
+                System.err.println("kof run: Node.js not found in PATH (required for --target=js)");
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            String entry = findJsEntry(tempDir);
+            if (entry == null) {
+                System.err.println("no JS entry point found");
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            List<String> nodeArgs = new ArrayList<>();
+            nodeArgs.add("node");
+            nodeArgs.add(entry);
+            for (int i = argStart; i < args.length; i++) nodeArgs.add(args[i]);
+            executeProcess(nodeArgs, tempDir);
+            return;
+        }
 
         String className = findMainClass(tempDir);
         if (className == null) {
@@ -55,10 +87,13 @@ public final class Main {
         javaArgs.add("-cp");
         javaArgs.add(tempDir.toString());
         javaArgs.add(className);
-        for (int i = 2; i < args.length; i++) javaArgs.add(args[i]);
+        for (int i = argStart; i < args.length; i++) javaArgs.add(args[i]);
+        executeProcess(javaArgs, tempDir);
+    }
 
+    private static void executeProcess(List<String> command, Path tempDir) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(javaArgs);
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.inheritIO();
             Process p = pb.start();
             int exitCode = p.waitFor();
@@ -72,6 +107,29 @@ public final class Main {
             Thread.currentThread().interrupt();
             cleanup(tempDir);
             System.exit(1);
+        }
+    }
+
+    private static boolean nodeAvailable() {
+        try {
+            Process p = new ProcessBuilder("node", "--version").redirectErrorStream(true).start();
+            return p.waitFor() == 0;
+        } catch (IOException | InterruptedException e) {
+            return false;
+        }
+    }
+
+    private static String findJsEntry(Path dir) {
+        Path defaultEntry = dir.resolve("Default.mjs");
+        if (Files.exists(defaultEntry)) return defaultEntry.toString();
+        try (var s = Files.walk(dir)) {
+            return s.filter(p -> p.toString().endsWith(".mjs"))
+                    .filter(p -> !p.toString().contains("kof-runtime"))
+                    .findFirst()
+                    .map(p -> p.toString())
+                    .orElse(null);
+        } catch (IOException e) {
+            return null;
         }
     }
 
@@ -110,6 +168,7 @@ public final class Main {
         return switch (value) {
             case "jvm" -> Target.JVM;
             case "native" -> Target.NATIVE;
+            case "js" -> Target.JS;
             default -> {
                 System.err.println("unknown target: " + value);
                 System.exit(1);
@@ -162,14 +221,16 @@ public final class Main {
 
     private static void printUsage() {
         System.out.println("usage: kof <command>");
-        System.out.println("  build <dir> [--target jvm|native] [--output <dir>]");
-        System.out.println("  run <file.kf> [args...]");
+        System.out.println("  build <dir> [--target jvm|native|js] [--output <dir>]");
+        System.out.println("  run <file.kf> [--target jvm|native|js] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");
         System.out.println("  version");
+        System.out.println();
+        System.out.println("note: the js target is in development (alpha); node is required to run");
     }
 
     private static void install(String[] args) {
@@ -290,7 +351,7 @@ public final class Main {
                     + ",\"compiler\":\"" + KofVersion.compiler()
                     + "\",\"runtime\":\"" + KofVersion.runtime()
                     + "\",\"stdlib\":\"" + KofVersion.stdlib()
-                    + "\",\"targets\":[\"jvm\",\"native\"]"
+                    + "\",\"targets\":["jvm","native","js"]"
                     + ",\"lsp\":true"
                     + ",\"editorSupport\":true"
                     + ",\"install\":\"" + jsonEscape(installDir) + "\"}");
@@ -307,7 +368,7 @@ public final class Main {
         System.out.println("Compiler: " + KofVersion.compiler());
         System.out.println("Runtime: " + KofVersion.runtime());
         System.out.println("Stdlib: " + KofVersion.stdlib());
-        System.out.println("Targets: jvm, native");
+        System.out.println("Targets: jvm, native, js (alpha)");
         System.out.println("LSP: available");
         System.out.println("Editor support: available");
         System.out.println("Install: " + installDir);
@@ -387,169 +448,27 @@ public final class Main {
             return;
         }
 
-        try (ServerSocket serverSocket = new ServerSocket(port, 50, java.net.InetAddress.getByName(host))) {
+        try {
+            Class<?> handlerClass = Class.forName(className, true, handlerLoader);
+            dev.kof.compiler.KofHttpServer server = new dev.kof.compiler.KofHttpServer(
+                    dev.kof.compiler.ReflectiveHandler.forClass(handlerClass));
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 System.out.println("\nkof serve shutting down...");
-                try { serverSocket.close(); } catch (IOException ignored) {}
+                server.close();
                 try { handlerLoader.close(); } catch (IOException ignored) {}
                 cleanup(tempDir);
             }));
 
             System.out.println("listening for connections...");
-
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    Socket clientSocket = serverSocket.accept();
-                    clientSocket.setSoTimeout(5000);
-                    handleRequest(clientSocket, className, handlerLoader);
-                } catch (IOException e) {
-                    if (!Thread.currentThread().isInterrupted()) {
-                        System.err.println("connection error: " + e.getMessage());
-                    }
-                }
-            }
+            server.serve(host, port);
+        } catch (ClassNotFoundException e) {
+            System.err.println("handler class not found: " + e.getMessage());
+            cleanup(tempDir);
+            System.exit(1);
         } catch (IOException e) {
             System.err.println("server error: " + e.getMessage());
             cleanup(tempDir);
             System.exit(1);
         }
-    }
-
-    private static void handleRequest(Socket clientSocket, String className, URLClassLoader handlerLoader) {
-        try {
-            InputStream in = clientSocket.getInputStream();
-            OutputStream out = clientSocket.getOutputStream();
-
-            StringBuilder request = new StringBuilder();
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            boolean headersComplete = false;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                request.append(new String(buffer, 0, bytesRead));
-                if (request.toString().contains("\r\n\r\n")) {
-                    headersComplete = true;
-                    break;
-                }
-            }
-
-            if (!headersComplete) {
-                sendResponse(out, 400, "Bad Request", "Invalid HTTP request");
-                clientSocket.close();
-                return;
-            }
-
-            String firstLine = request.toString().split("\r\n")[0];
-            String[] parts = firstLine.split(" ");
-            if (parts.length < 2) {
-                sendResponse(out, 400, "Bad Request", "Invalid HTTP request");
-                clientSocket.close();
-                return;
-            }
-
-            String method = parts[0];
-            String path = parts[1];
-
-            String body = "";
-            int headerEnd = request.toString().indexOf("\r\n\r\n");
-            if (headerEnd >= 0) {
-                body = request.substring(headerEnd + 4);
-            }
-
-            List<String> headers = new ArrayList<>();
-            String[] headerLines = request.toString().split("\r\n");
-            for (int i = 1; i < headerLines.length; i++) {
-                if (headerLines[i].isEmpty()) break;
-                headers.add(headerLines[i]);
-            }
-
-            String response = invokeHandler(className, method, path, body, headers, handlerLoader);
-            sendRawResponse(out, response);
-            clientSocket.close();
-        } catch (Exception e) {
-            try {
-                sendResponse(clientSocket.getOutputStream(), 500, "Internal Server Error", e.getMessage());
-                clientSocket.close();
-            } catch (IOException ignored) {}
-        }
-    }
-
-    private static String invokeHandler(String className, String method, String path, String body, List<String> headers,
-                                    URLClassLoader handlerLoader) {
-        try {
-            Class<?> clazz = Class.forName(className, true, handlerLoader);
-            Object instance = null;
-            try {
-                instance = clazz.getDeclaredConstructor().newInstance();
-            } catch (NoSuchMethodException e) {
-                // top-level functions compile to static methods on a class
-                // without a public constructor; handlers are invoked statically.
-            }
-
-            // Try handle(method, path, body) first
-            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                if (m.getName().equals("handle") && m.getParameterCount() == 3) {
-                    Class<?>[] params = m.getParameterTypes();
-                    if (params[0] == String.class && params[1] == String.class && params[2] == String.class
-                            && (java.lang.reflect.Modifier.isStatic(m.getModifiers()) || instance != null)) {
-                        Object result = m.invoke(instance, method, path, body);
-                        if (result instanceof String s) {
-                            return buildHttpResponse(200, "OK", s);
-                        }
-                    }
-                }
-            }
-
-            // Try handle() with no args
-            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                if (m.getName().equals("handle") && m.getParameterCount() == 0
-                        && (java.lang.reflect.Modifier.isStatic(m.getModifiers()) || instance != null)) {
-                    Object result = m.invoke(instance);
-                    if (result instanceof String s) {
-                        return buildHttpResponse(200, "OK", s);
-                    }
-                }
-            }
-
-            // Try method-specific handlers: get(), post(), etc.
-            String handlerName = method.toLowerCase();
-            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                if (m.getName().equals(handlerName) && m.getParameterCount() == 0
-                        && (java.lang.reflect.Modifier.isStatic(m.getModifiers()) || instance != null)) {
-                    Object result = m.invoke(instance);
-                    if (result instanceof String s) {
-                        return buildHttpResponse(200, "OK", s);
-                    }
-                }
-            }
-
-            return buildHttpResponse(200, "OK", "Hello from Kof!");
-        } catch (Exception e) {
-            return buildHttpResponse(500, "Internal Server Error", "Handler error: " + e.getMessage());
-        }
-    }
-
-    private static String buildHttpResponse(int status, String statusText, String body) {
-        byte[] bodyBytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        String contentType = "text/plain; charset=utf-8";
-        if (body.startsWith("{") || body.startsWith("[")) {
-            contentType = "application/json; charset=utf-8";
-        }
-        return "HTTP/1.1 " + status + " " + statusText + "\r\n"
-                + "Content-Type: " + contentType + "\r\n"
-                + "Content-Length: " + bodyBytes.length + "\r\n"
-                + "Connection: close\r\n"
-                + "\r\n"
-                + body;
-    }
-
-    private static void sendResponse(OutputStream out, int status, String statusText, String body) throws IOException {
-        String response = buildHttpResponse(status, statusText, body);
-        out.write(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        out.flush();
-    }
-
-    private static void sendRawResponse(OutputStream out, String response) throws IOException {
-        out.write(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        out.flush();
     }
 }

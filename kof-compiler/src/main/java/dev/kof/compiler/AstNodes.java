@@ -141,6 +141,10 @@ record ForStmt(SourcePosition position, StatementNode init, ExpressionNode condi
                ExpressionNode update, StatementNode body) implements StatementNode {
 }
 
+record ForInStmt(SourcePosition position, String varName, ExpressionNode collection,
+                 StatementNode body) implements StatementNode {
+}
+
 record VarDeclStmt(SourcePosition position, String type, String name,
                    ExpressionNode initializer) implements StatementNode {
 }
