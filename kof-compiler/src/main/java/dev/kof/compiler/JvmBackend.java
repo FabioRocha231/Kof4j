@@ -101,7 +101,12 @@ class JvmBackend implements Backend {
         for (IRClass clazz : module.classes()) {
             emitClass(clazz, outputDir);
         }
+        if (usesJson) {
+            JvmJsonRuntime.ensureCompiled(outputDir, module.classes());
+        }
     }
+
+    private boolean usesJson = false;
 
     private void emitClass(IRClass clazz, Path outputDir) throws IOException {
         Path classFile = outputDir.resolve(clazz.name() + ".class");
@@ -115,6 +120,12 @@ class JvmBackend implements Backend {
         for (IRField field : clazz.fields()) {
             String desc = JvmTypeMapper.toDescriptor(field.type());
             cw.visitField(field.accessFlags(), field.name(), desc, null, field.initialValue()).visitEnd();
+        }
+
+        if ("java/lang/Record".equals(superName)) {
+            for (IRField field : clazz.fields()) {
+                cw.visitRecordComponent(field.name(), JvmTypeMapper.toDescriptor(field.type()), null).visitEnd();
+            }
         }
 
         for (IRMethod method : clazz.methods()) {
@@ -286,6 +297,14 @@ class JvmBackend implements Backend {
                 mv.visitTypeInsn(CHECKCAST, boxedName);
                 mv.visitMethodInsn(INVOKEVIRTUAL, boxedName, unboxMethodName(boxed),
                         "()" + JvmTypeMapper.toDescriptor(kc.returnType()), false);
+            }
+        } else if (op instanceof KofCall kc && JvmJsonRuntime.hasJson(kc.methodName())) {
+            usesJson = true;
+            mv.visitMethodInsn(INVOKESTATIC, "dev/kof/runtime/KofJson", kc.methodName(),
+                    JvmJsonRuntime.callDescriptor(kc.methodName()), false);
+            if ("Ljava/lang/Object;".equals(JvmJsonRuntime.callReturnDescriptor(kc.methodName()))
+                    && kc.returnType() instanceof Type.ClassType ct && !BuiltinTypes.isString(kc.returnType())) {
+                mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isString(kc.ownerType())
                 && ("kof_string_concat".equals(kc.methodName()) || "kof_string_equals".equals(kc.methodName()))) {

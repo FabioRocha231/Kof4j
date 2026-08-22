@@ -276,10 +276,21 @@ class Lexer {
             type = TokenType.DOUBLE_LITERAL;
         } else if (isLong) {
             type = TokenType.LONG_LITERAL;
-        } else {
+        } else if (isIntegerLiteral(value)) {
             type = TokenType.INT_LITERAL;
+        } else {
+            type = TokenType.LONG_LITERAL;
         }
         addToken(type, value, startLine, startCol, startOffset, pos - startOffset);
+    }
+
+    private boolean isIntegerLiteral(String value) {
+        try {
+            Integer.parseInt(value);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     private void readIdentifier() {

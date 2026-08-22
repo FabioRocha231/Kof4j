@@ -12,6 +12,7 @@ public class CompilerDriver {
     private CompilationUnitNode currentUnit;
     private SemanticAnalyzer semanticAnalyzer;
     private Target target = Target.JVM;
+    private DiagnosticCollector currentDiagnostics;
     private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
     private final java.util.Deque<LabelId> continueLabels = new java.util.ArrayDeque<>();
 
@@ -22,6 +23,7 @@ public class CompilerDriver {
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
+        this.currentDiagnostics = diagnostics;
         try {
             String source = Files.readString(sourceFile);
             String fileName = sourceFile.getFileName().toString();
@@ -552,8 +554,11 @@ public class CompilerDriver {
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
                 } else if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName()) && mc.arguments().size() == 1) {
-                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                         Type argType = inferExprType(mc.arguments().get(0), locals);
+                        if (!jsonSupported(argType, false)) {
+                            yield localIdx;
+                        }
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                         List<Type> paramTypes = List.of(argType);
                         if (BuiltinTypes.isList(argType)) {
                             int tag = jsonListTag(listElementType(argType));
@@ -564,8 +569,11 @@ public class CompilerDriver {
                                 BuiltinTypes.STRING, KofCallKind.FUNCTION));
                     } else if ("decode".equals(mc.methodName()) && mc.arguments().size() == 1
                             && !mc.typeArguments().isEmpty()) {
-                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                         Type targetType = toType(mc.typeArguments().get(0));
+                        if (!jsonSupported(targetType, true)) {
+                            yield localIdx;
+                        }
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                         ops.add(new KofCall(targetType, jsonDecodeFunction(targetType), List.of(BuiltinTypes.STRING),
                                 targetType, KofCallKind.FUNCTION));
                     }
@@ -808,11 +816,16 @@ public class CompilerDriver {
                     ops.add(new KofLoadField(recvType, fa.fieldName(), Type.PrimitiveType.INT));
                 } else {
                     Type fieldType = Type.UnknownType.UNKNOWN;
+                    SymbolTable.Symbol accessor = null;
                     if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
-                        SymbolTable.Symbol fs = resolveFieldInHierarchy(ct.name(), fa.fieldName());
-                        if (fs != null) fieldType = fs.type();
+                        accessor = resolveFieldInHierarchy(ct.name(), fa.fieldName());
+                        if (accessor != null) fieldType = accessor.type();
                     }
-                    ops.add(new KofLoadField(recvType, fa.fieldName(), fieldType));
+                    if (accessor instanceof SymbolTable.MethodSymbol ms && ms.parameterTypes().isEmpty()) {
+                        ops.add(new KofCall(recvType, fa.fieldName(), List.of(), ms.returnType(), KofCallKind.INSTANCE));
+                    } else {
+                        ops.add(new KofLoadField(recvType, fa.fieldName(), fieldType));
+                    }
                 }
                 yield localIdx;
             }
@@ -960,6 +973,13 @@ public class CompilerDriver {
                 }
                 if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
+                }
+                if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
+                    SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(ct.name(), fa.fieldName());
+                    if (s instanceof SymbolTable.FieldSymbol fs) yield fs.type();
+                    if (s instanceof SymbolTable.MethodSymbol ms && ms.parameterTypes().isEmpty()) {
+                        yield ms.returnType();
+                    }
                 }
                 yield Type.UnknownType.UNKNOWN;
             }
@@ -1205,10 +1225,39 @@ public class CompilerDriver {
         return 0;
     }
 
+    private boolean jsonSupported(Type type, boolean isDecode) {
+        Type check = BuiltinTypes.isList(type) ? listElementType(type) : type;
+        if (check instanceof Type.PrimitiveType pt && ("float".equals(pt.name()) || "double".equals(pt.name()))) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "json: Float/Double is not supported yet (use int, long, bool or String)", "JSN001");
+            }
+            return false;
+        }
+        if (isDecode && type instanceof Type.ArrayType) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "json.decode: arrays are not supported yet (use List<Int> or List<String>)", "JSN003");
+            }
+            return false;
+        }
+        if (check instanceof Type.ClassType && target == Target.NATIVE && !BuiltinTypes.isList(type)
+                && !BuiltinTypes.isString(type)) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "json: objects are not supported on the Native target yet (JVM supports object JSON)",
+                        "JSN002");
+            }
+            return false;
+        }
+        return true;
+    }
+
     private String jsonEncodeFunction(Type type) {
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
-                case "int", "char", "byte", "short", "long" -> "kof_json_encode_int";
+                case "int", "char", "byte", "short" -> "kof_json_encode_int";
+                case "long" -> "kof_json_encode_long";
                 case "bool" -> "kof_json_encode_bool";
                 default -> "kof_json_encode_int";
             };
@@ -1222,7 +1271,8 @@ public class CompilerDriver {
     private String jsonDecodeFunction(Type type) {
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
-                case "int", "char", "byte", "short", "long" -> "kof_json_decode_int";
+                case "int", "char", "byte", "short" -> "kof_json_decode_int";
+                case "long" -> "kof_json_decode_long";
                 case "bool" -> "kof_json_decode_bool";
                 default -> "kof_json_decode_int";
             };

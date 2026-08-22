@@ -1173,6 +1173,60 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
+            .globl kof_json_encode_array
+            .type kof_json_encode_array, @function
+            kof_json_encode_array:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                call kof_json_builder_new
+                movq %rax, %r12
+                movq %r12, %rdi
+                movl $91, %esi
+                call kof_json_builder_char
+                movl 16(%rbx), %r13d
+                movl 20(%rbx), %r15d
+                xorq %r14, %r14
+            .Lkof_json_ea_loop:
+                cmpl %r13d, %r14d
+                jge .Lkof_json_ea_done
+                testq %r14, %r14
+                jz .Lkof_json_ea_no_comma
+                movq %r12, %rdi
+                movl $44, %esi
+                call kof_json_builder_char
+            .Lkof_json_ea_no_comma:
+                leaq 24(%rbx), %rax
+                cmpl $4, %r15d
+                je .Lkof_json_ea_int
+                movq (%rax,%r14,8), %rdi
+                call kof_json_encode_string
+                jmp .Lkof_json_ea_appended
+            .Lkof_json_ea_int:
+                movl (%rax,%r14,4), %edi
+                call kof_json_encode_int
+            .Lkof_json_ea_appended:
+                movq %r12, %rdi
+                movq %rax, %rsi
+                call kof_json_builder_str
+                incq %r14
+                jmp .Lkof_json_ea_loop
+            .Lkof_json_ea_done:
+                movq %r12, %rdi
+                movl $93, %esi
+                call kof_json_builder_char
+                movq %r12, %rdi
+                call kof_json_builder_result
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
             .globl kof_json_decode_int
             .type kof_json_decode_int, @function
             kof_json_decode_int:
@@ -1181,6 +1235,15 @@ final class NativeRuntime {
                 movq %rdi, %rbx
                 movl 16(%rbx), %ecx
                 xorq %rdx, %rdx
+                jmp .Lkof_json_di_skip
+
+            .globl kof_json_decode_int_at
+            .type kof_json_decode_int_at, @function
+            kof_json_decode_int_at:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movl 16(%rbx), %ecx
             .Lkof_json_di_skip:
                 cmpl %ecx, %edx
                 jge .Lkof_json_di_err
@@ -1320,6 +1383,20 @@ final class NativeRuntime {
                 movq %rax, %r12
                 movl 16(%rbx), %r14d
                 xorq %r13, %r13
+                jmp .Lkof_json_ds_skip
+
+            .globl kof_json_decode_string_at
+            .type kof_json_decode_string_at, @function
+            kof_json_decode_string_at:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rdx, %r13
+                call kof_json_builder_new
+                movq %rax, %r12
+                movl 16(%rbx), %r14d
             .Lkof_json_ds_skip:
                 cmpl %r14d, %r13d
                 jge .Lkof_json_ds_done
@@ -1376,6 +1453,7 @@ final class NativeRuntime {
             .Lkof_json_ds_done:
                 movq %r12, %rdi
                 call kof_json_builder_result
+                movq %r13, %rdx
                 popq %r14
                 popq %r13
                 popq %r12
@@ -1432,7 +1510,8 @@ final class NativeRuntime {
                 cmpb $9, %al
                 je .Lkof_json_dil_comma
                 movq %rbx, %rdi
-                call kof_json_decode_int
+                movq %r13, %rdx
+                call kof_json_decode_int_at
                 movq %rdx, %r13
                 movq %r12, %rdi
                 movq %rax, %rsi
@@ -1500,7 +1579,8 @@ final class NativeRuntime {
                 cmpb $9, %al
                 je .Lkof_json_dsl_comma
                 movq %rbx, %rdi
-                call kof_json_decode_string
+                movq %r13, %rdx
+                call kof_json_decode_string_at
                 movq %rdx, %r13
                 movq %r12, %rdi
                 movq %rax, %rsi
