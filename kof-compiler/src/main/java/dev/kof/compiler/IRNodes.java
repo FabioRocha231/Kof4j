@@ -16,7 +16,7 @@ record IRModule(String name, List<IRClass> classes, List<String> imports) {
 
 record IRClass(String name, String superName, List<String> interfaces,
                int accessFlags, List<IRField> fields, List<IRMethod> methods,
-               List<String> innerClasses, String signature) {
+               List<String> innerClasses, String signature, int typeId) {
 }
 
 record IRField(String name, Type type, int accessFlags, Object initialValue) {

@@ -90,16 +90,17 @@ public class CompilerDriver {
         List<IRClass> classes = new ArrayList<>();
         List<IRMethod> topLevelFunctions = new ArrayList<>();
         String moduleName = unit.packageName().isEmpty() ? "Default" : unit.packageName().replace('.', '/');
+        int nextTypeId = 10;
         for (AstNode decl : unit.declarations()) {
-            if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName()));
-            else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName()));
-            else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName()));
+            if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
+            else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
+            else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
             else if (decl instanceof FunctionDeclarationNode func) topLevelFunctions.add(lowerFunction(func));
         }
         if (!topLevelFunctions.isEmpty()) {
             String mainClassName = moduleName.isEmpty() ? "Main" : moduleName + "/Main";
             classes.add(0, new IRClass(mainClassName, "java/lang/Object", List.of(),
-                    AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(), topLevelFunctions, List.of(), null));
+                    AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(), topLevelFunctions, List.of(), null, 0));
         }
         return new IRModule(moduleName, classes, imports);
     }
@@ -380,7 +381,11 @@ public class CompilerDriver {
                 Type leftType = inferExprType(bin.left(), locals);
                 Type rightType = inferExprType(bin.right(), locals);
                 if ("instanceof".equals(bin.operator())) {
-                    ops.add(new KofInstanceOf(rightType));
+                    Type targetType = Type.UnknownType.UNKNOWN;
+                    if (bin.right() instanceof IdentifierExpr ie) {
+                        targetType = Type.of(ie.name());
+                    }
+                    ops.add(new KofInstanceOf(targetType));
                 } else if ("as".equals(bin.operator())) {
                     ops.add(new KofCheckCast(rightType));
                 } else if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
@@ -736,7 +741,7 @@ public class CompilerDriver {
         return true;
     }
 
-    private IRClass lowerClass(ClassDeclarationNode cls, String packageName) {
+    private IRClass lowerClass(ClassDeclarationNode cls, String packageName, int typeId) {
         String internalName = toInternalName(packageName, cls.name());
         String superName = cls.superClass() != null ? toInternalName("", cls.superClass()) : "java/lang/Object";
         List<String> ifaces = cls.interfaces().stream().map(i -> toInternalName("", i)).toList();
@@ -749,10 +754,10 @@ public class CompilerDriver {
             else if (member instanceof ConstructorDeclarationNode ctor) methods.add(lowerConstructor(ctor, internalName, superName));
         }
         if (!methods.stream().anyMatch(m -> m.name().equals("<init>"))) methods.add(0, generateDefaultConstructor(internalName, superName));
-        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null);
+        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
     }
 
-    private IRClass lowerInterface(InterfaceDeclarationNode iface, String packageName) {
+    private IRClass lowerInterface(InterfaceDeclarationNode iface, String packageName, int typeId) {
         String internalName = toInternalName(packageName, iface.name());
         List<String> ifaces = iface.interfaces().stream().map(i -> toInternalName("", i)).toList();
         int access = computeAccess(iface.modifiers()) | AccessFlags.ABSTRACT;
@@ -762,10 +767,10 @@ public class CompilerDriver {
             if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, true));
             else if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field));
         }
-        return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null);
+        return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null, typeId);
     }
 
-    private IRClass lowerRecord(RecordDeclarationNode rec, String packageName) {
+    private IRClass lowerRecord(RecordDeclarationNode rec, String packageName, int typeId) {
         String internalName = toInternalName(packageName, rec.name());
         String superName = "java/lang/Record";
         List<String> ifaces = rec.interfaces().stream().map(i -> toInternalName("", i)).toList();
@@ -787,7 +792,7 @@ public class CompilerDriver {
                     List.of(new IRBasicBlock(0, body)),
                     List.of(new IRLocalVariable(0, "this", ownerType))));
         }
-        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null);
+        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
     }
 
     private IRField lowerField(FieldDeclarationNode field) {

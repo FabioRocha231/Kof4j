@@ -49,6 +49,7 @@ final class NativeRuntime {
         emitNetRead(sb);
         emitNetWrite(sb);
         emitNetClose(sb);
+        emitInstanceof(sb);
         return sb.toString();
     }
 
@@ -1025,6 +1026,30 @@ final class NativeRuntime {
             kof_net_close:
                 movq $3, %rax
                 syscall
+                ret
+            """);
+    }
+
+    /**
+     * kof_instanceof(obj_ptr, target_type_id) → bool
+     * Checks if object's type_id matches target_type_id.
+     * %rdi = obj_ptr, %esi = target_type_id
+     * Returns 1 if match, 0 otherwise.
+     */
+    private static void emitInstanceof(StringBuilder sb) {
+        sb.append("""
+            .globl kof_instanceof
+            .type kof_instanceof, @function
+            kof_instanceof:
+                testq %rdi, %rdi
+                jz .Lkof_instanceof_null
+                movl (%rdi), %eax
+                cmpl %esi, %eax
+                sete %al
+                movzbl %al, %eax
+                ret
+            .Lkof_instanceof_null:
+                xorl %eax, %eax
                 ret
             """);
     }

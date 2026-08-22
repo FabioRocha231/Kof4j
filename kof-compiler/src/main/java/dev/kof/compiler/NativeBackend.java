@@ -336,7 +336,23 @@ public class NativeBackend implements Backend {
             case KofGetStatic gs -> { }
             case KofPutStatic ps -> sb.append("    addq $8, %rsp\n");
             case KofCheckCast cc -> { }
-            case KofInstanceOf io -> sb.append("    pushq $0\n");
+            case KofInstanceOf io -> {
+                int targetTypeId = 0;
+                if (io.type() instanceof Type.ClassType ct) {
+                    for (IRClass clazz : allClassesMap.values()) {
+                        if (clazz.name().equals(ct.name()) || clazz.name().endsWith("/" + ct.name())
+                                || ct.name().endsWith("/" + clazz.name()) || ct.name().equals(sanitizeName(clazz.name()))) {
+                            targetTypeId = clazz.typeId();
+                            break;
+                        }
+                    }
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movl (%rax), %edi\n");
+                sb.append("    movl $").append(targetTypeId).append(", %esi\n");
+                sb.append("    call kof_instanceof\n");
+                sb.append("    pushq %rax\n");
+            }
             case KofNewArray na -> emitNewArray(sb, na);
             case KofArrayLoad al -> emitArrayLoad(sb, al);
             case KofArrayStore as -> emitArrayStore(sb, as);
@@ -352,6 +368,7 @@ public class NativeBackend implements Backend {
     private void emitNewObject(StringBuilder sb, KofNewObject no) {
         ClassLayout layout = null;
         String className = null;
+        int typeId = 0;
         if (no.type() instanceof Type.ClassType ct) {
             className = ct.name();
             for (IRClass clazz : allClassesMap.values()) {
@@ -359,6 +376,7 @@ public class NativeBackend implements Backend {
                         || className.endsWith("/" + clazz.name()) || className.equals(sanitizeName(clazz.name()))) {
                     layout = getLayout(clazz);
                     className = clazz.name();
+                    typeId = clazz.typeId();
                     break;
                 }
             }
@@ -369,7 +387,7 @@ public class NativeBackend implements Backend {
         if (className != null) {
             String mangled = sanitizeName(className);
             sb.append("    movq %rax, %rdi\n");
-            sb.append("    movl $0, %esi\n");
+            sb.append("    movl $").append(typeId).append(", %esi\n");
             sb.append("    leaq ").append(mangled).append("_vtable(%rip), %rdx\n");
             sb.append("    call kof_init_object\n");
         }
@@ -521,8 +539,7 @@ public class NativeBackend implements Backend {
                 sb.append("    popq ").append(intRegs[i]).append("\n");
             }
             sb.append("    popq %rax\n");
-            sb.append("    movq %rax, %rsi\n");
-            sb.append("    movq %rax, %rsi\n");
+            sb.append("    movq %rax, %rdi\n");
             sb.append("    call kof_string_char_at\n");
             sb.append("    pushq %rax\n");
             return;
@@ -534,8 +551,6 @@ public class NativeBackend implements Backend {
                 sb.append("    popq ").append(intRegs[i]).append("\n");
             }
             sb.append("    popq %rax\n");
-            sb.append("    movq %rdx, %rsi\n");
-            sb.append("    movq %rdi, %rdx\n");
             sb.append("    movq %rax, %rdi\n");
             sb.append("    call kof_string_substring\n");
             sb.append("    pushq %rax\n");
@@ -548,7 +563,7 @@ public class NativeBackend implements Backend {
                 sb.append("    popq ").append(intRegs[i]).append("\n");
             }
             sb.append("    popq %rax\n");
-            sb.append("    movq %rax, %rsi\n");
+            sb.append("    movq %rax, %rdi\n");
             sb.append("    call kof_string_contains\n");
             sb.append("    pushq %rax\n");
             return;
@@ -560,7 +575,7 @@ public class NativeBackend implements Backend {
                 sb.append("    popq ").append(intRegs[i]).append("\n");
             }
             sb.append("    popq %rax\n");
-            sb.append("    movq %rax, %rsi\n");
+            sb.append("    movq %rax, %rdi\n");
             sb.append("    call kof_string_starts_with\n");
             sb.append("    pushq %rax\n");
             return;
@@ -572,7 +587,7 @@ public class NativeBackend implements Backend {
                 sb.append("    popq ").append(intRegs[i]).append("\n");
             }
             sb.append("    popq %rax\n");
-            sb.append("    movq %rax, %rsi\n");
+            sb.append("    movq %rax, %rdi\n");
             sb.append("    call kof_string_ends_with\n");
             sb.append("    pushq %rax\n");
             return;
