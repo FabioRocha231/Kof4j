@@ -7,6 +7,57 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## [0.0.5-alpha] - 2026-08-22
+
+### Features
+
+  - CLI platform commands — info, check, lsp, install
+  - JVM backend correctness — records, Object methods, concat, comparisons
+  - remove fun keyword — functions declared by name
+  - JSON parity JVM+Native — object/record encode-decode, long, arrays, field inference
+  - List rich API — contains, isEmpty, remove, clear, listOf (JVM + Native parity)
+  - native string API parity — indexOf, trim, toUpperCase/toLowerCase, replace, equalsIgnoreCase, split
+  - enhance parsing and execution for generic calls and string operations in JVM backend
+  - enhance JSON encoding/decoding with improved parameter handling and type inference
+  - add JSON support with encoding and decoding functions
+  - List<T> builtin collection (native + JVM)
+  - implement Kof list operations in JVM backend and native runtime
+  - add Kof List type support and associated runtime functions
+  - generics with erasure (classes, functions, type args)
+  - add support for type parameters in symbol table
+  - add support for type parameters in function and class declarations
+  - strengthen compile-time type checking
+  - constructors in native backend, skip implicit Object super() call
+  - add break/continue, fix if/while/for control flow, comparison expressions
+  - add .balign directive for method table alignment in NativeBackend and NativeRuntime
+  - enhance Kof language type system with type IDs and instanceof support
+  - implement switch statement and case handling in Kof language
+  - enhance Kof language documentation with comprehensive references, examples, and common patterns
+  - add support for do-while statements and enhance type system
+  - Complete Phase F implementation with runtime, object model, exceptions, and memory management
+  - Add logging for assembly generation and error handling in NativeBackend
+  - Phase C+D+E - complete compiler with native backend
+
+### Bugfixes
+
+  - JVM backend execution parity — if/else, strings, generics erasure boxing, records, interfaces, access flags, bitwise ops, long arithmetic
+  - switch case fall-through, SUB operand order, function call typing
+  - resolve native SIGSEGV and complete string/object ABI
+
+### Documentation
+
+  - align learning and training corpus with 0.0.4-alpha
+  - distribution, packaging, versioning and state aligned with 0.0.4-alpha
+  - atualizar status, architecture, actual-state, README
+
+### Build
+
+  - centralized versioning, official launchers and packaging
+
+### Tooling
+
+  - official TextMate grammar and editor/LSP documentation
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
