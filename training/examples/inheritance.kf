@@ -1,0 +1,48 @@
+// inheritance.kf — Inheritance and Virtual Dispatch
+
+class Animal {
+    String name
+    public constructor(String name) {
+        this.name = name
+    }
+    public fun speak(): String {
+        return "animal"
+    }
+}
+
+class Dog extends Animal {
+    public constructor(String name) {
+        super(name)
+    }
+    public fun speak(): String {
+        return "dog"
+    }
+    public fun bark(): String {
+        return "woof"
+    }
+}
+
+interface Speaker {
+    fun speak(): String
+}
+
+class Cat extends Animal implements Speaker {
+    public constructor(String name) {
+        super(name)
+    }
+    public fun speak(): String {
+        return "meow"
+    }
+}
+
+fun main() {
+    var dog = new Dog("Rex")
+    println(dog.speak())  // "dog"
+    println(dog.bark())  // "woof"
+    
+    Animal a = new Dog("Buddy")
+    println(a.speak())   // "dog" (virtual dispatch)
+    
+    var cat = new Cat("Whiskers")
+    println(cat.speak()) // "meow"
+}

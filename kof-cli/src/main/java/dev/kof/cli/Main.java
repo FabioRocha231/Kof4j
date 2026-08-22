@@ -266,16 +266,42 @@ public final class Main {
     private static String invokeHandler(String className, String method, String path, String body, List<String> headers) {
         try {
             Class<?> clazz = Class.forName(className);
-            java.lang.reflect.Method[] methods = clazz.getDeclaredMethods();
-            for (java.lang.reflect.Method m : methods) {
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+
+            // Try handle(method, path, body) first
+            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
+                if (m.getName().equals("handle") && m.getParameterCount() == 3) {
+                    Class<?>[] params = m.getParameterTypes();
+                    if (params[0] == String.class && params[1] == String.class && params[2] == String.class) {
+                        Object result = m.invoke(instance, method, path, body);
+                        if (result instanceof String s) {
+                            return buildHttpResponse(200, "OK", s);
+                        }
+                    }
+                }
+            }
+
+            // Try handle() with no args
+            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
                 if (m.getName().equals("handle") && m.getParameterCount() == 0) {
-                    Object instance = clazz.getDeclaredConstructor().newInstance();
                     Object result = m.invoke(instance);
                     if (result instanceof String s) {
                         return buildHttpResponse(200, "OK", s);
                     }
                 }
             }
+
+            // Try method-specific handlers: get(), post(), etc.
+            String handlerName = method.toLowerCase();
+            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
+                if (m.getName().equals(handlerName) && m.getParameterCount() == 0) {
+                    Object result = m.invoke(instance);
+                    if (result instanceof String s) {
+                        return buildHttpResponse(200, "OK", s);
+                    }
+                }
+            }
+
             return buildHttpResponse(200, "OK", "Hello from Kof!");
         } catch (Exception e) {
             return buildHttpResponse(500, "Internal Server Error", "Handler error: " + e.getMessage());
@@ -284,8 +310,12 @@ public final class Main {
 
     private static String buildHttpResponse(int status, String statusText, String body) {
         byte[] bodyBytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String contentType = "text/plain; charset=utf-8";
+        if (body.startsWith("{") || body.startsWith("[")) {
+            contentType = "application/json; charset=utf-8";
+        }
         return "HTTP/1.1 " + status + " " + statusText + "\r\n"
-                + "Content-Type: text/plain; charset=utf-8\r\n"
+                + "Content-Type: " + contentType + "\r\n"
                 + "Content-Length: " + bodyBytes.length + "\r\n"
                 + "Connection: close\r\n"
                 + "\r\n"

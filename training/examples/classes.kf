@@ -1,0 +1,23 @@
+// classes.kf — Classes and Records in Kof
+
+record Point(Int x, Int y)
+
+class User {
+    String name
+    Int age
+    public constructor(String name, Int age) {
+        this.name = name
+        this.age = age
+    }
+    public fun greet(): String {
+        return "Hello, " + name
+    }
+}
+
+fun main() {
+    var p = Point(10, 20)
+    println("Point: " + p.x() + ", " + p.y())
+    
+    var u = new User("Mel", 26)
+    println(u.greet())
+}

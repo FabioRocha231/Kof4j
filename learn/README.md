@@ -2,51 +2,72 @@
 
 Bem-vindo à trilha de aprendizado da Kof.
 
-Este é o ponto de partida para aprender a programar em Kof — uma linguagem compilada para múltiplas plataformas, fortemente tipada, orientada a objetos, compatível com Java, mas com muito menos boilerplate.
+Kof é uma linguagem de programação compilada para múltiplas plataformas, fortemente tipada, orientada a objetos, com suporte a herança, virtual dispatch, interfaces, exceptions e web server nativo.
+
+## O que Kof é hoje
+
+* Compilador completo (Lexer → Parser → AST → Type System → IR → JVM/Native)
+* Classes, records, interfaces, herança, virtual dispatch
+* Strings, arrays, exceptions
+* Web server via `kof serve`
+* Runtime nativo x86-64
+* 176+ testes passando
 
 ## Para quem é
 
-- **Iniciantes em programação** — se você nunca programou, comece pelo capítulo 00 e siga a ordem.
-- **Desenvolvedores Java** — você já sabe programar. Comece pela introdução e vá direto para o que é diferente.
-- **Desenvolvedores de outras linguagens** — a sintaxe é familiar, mas os conceitos da JVM podem ser novos. Recomendo seguir a ordem completa.
-- **Contribuidores do compilador** — pule para "Design da Linguagem" e "Internals do Compilador".
-- **Curiosos sobre compiladores** — os últimos capítulos explicam como a Kof funciona por dentro.
-
-## Como estudar
-
- Leia os capítulos em ordem. Cada um constrói sobre o anterior.
-
-Se você já sabe programar, pode pular capítulos, mas leia os exemplos — eles mostram a sintaxe real da Kof.
-
-## Pré-requisitos
-
-- JDK 21 ou superior instalado
-- Um editor de texto (VS Code, IntelliJ, ou qualquer um)
-- Terminal / linha de comando
+- **Iniciantes** — comece pelo capítulo 00 e siga a ordem
+- **Desenvolvedores Java** — comece pela introdução e vá direto para o que é diferente
+- **Contribuidores** — leia Design da Linguagem e Internals do Compilador
 
 ## Ordem recomendada
 
 ```
-Leitura completa (recomendado):
-
 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10
 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20
 → 21 → 22 → 23 → 24 → 25 → 26 → 27
-
-Trilha para iniciantes:
-00 → 01 → 02 → 03 → 04 → 05 → 06 → 07
-
-Trilha para Java developers:
-00 → Introdução → 02 → 07 → 09 → 21 → 25
-
-Trilha para contribuidores:
-28 → 29 → 30
-
-Trilha multiplatform:
-00 → native/README.md → native/architecture.md → native/roadmap.md
 ```
 
+## Para LLMs
+
+Consulte também `training/` para corpus estruturado de conhecimento Kof.
+
 ## Estado atual
+
+| Capítulo | Tópico | Status |
+|----------|--------|--------|
+| 00 | Introdução | ✅ |
+| 01 | Instalação | ✅ |
+| 02 | Primeiro Programa | ✅ |
+| 03 | Fundamentos | ✅ |
+| 04 | Variáveis e Tipos | ✅ |
+| 05 | Controle de Fluxo | ✅ |
+| 06 | Funções | ✅ |
+| 07 | Classes e Objetos | ✅ |
+| 08 | Propriedades | ✅ |
+| 09 | Interfaces | ✅ |
+| 10 | Herança | ✅ |
+| 11 | Generics | Planejado |
+| 12 | Collections | Planejado |
+| 13 | Nullability | Planejado |
+| 14 | Exceptions | ✅ Parcial |
+| 15 | Pattern Matching | Planejado |
+| 16 | Lambdas | Planejado |
+| 17 | Programação Funcional | Planejado |
+| 18 | Concorrência | Planejado |
+| 19 | Packages e Módulos | ✅ Parcial |
+| 20 | Annotations | Planejado |
+| 21 | Java Interop | ✅ Parcial |
+| 22 | JVM | ✅ |
+| 23 | Testes | ✅ Parcial |
+| 24 | Build Tools | ✅ |
+| 25 | Spring | Planejado |
+| 26 | Aplicação Real | Planejado |
+| 27 | Boas Práticas | ✅ |
+| 28 | Design da Linguagem | ✅ |
+| 29 | Internals do Compilador | ✅ |
+| 30 | Contribuindo | ✅ |
+| Glossário | Glossário | ✅ |
+| Multiplatform | Native | ✅ |
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM e Native.
 

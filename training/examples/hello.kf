@@ -1,0 +1,4 @@
+// hello.kf — Hello World in Kof
+fun main() {
+    println("Hello, World!")
+}
