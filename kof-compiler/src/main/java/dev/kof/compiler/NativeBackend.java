@@ -664,6 +664,21 @@ public class NativeBackend implements Backend {
             return;
         }
 
+        if (kc.kind() == KofCallKind.INSTANCE && BuiltinTypes.isList(kc.ownerType())) {
+            String listFn = kc.methodName().startsWith("kof_list_") ? kc.methodName() : null;
+            if (listFn != null) {
+                int argCount = kc.parameterTypes().size();
+                String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                for (int i = argCount - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
+                sb.append("    call ").append(listFn).append("\n");
+                sb.append("    pushq %rax\n");
+                return;
+            }
+        }
         if (kc.kind() == KofCallKind.INSTANCE && kc.ownerType() instanceof Type.ClassType ct) {
             int vtableIdx = findVirtualMethodIndex(ct.name(), kc.methodName());
             if (vtableIdx >= 0) {

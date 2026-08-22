@@ -31,4 +31,15 @@ public final class BuiltinTypes {
     public static boolean isReferenceType(Type type) {
         return type instanceof Type.ClassType || type instanceof Type.ArrayType;
     }
+
+    /** Kof List type — backed by java.util.ArrayList on JVM, KofList on Native. */
+    public static final Type LIST = new Type.ClassType("kof", "List", List.of());
+
+    /** Checks if a type is the Kof List type. */
+    public static boolean isList(Type type) {
+        if (type instanceof Type.ClassType ct) {
+            return "kof".equals(ct.packageName()) && "List".equals(ct.name());
+        }
+        return false;
+    }
 }

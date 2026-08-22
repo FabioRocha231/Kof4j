@@ -22,6 +22,7 @@ final class NativeRuntime {
         emitPrintInt(sb);
         emitIntToString(sb);
         emitBoolToString(sb);
+        emitListFunctions(sb);
         emitAlloc(sb);
         emitFree(sb);
         emitPanic(sb);
@@ -570,6 +571,149 @@ final class NativeRuntime {
                 leaq .Lnewline(%rip), %rdi
                 call kof_print
                 popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * KofList layout:
+     *   offset 0:  type_id (4)
+     *   offset 4:  flags (4)
+     *   offset 8:  method_table_ptr (8)
+     *   offset 16: length (4)
+     *   offset 20: capacity (4)
+     *   offset 24: data pointer (8) — array of 8-byte elements
+     *
+     * kof_list_new() → new empty list (capacity 2)
+     * kof_list_add(list, value) → grow if needed, append
+     * kof_list_get(list, index) → element (bounds checked)
+     * kof_list_set(list, index, value) → overwrite element
+     * kof_list_size(list) → length
+     */
+    private static void emitListFunctions(StringBuilder sb) {
+        sb.append("""
+            .globl kof_list_new
+            .type kof_list_new, @function
+            kof_list_new:
+                pushq %rbx
+                movq $64, %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $100, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl $0, 16(%rbx)
+                movl $2, 20(%rbx)
+                movq $16, %rdi
+                call kof_alloc
+                movq %rax, 24(%rbx)
+                movq %rbx, %rax
+                popq %rbx
+                ret
+
+            .globl kof_list_grow
+            .type kof_list_grow, @function
+            kof_list_grow:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movl 20(%rbx), %r12d
+                movl %r12d, %r13d
+                shll $1, %r13d
+                movl %r13d, 20(%rbx)
+                movslq %r13d, %rdi
+                shlq $3, %rdi
+                addq $24, %rdi
+                call kof_alloc
+                movq %rax, %rcx
+                movl 16(%rbx), %r13d
+                movslq %r13d, %r13
+                xorq %rdx, %rdx
+            .Lkof_list_grow_copy:
+                cmpq %r13, %rdx
+                jge .Lkof_list_grow_done
+                movq 24(%rbx,%rdx,8), %rax
+                movq %rax, (%rcx,%rdx,8)
+                incq %rdx
+                jmp .Lkof_list_grow_copy
+            .Lkof_list_grow_done:
+                movq %rcx, 24(%rbx)
+                movq %rbx, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_list_add
+            .type kof_list_add, @function
+            kof_list_add:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %eax
+                cmpl 20(%rbx), %eax
+                jl .Lkof_list_add_ok
+                movq %rbx, %rdi
+                call kof_list_grow
+            .Lkof_list_add_ok:
+                movl 16(%rbx), %eax
+                movslq %eax, %rcx
+                movq 24(%rbx), %rdx
+                movq %r12, (%rdx,%rcx,8)
+                addl $1, 16(%rbx)
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_list_get
+            .type kof_list_get, @function
+            kof_list_get:
+                pushq %rbx
+                movq %rdi, %rbx
+                movl 16(%rbx), %eax
+                cmpl %eax, %esi
+                jge .Lkof_list_get_bounds
+                testl %esi, %esi
+                jl .Lkof_list_get_bounds
+                movslq %esi, %rcx
+                movq 24(%rbx), %rax
+                movq (%rax,%rcx,8), %rax
+                popq %rbx
+                ret
+            .Lkof_list_get_bounds:
+                movl %esi, %edi
+                movl 16(%rbx), %esi
+                call kof_bounds_error
+
+            .globl kof_list_set
+            .type kof_list_set, @function
+            kof_list_set:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %eax
+                cmpl %eax, %edx
+                jge .Lkof_list_set_bounds
+                testl %edx, %edx
+                jl .Lkof_list_set_bounds
+                movslq %edx, %rcx
+                movq 24(%rbx), %rax
+                movq %r12, (%rax,%rcx,8)
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_list_set_bounds:
+                movl %edx, %edi
+                movl 16(%rbx), %esi
+                call kof_bounds_error
+
+            .globl kof_list_size
+            .type kof_list_size, @function
+            kof_list_size:
+                movslq 16(%rdi), %rax
                 ret
             """);
     }

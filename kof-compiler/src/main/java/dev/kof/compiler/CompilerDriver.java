@@ -488,6 +488,25 @@ public class CompilerDriver {
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (BuiltinTypes.isList(recvType)) {
+                        String listFn = switch (mc.methodName()) {
+                            case "add", "push", "append" -> "kof_list_add";
+                            case "get" -> "kof_list_get";
+                            case "set" -> "kof_list_set";
+                            case "size", "length", "count" -> "kof_list_size";
+                            default -> null;
+                        };
+                        if (listFn != null) {
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            Type elemType = listElementType(recvType);
+                            Type retType = "kof_list_add".equals(listFn) || "kof_list_set".equals(listFn)
+                                    ? Type.PrimitiveType.VOID : elemType;
+                            ops.add(new KofCall(recvType, listFn, argTypes, retType, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        }
+                    }
                     Type methodReturnType = Type.UnknownType.UNKNOWN;
                     List<Type> methodParamTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) {
@@ -622,9 +641,18 @@ public class CompilerDriver {
             }
             case NewExpr ne -> {
                 Type type = toType(ne.typeName());
+                if ("List".equals(ne.typeName()) || "ArrayList".equals(ne.typeName())) {
+                    type = BuiltinTypes.LIST;
+                }
                 if (!ne.typeArguments().isEmpty() && type instanceof Type.ClassType cts) {
                     type = new Type.ClassType(cts.packageName(), cts.name(),
                             ne.typeArguments().stream().map(this::toType).toList());
+                }
+                if (BuiltinTypes.isList(type)) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : ne.arguments()) argTypes.add(inferExprType(arg, locals));
+                    ops.add(new KofCall(BuiltinTypes.LIST, "kof_list_new", argTypes, BuiltinTypes.LIST, KofCallKind.FUNCTION));
+                    yield localIdx;
                 }
                 List<Type> argTypes = new ArrayList<>();
                 for (ExpressionNode arg : ne.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -651,8 +679,13 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case FieldAccessExpr fa -> {
-                localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                 Type recvType = inferExprType(fa.receiver(), locals);
+                if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(recvType, "kof_list_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
+                    yield localIdx;
+                }
+                localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                 if (recvType instanceof Type.ArrayType && "length".equals(fa.fieldName())) {
                     ops.add(new KofArrayLength());
                 } else if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
@@ -709,6 +742,14 @@ public class CompilerDriver {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (BuiltinTypes.isList(recvType)) {
+                        String mn = mc.methodName();
+                        if ("get".equals(mn)) yield listElementType(recvType);
+                        if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("add".equals(mn) || "push".equals(mn) || "append".equals(mn) || "set".equals(mn)) {
+                            yield Type.PrimitiveType.VOID;
+                        }
+                    }
                     if (Type.isString(recvType)) {
                         String mn = mc.methodName();
                         if ("charAt".equals(mn)) yield Type.PrimitiveType.CHAR;
@@ -760,6 +801,9 @@ public class CompilerDriver {
             }
             case NewExpr ne -> {
                 Type t = toType(ne.typeName());
+                if ("List".equals(ne.typeName()) || "ArrayList".equals(ne.typeName())) {
+                    t = BuiltinTypes.LIST;
+                }
                 if (!ne.typeArguments().isEmpty() && t instanceof Type.ClassType cts) {
                     t = new Type.ClassType(cts.packageName(), cts.name(),
                             ne.typeArguments().stream().map(this::toType).toList());
@@ -773,6 +817,9 @@ public class CompilerDriver {
             }
             case FieldAccessExpr fa -> {
                 Type recvType = inferExprType(fa.receiver(), locals);
+                if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
+                    yield Type.PrimitiveType.INT;
+                }
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
                 }
@@ -841,6 +888,13 @@ public class CompilerDriver {
 
     private boolean isComparisonOp(String op) {
         return ">".equals(op) || "<".equals(op) || ">=".equals(op) || "<=".equals(op) || "==".equals(op) || "!=".equals(op);
+    }
+
+    private Type listElementType(Type listType) {
+        if (listType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) {
+            return ct.typeArguments().get(0);
+        }
+        return Type.UnknownType.UNKNOWN;
     }
 
     private Type substituteTypeVariable(String tvName, Type recvType) {
