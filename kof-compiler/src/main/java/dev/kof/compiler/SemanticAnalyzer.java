@@ -421,6 +421,12 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
+                    if (recvType instanceof Type.FunctionType ft) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        checkArgTypes("function call", argTypes, ft.parameterTypes());
+                        yield ft.returnType();
+                    }
                     if (recvType instanceof Type.ClassType ct) {
                         SymbolTable.Symbol m = resolveInHierarchy(ct.name(), mc.methodName());
                         if (m instanceof SymbolTable.MethodSymbol ms) {
@@ -433,6 +439,15 @@ class SemanticAnalyzer {
                     }
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null) {
+                    SymbolTable.Symbol localSym = scope != null ? scope.resolve(mc.methodName()) : null;
+                    if (localSym != null && localSym.type() instanceof Type.FunctionType lft) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        checkArgTypes(mc.methodName(), argTypes, lft.parameterTypes());
+                        yield lft.returnType();
+                    }
                 }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())
@@ -513,13 +528,41 @@ class SemanticAnalyzer {
                 yield Type.UnknownType.UNKNOWN;
             }
             case LambdaExpr le -> {
-                if (diagnostics != null) {
-                    diagnostics.error("", 0, 0, 0,
-                            "Lambdas are not supported yet (planned for 0.0.5)", "SEM016");
+                SymbolTable lambdaScope = scope.enterScope();
+                List<Type> paramTypes = new ArrayList<>();
+                int idx = 0;
+                for (FormalParameterNode p : le.parameters()) {
+                    Type paramType = resolveType(p.type(), scope);
+                    paramTypes.add(paramType);
+                    lambdaScope.define(new SymbolTable.ParameterSymbol(p.name(), paramType, idx));
+                    idx++;
                 }
-                yield Type.UnknownType.UNKNOWN;
+                Type returnType = Type.UnknownType.UNKNOWN;
+                for (StatementNode s : le.body()) {
+                    if (s instanceof ReturnStmt rs && rs.value() != null) {
+                        returnType = inferType(rs.value(), lambdaScope);
+                        break;
+                    }
+                    if (s instanceof BlockStmt b) {
+                        for (StatementNode inner : b.statements()) {
+                            if (inner instanceof ReturnStmt rs2 && rs2.value() != null) {
+                                returnType = inferType(rs2.value(), lambdaScope);
+                                break;
+                            }
+                        }
+                    }
+                }
+                yield new Type.FunctionType(paramTypes, returnType);
             }
-            case IfExpr ie -> Type.UnknownType.UNKNOWN;
+            case IfExpr ie -> {
+                Type thenType = inferType(ie.thenExpr(), scope);
+                Type elseType = inferType(ie.elseExpr(), scope);
+                if (thenType.equals(elseType)) yield thenType;
+                if (thenType instanceof Type.PrimitiveType && elseType instanceof Type.PrimitiveType) {
+                    yield thenType;
+                }
+                yield thenType;
+            }
             default -> Type.UnknownType.UNKNOWN;
         };
     }

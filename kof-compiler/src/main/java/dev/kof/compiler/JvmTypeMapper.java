@@ -15,6 +15,7 @@ final class JvmTypeMapper {
             case Type.ArrayType a -> "[" + toDescriptor(a.componentType());
             case Type.TypeVariable tv -> "Ljava/lang/Object;";
             case Type.WildcardType wt -> "Ljava/lang/Object;";
+            case Type.FunctionType ft -> "Ljava/lang/Object;";
             case Type.UnknownType ut -> "Ljava/lang/Object;";
         };
     }

@@ -26,6 +26,12 @@ sealed interface Type {
     record TypeVariable(String name) implements Type {
     }
 
+    record FunctionType(List<Type> parameterTypes, Type returnType, String className) implements Type {
+        FunctionType(List<Type> parameterTypes, Type returnType) {
+            this(parameterTypes, returnType, null);
+        }
+    }
+
     record ArrayType(Type componentType) implements Type {
     }
 

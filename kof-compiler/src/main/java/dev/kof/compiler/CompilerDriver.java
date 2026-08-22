@@ -120,7 +120,38 @@ public class CompilerDriver {
             classes.add(0, new IRClass(mainClassName, "java/lang/Object", List.of(),
                     AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(), topLevelFunctions, List.of(), null, 0));
         }
+        classes.addAll(syntheticClasses);
         return new IRModule(moduleName, classes, imports);
+    }
+
+    private final List<IRClass> syntheticClasses = new ArrayList<>();
+    private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
+    private int lambdaCounter = 0;
+
+    private String lambdaClass(LambdaExpr le, Type.FunctionType ft) {
+        String existing = lambdaClassNames.get(le);
+        if (existing != null) return existing;
+        String name = "Lambda" + (lambdaCounter++);
+        String returnTypeName = typeToString(ft.returnType());
+        List<FormalParameterNode> params = le.parameters();
+        MethodDeclarationNode synthetic = new MethodDeclarationNode(le.position(), List.of("public"),
+                returnTypeName, "invoke", params, List.of(), le.body());
+        IRMethod invoke = lowerMethod(synthetic, name, false, List.of());
+        IRClass cls = new IRClass(name, "java/lang/Object", List.of(),
+                AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(),
+                List.of(invoke, generateDefaultConstructor(name, "java/lang/Object")), List.of(), null, 200 + lambdaCounter);
+        syntheticClasses.add(cls);
+        lambdaClassNames.put(le, name);
+        return name;
+    }
+
+    private String typeToString(Type type) {
+        if (type instanceof Type.PrimitiveType pt) {
+            return Type.canonicalPrimitiveName(pt.name());
+        }
+        if (type instanceof Type.ClassType ct) return ct.name();
+        if (type instanceof Type.ArrayType at) return typeToString(at.componentType()) + "[]";
+        return "Object";
     }
 
     private IRMethod lowerFunction(FunctionDeclarationNode func) {
@@ -635,6 +666,15 @@ public class CompilerDriver {
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (recvType instanceof Type.FunctionType ft) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(recvType, "invoke", argTypes, ft.returnType(), KofCallKind.INSTANCE));
+                        yield localIdx;
+                    }
                     if (BuiltinTypes.isList(recvType)) {
                         String listFn = switch (mc.methodName()) {
                             case "add", "push", "append" -> "kof_list_add";
@@ -748,24 +788,36 @@ public class CompilerDriver {
                             ops.add(new KofCall(cs.type(), "<init>", ctor.parameterTypes(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                         }
                     } else {
-                        List<Type> argTypes = new ArrayList<>();
-                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                        Type returnType = Type.UnknownType.UNKNOWN;
-                        if (currentUnit != null) {
-                            for (AstNode d : currentUnit.declarations()) {
-                                if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
-                                    returnType = resolveWithTypeParams(fn.returnType(), fn.typeParameters());
-                                    argTypes = fn.parameters().stream()
-                                            .map(p -> resolveWithTypeParams(p.type(), fn.typeParameters())).toList();
-                                    break;
+                        IRLocalVariable lambdaVar = findLocalVar(mc.methodName(), locals);
+                        if (lambdaVar != null && lambdaVar.type() instanceof Type.FunctionType lft) {
+                            localIdx = emitExpression(new IdentifierExpr(mc.position(), mc.methodName()),
+                                    ops, owner, localIdx, locals);
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), lft.parameterTypes(), ops, owner, localIdx, locals);
+                            Type invokeOwner = lft.className() != null
+                                    ? new Type.ClassType("", lft.className(), List.of()) : lft;
+                            ops.add(new KofCall(invokeOwner, "invoke", argTypes, lft.returnType(), KofCallKind.INSTANCE));
+                        } else {
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                            Type returnType = Type.UnknownType.UNKNOWN;
+                            if (currentUnit != null) {
+                                for (AstNode d : currentUnit.declarations()) {
+                                    if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
+                                        returnType = resolveWithTypeParams(fn.returnType(), fn.typeParameters());
+                                        argTypes = fn.parameters().stream()
+                                                .map(p -> resolveWithTypeParams(p.type(), fn.typeParameters())).toList();
+                                        break;
+                                    }
                                 }
                             }
-                        }
-                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), argTypes, ops, owner, localIdx, locals);
-                        ops.add(new KofCall(mainClassType(), mc.methodName(), argTypes, returnType, KofCallKind.FUNCTION));
-                        Type effective = inferExprType(mc, locals);
-                        if (returnType instanceof Type.TypeVariable && isPrimitiveType(effective)) {
-                            emitErasureUnbox(ops, effective);
+                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), argTypes, ops, owner, localIdx, locals);
+                            ops.add(new KofCall(mainClassType(), mc.methodName(), argTypes, returnType, KofCallKind.FUNCTION));
+                            Type effective = inferExprType(mc, locals);
+                            if (returnType instanceof Type.TypeVariable && isPrimitiveType(effective)) {
+                                emitErasureUnbox(ops, effective);
+                            }
                         }
                     }
                 }
@@ -889,6 +941,39 @@ public class CompilerDriver {
                 }
                 yield localIdx;
             }
+            case IfExpr ie -> {
+                LabelId thenLabel = LabelId.create();
+                LabelId elseLabel = LabelId.create();
+                LabelId endLabel = LabelId.create();
+                if (ie.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), thenLabel, elseLabel));
+                } else {
+                    localIdx = emitExpression(ie.condition(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                    ops.add(new KofConditionalJump(KofComparison.NE, thenLabel, elseLabel));
+                }
+                ops.add(new KofLabel(thenLabel));
+                localIdx = emitExpression(ie.thenExpr(), ops, owner, localIdx, locals);
+                ops.add(new KofJump(endLabel));
+                ops.add(new KofLabel(elseLabel));
+                localIdx = emitExpression(ie.elseExpr(), ops, owner, localIdx, locals);
+                ops.add(new KofLabel(endLabel));
+                yield localIdx;
+            }
+            case LambdaExpr le -> {
+                Type.FunctionType ft = (Type.FunctionType) inferExprType(le, locals);
+                String lambdaClass = lambdaClass(le, ft);
+                if (ft.className() == null) {
+                    ft = new Type.FunctionType(ft.parameterTypes(), ft.returnType(), lambdaClass);
+                }
+                ops.add(new KofNewObject(new Type.ClassType("", lambdaClass, List.of()), ft.parameterTypes()));
+                ops.add(new KofDup());
+                ops.add(new KofCall(new Type.ClassType("", lambdaClass, List.of()), "<init>",
+                        List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                yield localIdx;
+            }
             default -> localIdx;
         };
     }
@@ -943,6 +1028,9 @@ public class CompilerDriver {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (recvType instanceof Type.FunctionType ft) {
+                        yield ft.returnType();
+                    }
                     if (BuiltinTypes.isList(recvType)) {
                         String mn = mc.methodName();
                         if ("get".equals(mn) || "remove".equals(mn)) yield listElementType(recvType);
@@ -971,6 +1059,10 @@ public class CompilerDriver {
                         }
                     }
                 } else if (currentUnit != null) {
+                    IRLocalVariable lambdaVar = findLocalVar(mc.methodName(), locals);
+                    if (lambdaVar != null && lambdaVar.type() instanceof Type.FunctionType lft) {
+                        yield lft.returnType();
+                    }
                     for (AstNode d : currentUnit.declarations()) {
                         if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
                             Type returnType = toType(fn.returnType());
@@ -1049,6 +1141,29 @@ public class CompilerDriver {
                     }
                 }
                 yield Type.UnknownType.UNKNOWN;
+            }
+            case LambdaExpr le -> {
+                List<Type> paramTypes = new ArrayList<>();
+                List<IRLocalVariable> extended = new ArrayList<>(locals);
+                int pidx = 0;
+                for (FormalParameterNode p : le.parameters()) {
+                    Type pt = toType(p.type());
+                    paramTypes.add(pt);
+                    extended.add(new IRLocalVariable(pidx++, p.name(), pt));
+                }
+                Type returnType = Type.UnknownType.UNKNOWN;
+                for (StatementNode s : le.body()) {
+                    if (s instanceof ReturnStmt rs && rs.value() != null) {
+                        returnType = inferExprType(rs.value(), extended);
+                        break;
+                    }
+                }
+                yield new Type.FunctionType(paramTypes, returnType, lambdaClassNames.get(le));
+            }
+            case IfExpr ie -> {
+                Type thenType = inferExprType(ie.thenExpr(), locals);
+                Type elseType = inferExprType(ie.elseExpr(), locals);
+                yield thenType;
             }
             default -> Type.UnknownType.UNKNOWN;
         };

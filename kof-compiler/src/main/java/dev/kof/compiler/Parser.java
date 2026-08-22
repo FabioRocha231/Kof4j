@@ -805,10 +805,26 @@ class Parser {
             return parseNewExpression();
         }
         if (check(TokenType.LPAREN)) {
+            if (looksLikeLambdaParams()) {
+                List<FormalParameterNode> params = parseLambdaParams();
+                expect(TokenType.ARROW, "Expected '->'", "PARSE042");
+                return new LambdaExpr(pos(), params, parseLambdaBody());
+            }
             advance();
             ExpressionNode expr = parseExpression();
             expect(TokenType.RPAREN, "Expected ')'", "PARSE040");
             return expr;
+        }
+        if (check(TokenType.IF)) {
+            SourcePosition p = pos();
+            advance();
+            expect(TokenType.LPAREN, "Expected '(' after if", "PARSE043");
+            ExpressionNode condition = parseExpression();
+            expect(TokenType.RPAREN, "Expected ')'", "PARSE040");
+            ExpressionNode thenExpr = parseExpression();
+            expect(TokenType.ELSE, "Expected 'else'", "PARSE044");
+            ExpressionNode elseExpr = parseExpression();
+            return new IfExpr(p, condition, thenExpr, elseExpr);
         }
         if (check(TokenType.LBRACE)) {
             List<FormalParameterNode> params = new ArrayList<>();
@@ -818,6 +834,60 @@ class Parser {
         error("Unexpected token in expression: " + peek().value(), "PARSE041");
         advance();
         return new IdentifierExpr(pos(), "error");
+    }
+
+    private boolean looksLikeLambdaParams() {
+        int i = pos + 1;
+        int depth = 0;
+        while (i < tokens.size()) {
+            TokenType t = tokens.get(i).type();
+            if (t == TokenType.LPAREN) {
+                depth++;
+            } else if (t == TokenType.RPAREN) {
+                if (depth == 0) {
+                    return i + 1 < tokens.size() && tokens.get(i + 1).type() == TokenType.ARROW;
+                }
+                depth--;
+            } else if (t == TokenType.ARROW) {
+                return false;
+            }
+            i++;
+        }
+        return false;
+    }
+
+    private List<FormalParameterNode> parseLambdaParams() {
+        List<FormalParameterNode> params = new ArrayList<>();
+        expect(TokenType.LPAREN, "Expected '('", "PARSE011");
+        if (!check(TokenType.RPAREN)) {
+            params.add(parseLambdaParameter());
+            while (check(TokenType.COMMA)) {
+                advance();
+                params.add(parseLambdaParameter());
+            }
+        }
+        expect(TokenType.RPAREN, "Expected ')'", "PARSE012");
+        return params;
+    }
+
+    private FormalParameterNode parseLambdaParameter() {
+        SourcePosition p = pos();
+        String name = expectId("Expected parameter name", "PARSE010");
+        String type = "Object";
+        if (check(TokenType.COLON)) {
+            advance();
+            type = parseTypeRef();
+        }
+        return new FormalParameterNode(p, List.of(), type, name);
+    }
+
+    private List<StatementNode> parseLambdaBody() {
+        if (check(TokenType.LBRACE)) {
+            return parseBlock();
+        }
+        ExpressionNode expr = parseExpression();
+        if (check(TokenType.SEMICOLON)) advance();
+        return List.of(new ReturnStmt(pos(), expr));
     }
 
     private ExpressionNode parseNewExpression() {
