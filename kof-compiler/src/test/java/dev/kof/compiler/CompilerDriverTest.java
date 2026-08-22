@@ -3375,4 +3375,338 @@ class CompilerDriverTest {
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
         assertTrue(result.success(), "do-while runs at least once should compile to native");
     }
+
+    // ── Instanceof / Cast Tests ──────────────────────────────────
+
+    @Test
+    void instanceofBasicJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                if (a instanceof Dog) {
+                    println("is Dog")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "instanceof should compile to JVM");
+    }
+
+    @Test
+    void instanceofBasicNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                if (a instanceof Dog) {
+                    println("is Dog")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "instanceof should compile to native");
+    }
+
+    @Test
+    void instanceofInheritanceJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                if (a instanceof Animal) {
+                    println("is Animal")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "instanceof with inheritance should compile to JVM");
+    }
+
+    @Test
+    void instanceofInheritanceNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                if (a instanceof Animal) {
+                    println("is Animal")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "instanceof with inheritance should compile to native");
+    }
+
+    @Test
+    void castBasicJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                var d = a as Dog
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "cast should compile to JVM");
+    }
+
+    @Test
+    void castBasicNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                var d = a as Dog
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "cast should compile to native");
+    }
+
+    @Test
+    void instanceofWithIfElseJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                if (a instanceof Dog) {
+                    println("Dog")
+                } else {
+                    println("Animal")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "instanceof with if/else should compile to JVM");
+    }
+
+    @Test
+    void instanceofWithIfElseNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var a = new Dog()
+                if (a instanceof Dog) {
+                    println("Dog")
+                } else {
+                    println("Animal")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "instanceof with if/else should compile to native");
+    }
+
+    // ── Switch Statement Tests ────────────────────────────────────
+
+    @Test
+    void switchBasicJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 1
+                switch (x) {
+                    case 1:
+                        println("one")
+                    case 2:
+                        println("two")
+                    default:
+                        println("other")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Basic switch should compile to JVM");
+    }
+
+    @Test
+    void switchBasicNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 1
+                switch (x) {
+                    case 1:
+                        println("one")
+                    case 2:
+                        println("two")
+                    default:
+                        println("other")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Basic switch should compile to native");
+    }
+
+    @Test
+    void switchStringJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "hello"
+                switch (s) {
+                    case "hello":
+                        println("greeting")
+                    case "goodbye":
+                        println("farewell")
+                    default:
+                        println("unknown")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String switch should compile to JVM");
+    }
+
+    @Test
+    void switchStringNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "hello"
+                switch (s) {
+                    case "hello":
+                        println("greeting")
+                    case "goodbye":
+                        println("farewell")
+                    default:
+                        println("unknown")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "String switch should compile to native");
+    }
+
+    @Test
+    void switchNestedJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 1
+                switch (x) {
+                    case 1:
+                        var y = 10
+                        switch (y) {
+                            case 10:
+                                println("ten")
+                            default:
+                                println("other")
+                        }
+                    default:
+                        println("other")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Nested switch should compile to JVM");
+    }
+
+    @Test
+    void switchNestedNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 1
+                switch (x) {
+                    case 1:
+                        var y = 10
+                        switch (y) {
+                            case 10:
+                                println("ten")
+                            default:
+                                println("other")
+                        }
+                    default:
+                        println("other")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Nested switch should compile to native");
+    }
 }

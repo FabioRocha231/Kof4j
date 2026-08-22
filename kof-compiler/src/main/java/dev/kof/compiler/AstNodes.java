@@ -146,6 +146,13 @@ record VarDeclStmt(SourcePosition position, String type, String name,
 record ThrowStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
 }
 
+record SwitchCase(SourcePosition position, ExpressionNode value, List<StatementNode> body) implements AstNode {
+}
+
+record SwitchStmt(SourcePosition position, ExpressionNode expression,
+                  List<SwitchCase> cases, List<StatementNode> defaultBody) implements StatementNode {
+}
+
 record CatchClause(SourcePosition position, String exceptionType, String exceptionName,
                    List<StatementNode> body) implements AstNode {
 }

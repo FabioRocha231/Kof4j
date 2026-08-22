@@ -429,6 +429,9 @@ class Parser {
         if (check(TokenType.TRY)) {
             return parseTryStatement();
         }
+        if (check(TokenType.SWITCH)) {
+            return parseSwitchStatement();
+        }
         if (check(TokenType.VAR, TokenType.VAL)) {
             return parseVarDecl();
         }
@@ -560,6 +563,41 @@ class Parser {
             finallyBody = parseBlock();
         }
         return new TryStmt(p, tryBody, catchClauses, finallyBody);
+    }
+
+    private StatementNode parseSwitchStatement() {
+        SourcePosition p = pos();
+        advance();
+        expect(TokenType.LPAREN, "Expected '(' after 'switch'", "PARSE070");
+        ExpressionNode expr = parseExpression();
+        expect(TokenType.RPAREN, "Expected ')'", "PARSE071");
+        expect(TokenType.LBRACE, "Expected '{'", "PARSE072");
+        List<SwitchCase> cases = new ArrayList<>();
+        List<StatementNode> defaultBody = List.of();
+        while (!check(TokenType.RBRACE) && !atEnd()) {
+            if (check(TokenType.CASE)) {
+                SourcePosition cp = pos();
+                advance();
+                ExpressionNode value = parseExpression();
+                expect(TokenType.COLON, "Expected ':'", "PARSE073");
+                List<StatementNode> caseBody = new ArrayList<>();
+                while (!check(TokenType.CASE) && !check(TokenType.DEFAULT) && !check(TokenType.RBRACE) && !atEnd()) {
+                    caseBody.add(parseStatement());
+                }
+                cases.add(new SwitchCase(cp, value, caseBody));
+            } else if (check(TokenType.DEFAULT)) {
+                advance();
+                expect(TokenType.COLON, "Expected ':'", "PARSE074");
+                defaultBody = new ArrayList<>();
+                while (!check(TokenType.CASE) && !check(TokenType.DEFAULT) && !check(TokenType.RBRACE) && !atEnd()) {
+                    defaultBody.add(parseStatement());
+                }
+            } else {
+                advance();
+            }
+        }
+        expect(TokenType.RBRACE, "Expected '}'", "PARSE075");
+        return new SwitchStmt(p, expr, cases, defaultBody);
     }
 
     private StatementNode parseVarDecl() {

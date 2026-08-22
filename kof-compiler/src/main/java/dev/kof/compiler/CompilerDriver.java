@@ -302,6 +302,31 @@ public class CompilerDriver {
                 }
                 yield localIdx;
             }
+            case SwitchStmt ss -> {
+                LabelId endLabel = LabelId.create();
+                localIdx = emitExpression(ss.expression(), ops, owner, localIdx, locals);
+                List<LabelId> caseLabels = new ArrayList<>();
+                for (int i = 0; i < ss.cases().size(); i++) {
+                    caseLabels.add(LabelId.create());
+                }
+                for (int i = 0; i < ss.cases().size(); i++) {
+                    SwitchCase sc = ss.cases().get(i);
+                    localIdx = emitExpression(sc.value(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadLocal(Type.UnknownType.UNKNOWN, 0));
+                    ops.add(new KofBinary(KofBinaryOp.SUB, Type.PrimitiveType.INT));
+                    ops.add(new KofConditionalJump(KofComparison.EQ, caseLabels.get(i), endLabel));
+                }
+                for (int i = 0; i < ss.cases().size(); i++) {
+                    SwitchCase sc = ss.cases().get(i);
+                    ops.add(new KofLabel(caseLabels.get(i)));
+                    localIdx = emitStatement(new BlockStmt(sc.position(), sc.body()), ops, owner, localIdx, locals, returnType);
+                }
+                if (!ss.defaultBody().isEmpty()) {
+                    localIdx = emitStatement(new BlockStmt(ss.defaultBody().get(0).position(), ss.defaultBody()), ops, owner, localIdx, locals, returnType);
+                }
+                ops.add(new KofLabel(endLabel));
+                yield localIdx;
+            }
             default -> localIdx;
         };
     }
@@ -354,7 +379,11 @@ public class CompilerDriver {
                 localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                 Type leftType = inferExprType(bin.left(), locals);
                 Type rightType = inferExprType(bin.right(), locals);
-                if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
+                if ("instanceof".equals(bin.operator())) {
+                    ops.add(new KofInstanceOf(rightType));
+                } else if ("as".equals(bin.operator())) {
+                    ops.add(new KofCheckCast(rightType));
+                } else if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
                     ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));

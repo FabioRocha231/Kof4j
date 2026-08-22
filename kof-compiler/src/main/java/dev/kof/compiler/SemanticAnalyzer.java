@@ -311,6 +311,19 @@ class SemanticAnalyzer {
                 analyzeStatement(fs.body(), forScope, returnType);
                 if (fs.update() != null) inferType(fs.update(), forScope);
             }
+            case SwitchStmt ss -> {
+                inferType(ss.expression(), scope);
+                SymbolTable switchScope = scope.enterScope();
+                for (SwitchCase sc : ss.cases()) {
+                    inferType(sc.value(), scope);
+                    SymbolTable caseScope = switchScope.enterScope();
+                    analyzeBody(sc.body(), caseScope, returnType);
+                }
+                if (!ss.defaultBody().isEmpty()) {
+                    SymbolTable defaultScope = switchScope.enterScope();
+                    analyzeBody(ss.defaultBody(), defaultScope, returnType);
+                }
+            }
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
                     Type exprType = inferType(es.expression(), scope);
@@ -460,6 +473,12 @@ class SemanticAnalyzer {
         if ("&&".equals(operator) || "||".equals(operator)) {
             return Type.PrimitiveType.BOOL;
         }
+        if ("instanceof".equals(operator)) {
+            return Type.PrimitiveType.BOOL;
+        }
+        if ("as".equals(operator)) {
+            return right;
+        }
         if ("!".equals(operator)) {
             return Type.PrimitiveType.BOOL;
         }
@@ -467,7 +486,7 @@ class SemanticAnalyzer {
             if ("+".equals(operator)) {
                 return BuiltinTypes.STRING;
             }
-            if (diagnostics != null && left instanceof Type.ClassType && right instanceof Type.PrimitiveType) {
+            if (diagnostics != null) {
                 diagnostics.error("", 0, 0, 0,
                         "Cannot apply '" + operator + "' to String and " + right, "SEM001");
             }
@@ -492,16 +511,16 @@ class SemanticAnalyzer {
             if ("double".equals(lp.name()) || "Double".equals(lp.name())) {
                 return Type.PrimitiveType.DOUBLE;
             }
-            if ("bool".equals(lp.name()) || "bool".equals(rp.name())) {
-                if ("+".equals(operator) || "-".equals(operator) || "*".equals(operator) ||
-                        "/".equals(operator) || "%".equals(operator)) {
-                    if (diagnostics != null) {
-                        diagnostics.error("", 0, 0, 0,
-                                "Cannot apply '" + operator + "' to boolean types", "SEM002");
+                if ("bool".equals(lp.name()) || "bool".equals(rp.name())) {
+                    if ("+".equals(operator) || "-".equals(operator) || "*".equals(operator) ||
+                            "/".equals(operator) || "%".equals(operator)) {
+                        if (diagnostics != null) {
+                            diagnostics.error("", 0, 0, 0,
+                                    "Cannot apply '" + operator + "' to boolean types. Use == or != for comparison.", "SEM002");
+                        }
+                        return Type.UnknownType.UNKNOWN;
                     }
-                    return Type.UnknownType.UNKNOWN;
                 }
-            }
             return left;
         }
         if (left instanceof Type.ArrayType || right instanceof Type.ArrayType) {
