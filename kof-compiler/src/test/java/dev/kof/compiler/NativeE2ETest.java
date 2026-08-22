@@ -518,4 +518,93 @@ class NativeE2ETest {
             """);
         runNative(source, tempDir.resolve("out"), "7\n-7\n0");
     }
+
+    @Test
+    void execConstructor(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class User {
+                String name
+                constructor(String name) {
+                    this.name = name
+                }
+                fun greet(): String {
+                    return "hi " + name
+                }
+            }
+            fun main() {
+                var u = new User("Mel")
+                println(u.greet())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "hi Mel");
+    }
+
+    @Test
+    void execSuperConstructor(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                constructor(String name) {
+                    this.name = name
+                }
+            }
+            class Dog extends Animal {
+                constructor(String name) {
+                    super(name)
+                }
+                fun speak(): String {
+                    return "dog " + name
+                }
+            }
+            fun main() {
+                var d = new Dog("Rex")
+                println(d.speak())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "dog Rex");
+    }
+
+    @Test
+    void execThreeLevelInheritance(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                fun speak(): String = "a"
+            }
+            class Dog extends Animal {
+                fun speak(): String = "d"
+            }
+            class Golden extends Dog {
+                fun speak(): String = "g"
+            }
+            fun main() {
+                var g = new Golden()
+                println(g.speak())
+                var d = new Dog()
+                println(d.speak())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "g\nd");
+    }
+
+    @Test
+    void execCast(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                fun speak(): String = "a"
+            }
+            class Dog extends Animal {
+                fun speak(): String = "d"
+            }
+            fun main() {
+                var a = new Dog()
+                var d = a as Dog
+                println(d.speak())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "d");
+    }
 }

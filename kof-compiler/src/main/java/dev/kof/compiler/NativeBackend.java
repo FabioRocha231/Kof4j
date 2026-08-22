@@ -648,6 +648,19 @@ public class NativeBackend implements Backend {
             return;
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR && "<init>".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                if (i < 5) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+                } else {
+                    sb.append("    addq $8, %rsp\n");
+                }
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %rdi\n");
+            String ctorLabel = resolveCalleeName(kc);
+            sb.append("    call ").append(ctorLabel).append("\n");
             return;
         }
 

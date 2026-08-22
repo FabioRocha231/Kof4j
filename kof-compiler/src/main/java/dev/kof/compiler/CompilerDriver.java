@@ -939,7 +939,7 @@ public class CompilerDriver {
                 ctor.body().getFirst() instanceof ExpressionStmt es &&
                 es.expression() instanceof MethodCallExpr mc &&
                 "super".equals(mc.methodName());
-        if (!hasExplicitSuper) {
+        if (!hasExplicitSuper && !"java/lang/Object".equals(superName)) {
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
         }
@@ -958,11 +958,14 @@ public class CompilerDriver {
     private IRMethod generateDefaultConstructor(String owner, String superName) {
         Type ownerType = ownerTypeFromInternal(owner);
         Type superType = ownerTypeFromInternal(superName);
+        List<KofOperation> ops = new ArrayList<>();
+        if (!"java/lang/Object".equals(superName)) {
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+        }
+        ops.add(new KofReturnVoid());
         return new IRMethod("<init>", Type.PrimitiveType.VOID, List.of(), AccessFlags.PUBLIC, List.of(),
-                List.of(new IRBasicBlock(0, List.of(
-                        new KofLoadLocal(ownerType, 0),
-                        new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR),
-                        new KofReturnVoid()))),
+                List.of(new IRBasicBlock(0, ops)),
                 List.of(new IRLocalVariable(0, "this", ownerType)));
     }
 
@@ -973,8 +976,6 @@ public class CompilerDriver {
         Type ownerType = ownerTypeFromInternal(owner);
         Type superType = new Type.ClassType("java.lang", "Record", List.of());
         locals.add(new IRLocalVariable(0, "this", ownerType));
-        ops.add(new KofLoadLocal(ownerType, 0));
-        ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
         int localIdx = 1;
         for (RecordComponentNode comp : rec.components()) {
             Type compType = toType(comp.type());
