@@ -261,8 +261,9 @@ public class NativeBackend implements Backend {
         sb.append("    pushq %rbp\n");
         sb.append("    movq %rsp, %rbp\n");
 
-        int localSlots = method.localVariables().size();
-        int frameSize = Math.max(localSlots * 8, 16);
+        int maxSlot = method.localVariables().stream()
+                .mapToInt(IRLocalVariable::index).max().orElse(0);
+        int frameSize = Math.max((maxSlot + 1) * 8, 16);
         frameSize = (frameSize + 15) & ~15;
         if (frameSize > 0) {
             sb.append("    subq $").append(frameSize).append(", %rsp\n");
@@ -497,6 +498,12 @@ public class NativeBackend implements Backend {
             case LE -> sb.append("    cmpq %rbx, %rax\n    setle %al\n    movzbl %al, %eax\n");
             case GT -> sb.append("    cmpq %rbx, %rax\n    setg %al\n    movzbl %al, %eax\n");
             case GE -> sb.append("    cmpq %rbx, %rax\n    setge %al\n    movzbl %al, %eax\n");
+            case AND -> sb.append("    andq %rbx, %rax\n");
+            case OR -> sb.append("    orq %rbx, %rax\n");
+            case XOR -> sb.append("    xorq %rbx, %rax\n");
+            case SHL -> sb.append("    movq %rbx, %rcx\n    shlq %cl, %rax\n");
+            case SHR -> sb.append("    movq %rbx, %rcx\n    sarq %cl, %rax\n");
+            case USHR -> sb.append("    movq %rbx, %rcx\n    shrq %cl, %rax\n");
         }
         sb.append("    pushq %rax\n");
     }
@@ -510,6 +517,7 @@ public class NativeBackend implements Backend {
             sb.append("    sete %al\n");
             sb.append("    movzbl %al, %eax\n");
         }
+        // Widening conversions (I2L, I2F, ...) are no-ops: native values are 64-bit slots.
         sb.append("    pushq %rax\n");
     }
 
@@ -530,9 +538,14 @@ public class NativeBackend implements Backend {
     }
 
     private void emitCall(StringBuilder sb, KofCall kc) {
+        if ("kof_box".equals(kc.methodName()) || "kof_unbox".equals(kc.methodName())) {
+            // Erasure box/unbox are JVM-only concerns; native values are 64-bit slots.
+            return;
+        }
         if (kc.kind() == KofCallKind.INSTANCE && "println".equals(kc.methodName())) {
             Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
-            if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name()))) {
+            if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name())
+                    || "long".equals(pt.name()) || "short".equals(pt.name()) || "byte".equals(pt.name()))) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_print_int\n");
                 sb.append("    pushq $0\n");
@@ -636,9 +649,14 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
             Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
-            if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name()))) {
+            if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name())
+                    || "short".equals(pt.name()) || "byte".equals(pt.name()))) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_int_to_string\n");
+                sb.append("    pushq %rax\n");
+            } else if (argType instanceof Type.PrimitiveType pt && "long".equals(pt.name())) {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_long_to_string\n");
                 sb.append("    pushq %rax\n");
             } else if (argType instanceof Type.PrimitiveType pt && "bool".equals(pt.name())) {
                 sb.append("    popq %rdi\n");

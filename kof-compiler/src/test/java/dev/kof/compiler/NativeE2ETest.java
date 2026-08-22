@@ -461,6 +461,36 @@ class NativeE2ETest {
     }
 
     @Test
+    void execLongPrint(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println(10000000000l)
+                var big = 5000000000l
+                println(big + big)
+                println(10000000000l + 1)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "10000000000\n10000000000\n10000000001");
+    }
+
+    @Test
+    void execBitwise(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println(5 & 3)
+                println(5 | 3)
+                println(5 ^ 3)
+                println(1 << 4)
+                println(256 >> 4)
+                println(-1 >>> 1 != 0)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "1\n7\n6\n16\n16\ntrue");
+    }
+
+    @Test
     void execDoWhile(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """

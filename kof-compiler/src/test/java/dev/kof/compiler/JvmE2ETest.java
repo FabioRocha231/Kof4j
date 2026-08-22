@@ -214,7 +214,7 @@ class JvmE2ETest {
                 println(s.indexOf("W"))
             }
             """);
-        runJvm(source, tempDir.resolve("out"), "e\nWorld\nHello\ntrue\ntrue\ntrue\n6");
+        runJvm(source, tempDir.resolve("out"), "101\nWorld\nHello\ntrue\ntrue\ntrue\n6");
     }
 
     @Test

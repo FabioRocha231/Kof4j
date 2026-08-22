@@ -21,6 +21,7 @@ final class NativeRuntime {
         emitPrintln(sb);
         emitPrintInt(sb);
         emitIntToString(sb);
+        emitLongToString(sb);
         emitBoolToString(sb);
         emitListFunctions(sb);
         emitJsonFunctions(sb);
@@ -189,6 +190,76 @@ final class NativeRuntime {
                 jnz .Lkof_int_to_str_ready
                 incq %rsi
             .Lkof_int_to_str_ready:
+                popq %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl %ebx, 16(%r13)
+                movl $0, 20(%r13)
+                movq %r13, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_long_to_string(value) — converts a 64-bit long to a KofString.
+     * %rdi = long value
+     * returns %rax = KofString*
+     */
+    private static void emitLongToString(StringBuilder sb) {
+        sb.append("""
+            .globl kof_long_to_string
+            .type kof_long_to_string, @function
+            kof_long_to_string:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rax
+                movq $0, %r12
+                testq %rax, %rax
+                jns .Lkof_long_to_str_pos
+                movq $1, %r12
+                negq %rax
+            .Lkof_long_to_str_pos:
+                movq %rax, %r13
+                movq $0, %rbx
+                movq $10, %rcx
+            .Lkof_long_to_str_count:
+                xorq %rdx, %rdx
+                divq %rcx
+                incq %rbx
+                testq %rax, %rax
+                jnz .Lkof_long_to_str_count
+                testq %r12, %r12
+                jz .Lkof_long_to_str_count_done
+                incq %rbx
+            .Lkof_long_to_str_count_done:
+                leaq 25(%rbx), %rdi
+                call kof_alloc
+                pushq %rax
+                leaq 23(%rax), %rsi
+                addq %rbx, %rsi
+                movq %r13, %rax
+                movq $10, %rcx
+            .Lkof_long_to_str_loop:
+                xorq %rdx, %rdx
+                divq %rcx
+                addb $48, %dl
+                movb %dl, (%rsi)
+                decq %rsi
+                testq %rax, %rax
+                jnz .Lkof_long_to_str_loop
+                testq %r12, %r12
+                jz .Lkof_long_to_str_negdone
+                movb $45, (%rsi)
+            .Lkof_long_to_str_negdone:
+                testq %r12, %r12
+                jnz .Lkof_long_to_str_ready
+                incq %rsi
+            .Lkof_long_to_str_ready:
                 popq %r13
                 movl $1, 0(%r13)
                 movl $0, 4(%r13)

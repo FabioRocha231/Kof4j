@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.objectweb.asm.Opcodes.*;
 
@@ -25,6 +26,74 @@ class JvmBackend implements Backend {
 
     private Label resolveLabel(LabelId id) {
         return labelMap.computeIfAbsent(id, k -> new Label());
+    }
+
+    private Type classTypeFromInternal(String internalName) {
+        int slashIdx = internalName.lastIndexOf('/');
+        if (slashIdx >= 0) {
+            return new Type.ClassType(internalName.substring(0, slashIdx).replace('/', '.'), internalName.substring(slashIdx + 1), List.of());
+        }
+        return new Type.ClassType("", internalName, List.of());
+    }
+
+    private String unboxMethodName(Type boxed) {
+        if (boxed instanceof Type.ClassType ct) {
+            return switch (ct.name()) {
+                case "Integer" -> "intValue";
+                case "Long" -> "longValue";
+                case "Boolean" -> "booleanValue";
+                case "Float" -> "floatValue";
+                case "Double" -> "doubleValue";
+                case "Character" -> "charValue";
+                case "Byte" -> "byteValue";
+                case "Short" -> "shortValue";
+                default -> "intValue";
+            };
+        }
+        return "intValue";
+    }
+
+    private String boxedClassNameFor(Type primitive) {
+        if (primitive instanceof Type.PrimitiveType pt) {
+            return switch (pt.name()) {
+                case "long", "Long" -> "java/lang/Long";
+                case "float", "Float" -> "java/lang/Float";
+                case "double", "Double" -> "java/lang/Double";
+                case "boolean", "bool", "Bool" -> "java/lang/Boolean";
+                case "byte", "Byte" -> "java/lang/Byte";
+                case "short", "Short" -> "java/lang/Short";
+                default -> "java/lang/Integer";
+            };
+        }
+        return null;
+    }
+
+    private void emitBoxIfPrimitive(MethodVisitor mv, Type type) {
+        String boxed = boxedClassNameFor(type);
+        if (boxed != null) {
+            String desc = JvmTypeMapper.toDescriptor(type);
+            if ("char".equals(typeName(type)) || "Char".equals(typeName(type))) desc = "I";
+            mv.visitMethodInsn(INVOKESTATIC, boxed, "valueOf", "(" + desc + ")L" + boxed + ";", false);
+        }
+    }
+
+    private void emitUnboxIfPrimitive(MethodVisitor mv, Type type) {
+        String boxed = boxedClassNameFor(type);
+        if (boxed != null) {
+            mv.visitTypeInsn(CHECKCAST, boxed);
+            String method = boxed.endsWith("Integer") ? "intValue"
+                    : boxed.endsWith("Long") ? "longValue"
+                    : boxed.endsWith("Boolean") ? "booleanValue"
+                    : boxed.endsWith("Float") ? "floatValue"
+                    : boxed.endsWith("Double") ? "doubleValue"
+                    : boxed.endsWith("Byte") ? "byteValue"
+                    : boxed.endsWith("Short") ? "shortValue" : "intValue";
+            mv.visitMethodInsn(INVOKEVIRTUAL, boxed, method, "()" + JvmTypeMapper.toDescriptor(type), false);
+        }
+    }
+
+    private String typeName(Type type) {
+        return type instanceof Type.PrimitiveType pt ? pt.name() : "";
     }
 
     @Override
@@ -49,18 +118,38 @@ class JvmBackend implements Backend {
         }
 
         for (IRMethod method : clazz.methods()) {
-            emitMethod(cw, clazz.name(), method);
+            emitMethod(cw, clazz.name(), method, clazz.superName());
         }
 
         cw.visitEnd();
         Files.write(classFile, cw.toByteArray());
     }
 
-    private void emitMethod(ClassWriter cw, String className, IRMethod method) {
+    private void emitMethod(ClassWriter cw, String className, IRMethod method, String classSuperName) {
         String desc = JvmTypeMapper.toMethodDescriptor(method.returnType(), method.parameterTypes());
         MethodVisitor mv = cw.visitMethod(method.accessFlags(), method.name(), desc,
                 null, method.thrownExceptions().toArray(new String[0]));
+        if ((method.accessFlags() & ACC_ABSTRACT) != 0 || method.basicBlocks().isEmpty()) {
+            mv.visitEnd();
+            return;
+        }
         mv.visitCode();
+
+        List<KofOperation> ops = method.basicBlocks().stream()
+                .flatMap(b -> b.operations().stream())
+                .collect(Collectors.toList());
+        if ("<init>".equals(method.name())) {
+            boolean hasSuperCall = ops.stream().anyMatch(op ->
+                    op instanceof KofCall kc && kc.kind() == KofCallKind.CONSTRUCTOR);
+            if (!hasSuperCall) {
+                // JVM requires constructors to invoke super() or this() first.
+                Type thisType = classTypeFromInternal(className);
+                String superName = classSuperName != null ? classSuperName : "java/lang/Object";
+                ops.add(0, new KofCall(classTypeFromInternal(superName),
+                        "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                ops.add(0, new KofLoadLocal(thisType, 0));
+            }
+        }
 
         int maxStack = 0;
         int maxLocals = 0;
@@ -68,11 +157,8 @@ class JvmBackend implements Backend {
             maxLocals = Math.max(maxLocals, computeLocals(block.operations()));
             maxStack = Math.max(maxStack, computeStack(block.operations()));
         }
-
-        for (IRBasicBlock block : method.basicBlocks()) {
-            for (KofOperation op : block.operations()) {
-                emitOperation(mv, className, op);
-            }
+        for (KofOperation op : ops) {
+            emitOperation(mv, className, op);
         }
 
         mv.visitMaxs(maxStack, maxLocals);
@@ -117,6 +203,12 @@ class JvmBackend implements Backend {
                 case MUL -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IMUL));
                 case DIV -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IDIV));
                 case MOD -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IREM));
+                case AND -> mv.visitInsn(opcodeForBitwise(kb.operandType(), IAND));
+                case OR -> mv.visitInsn(opcodeForBitwise(kb.operandType(), IOR));
+                case XOR -> mv.visitInsn(opcodeForBitwise(kb.operandType(), IXOR));
+                case SHL -> mv.visitInsn(opcodeForBitwise(kb.operandType(), ISHL));
+                case SHR -> mv.visitInsn(opcodeForBitwise(kb.operandType(), ISHR));
+                case USHR -> mv.visitInsn(opcodeForBitwise(kb.operandType(), IUSHR));
                 case EQ, NE, LT, LE, GT, GE -> {
                     int cmpOpcode = switch (kb.op()) {
                         case EQ -> IF_ICMPEQ;
@@ -140,6 +232,28 @@ class JvmBackend implements Backend {
         } else if (op instanceof KofUnary ku) {
             if (ku.op() == KofUnaryOp.NEG) {
                 mv.visitInsn(opcodeForArithmetic(ku.operandType(), INEG));
+            } else if (ku.op() == KofUnaryOp.NOT) {
+                Label trueLabel = new Label();
+                Label endLabel = new Label();
+                mv.visitInsn(ICONST_0);
+                mv.visitJumpInsn(IF_ICMPEQ, trueLabel);
+                mv.visitInsn(ICONST_0);
+                mv.visitJumpInsn(GOTO, endLabel);
+                mv.visitLabel(trueLabel);
+                mv.visitInsn(ICONST_1);
+                mv.visitLabel(endLabel);
+            } else if (ku.op() == KofUnaryOp.I2L) {
+                mv.visitInsn(I2L);
+            } else if (ku.op() == KofUnaryOp.I2F) {
+                mv.visitInsn(I2F);
+            } else if (ku.op() == KofUnaryOp.I2D) {
+                mv.visitInsn(I2D);
+            } else if (ku.op() == KofUnaryOp.L2F) {
+                mv.visitInsn(L2F);
+            } else if (ku.op() == KofUnaryOp.L2D) {
+                mv.visitInsn(L2D);
+            } else if (ku.op() == KofUnaryOp.F2D) {
+                mv.visitInsn(F2D);
             }
         } else if (op instanceof KofLabel kl) {
             mv.visitLabel(resolveLabel(kl.label()));
@@ -156,6 +270,23 @@ class JvmBackend implements Backend {
             };
             mv.visitJumpInsn(opcode, resolveLabel(kc.trueLabel()));
             mv.visitJumpInsn(GOTO, resolveLabel(kc.falseLabel()));
+        } else if (op instanceof KofCall kc && ("kof_box".equals(kc.methodName()) || "kof_unbox".equals(kc.methodName()))) {
+            if ("kof_box".equals(kc.methodName())) {
+                Type boxed = kc.ownerType();
+                String boxedName = JvmTypeMapper.toInternalName(
+                        boxed instanceof Type.ClassType ct ? ct.packageName() : "java.lang",
+                        boxed instanceof Type.ClassType ct ? ct.name() : "Object");
+                mv.visitMethodInsn(INVOKESTATIC, boxedName, "valueOf",
+                        "(" + JvmTypeMapper.toDescriptor(kc.parameterTypes().get(0)) + ")L" + boxedName + ";", false);
+            } else {
+                Type boxed = kc.parameterTypes().get(0);
+                String boxedName = JvmTypeMapper.toInternalName(
+                        boxed instanceof Type.ClassType ct ? ct.packageName() : "java.lang",
+                        boxed instanceof Type.ClassType ct ? ct.name() : "Object");
+                mv.visitTypeInsn(CHECKCAST, boxedName);
+                mv.visitMethodInsn(INVOKEVIRTUAL, boxedName, unboxMethodName(boxed),
+                        "()" + JvmTypeMapper.toDescriptor(kc.returnType()), false);
+            }
         } else if (op instanceof KofCall kc && BuiltinTypes.isString(kc.ownerType())
                 && ("kof_string_concat".equals(kc.methodName()) || "kof_string_equals".equals(kc.methodName()))) {
             if ("kof_string_concat".equals(kc.methodName())) {
@@ -164,6 +295,7 @@ class JvmBackend implements Backend {
                 mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isList(kc.ownerType())) {
+            Type elemType = listElementType(kc.ownerType());
             switch (kc.methodName()) {
                 case "kof_list_new" -> {
                     mv.visitTypeInsn(NEW, "java/util/ArrayList");
@@ -171,21 +303,19 @@ class JvmBackend implements Backend {
                     mv.visitMethodInsn(INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V", false);
                 }
                 case "kof_list_add" -> {
-                    Type elemType = listElementType(kc.ownerType());
-                    if (elemType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
-                        mv.visitMethodInsn(INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
-                    }
+                    emitBoxIfPrimitive(mv, elemType);
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z", false);
+                    mv.visitInsn(POP);
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
-                    Type elemType = listElementType(kc.ownerType());
-                    if (elemType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
-                        mv.visitTypeInsn(CHECKCAST, "java/lang/Integer");
-                        mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
-                    }
+                    emitUnboxIfPrimitive(mv, elemType);
                 }
-                case "kof_list_set" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "set", "(ILjava/lang/Object;)Ljava/lang/Object;", false);
+                case "kof_list_set" -> {
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "set", "(ILjava/lang/Object;)Ljava/lang/Object;", false);
+                    mv.visitInsn(POP);
+                }
                 case "kof_list_size" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "size", "()I", false);
                 default -> {}
             }
@@ -285,6 +415,13 @@ class JvmBackend implements Backend {
                 case "double", "Double" -> intOpcode + 3;
                 default -> intOpcode;
             };
+        }
+        return intOpcode;
+    }
+
+    private int opcodeForBitwise(Type type, int intOpcode) {
+        if (type instanceof Type.PrimitiveType pt && ("long".equals(pt.name()) || "Long".equals(pt.name()))) {
+            return intOpcode + 1;
         }
         return intOpcode;
     }

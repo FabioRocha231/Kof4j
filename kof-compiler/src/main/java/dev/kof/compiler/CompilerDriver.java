@@ -11,6 +11,7 @@ public class CompilerDriver {
     private IRModule currentModule;
     private CompilationUnitNode currentUnit;
     private SemanticAnalyzer semanticAnalyzer;
+    private Target target = Target.JVM;
     private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
     private final java.util.Deque<LabelId> continueLabels = new java.util.ArrayDeque<>();
 
@@ -20,6 +21,7 @@ public class CompilerDriver {
 
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
+        this.target = target;
         try {
             String source = Files.readString(sourceFile);
             String fileName = sourceFile.getFileName().toString();
@@ -88,6 +90,17 @@ public class CompilerDriver {
         return new Type.ClassType(pkg, name, List.of());
     }
 
+    private Type mainClassType() {
+        String mod = currentModule != null && !currentModule.name().isEmpty()
+                ? currentModule.name() : "Default";
+        if (!mod.contains("/")) mod = mod + "/Main";
+        int slashIdx = mod.lastIndexOf('/');
+        if (slashIdx >= 0) {
+            return new Type.ClassType(mod.substring(0, slashIdx).replace('/', '.'), mod.substring(slashIdx + 1), List.of());
+        }
+        return new Type.ClassType("", mod, List.of());
+    }
+
     private IRModule lowerToIR(CompilationUnitNode unit, DiagnosticCollector diagnostics) {
         List<String> imports = new ArrayList<>(unit.imports());
         List<IRClass> classes = new ArrayList<>();
@@ -109,26 +122,33 @@ public class CompilerDriver {
     }
 
     private IRMethod lowerFunction(FunctionDeclarationNode func) {
-        Type returnType = toType(func.returnType());
+        Type returnType = resolveWithTypeParams(func.returnType(), func.typeParameters());
         if (Type.isVoid(returnType) && func.body().size() == 1 && func.body().getFirst() instanceof ReturnStmt ret && ret.value() != null) {
             List<IRLocalVariable> tmpLocals = new ArrayList<>();
             int tmpIdx = 0;
             for (FormalParameterNode p : func.parameters()) {
-                tmpLocals.add(new IRLocalVariable(tmpIdx, p.name(), toType(p.type())));
+                tmpLocals.add(new IRLocalVariable(tmpIdx, p.name(), resolveWithTypeParams(p.type(), func.typeParameters())));
                 tmpIdx++;
             }
             returnType = inferExprType(ret.value(), tmpLocals);
         }
-        List<Type> paramTypes = func.parameters().stream().map(p -> toType(p.type())).toList();
-        if ("main".equals(func.name()) && paramTypes.isEmpty()) {
+        List<Type> paramTypes = func.parameters().stream()
+                .map(p -> resolveWithTypeParams(p.type(), func.typeParameters())).toList();
+        boolean isMain = "main".equals(func.name()) && paramTypes.isEmpty();
+        if (isMain) {
             paramTypes = List.of(new Type.ArrayType(BuiltinTypes.STRING));
         }
         int access = AccessFlags.PUBLIC | AccessFlags.STATIC;
         List<IRLocalVariable> locals = new ArrayList<>();
         List<KofOperation> body = new ArrayList<>();
         int localIdx = 0;
+        if (isMain) {
+            // JVM main(String[]) reserves slot 0 for the injected args parameter;
+            // native ignores it. Keep the IR consistent for both backends.
+            localIdx = 1;
+        }
         for (FormalParameterNode p : func.parameters()) {
-            locals.add(new IRLocalVariable(localIdx, p.name(), toType(p.type())));
+            locals.add(new IRLocalVariable(localIdx, p.name(), resolveWithTypeParams(p.type(), func.typeParameters())));
             localIdx++;
         }
         for (StatementNode stmt : func.body()) {
@@ -180,7 +200,7 @@ public class CompilerDriver {
                 }
                 ops.add(new KofStoreLocal(varType, localIdx));
                 locals.add(new IRLocalVariable(localIdx, vds.name(), varType));
-                yield localIdx + 1;
+                yield localIdx + (isDoubleWidth(varType) ? 2 : 1);
             }
             case BlockStmt block -> {
                 int idx = localIdx;
@@ -284,19 +304,21 @@ public class CompilerDriver {
                 ops.add(new KofLabel(continueLabel));
                 if (fs.update() != null) {
                     if (fs.update() instanceof UnaryExpr ue && "++".equals(ue.operator()) && ue.operand() instanceof IdentifierExpr id) {
-                        int idx = findLocalIndex(id.name(), locals);
-                        Type varType = locals.get(idx).type();
-                        ops.add(new KofLoadLocal(varType, idx));
-                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                        ops.add(new KofBinary(KofBinaryOp.ADD, varType));
-                        ops.add(new KofStoreLocal(varType, idx));
+                        IRLocalVariable var = findLocalVar(id.name(), locals);
+                        if (var != null) {
+                            ops.add(new KofLoadLocal(var.type(), var.index()));
+                            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                            ops.add(new KofBinary(KofBinaryOp.ADD, var.type()));
+                            ops.add(new KofStoreLocal(var.type(), var.index()));
+                        }
                     } else if (fs.update() instanceof UnaryExpr ue2 && "--".equals(ue2.operator()) && ue2.operand() instanceof IdentifierExpr id2) {
-                        int idx = findLocalIndex(id2.name(), locals);
-                        Type varType = locals.get(idx).type();
-                        ops.add(new KofLoadLocal(varType, idx));
-                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                        ops.add(new KofBinary(KofBinaryOp.SUB, varType));
-                        ops.add(new KofStoreLocal(varType, idx));
+                        IRLocalVariable var2 = findLocalVar(id2.name(), locals);
+                        if (var2 != null) {
+                            ops.add(new KofLoadLocal(var2.type(), var2.index()));
+                            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                            ops.add(new KofBinary(KofBinaryOp.SUB, var2.type()));
+                            ops.add(new KofStoreLocal(var2.type(), var2.index()));
+                        }
                     } else {
                         localIdx = emitExpression(fs.update(), ops, owner, localIdx, locals);
                         if (hasReturnValue(fs.update())) ops.add(new KofPop());
@@ -410,19 +432,38 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case BinaryExpr bin -> {
-                localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                Type leftType = inferExprType(bin.left(), locals);
-                Type rightType = inferExprType(bin.right(), locals);
-                if ("instanceof".equals(bin.operator())) {
+                if ("instanceof".equals(bin.operator()) || "as".equals(bin.operator())) {
+                    // The right operand is a TYPE NAME, not an expression value.
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     Type targetType = Type.UnknownType.UNKNOWN;
                     if (bin.right() instanceof IdentifierExpr ie) {
                         targetType = Type.of(ie.name());
                     }
-                    ops.add(new KofInstanceOf(targetType));
-                } else if ("as".equals(bin.operator())) {
-                    ops.add(new KofCheckCast(rightType));
-                } else if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
+                    if ("instanceof".equals(bin.operator())) {
+                        ops.add(new KofInstanceOf(targetType));
+                    } else {
+                        ops.add(new KofCheckCast(targetType));
+                    }
+                    yield localIdx;
+                }
+                Type leftType = inferExprType(bin.left(), locals);
+                Type rightType = inferExprType(bin.right(), locals);
+                boolean isArithmetic = switch (bin.operator()) {
+                    case "+", "-", "*", "/", "%" -> true;
+                    default -> false;
+                };
+                if (isArithmetic && isNumeric(leftType) && isNumeric(rightType)) {
+                    Type commonType = commonNumericType(leftType, rightType);
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    emitWideningIfNeeded(ops, leftType, commonType);
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    emitWideningIfNeeded(ops, rightType, commonType);
+                    ops.add(new KofBinary(mapArithmeticOp(bin.operator()), commonType));
+                    yield localIdx;
+                }
+                localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
                     ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));
@@ -449,6 +490,14 @@ public class CompilerDriver {
                         case "<=" -> ops.add(new KofBinary(KofBinaryOp.LE, operandType));
                         case ">" -> ops.add(new KofBinary(KofBinaryOp.GT, operandType));
                         case ">=" -> ops.add(new KofBinary(KofBinaryOp.GE, operandType));
+                        case "&&" -> ops.add(new KofBinary(KofBinaryOp.AND, operandType));
+                        case "||" -> ops.add(new KofBinary(KofBinaryOp.OR, operandType));
+                        case "&" -> ops.add(new KofBinary(KofBinaryOp.AND, operandType));
+                        case "|" -> ops.add(new KofBinary(KofBinaryOp.OR, operandType));
+                        case "^" -> ops.add(new KofBinary(KofBinaryOp.XOR, operandType));
+                        case "<<" -> ops.add(new KofBinary(KofBinaryOp.SHL, operandType));
+                        case ">>" -> ops.add(new KofBinary(KofBinaryOp.SHR, operandType));
+                        case ">>>" -> ops.add(new KofBinary(KofBinaryOp.USHR, operandType));
                         default -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
                     }
                 }
@@ -459,6 +508,8 @@ public class CompilerDriver {
                 Type operandType = inferExprType(ue.operand(), locals);
                 if ("-".equals(ue.operator())) {
                     ops.add(new KofUnary(KofUnaryOp.NEG, operandType));
+                } else if ("!".equals(ue.operator())) {
+                    ops.add(new KofUnary(KofUnaryOp.NOT, operandType));
                 } else if ("++".equals(ue.operator())) {
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
                     ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
@@ -538,10 +589,14 @@ public class CompilerDriver {
                         recvType = ownerTypeFromInternal(resolvedMethod.ownerClass());
                         methodReturnType = resolvedMethod.returnType();
                         methodParamTypes = resolvedMethod.parameterTypes();
+                    } else if (BuiltinTypes.isString(recvType)) {
+                        StringMethodSig sig = stringMethodSignature(mc.methodName(), mc.arguments().size());
+                        if (sig != null) {
+                            methodReturnType = sig.returnType();
+                            methodParamTypes = sig.parameterTypes();
+                        }
                     }
-                    for (ExpressionNode arg : mc.arguments()) {
-                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
-                    }
+                    localIdx = emitArgumentsWithFormalTypes(mc.arguments(), methodParamTypes, ops, owner, localIdx, locals);
                     KofCallKind callKind = KofCallKind.INSTANCE;
                     if (recvType instanceof Type.ClassType rt && semanticAnalyzer != null) {
                         if (semanticAnalyzer.isInterfaceType(rt.name())) {
@@ -556,6 +611,12 @@ public class CompilerDriver {
                         }
                     }
                     ops.add(new KofCall(recvType, mc.methodName(), methodParamTypes, methodReturnType, callKind));
+                    if (methodReturnType instanceof Type.TypeVariable) {
+                        Type effective = inferExprType(mc, locals);
+                        if (isPrimitiveType(effective)) {
+                            emitErasureUnbox(ops, effective);
+                        }
+                    }
                 } else {
                     if ("super".equals(mc.methodName()) && semanticAnalyzer != null) {
                         String superName = findSuperClass(owner);
@@ -570,8 +631,8 @@ public class CompilerDriver {
                             List<Type> argTypes = new ArrayList<>();
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                             ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
-                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                             List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
+                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                             ops.add(new KofCall(superType, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                             yield localIdx;
                         }
@@ -585,7 +646,8 @@ public class CompilerDriver {
                         if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
                         ops.add(new KofNewObject(cs.type(), argTypes));
                         ops.add(new KofDup());
-                        for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                         if (ctor != null) {
                             ops.add(new KofCall(cs.type(), "<init>", ctor.parameterTypes(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                         }
@@ -596,14 +658,19 @@ public class CompilerDriver {
                         if (currentUnit != null) {
                             for (AstNode d : currentUnit.declarations()) {
                                 if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
-                                    returnType = toType(fn.returnType());
-                                    argTypes = fn.parameters().stream().map(p -> toType(p.type())).toList();
+                                    returnType = resolveWithTypeParams(fn.returnType(), fn.typeParameters());
+                                    argTypes = fn.parameters().stream()
+                                            .map(p -> resolveWithTypeParams(p.type(), fn.typeParameters())).toList();
                                     break;
                                 }
                             }
                         }
-                        for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
-                        ops.add(new KofCall(Type.UnknownType.UNKNOWN, mc.methodName(), argTypes, returnType, KofCallKind.FUNCTION));
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), argTypes, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(mainClassType(), mc.methodName(), argTypes, returnType, KofCallKind.FUNCTION));
+                        Type effective = inferExprType(mc, locals);
+                        if (returnType instanceof Type.TypeVariable && isPrimitiveType(effective)) {
+                            emitErasureUnbox(ops, effective);
+                        }
                     }
                 }
                 yield localIdx;
@@ -680,8 +747,8 @@ public class CompilerDriver {
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
                 ops.add(new KofNewObject(type, argTypes));
                 ops.add(new KofDup());
-                for (ExpressionNode arg : ne.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                 List<Type> ctorParamTypes = resolvedCtor != null ? resolvedCtor.parameterTypes() : argTypes;
+                localIdx = emitArgumentsWithFormalTypes(ne.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                 ops.add(new KofCall(type, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
             }
@@ -781,13 +848,18 @@ public class CompilerDriver {
                     if (Type.isString(recvType)) {
                         String mn = mc.methodName();
                         if ("charAt".equals(mn)) yield Type.PrimitiveType.CHAR;
-                        if ("length".equals(mn)) yield Type.PrimitiveType.INT;
-                        if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn) || "equals".equals(mn)) {
+                        if ("length".equals(mn) || "indexOf".equals(mn) || "compareTo".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn)
+                                || "equals".equals(mn) || "equalsIgnoreCase".equals(mn)) {
                             yield Type.PrimitiveType.BOOL;
                         }
                         if ("substring".equals(mn) || "concat".equals(mn) || "trim".equals(mn)
-                                || "toUpperCase".equals(mn) || "toLowerCase".equals(mn) || "valueOf".equals(mn)) {
+                                || "toUpperCase".equals(mn) || "toLowerCase".equals(mn)
+                                || "replace".equals(mn) || "valueOf".equals(mn)) {
                             yield BuiltinTypes.STRING;
+                        }
+                        if ("split".equals(mn)) {
+                            yield new Type.ArrayType(BuiltinTypes.STRING);
                         }
                     }
                 } else if (currentUnit != null) {
@@ -893,6 +965,168 @@ public class CompilerDriver {
         return type instanceof Type.PrimitiveType pt && !"void".equals(pt.name());
     }
 
+    /**
+     * Erasure boxing for the JVM backend: when a generic (type-erased) formal
+     * parameter is Object but the argument is a primitive, box it. The native
+     * backend treats kof_box/kof_unbox as no-ops (values are already 64-bit slots).
+     */
+    private boolean needsErasureBoxing() {
+        return target == Target.JVM;
+    }
+
+    private boolean isJvmTarget() {
+        return target == Target.JVM;
+    }
+
+    private KofBinaryOp mapArithmeticOp(String op) {
+        return switch (op) {
+            case "+" -> KofBinaryOp.ADD;
+            case "-" -> KofBinaryOp.SUB;
+            case "*" -> KofBinaryOp.MUL;
+            case "/" -> KofBinaryOp.DIV;
+            case "%" -> KofBinaryOp.MOD;
+            default -> KofBinaryOp.ADD;
+        };
+    }
+
+    private boolean isNumeric(Type t) {
+        if (!(t instanceof Type.PrimitiveType pt)) return false;
+        return switch (pt.name()) {
+            case "int", "Int", "long", "Long", "float", "Float", "double", "Double",
+                    "byte", "Byte", "short", "Short", "char", "Char" -> true;
+            default -> false;
+        };
+    }
+
+    private String primitiveName(Type t) {
+        return t instanceof Type.PrimitiveType pt ? pt.name() : "";
+    }
+
+    private Type commonNumericType(Type a, Type b) {
+        String an = primitiveName(a);
+        String bn = primitiveName(b);
+        if (an.equals("double") || an.equals("Double") || bn.equals("double") || bn.equals("Double")) {
+            return Type.PrimitiveType.DOUBLE;
+        }
+        if (an.equals("float") || an.equals("Float") || bn.equals("float") || bn.equals("Float")) {
+            return Type.PrimitiveType.FLOAT;
+        }
+        if (an.equals("long") || an.equals("Long") || bn.equals("long") || bn.equals("Long")) {
+            return Type.PrimitiveType.LONG;
+        }
+        return a instanceof Type.PrimitiveType ? a : Type.PrimitiveType.INT;
+    }
+
+    private void emitWideningIfNeeded(List<KofOperation> ops, Type from, Type to) {
+        if (from.equals(to)) return;
+        String fn = primitiveName(from);
+        String tn = primitiveName(to);
+        KofUnaryOp conv = switch (tn) {
+            case "long", "Long" -> switch (fn) {
+                case "int", "Int", "char", "Char", "short", "Short", "byte", "Byte" -> KofUnaryOp.I2L;
+                default -> null;
+            };
+            case "float", "Float" -> switch (fn) {
+                case "int", "Int", "char", "Char", "short", "Short", "byte", "Byte" -> KofUnaryOp.I2F;
+                case "long", "Long" -> KofUnaryOp.L2F;
+                default -> null;
+            };
+            case "double", "Double" -> switch (fn) {
+                case "int", "Int", "char", "Char", "short", "Short", "byte", "Byte" -> KofUnaryOp.I2D;
+                case "long", "Long" -> KofUnaryOp.L2D;
+                case "float", "Float" -> KofUnaryOp.F2D;
+                default -> null;
+            };
+            default -> null;
+        };
+        if (conv != null) {
+            ops.add(new KofUnary(conv, from));
+        }
+    }
+
+    private Type boxedTypeFor(Type primitive) {
+        if (primitive instanceof Type.PrimitiveType pt) {
+            return switch (pt.name()) {
+                case "int", "Int", "char", "Char" -> new Type.ClassType("java.lang", "Integer", List.of());
+                case "long", "Long" -> new Type.ClassType("java.lang", "Long", List.of());
+                case "float", "Float" -> new Type.ClassType("java.lang", "Float", List.of());
+                case "double", "Double" -> new Type.ClassType("java.lang", "Double", List.of());
+                case "boolean", "bool", "Bool" -> new Type.ClassType("java.lang", "Boolean", List.of());
+                case "byte", "Byte" -> new Type.ClassType("java.lang", "Byte", List.of());
+                case "short", "Short" -> new Type.ClassType("java.lang", "Short", List.of());
+                default -> Type.UnknownType.UNKNOWN;
+            };
+        }
+        return Type.UnknownType.UNKNOWN;
+    }
+
+    private void emitErasureBox(List<KofOperation> ops, Type primitive) {
+        if (!needsErasureBoxing()) return;
+        Type boxed = boxedTypeFor(primitive);
+        Type boxParam = primitive instanceof Type.PrimitiveType pt
+                && ("char".equals(pt.name()) || "Char".equals(pt.name())) ? Type.PrimitiveType.INT : primitive;
+        ops.add(new KofCall(boxed, "kof_box", List.of(boxParam), boxed, KofCallKind.FUNCTION));
+    }
+
+    private void emitErasureUnbox(List<KofOperation> ops, Type primitive) {
+        if (!needsErasureBoxing()) return;
+        Type boxed = boxedTypeFor(primitive);
+        ops.add(new KofCall(primitive, "kof_unbox", List.of(boxed), primitive, KofCallKind.FUNCTION));
+    }
+
+    private boolean erasesToReference(Type t) {
+        return t instanceof Type.TypeVariable || t instanceof Type.ClassType
+                || t instanceof Type.ArrayType || t instanceof Type.UnknownType;
+    }
+
+    private int emitArgumentsWithFormalTypes(List<ExpressionNode> args, List<Type> formalTypes,
+                                             List<KofOperation> ops, String owner, int localIdx,
+                                             List<IRLocalVariable> locals) {
+        for (int i = 0; i < args.size(); i++) {
+            localIdx = emitExpression(args.get(i), ops, owner, localIdx, locals);
+            Type argType = inferExprType(args.get(i), locals);
+            Type formal = i < formalTypes.size() ? formalTypes.get(i) : null;
+            if (formal != null && erasesToReference(formal) && isPrimitiveType(argType)
+                    && !BuiltinTypes.isString(formal)) {
+                emitErasureBox(ops, argType);
+            }
+        }
+        return localIdx;
+    }
+
+    private record StringMethodSig(Type returnType, List<Type> parameterTypes) {}
+
+    private StringMethodSig stringMethodSignature(String name, int argCount) {
+        Type str = BuiltinTypes.STRING;
+        Type INT = Type.PrimitiveType.INT;
+        Type BOOL = Type.PrimitiveType.BOOL;
+        Type CHAR = Type.PrimitiveType.CHAR;
+        Type charSeq = new Type.ClassType("java.lang", "CharSequence", List.of());
+        Type object = new Type.ClassType("java.lang", "Object", List.of());
+        Type strArray = new Type.ArrayType(BuiltinTypes.STRING);
+        return switch (name) {
+            case "length" -> argCount == 0 ? new StringMethodSig(INT, List.of()) : null;
+            case "charAt" -> argCount == 1 ? new StringMethodSig(CHAR, List.of(INT)) : null;
+            case "substring" -> argCount == 1 ? new StringMethodSig(str, List.of(INT))
+                    : argCount == 2 ? new StringMethodSig(str, List.of(INT, INT)) : null;
+            case "contains" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(charSeq)) : null;
+            case "startsWith" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(str))
+                    : argCount == 2 ? new StringMethodSig(BOOL, List.of(str, INT)) : null;
+            case "endsWith" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(str)) : null;
+            case "equals" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(object)) : null;
+            case "equalsIgnoreCase" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(str)) : null;
+            case "indexOf" -> argCount == 1 ? new StringMethodSig(INT, List.of(str))
+                    : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
+            case "concat" -> argCount == 1 ? new StringMethodSig(str, List.of(str)) : null;
+            case "trim" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
+            case "toUpperCase", "toLowerCase" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
+            case "replace" -> argCount == 2 ? new StringMethodSig(str, List.of(CHAR, CHAR)) : null;
+            case "split" -> argCount == 1 ? new StringMethodSig(strArray, List.of(str))
+                    : argCount == 2 ? new StringMethodSig(strArray, List.of(str, INT)) : null;
+            default -> null;
+        };
+    }
+
     private void boxPrimitive(List<KofOperation> ops, Type type) {
         if (type instanceof Type.PrimitiveType pt) {
             Type boxed = switch (pt.name()) {
@@ -901,10 +1135,22 @@ public class CompilerDriver {
                 case "float", "Float" -> new Type.ClassType("java.lang", "Float", List.of());
                 case "double", "Double" -> new Type.ClassType("java.lang", "Double", List.of());
                 case "boolean", "bool", "Bool" -> new Type.ClassType("java.lang", "Boolean", List.of());
+                case "char", "Char" -> new Type.ClassType("java.lang", "Integer", List.of());
+                case "byte", "Byte" -> new Type.ClassType("java.lang", "Byte", List.of());
+                case "short", "Short" -> new Type.ClassType("java.lang", "Short", List.of());
                 default -> Type.UnknownType.UNKNOWN;
             };
-            ops.add(new KofCall(boxed, "valueOf", List.of(type), boxed, KofCallKind.STATIC));
+            Type boxParam = ("char".equals(pt.name()) || "Char".equals(pt.name()))
+                    ? Type.PrimitiveType.INT : type;
+            ops.add(new KofCall(boxed, "valueOf", List.of(boxParam), boxed, KofCallKind.STATIC));
         }
+    }
+
+    private IRLocalVariable findLocalVar(String name, List<IRLocalVariable> locals) {
+        for (int i = locals.size() - 1; i >= 0; i--) {
+            if (locals.get(i).name().equals(name)) return locals.get(i);
+        }
+        return null;
     }
 
     private int findLocalIndex(String name, List<IRLocalVariable> locals) {
@@ -1035,9 +1281,9 @@ public class CompilerDriver {
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
         for (AstNode member : cls.members()) {
-            if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field));
-            else if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, false));
-            else if (member instanceof ConstructorDeclarationNode ctor) methods.add(lowerConstructor(ctor, internalName, superName));
+            if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field, cls.typeParameters()));
+            else if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, false, cls.typeParameters()));
+            else if (member instanceof ConstructorDeclarationNode ctor) methods.add(lowerConstructor(ctor, internalName, superName, cls.typeParameters()));
         }
         if (!methods.stream().anyMatch(m -> m.name().equals("<init>"))) methods.add(0, generateDefaultConstructor(internalName, superName));
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
@@ -1046,12 +1292,12 @@ public class CompilerDriver {
     private IRClass lowerInterface(InterfaceDeclarationNode iface, String packageName, int typeId) {
         String internalName = toInternalName(packageName, iface.name());
         List<String> ifaces = iface.interfaces().stream().map(i -> toInternalName("", i)).toList();
-        int access = computeAccess(iface.modifiers()) | AccessFlags.ABSTRACT;
+        int access = computeAccess(iface.modifiers()) | AccessFlags.ABSTRACT | AccessFlags.INTERFACE;
         List<IRMethod> methods = new ArrayList<>();
         List<IRField> fields = new ArrayList<>();
         for (AstNode member : iface.members()) {
-            if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, true));
-            else if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field));
+            if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, true, List.of()));
+            else if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field, List.of()));
         }
         return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null, typeId);
     }
@@ -1081,8 +1327,13 @@ public class CompilerDriver {
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
     }
 
-    private IRField lowerField(FieldDeclarationNode field) {
-        Type fieldType = toType(field.type());
+    private Type resolveWithTypeParams(String typeName, List<String> typeParams) {
+        if (typeParams.contains(typeName)) return new Type.TypeVariable(typeName);
+        return toType(typeName);
+    }
+
+    private IRField lowerField(FieldDeclarationNode field, List<String> typeParams) {
+        Type fieldType = resolveWithTypeParams(field.type(), typeParams);
         Object initVal = null;
         if (field.initializer() instanceof LiteralExpr lit) {
             initVal = switch (lit.kind()) {
@@ -1098,9 +1349,10 @@ public class CompilerDriver {
         return new IRField(field.name(), fieldType, computeAccess(field.modifiers()), initVal);
     }
 
-    private IRMethod lowerMethod(MethodDeclarationNode method, String owner, boolean isInterface) {
-        Type returnType = toType(method.returnType());
-        List<Type> paramTypes = method.parameters().stream().map(p -> toType(p.type())).toList();
+    private IRMethod lowerMethod(MethodDeclarationNode method, String owner, boolean isInterface, List<String> typeParams) {
+        Type returnType = resolveWithTypeParams(method.returnType(), typeParams);
+        List<Type> paramTypes = method.parameters().stream()
+                .map(p -> resolveWithTypeParams(p.type(), typeParams)).toList();
         int access = computeAccess(method.modifiers());
         if (isInterface && !method.modifiers().contains("default")) access |= AccessFlags.ABSTRACT;
         List<IRBasicBlock> body = List.of();
@@ -1112,7 +1364,7 @@ public class CompilerDriver {
             localVars.add(new IRLocalVariable(0, "this", ownerType));
             int localIdx = 1;
             for (FormalParameterNode param : method.parameters()) {
-                Type paramType = toType(param.type());
+                Type paramType = resolveWithTypeParams(param.type(), typeParams);
                 localVars.add(new IRLocalVariable(localIdx, param.name(), paramType));
                 localIdx += isDoubleWidth(paramType) ? 2 : 1;
             }
@@ -1128,8 +1380,9 @@ public class CompilerDriver {
         return new IRMethod(method.name(), returnType, paramTypes, access, method.thrownExceptions(), body, locals);
     }
 
-    private IRMethod lowerConstructor(ConstructorDeclarationNode ctor, String owner, String superName) {
-        List<Type> paramTypes = ctor.parameters().stream().map(p -> toType(p.type())).toList();
+    private IRMethod lowerConstructor(ConstructorDeclarationNode ctor, String owner, String superName, List<String> typeParams) {
+        List<Type> paramTypes = ctor.parameters().stream()
+                .map(p -> resolveWithTypeParams(p.type(), typeParams)).toList();
         int access = computeAccess(ctor.modifiers());
         List<KofOperation> ops = new ArrayList<>();
         List<IRLocalVariable> localVars = new ArrayList<>();
@@ -1146,7 +1399,7 @@ public class CompilerDriver {
         }
         int localIdx = 1;
         for (FormalParameterNode param : ctor.parameters()) {
-            Type paramType = toType(param.type());
+            Type paramType = resolveWithTypeParams(param.type(), typeParams);
             localVars.add(new IRLocalVariable(localIdx, param.name(), paramType));
             localIdx += isDoubleWidth(paramType) ? 2 : 1;
         }
@@ -1177,6 +1430,12 @@ public class CompilerDriver {
         Type ownerType = ownerTypeFromInternal(owner);
         Type superType = new Type.ClassType("java.lang", "Record", List.of());
         locals.add(new IRLocalVariable(0, "this", ownerType));
+        if (isJvmTarget()) {
+            // JVM requires constructors to call super() first; the native backend
+            // has no Record class (records are plain objects there).
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+        }
         int localIdx = 1;
         for (RecordComponentNode comp : rec.components()) {
             Type compType = toType(comp.type());
@@ -1200,6 +1459,7 @@ public class CompilerDriver {
 
     private int computeAccess(List<String> modifiers) {
         int access = 0;
+        boolean hasVisibility = false;
         for (String mod : modifiers) {
             access |= switch (mod) {
                 case "public" -> AccessFlags.PUBLIC;
@@ -1210,7 +1470,11 @@ public class CompilerDriver {
                 case "abstract" -> AccessFlags.ABSTRACT;
                 default -> 0;
             };
+            if ("public".equals(mod) || "private".equals(mod) || "protected".equals(mod)) {
+                hasVisibility = true;
+            }
         }
+        if (!hasVisibility) access |= AccessFlags.PUBLIC;
         return access;
     }
 
