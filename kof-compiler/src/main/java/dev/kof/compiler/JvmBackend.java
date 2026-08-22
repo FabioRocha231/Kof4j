@@ -24,6 +24,15 @@ class JvmBackend implements Backend {
 
     private final Map<LabelId, Label> labelMap = new HashMap<>();
 
+    private record TryRegion(LabelId start, LabelId end) {
+    }
+
+    private record TryCatchEntry(LabelId start, LabelId end, LabelId handler, String type) {
+    }
+
+    private final java.util.Deque<TryRegion> tryStack = new java.util.ArrayDeque<>();
+    private final List<TryCatchEntry> tryCatches = new java.util.ArrayList<>();
+
     private Label resolveLabel(LabelId id) {
         return labelMap.computeIfAbsent(id, k -> new Label());
     }
@@ -92,6 +101,26 @@ class JvmBackend implements Backend {
         }
     }
 
+    private boolean isPrimitiveOf(Type type, String name) {
+        return type instanceof Type.PrimitiveType pt && (pt.name().equals(name) || pt.name().equals(capitalize(name)));
+    }
+
+    private String capitalize(String s) {
+        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private int intCompareOpcode(KofBinaryOp op) {
+        return switch (op) {
+            case EQ -> IFEQ;
+            case NE -> IFNE;
+            case LT -> IFLT;
+            case LE -> IFLE;
+            case GT -> IFGT;
+            case GE -> IFGE;
+            default -> IFEQ;
+        };
+    }
+
     private String typeName(Type type) {
         return type instanceof Type.PrimitiveType pt ? pt.name() : "";
     }
@@ -132,8 +161,183 @@ class JvmBackend implements Backend {
             emitMethod(cw, clazz.name(), method, clazz.superName());
         }
 
+        if ("java/lang/Record".equals(superName)) {
+            emitRecordMethods(cw, clazz);
+        }
+
         cw.visitEnd();
         Files.write(classFile, cw.toByteArray());
+    }
+
+    private void emitRecordMethods(ClassWriter cw, IRClass clazz) {
+        List<IRField> fields = clazz.fields();
+        String cn = clazz.name();
+        String simpleName = cn.contains("/") ? cn.substring(cn.lastIndexOf('/') + 1) : cn;
+
+        // toString: "Simple[x=1, y=2]"
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "toString", "()Ljava/lang/String;", null, null);
+        mv.visitCode();
+        mv.visitTypeInsn(NEW, "java/lang/StringBuilder");
+        mv.visitInsn(DUP);
+        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "()V", false);
+        mv.visitLdcInsn(simpleName + "[");
+        mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
+        for (int i = 0; i < fields.size(); i++) {
+            IRField f = fields.get(i);
+            if (i > 0) {
+                mv.visitLdcInsn(", ");
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
+            }
+            mv.visitLdcInsn(f.name() + "=");
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
+            mv.visitVarInsn(ALOAD, 0);
+            mv.visitFieldInsn(GETFIELD, cn, f.name(), JvmTypeMapper.toDescriptor(f.type()));
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", appendDescriptor(f.type()), false);
+        }
+        mv.visitLdcInsn("]");
+        mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
+        mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false);
+        mv.visitInsn(ARETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        // equals
+        mv = cw.visitMethod(ACC_PUBLIC, "equals", "(Ljava/lang/Object;)Z", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(ALOAD, 0);
+        mv.visitVarInsn(ALOAD, 1);
+        Label same = new Label();
+        mv.visitJumpInsn(IF_ACMPEQ, same);
+        mv.visitVarInsn(ALOAD, 1);
+        mv.visitTypeInsn(INSTANCEOF, cn);
+        Label notSame = new Label();
+        mv.visitJumpInsn(IFEQ, notSame);
+        mv.visitVarInsn(ALOAD, 1);
+        mv.visitTypeInsn(CHECKCAST, cn);
+        mv.visitVarInsn(ASTORE, 2);
+        for (IRField f : fields) {
+            mv.visitVarInsn(ALOAD, 0);
+            mv.visitFieldInsn(GETFIELD, cn, f.name(), JvmTypeMapper.toDescriptor(f.type()));
+            mv.visitVarInsn(ALOAD, 2);
+            mv.visitFieldInsn(GETFIELD, cn, f.name(), JvmTypeMapper.toDescriptor(f.type()));
+            emitEqualsComparison(mv, f.type(), cn);
+        }
+        mv.visitLabel(same);
+        mv.visitInsn(ICONST_1);
+        mv.visitInsn(IRETURN);
+        mv.visitLabel(notSame);
+        mv.visitInsn(ICONST_0);
+        mv.visitInsn(IRETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        // hashCode
+        mv = cw.visitMethod(ACC_PUBLIC, "hashCode", "()I", null, null);
+        mv.visitCode();
+        mv.visitInsn(ICONST_1);
+        mv.visitVarInsn(ISTORE, 1);
+        for (IRField f : fields) {
+            mv.visitVarInsn(ILOAD, 1);
+            mv.visitLdcInsn(31);
+            mv.visitInsn(IMUL);
+            mv.visitVarInsn(ALOAD, 0);
+            mv.visitFieldInsn(GETFIELD, cn, f.name(), JvmTypeMapper.toDescriptor(f.type()));
+            emitHashContribution(mv, f.type());
+            mv.visitInsn(IADD);
+            mv.visitVarInsn(ISTORE, 1);
+        }
+        mv.visitVarInsn(ILOAD, 1);
+        mv.visitInsn(IRETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+    }
+
+    private void emitEqualsComparison(MethodVisitor mv, Type type, String cn) {
+        if (type instanceof Type.PrimitiveType pt) {
+            switch (pt.name()) {
+                case "int", "Int", "byte", "Byte", "short", "Short", "char", "Char", "bool", "Bool" -> {
+                    Label ok = new Label();
+                    mv.visitJumpInsn(IF_ICMPEQ, ok);
+                    mv.visitInsn(ICONST_0);
+                    mv.visitInsn(IRETURN);
+                    mv.visitLabel(ok);
+                }
+                case "long", "Long" -> {
+                    mv.visitInsn(LCMP);
+                    Label ok = new Label();
+                    mv.visitJumpInsn(IFEQ, ok);
+                    mv.visitInsn(ICONST_0);
+                    mv.visitInsn(IRETURN);
+                    mv.visitLabel(ok);
+                }
+                case "float", "Float" -> {
+                    mv.visitInsn(FCMPL);
+                    Label ok = new Label();
+                    mv.visitJumpInsn(IFEQ, ok);
+                    mv.visitInsn(ICONST_0);
+                    mv.visitInsn(IRETURN);
+                    mv.visitLabel(ok);
+                }
+                case "double", "Double" -> {
+                    mv.visitInsn(DCMPL);
+                    Label ok = new Label();
+                    mv.visitJumpInsn(IFEQ, ok);
+                    mv.visitInsn(ICONST_0);
+                    mv.visitInsn(IRETURN);
+                    mv.visitLabel(ok);
+                }
+                default -> throw new IllegalStateException("unhandled primitive in record equals: " + pt.name());
+            }
+        } else {
+            mv.visitMethodInsn(INVOKESTATIC, "java/util/Objects", "equals", "(Ljava/lang/Object;Ljava/lang/Object;)Z", false);
+            Label ok = new Label();
+            mv.visitJumpInsn(IFNE, ok);
+            mv.visitInsn(ICONST_0);
+            mv.visitInsn(IRETURN);
+            mv.visitLabel(ok);
+        }
+    }
+
+    private void emitHashContribution(MethodVisitor mv, Type type) {
+        if (type instanceof Type.PrimitiveType pt) {
+            switch (pt.name()) {
+                case "int", "Int", "byte", "Byte", "short", "Short", "char", "Char", "bool", "Bool" -> { }
+                case "long", "Long" -> {
+                    mv.visitInsn(DUP2);
+                    mv.visitLdcInsn(32);
+                    mv.visitInsn(LUSHR);
+                    mv.visitInsn(LXOR);
+                    mv.visitInsn(L2I);
+                }
+                case "float", "Float" -> mv.visitMethodInsn(INVOKESTATIC, "java/lang/Float", "floatToIntBits", "(F)I", false);
+                case "double", "Double" -> {
+                    mv.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "doubleToLongBits", "(D)J", false);
+                    mv.visitInsn(DUP2);
+                    mv.visitLdcInsn(32);
+                    mv.visitInsn(LUSHR);
+                    mv.visitInsn(LXOR);
+                    mv.visitInsn(L2I);
+                }
+                default -> throw new IllegalStateException("unhandled primitive in record hashCode: " + pt.name());
+            }
+        } else {
+            mv.visitMethodInsn(INVOKESTATIC, "java/util/Objects", "hashCode", "(Ljava/lang/Object;)I", false);
+        }
+    }
+
+    private String appendDescriptor(Type type) {
+        if (type instanceof Type.PrimitiveType pt) {
+            return switch (pt.name()) {
+                case "long", "Long" -> "(J)Ljava/lang/StringBuilder;";
+                case "float", "Float" -> "(F)Ljava/lang/StringBuilder;";
+                case "double", "Double" -> "(D)Ljava/lang/StringBuilder;";
+                case "bool", "Bool" -> "(Z)Ljava/lang/StringBuilder;";
+                case "char", "Char" -> "(C)Ljava/lang/StringBuilder;";
+                default -> "(I)Ljava/lang/StringBuilder;";
+            };
+        }
+        if (Type.isString(type)) return "(Ljava/lang/String;)Ljava/lang/StringBuilder;";
+        return "(Ljava/lang/Object;)Ljava/lang/StringBuilder;";
     }
 
     private void emitMethod(ClassWriter cw, String className, IRMethod method, String classSuperName) {
@@ -172,8 +376,20 @@ class JvmBackend implements Backend {
             emitOperation(mv, className, op);
         }
 
+        for (TryCatchEntry entry : tryCatches) {
+            mv.visitTryCatchBlock(resolveLabel(entry.start()), resolveLabel(entry.end()),
+                    resolveLabel(entry.handler()), exceptionJvmType(entry.type()));
+        }
+        tryCatches.clear();
+        tryStack.clear();
+
         mv.visitMaxs(maxStack, maxLocals);
         mv.visitEnd();
+    }
+
+    private String exceptionJvmType(String kofType) {
+        if ("String".equals(kofType)) return "java/lang/RuntimeException";
+        return "java/lang/" + kofType;
     }
 
     private void emitOperation(MethodVisitor mv, String className, KofOperation op) {
@@ -221,15 +437,40 @@ class JvmBackend implements Backend {
                 case SHR -> mv.visitInsn(opcodeForBitwise(kb.operandType(), ISHR));
                 case USHR -> mv.visitInsn(opcodeForBitwise(kb.operandType(), IUSHR));
                 case EQ, NE, LT, LE, GT, GE -> {
-                    int cmpOpcode = switch (kb.op()) {
-                        case EQ -> IF_ICMPEQ;
-                        case NE -> IF_ICMPNE;
-                        case LT -> IF_ICMPLT;
-                        case LE -> IF_ICMPLE;
-                        case GT -> IF_ICMPGT;
-                        case GE -> IF_ICMPGE;
-                        default -> IF_ICMPEQ;
-                    };
+                    boolean isLong = isPrimitiveOf(kb.operandType(), "long");
+                    boolean isFloat = isPrimitiveOf(kb.operandType(), "float");
+                    boolean isDouble = isPrimitiveOf(kb.operandType(), "double");
+                    boolean isRef = kb.operandType() instanceof Type.ClassType
+                            || kb.operandType() instanceof Type.ArrayType
+                            || kb.operandType() instanceof Type.TypeVariable
+                            || kb.operandType() instanceof Type.UnknownType;
+                    int cmpOpcode;
+                    if (isRef) {
+                        cmpOpcode = switch (kb.op()) {
+                            case EQ -> IF_ACMPEQ;
+                            case NE -> IF_ACMPNE;
+                            default -> IF_ACMPEQ;
+                        };
+                    } else if (isLong) {
+                        mv.visitInsn(LCMP);
+                        cmpOpcode = intCompareOpcode(kb.op());
+                    } else if (isFloat) {
+                        mv.visitInsn(FCMPL);
+                        cmpOpcode = intCompareOpcode(kb.op());
+                    } else if (isDouble) {
+                        mv.visitInsn(DCMPL);
+                        cmpOpcode = intCompareOpcode(kb.op());
+                    } else {
+                        cmpOpcode = switch (kb.op()) {
+                            case EQ -> IF_ICMPEQ;
+                            case NE -> IF_ICMPNE;
+                            case LT -> IF_ICMPLT;
+                            case LE -> IF_ICMPLE;
+                            case GT -> IF_ICMPGT;
+                            case GE -> IF_ICMPGE;
+                            default -> IF_ICMPEQ;
+                        };
+                    }
                     Label trueLabel = new Label();
                     Label endLabel = new Label();
                     mv.visitJumpInsn(cmpOpcode, trueLabel);
@@ -378,6 +619,23 @@ class JvmBackend implements Backend {
             mv.visitInsn(RETURN);
         } else if (op instanceof KofThrow) {
             mv.visitInsn(ATHROW);
+        } else if (op instanceof KofTryStart kts) {
+            mv.visitLabel(resolveLabel(kts.startLabel()));
+            tryStack.push(new TryRegion(kts.startLabel(), kts.endLabel()));
+        } else if (op instanceof KofTryEnd) {
+            tryStack.pop();
+        } else if (op instanceof KofCatchStart kcs) {
+            mv.visitLabel(resolveLabel(kcs.handlerLabel()));
+            TryRegion region = tryStack.peek();
+            if (region != null) {
+                tryCatches.add(new TryCatchEntry(region.start(), region.end(),
+                        kcs.handlerLabel(), kcs.exceptionType()));
+            }
+            if ("String".equals(kcs.exceptionType())) {
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/RuntimeException", "getMessage",
+                        "()Ljava/lang/String;", false);
+            }
+            mv.visitVarInsn(ASTORE, kcs.localIndex());
         } else if (op instanceof KofCheckCast cc) {
             String type = cc.type() instanceof Type.ClassType ct
                     ? JvmTypeMapper.toInternalName(ct.packageName(), ct.name()) : "?";
@@ -522,6 +780,8 @@ class JvmBackend implements Backend {
                 max = Math.max(max, ll.index() + (isDoubleWidth(ll.type()) ? 2 : 1));
             } else if (op instanceof KofStoreLocal sl) {
                 max = Math.max(max, sl.index() + (isDoubleWidth(sl.type()) ? 2 : 1));
+            } else if (op instanceof KofCatchStart cs) {
+                max = Math.max(max, cs.localIndex() + 1);
             }
         }
         return Math.max(max, 1);

@@ -215,7 +215,7 @@ public class CompilerDriver {
                 LabelId elseLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
                 LabelId thenLabel = LabelId.create();
-                if (ifStmt.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
+                if (ifStmt.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), thenLabel, elseLabel));
@@ -239,7 +239,7 @@ public class CompilerDriver {
                 LabelId endLabel = LabelId.create();
                 LabelId bodyLabel = LabelId.create();
                 ops.add(new KofLabel(startLabel));
-                if (ws.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
+                if (ws.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), bodyLabel, endLabel));
@@ -267,7 +267,7 @@ public class CompilerDriver {
                 localIdx = emitStatement(dws.body(), ops, owner, localIdx, locals, returnType);
                 breakLabels.pop();
                 continueLabels.pop();
-                if (dws.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
+                if (dws.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), startLabel, endLabel));
@@ -287,7 +287,7 @@ public class CompilerDriver {
                 if (fs.init() != null) localIdx = emitStatement(fs.init(), ops, owner, localIdx, locals, returnType);
                 ops.add(new KofLabel(startLabel));
                 if (fs.condition() != null) {
-                    if (fs.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
+                    if (fs.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                         localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                         localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                         ops.add(new KofConditionalJump(mapComparison(bin.operator()), bodyLabel, endLabel));
@@ -332,21 +332,65 @@ public class CompilerDriver {
             }
             case ThrowStmt ts -> {
                 localIdx = emitExpression(ts.expression(), ops, owner, localIdx, locals);
+                Type excType = inferExprType(ts.expression(), locals);
+                if (BuiltinTypes.isString(excType) && target == Target.JVM) {
+                    int tmp = localIdx++;
+                    locals.add(new IRLocalVariable(tmp, "#exc", BuiltinTypes.STRING));
+                    ops.add(new KofStoreLocal(BuiltinTypes.STRING, tmp));
+                    Type runtimeExc = new Type.ClassType("java.lang", "RuntimeException", List.of());
+                    ops.add(new KofNewObject(runtimeExc, List.of(BuiltinTypes.STRING)));
+                    ops.add(new KofDup());
+                    ops.add(new KofLoadLocal(BuiltinTypes.STRING, tmp));
+                    ops.add(new KofCall(runtimeExc, "<init>", List.of(BuiltinTypes.STRING),
+                            Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                }
                 ops.add(new KofThrow());
                 yield localIdx;
             }
             case TryStmt ts -> {
+                LabelId tryStart = LabelId.create();
+                LabelId tryEnd = LabelId.create();
+                LabelId doneLabel = LabelId.create();
+                boolean hasFinally = !ts.finallyBody().isEmpty();
+                LabelId finallyLabel = LabelId.create();
+                LabelId rethrowLabel = hasFinally ? LabelId.create() : doneLabel;
+                ops.add(new KofTryStart(tryStart, tryEnd));
                 for (StatementNode s : ts.tryBody()) {
                     localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
                 }
+                ops.add(new KofJump(finallyLabel));
+                ops.add(new KofLabel(tryEnd));
                 for (CatchClause cc : ts.catchClauses()) {
+                    LabelId handlerLabel = LabelId.create();
+                    int excIdx = localIdx++;
+                    locals.add(new IRLocalVariable(excIdx, cc.exceptionName(), toType(cc.exceptionType())));
+                    ops.add(new KofCatchStart(handlerLabel, cc.exceptionType(), excIdx));
                     localIdx = emitStatement(new BlockStmt(cc.position(), cc.body()), ops, owner, localIdx, locals, returnType);
+                    ops.add(new KofJump(finallyLabel));
                 }
-                if (!ts.finallyBody().isEmpty()) {
+                if (hasFinally) {
+                    LabelId catchAllLabel = LabelId.create();
+                    int excTmp = localIdx++;
+                    locals.add(new IRLocalVariable(excTmp, "#excTmp", new Type.ClassType("java.lang", "Throwable", List.of())));
+                    ops.add(new KofCatchStart(catchAllLabel, "Throwable", excTmp));
+                    ops.add(new KofJump(rethrowLabel));
+                    ops.add(new KofTryEnd());
+                    ops.add(new KofLabel(finallyLabel));
                     for (StatementNode s : ts.finallyBody()) {
                         localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
                     }
+                    ops.add(new KofJump(doneLabel));
+                    ops.add(new KofLabel(rethrowLabel));
+                    for (StatementNode s : ts.finallyBody()) {
+                        localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
+                    }
+                    ops.add(new KofLoadLocal(new Type.ClassType("java.lang", "Throwable", List.of()), excTmp));
+                    ops.add(new KofThrow());
+                } else {
+                    ops.add(new KofTryEnd());
+                    ops.add(new KofLabel(finallyLabel));
                 }
+                ops.add(new KofLabel(doneLabel));
                 yield localIdx;
             }
             case SwitchStmt ss -> {
@@ -463,14 +507,22 @@ public class CompilerDriver {
                     ops.add(new KofBinary(mapArithmeticOp(bin.operator()), commonType));
                     yield localIdx;
                 }
-                localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                 if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    if (!Type.isString(leftType) && isPrimitiveType(leftType)) boxPrimitive(ops, leftType);
+                    ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                            List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    if (!Type.isString(rightType) && isPrimitiveType(rightType)) boxPrimitive(ops, rightType);
+                    ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                            List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
                     ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));
                 } else if (("==".equals(bin.operator()) || "!=".equals(bin.operator()))
                         && (Type.isString(leftType) || Type.isString(rightType))) {
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                     ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_equals",
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                             Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
@@ -479,6 +531,8 @@ public class CompilerDriver {
                         ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
                     }
                 } else {
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
                     Type operandType = leftType;
                     switch (bin.operator()) {
                         case "+" -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
@@ -630,6 +684,12 @@ public class CompilerDriver {
                         if (sig != null) {
                             methodReturnType = sig.returnType();
                             methodParamTypes = sig.parameterTypes();
+                        }
+                    } else {
+                        ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
+                        if (osig != null) {
+                            methodReturnType = osig.returnType();
+                            methodParamTypes = osig.parameterTypes();
                         }
                     }
                     localIdx = emitArgumentsWithFormalTypes(mc.arguments(), methodParamTypes, ops, owner, localIdx, locals);
@@ -939,6 +999,13 @@ public class CompilerDriver {
                     }
                     yield rt;
                 }
+                if (mc.receiver() != null) {
+                    Type recvT = inferExprType(mc.receiver(), locals);
+                    if (recvT instanceof Type.ClassType) {
+                        ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
+                        if (osig != null) yield osig.returnType();
+                    }
+                }
                 SymbolTable.ClassSymbol cs = semanticAnalyzer != null ? semanticAnalyzer.getClass(mc.methodName()) : null;
                 if (cs != null) yield cs.type();
                 yield Type.UnknownType.UNKNOWN;
@@ -1151,6 +1218,22 @@ public class CompilerDriver {
 
     private record StringMethodSig(Type returnType, List<Type> parameterTypes) {}
 
+    private record ObjectMethodSig(Type returnType, List<Type> parameterTypes) {}
+
+    private ObjectMethodSig objectMethodSignature(String name, int argCount) {
+        Type INT = Type.PrimitiveType.INT;
+        Type BOOL = Type.PrimitiveType.BOOL;
+        Type object = new Type.ClassType("java.lang", "Object", List.of());
+        return switch (name) {
+            case "hashCode" -> argCount == 0 ? new ObjectMethodSig(INT, List.of()) : null;
+            case "toString" -> argCount == 0 ? new ObjectMethodSig(BuiltinTypes.STRING, List.of()) : null;
+            case "equals" -> argCount == 1 ? new ObjectMethodSig(BOOL, List.of(object)) : null;
+            case "getClass" -> argCount == 0 ? new ObjectMethodSig(
+                    new Type.ClassType("java.lang", "Class", List.of()), List.of()) : null;
+            default -> null;
+        };
+    }
+
     private StringMethodSig stringMethodSignature(String name, int argCount) {
         Type str = BuiltinTypes.STRING;
         Type INT = Type.PrimitiveType.INT;
@@ -1313,6 +1396,16 @@ public class CompilerDriver {
             }
         }
         return null;
+    }
+
+    private boolean isComparisonShortcut(BinaryExpr bin, List<IRLocalVariable> locals) {
+        if (!isComparisonOp(bin.operator())) return false;
+        if ("==".equals(bin.operator()) || "!=".equals(bin.operator())) {
+            Type left = inferExprType(bin.left(), locals);
+            Type right = inferExprType(bin.right(), locals);
+            if (Type.isString(left) || Type.isString(right)) return false;
+        }
+        return true;
     }
 
     private KofComparison mapComparison(String op) {

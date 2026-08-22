@@ -163,3 +163,25 @@ record KofArrayLength() implements KofOperation {
 
 record KofThrow() implements KofOperation {
 }
+
+/**
+ * Marks the start of a protected region. All exception handlers declared
+ * with KofCatchStart until the end label are attached to [startLabel, endLabel].
+ */
+record KofTryStart(LabelId startLabel, LabelId endLabel) implements KofOperation {
+}
+
+/**
+ * Marks the end of the currently open protected region; pops it so nested
+ * try statements attach their handlers to the correct region.
+ */
+record KofTryEnd() implements KofOperation {
+}
+
+/**
+ * Declares an exception handler: the JVM transfers control to handlerLabel
+ * with the thrown object on the stack; the exception is then stored in
+ * localIndex so the catch body can reference it.
+ */
+record KofCatchStart(LabelId handlerLabel, String exceptionType, int localIndex) implements KofOperation {
+}

@@ -351,6 +351,8 @@ public class NativeBackend implements Backend {
                 sb.append("    ret\n");
             }
             case KofLabel kl -> sb.append(resolveLabel(kl.label())).append(":\n");
+            case KofCatchStart kcs -> sb.append(resolveLabel(kcs.handlerLabel())).append(":\n");
+            case KofTryStart kts -> { }
             case KofJump kj -> sb.append("    jmp ").append(resolveLabel(kj.target())).append("\n");
             case KofConditionalJump kc -> emitConditionalJump(sb, kc);
             case KofCall kc -> emitCall(sb, kc);
