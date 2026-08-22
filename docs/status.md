@@ -175,7 +175,7 @@ kof build → FUNCIONA
 
 | Tipo | Quantidade |
 |------|-----------|
-| JUnit (kof-compiler) | 146 passando |
+| JUnit (kof-compiler) | 176 passando |
 | Architectural isolation | 7 testes |
 | IR representation | 6 testes |
 | End-to-end JVM | 19 testes |

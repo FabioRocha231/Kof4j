@@ -125,6 +125,7 @@ final class NativeRuntime {
             kof_print_int:
                 pushq %rbx
                 pushq %r12
+                pushq %r13
                 movl %edi, %eax
                 movq $0, %r12
                 testl %eax, %eax
@@ -132,28 +133,47 @@ final class NativeRuntime {
                 movq $1, %r12
                 negl %eax
             .Lkof_print_int_pos:
+                movl %eax, %r13d
                 movq $0, %rbx
-                movq $10, %rcx
-            .Lkof_print_int_loop:
-                xorq %rdx, %rdx
-                divq %rcx
-                addl $48, %edx
-                pushq %rdx
+                movl $10, %ecx
+            .Lkof_print_int_count:
+                xorl %edx, %edx
+                divl %ecx
                 incq %rbx
+                testl %eax, %eax
+                jnz .Lkof_print_int_count
+                testq %r12, %r12
+                jz .Lkof_print_int_count_done
+                incq %rbx
+            .Lkof_print_int_count_done:
+                leaq -48(%rsp), %rsi
+                addq %rbx, %rsi
+                movl %r13d, %eax
+                movq $0, %r13
+                movl $10, %ecx
+            .Lkof_print_int_loop:
+                xorl %edx, %edx
+                divl %ecx
+                addb $48, %dl
+                movb %dl, (%rsi)
+                decq %rsi
+                incq %r13
                 testl %eax, %eax
                 jnz .Lkof_print_int_loop
                 testq %r12, %r12
-                jz .Lkof_print_int_digits
-                movq $45, %rax
-                pushq %rax
-                incq %rbx
-            .Lkof_print_int_digits:
+                jz .Lkof_print_int_negdone
+                movb $45, (%rsi)
+                incq %r13
+            .Lkof_print_int_negdone:
+                testq %r12, %r12
+                jnz .Lkof_print_int_ready
+                incq %rsi
+            .Lkof_print_int_ready:
+                movq %r13, %rdx
                 movq $1, %rax
                 movq $1, %rdi
-                movq %rsp, %rsi
-                movq %rbx, %rdx
                 syscall
-                addq %rbx, %rsp
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -163,13 +183,9 @@ final class NativeRuntime {
     /**
      * kof_alloc(size) — allocates size bytes on the heap.
      * Returns pointer in %rax. Uses mmap for simplicity.
-     * Tracks allocation count for debugging.
      */
     private static void emitAlloc(StringBuilder sb) {
         sb.append("""
-            .section .data
-            .Lkof_alloc_count: .quad 0
-            .section .text
             .globl kof_alloc
             .type kof_alloc, @function
             kof_alloc:
@@ -177,15 +193,14 @@ final class NativeRuntime {
                 movq %rdi, %rbx
                 addq $15, %rbx
                 andq $~15, %rbx
-                movq %rbx, %rdi
-                movq $0, %rsi
+                movq $0, %rdi
+                movq %rbx, %rsi
                 movq $0x22, %rdx
                 movq $0x22, %r10
                 movq $-1, %r8
                 movq $0, %r9
                 movq $9, %rax
                 syscall
-                incq .Lkof_alloc_count(%rip)
                 popq %rbx
                 ret
             """);
@@ -210,7 +225,9 @@ final class NativeRuntime {
      */
     static void emitMemstats(StringBuilder sb) {
         sb.append("""
-            .Lkof_memstats_msg: .asciz "Kof Memory: allocations="
+            .section .data
+            .Lkof_alloc_count: .quad 0
+            .section .text
             .Lkof_memstats_nl: .asciz "\\n"
             .globl kof_memstats
             .type kof_memstats, @function

@@ -2691,4 +2691,688 @@ class CompilerDriverTest {
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
         assertTrue(result.success(), "String concat literal should compile to native");
     }
+
+    // ── Type System Tests ────────────────────────────────────────
+
+    @Test
+    void typeCheck_stringConcatResultType(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = "Hello"
+                var b = " World"
+                var c = a + b
+                println(c)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String concat result should be String");
+    }
+
+    @Test
+    void typeCheck_intArithmetic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = 10
+                var b = 20
+                var c = a + b
+                println(c)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Int arithmetic should work");
+    }
+
+    @Test
+    void typeCheck_comparisonReturnsBool(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = 10
+                var b = 20
+                var c = a < b
+                if (c) {
+                    println("less")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Comparison should return Bool");
+    }
+
+    @Test
+    void typeCheck_logicalOperators(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = true
+                var b = false
+                var c = a && b
+                var d = a || b
+                if (c) {
+                    println("both")
+                }
+                if (d) {
+                    println("either")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Logical operators should work");
+    }
+
+    @Test
+    void typeCheck_arrayLengthReturnsInt(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[10]
+                var len = a.length
+                println(len)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array length should return Int");
+    }
+
+    @Test
+    void typeCheck_methodReturnType(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun add(Int a, Int b): Int {
+                return a + b
+            }
+            fun main() {
+                var result = add(2, 3)
+                println(result)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Method return type should be correct");
+    }
+
+    @Test
+    void typeCheck_inheritanceReturnType(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                var s = d.speak()
+                println(s)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Inherited method return type should be correct");
+    }
+
+    @Test
+    void typeCheck_interfaceReturnType(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Dog implements Speaker {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                var s = d.speak()
+                println(s)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Interface method return type should be correct");
+    }
+
+    // ── Comprehensive Integration Tests ──────────────────────────
+
+    @Test
+    void integration_fullProgramJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal {
+                String name
+                public constructor(String n) {
+                    this.name = n
+                }
+                public fun getName(): String {
+                    return name
+                }
+            }
+            class Dog extends Animal implements Speaker {
+                public constructor(String n) {
+                    super(n)
+                }
+                public fun speak(): String {
+                    return "woof"
+                }
+                public fun bark(): String {
+                    return "bark!"
+                }
+            }
+            fun main() {
+                var d = new Dog("Rex")
+                println(d.getName())
+                println(d.speak())
+                println(d.bark())
+                Speaker s = new Dog("Buddy")
+                println(s.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Full program should compile to JVM");
+    }
+
+    @Test
+    void integration_fullProgramNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal {
+                String name
+                public constructor(String n) {
+                    this.name = n
+                }
+                public fun getName(): String {
+                    return name
+                }
+            }
+            class Dog extends Animal implements Speaker {
+                public constructor(String n) {
+                    super(n)
+                }
+                public fun speak(): String {
+                    return "woof"
+                }
+                public fun bark(): String {
+                    return "bark!"
+                }
+            }
+            fun main() {
+                var d = new Dog("Rex")
+                println(d.getName())
+                println(d.speak())
+                println(d.bark())
+                Speaker s = new Dog("Buddy")
+                println(s.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Full program should compile to native");
+    }
+
+    @Test
+    void integration_arraysAndStringsJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                for (var i = 0; i < 5; i++) {
+                    a[i] = i * 10
+                }
+                for (var i = 0; i < 5; i++) {
+                    println(a[i])
+                }
+                var s = "Hello" + " World"
+                println(s)
+                println(s.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Arrays and strings should compile to JVM");
+    }
+
+    @Test
+    void integration_arraysAndStringsNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                for (var i = 0; i < 5; i++) {
+                    a[i] = i * 10
+                }
+                for (var i = 0; i < 5; i++) {
+                    println(a[i])
+                }
+                var s = "Hello" + " World"
+                println(s)
+                println(s.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Arrays and strings should compile to native");
+    }
+
+    @Test
+    void integration_exceptionHandlingJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    var a = new Int[3]
+                    a[0] = 10
+                    println(a[0])
+                } catch (String e) {
+                    println(e)
+                } finally {
+                    println("done")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Exception handling should compile to JVM");
+    }
+
+    @Test
+    void integration_exceptionHandlingNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    var a = new Int[3]
+                    a[0] = 10
+                    println(a[0])
+                } catch (String e) {
+                    println(e)
+                } finally {
+                    println("done")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Exception handling should compile to native");
+    }
+
+    @Test
+    void integration_virtualDispatchJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Shape {
+                public fun area(): Int {
+                    return 0
+                }
+            }
+            class Circle extends Shape {
+                Int radius
+                public constructor(Int r) {
+                    this.radius = r
+                }
+                public fun area(): Int {
+                    return radius * radius
+                }
+            }
+            class Square extends Shape {
+                Int side
+                public constructor(Int s) {
+                    this.side = s
+                }
+                public fun area(): Int {
+                    return side * side
+                }
+            }
+            fun main() {
+                Shape c = new Circle(5)
+                Shape s = new Square(4)
+                println(c.area())
+                println(s.area())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Virtual dispatch should compile to JVM");
+    }
+
+    @Test
+    void integration_virtualDispatchNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Shape {
+                public fun area(): Int {
+                    return 0
+                }
+            }
+            class Circle extends Shape {
+                Int radius
+                public constructor(Int r) {
+                    this.radius = r
+                }
+                public fun area(): Int {
+                    return radius * radius
+                }
+            }
+            class Square extends Shape {
+                Int side
+                public constructor(Int s) {
+                    this.side = s
+                }
+                public fun area(): Int {
+                    return side * side
+                }
+            }
+            fun main() {
+                Shape c = new Circle(5)
+                Shape s = new Square(4)
+                println(c.area())
+                println(s.area())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Virtual dispatch should compile to native");
+    }
+
+    @Test
+    void integration_fieldInitializationJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Config {
+                String host = "localhost"
+                Int port = 8080
+                public constructor() {
+                }
+            }
+            fun main() {
+                var c = new Config()
+                println(c.host)
+                println(c.port)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Field initialization should compile to JVM");
+    }
+
+    @Test
+    void integration_fieldInitializationNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Config {
+                String host = "localhost"
+                Int port = 8080
+                public constructor() {
+                }
+            }
+            fun main() {
+                var c = new Config()
+                println(c.host)
+                println(c.port)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Field initialization should compile to native");
+    }
+
+    @Test
+    void integration_nestedControlFlowJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 10
+                if (x > 5) {
+                    var y = 20
+                    if (y > 15) {
+                        for (var i = 0; i < 3; i++) {
+                            println(i)
+                        }
+                    }
+                } else {
+                    println("small")
+                }
+                var i = 0
+                while (i < 3) {
+                    println(i)
+                    i = i + 1
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Nested control flow should compile to JVM");
+    }
+
+    @Test
+    void integration_nestedControlFlowNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 10
+                if (x > 5) {
+                    var y = 20
+                    if (y > 15) {
+                        for (var i = 0; i < 3; i++) {
+                            println(i)
+                        }
+                    }
+                } else {
+                    println("small")
+                }
+                var i = 0
+                while (i < 3) {
+                    println(i)
+                    i = i + 1
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Nested control flow should compile to native");
+    }
+
+    @Test
+    void integration_recursionJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun factorial(Int n): Int {
+                if (n <= 1) {
+                    return 1
+                }
+                return n * factorial(n - 1)
+            }
+            fun main() {
+                println(factorial(5))
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Recursion should compile to JVM");
+    }
+
+    @Test
+    void integration_recursionNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun factorial(Int n): Int {
+                if (n <= 1) {
+                    return 1
+                }
+                return n * factorial(n - 1)
+            }
+            fun main() {
+                println(factorial(5))
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Recursion should compile to native");
+    }
+
+    @Test
+    void integration_multipleClassesJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            class Rect {
+                Point topLeft
+                Point bottomRight
+                public constructor(Point tl, Point br) {
+                    this.topLeft = tl
+                    this.bottomRight = br
+                }
+                public fun width(): Int {
+                    return bottomRight.x() - topLeft.x()
+                }
+                public fun height(): Int {
+                    return bottomRight.y() - topLeft.y()
+                }
+            }
+            fun main() {
+                var tl = Point(0, 0)
+                var br = Point(10, 5)
+                var r = new Rect(tl, br)
+                println(r.width())
+                println(r.height())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Multiple classes should compile to JVM");
+    }
+
+    @Test
+    void integration_multipleClassesNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            class Rect {
+                Point topLeft
+                Point bottomRight
+                public constructor(Point tl, Point br) {
+                    this.topLeft = tl
+                    this.bottomRight = br
+                }
+                public fun width(): Int {
+                    return bottomRight.x() - topLeft.x()
+                }
+                public fun height(): Int {
+                    return bottomRight.y() - topLeft.y()
+                }
+            }
+            fun main() {
+                var tl = Point(0, 0)
+                var br = Point(10, 5)
+                var r = new Rect(tl, br)
+                println(r.width())
+                println(r.height())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Multiple classes should compile to native");
+    }
+
+    // ── Do-While Tests ──────────────────────────────────────────
+
+    @Test
+    void doWhileSimpleJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                do {
+                    println(i)
+                    i = i + 1
+                } while (i < 3)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Simple do-while should compile to JVM");
+    }
+
+    @Test
+    void doWhileSimpleNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                do {
+                    println(i)
+                    i = i + 1
+                } while (i < 3)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Simple do-while should compile to native");
+    }
+
+    @Test
+    void doWhileNestedJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                do {
+                    var j = 0
+                    do {
+                        println(j)
+                        j = j + 1
+                    } while (j < 2)
+                    i = i + 1
+                } while (i < 2)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Nested do-while should compile to JVM");
+    }
+
+    @Test
+    void doWhileNestedNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                do {
+                    var j = 0
+                    do {
+                        println(j)
+                        j = j + 1
+                    } while (j < 2)
+                    i = i + 1
+                } while (i < 2)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Nested do-while should compile to native");
+    }
+
+    @Test
+    void doWhileRunsAtLeastOnceJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 10
+                do {
+                    println(i)
+                    i = i + 1
+                } while (i < 5)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "do-while runs at least once should compile to JVM");
+    }
+
+    @Test
+    void doWhileRunsAtLeastOnceNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 10
+                do {
+                    println(i)
+                    i = i + 1
+                } while (i < 5)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "do-while runs at least once should compile to native");
+    }
 }

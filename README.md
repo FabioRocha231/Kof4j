@@ -215,6 +215,16 @@ Kof é uma linguagem. Um compilador. Uma IR. Vários backends.
 
 Kof é software livre distribuído sob a licença **GNU General Public License v3.0**.
 
+Isso se aplica ao código-fonte do compilador, ferramentas e demais componentes do projeto.
+
+**Programas escritos em Kof NÃO são automaticamente GPLv3.**
+
+O autor do programa mantém o direito de escolher a licença do próprio software. Usar o compilador Kof não obriga ninguém a abrir seu código-fonte.
+
+Software proprietário escrito em Kof é permitido, desde que respeite as licenças das dependências que efetivamente incorporar.
+
+Para mais detalhes, consulte [docs/LICENSING.md](docs/LICENSING.md).
+
 ---
 
 **Kof**

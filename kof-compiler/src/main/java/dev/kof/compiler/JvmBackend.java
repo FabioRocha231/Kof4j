@@ -329,11 +329,14 @@ class JvmBackend implements Backend {
                 depth -= 3;
             } else if (op instanceof KofThrow) {
                 depth--;
-            } else if (op instanceof KofLabel || op instanceof KofJump || op instanceof KofConditionalJump) {
+            } else if (op instanceof KofLabel || op instanceof KofJump) {
+            } else if (op instanceof KofConditionalJump) {
+                depth -= 2;
             } else if (op instanceof KofCall) {
                 depth -= 1;
             }
             max = Math.max(max, depth);
+            if (depth < 0) depth = 0;
         }
         return Math.max(max, 1);
     }

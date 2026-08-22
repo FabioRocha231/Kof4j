@@ -161,6 +161,11 @@ As funções de runtime nativas são geradas pelo `NativeRuntime.java` no compil
 | **Runtime errors (null, bounds)** | ✅ | ✅ |
 | **Memory allocation tracking** | ✅ | ✅ |
 | **String concatenation (+)** | ✅ | ✅ |
+| **if/while com boolean** | ✅ | ✅ |
+| **Field initialization** | ✅ | ✅ |
+| **Recursion** | ✅ | ✅ |
+| **Nested control flow** | ✅ | ✅ |
+| **Multiple classes** | ✅ | ✅ |
 
 ---
 

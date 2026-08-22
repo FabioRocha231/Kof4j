@@ -299,6 +299,11 @@ class SemanticAnalyzer {
                 SymbolTable whileScope = scope.enterScope();
                 analyzeStatement(ws.body(), whileScope, returnType);
             }
+            case DoWhileStmt dws -> {
+                SymbolTable doScope = scope.enterScope();
+                analyzeStatement(dws.body(), doScope, returnType);
+                inferType(dws.condition(), doScope);
+            }
             case ForStmt fs -> {
                 SymbolTable forScope = scope.enterScope();
                 if (fs.init() != null) analyzeStatement(fs.init(), forScope, returnType);
@@ -406,6 +411,9 @@ class SemanticAnalyzer {
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
                 }
+                if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
+                }
                 if (recvType instanceof Type.ClassType ct) {
                     SymbolTable.Symbol field = resolveInHierarchy(ct.name(), fa.fieldName());
                     if (field != null) yield field.type();
@@ -452,9 +460,57 @@ class SemanticAnalyzer {
         if ("&&".equals(operator) || "||".equals(operator)) {
             return Type.PrimitiveType.BOOL;
         }
-        if (left instanceof Type.PrimitiveType) return left;
-        if (right instanceof Type.PrimitiveType) return right;
-        return Type.UnknownType.UNKNOWN;
+        if ("!".equals(operator)) {
+            return Type.PrimitiveType.BOOL;
+        }
+        if (Type.isString(left) || Type.isString(right)) {
+            if ("+".equals(operator)) {
+                return BuiltinTypes.STRING;
+            }
+            if (diagnostics != null && left instanceof Type.ClassType && right instanceof Type.PrimitiveType) {
+                diagnostics.error("", 0, 0, 0,
+                        "Cannot apply '" + operator + "' to String and " + right, "SEM001");
+            }
+            return Type.UnknownType.UNKNOWN;
+        }
+        if (left instanceof Type.PrimitiveType lp && right instanceof Type.PrimitiveType rp) {
+            if ("int".equals(lp.name())) {
+                if ("long".equals(rp.name()) || "Long".equals(rp.name())) return Type.PrimitiveType.LONG;
+                if ("float".equals(rp.name()) || "Float".equals(rp.name())) return Type.PrimitiveType.FLOAT;
+                if ("double".equals(rp.name()) || "Double".equals(rp.name())) return Type.PrimitiveType.DOUBLE;
+                return Type.PrimitiveType.INT;
+            }
+            if ("long".equals(lp.name()) || "Long".equals(lp.name())) {
+                if ("float".equals(rp.name()) || "Float".equals(rp.name())) return Type.PrimitiveType.FLOAT;
+                if ("double".equals(rp.name()) || "Double".equals(rp.name())) return Type.PrimitiveType.DOUBLE;
+                return Type.PrimitiveType.LONG;
+            }
+            if ("float".equals(lp.name()) || "Float".equals(lp.name())) {
+                if ("double".equals(rp.name()) || "Double".equals(rp.name())) return Type.PrimitiveType.DOUBLE;
+                return Type.PrimitiveType.FLOAT;
+            }
+            if ("double".equals(lp.name()) || "Double".equals(lp.name())) {
+                return Type.PrimitiveType.DOUBLE;
+            }
+            if ("bool".equals(lp.name()) || "bool".equals(rp.name())) {
+                if ("+".equals(operator) || "-".equals(operator) || "*".equals(operator) ||
+                        "/".equals(operator) || "%".equals(operator)) {
+                    if (diagnostics != null) {
+                        diagnostics.error("", 0, 0, 0,
+                                "Cannot apply '" + operator + "' to boolean types", "SEM002");
+                    }
+                    return Type.UnknownType.UNKNOWN;
+                }
+            }
+            return left;
+        }
+        if (left instanceof Type.ArrayType || right instanceof Type.ArrayType) {
+            return Type.UnknownType.UNKNOWN;
+        }
+        if (left instanceof Type.UnknownType || right instanceof Type.UnknownType) {
+            return Type.UnknownType.UNKNOWN;
+        }
+        return left;
     }
 
     private void resolveMethodCalls(CompilationUnitNode unit) {
@@ -489,6 +545,7 @@ class SemanticAnalyzer {
                 if (ifStmt.elseBranch() != null) resolveInStatement(ifStmt.elseBranch());
             }
             case WhileStmt ws -> resolveInStatement(ws.body());
+            case DoWhileStmt dws -> resolveInStatement(dws.body());
             case ForStmt fs -> {
                 if (fs.init() != null) resolveInStatement(fs.init());
                 if (fs.update() != null) resolveInExpression(fs.update());

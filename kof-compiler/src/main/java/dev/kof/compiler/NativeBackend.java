@@ -283,6 +283,8 @@ public class NativeBackend implements Backend {
             lastPushedType = ll.type();
         } else if (op instanceof KofLoadField lf) {
             lastPushedType = lf.fieldType();
+        } else if (op instanceof KofArrayLength) {
+            lastPushedType = Type.PrimitiveType.INT;
         } else if (op instanceof KofBinary kb) {
             lastPushedType = kb.operandType();
         } else if (op instanceof KofUnary ku) {

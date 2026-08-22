@@ -162,6 +162,9 @@ public class CompilerDriver {
                 Type varType = toType(vds.type());
                 if (vds.initializer() != null) {
                     localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
+                    if ("var".equals(vds.type()) || "val".equals(vds.type())) {
+                        varType = inferExprType(vds.initializer(), locals);
+                    }
                 }
                 ops.add(new KofStoreLocal(varType, localIdx));
                 locals.add(new IRLocalVariable(localIdx, vds.name(), varType));
@@ -183,6 +186,7 @@ public class CompilerDriver {
                     ops.add(new KofConditionalJump(invertComparison(bin.operator()), elseLabel, endLabel));
                 } else {
                     localIdx = emitExpression(ifStmt.condition(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
                     ops.add(new KofConditionalJump(KofComparison.EQ, elseLabel, endLabel));
                 }
                 localIdx = emitStatement(ifStmt.thenBranch(), ops, owner, localIdx, locals, returnType);
@@ -204,10 +208,37 @@ public class CompilerDriver {
                     ops.add(new KofConditionalJump(invertComparison(bin.operator()), endLabel, startLabel));
                 } else {
                     localIdx = emitExpression(ws.condition(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
                     ops.add(new KofConditionalJump(KofComparison.EQ, endLabel, startLabel));
                 }
                 localIdx = emitStatement(ws.body(), ops, owner, localIdx, locals, returnType);
                 ops.add(new KofJump(startLabel));
+                ops.add(new KofLabel(endLabel));
+                yield localIdx;
+            }
+            case DoWhileStmt dws -> {
+                LabelId startLabel = LabelId.create();
+                LabelId endLabel = LabelId.create();
+                ops.add(new KofLabel(startLabel));
+                localIdx = emitStatement(dws.body(), ops, owner, localIdx, locals, returnType);
+                if (dws.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    ops.add(new KofConditionalJump(
+                            switch (bin.operator()) {
+                                case ">" -> KofComparison.GT;
+                                case "<" -> KofComparison.LT;
+                                case ">=" -> KofComparison.GE;
+                                case "<=" -> KofComparison.LE;
+                                case "==" -> KofComparison.EQ;
+                                case "!=" -> KofComparison.NE;
+                                default -> KofComparison.NE;
+                            }, startLabel, endLabel));
+                } else {
+                    localIdx = emitExpression(dws.condition(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                    ops.add(new KofConditionalJump(KofComparison.NE, startLabel, endLabel));
+                }
                 ops.add(new KofLabel(endLabel));
                 yield localIdx;
             }
@@ -223,6 +254,7 @@ public class CompilerDriver {
                         ops.add(new KofConditionalJump(invertComparison(bin.operator()), endLabel, startLabel));
                     } else {
                         localIdx = emitExpression(fs.condition(), ops, owner, localIdx, locals);
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
                         ops.add(new KofConditionalJump(KofComparison.EQ, endLabel, startLabel));
                     }
                 }
@@ -519,6 +551,8 @@ public class CompilerDriver {
                 Type recvType = inferExprType(fa.receiver(), locals);
                 if (recvType instanceof Type.ArrayType && "length".equals(fa.fieldName())) {
                     ops.add(new KofArrayLength());
+                } else if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
+                    ops.add(new KofLoadField(recvType, fa.fieldName(), Type.PrimitiveType.INT));
                 } else {
                     Type fieldType = Type.UnknownType.UNKNOWN;
                     if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
@@ -584,6 +618,9 @@ public class CompilerDriver {
             case FieldAccessExpr fa -> {
                 Type recvType = inferExprType(fa.receiver(), locals);
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
+                }
+                if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
                 }
                 yield Type.UnknownType.UNKNOWN;

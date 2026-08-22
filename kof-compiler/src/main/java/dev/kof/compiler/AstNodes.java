@@ -153,3 +153,7 @@ record CatchClause(SourcePosition position, String exceptionType, String excepti
 record TryStmt(SourcePosition position, List<StatementNode> tryBody,
                List<CatchClause> catchClauses, List<StatementNode> finallyBody) implements StatementNode {
 }
+
+record DoWhileStmt(SourcePosition position, ExpressionNode condition,
+                   StatementNode body) implements StatementNode {
+}

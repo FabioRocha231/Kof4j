@@ -417,6 +417,9 @@ class Parser {
         if (check(TokenType.WHILE)) {
             return parseWhileStatement();
         }
+        if (check(TokenType.DO)) {
+            return parseDoWhileStatement();
+        }
         if (check(TokenType.FOR)) {
             return parseForStatement();
         }
@@ -484,6 +487,18 @@ class Parser {
         expect(TokenType.RPAREN, "Expected ')'", "PARSE031");
         StatementNode body = parseStatement();
         return new WhileStmt(p, cond, body);
+    }
+
+    private StatementNode parseDoWhileStatement() {
+        SourcePosition p = pos();
+        advance();
+        StatementNode body = parseStatement();
+        expect(TokenType.WHILE, "Expected 'while' after 'do'", "PARSE060");
+        expect(TokenType.LPAREN, "Expected '(' after 'while'", "PARSE061");
+        ExpressionNode cond = parseExpression();
+        expect(TokenType.RPAREN, "Expected ')'", "PARSE062");
+        expectSemicolon();
+        return new DoWhileStmt(p, cond, body);
     }
 
     private StatementNode parseForStatement() {
