@@ -385,24 +385,42 @@ public class CompilerDriver {
                 boolean hasFinally = !ts.finallyBody().isEmpty();
                 LabelId finallyLabel = LabelId.create();
                 LabelId rethrowLabel = hasFinally ? LabelId.create() : doneLabel;
-                ops.add(new KofTryStart(tryStart, tryEnd));
+                LabelId catchAllLabel = LabelId.create();
+                LabelId primaryHandler = LabelId.create();
+                boolean hasCatch = !ts.catchClauses().isEmpty();
+                String primaryExcType = hasCatch ? ts.catchClauses().getFirst().exceptionType() : "Throwable";
+                int primaryExcLocal = localIdx++;
+                if (hasCatch) {
+                    locals.add(new IRLocalVariable(primaryExcLocal, ts.catchClauses().getFirst().exceptionName(),
+                            toType(primaryExcType)));
+                } else if (hasFinally) {
+                    locals.add(new IRLocalVariable(primaryExcLocal, "#excTmp",
+                            new Type.ClassType("java.lang", "Throwable", List.of())));
+                }
+                ops.add(new KofTryStart(tryStart, tryEnd,
+                        hasCatch ? primaryHandler : catchAllLabel, primaryExcType, primaryExcLocal));
                 for (StatementNode s : ts.tryBody()) {
                     localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
                 }
                 ops.add(new KofJump(finallyLabel));
                 ops.add(new KofLabel(tryEnd));
-                for (CatchClause cc : ts.catchClauses()) {
-                    LabelId handlerLabel = LabelId.create();
-                    int excIdx = localIdx++;
-                    locals.add(new IRLocalVariable(excIdx, cc.exceptionName(), toType(cc.exceptionType())));
+                for (int ci = 0; ci < ts.catchClauses().size(); ci++) {
+                    CatchClause cc = ts.catchClauses().get(ci);
+                    LabelId handlerLabel = ci == 0 ? primaryHandler : LabelId.create();
+                    int excIdx = ci == 0 ? primaryExcLocal : localIdx++;
+                    if (ci > 0) {
+                        locals.add(new IRLocalVariable(excIdx, cc.exceptionName(), toType(cc.exceptionType())));
+                    }
                     ops.add(new KofCatchStart(handlerLabel, cc.exceptionType(), excIdx));
                     localIdx = emitStatement(new BlockStmt(cc.position(), cc.body()), ops, owner, localIdx, locals, returnType);
                     ops.add(new KofJump(finallyLabel));
                 }
                 if (hasFinally) {
-                    LabelId catchAllLabel = LabelId.create();
-                    int excTmp = localIdx++;
-                    locals.add(new IRLocalVariable(excTmp, "#excTmp", new Type.ClassType("java.lang", "Throwable", List.of())));
+                    int excTmp = hasCatch ? localIdx++ : primaryExcLocal;
+                    if (hasCatch) {
+                        locals.add(new IRLocalVariable(excTmp, "#excTmp",
+                                new Type.ClassType("java.lang", "Throwable", List.of())));
+                    }
                     ops.add(new KofCatchStart(catchAllLabel, "Throwable", excTmp));
                     ops.add(new KofJump(rethrowLabel));
                     ops.add(new KofTryEnd());

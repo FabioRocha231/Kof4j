@@ -498,10 +498,36 @@ final class NativeRuntime {
      */
     private static void emitPanic(StringBuilder sb) {
         sb.append("""
+            .section .data
+            kof_exc_chain: .quad 0
+            .section .text
             .globl kof_panic
             .type kof_panic, @function
             kof_panic:
                 call kof_println
+                movq $60, %rax
+                movq $1, %rdi
+                syscall
+            """);
+        sb.append("""
+            .globl kof_throw_string
+            .type kof_throw_string, @function
+            kof_throw_string:
+                movq %rdi, %rsi
+                movq kof_exc_chain(%rip), %rax
+                testq %rax, %rax
+                jz .Lkof_throw_panic
+                movq 8(%rax), %rsp
+                movq 16(%rax), %rbp
+                movq 24(%rax), %rcx
+                movq %rcx, kof_exc_chain(%rip)
+                movq 0(%rax), %rcx
+                testq %rcx, %rcx
+                jz .Lkof_throw_panic
+                jmp *%rcx
+            .Lkof_throw_panic:
+                movq %rsi, %rdi
+                call kof_println_string
                 movq $60, %rax
                 movq $1, %rdi
                 syscall

@@ -40,10 +40,26 @@ class ExceptionsE2ETest {
         }
     }
 
-    @Test
-    void catchCatchesThrow(@TempDir Path tempDir) throws IOException {
-        Path source = tempDir.resolve("Main.kf");
-        Files.writeString(source, """
+    private String runNative(Path source, Path outDir, String expected) throws IOException {
+        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        Path binFile = outDir.resolve("Default/Main");
+        assertTrue(Files.exists(binFile), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
+    private static final String CATCH_SOURCE = """
             main() {
                 try {
                     throw "boom"
@@ -53,8 +69,20 @@ class ExceptionsE2ETest {
                 }
                 println("done")
             }
-            """);
+            """;
+
+    @Test
+    void catchCatchesThrow(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, CATCH_SOURCE);
         runJvm(source, tempDir.resolve("out"), "caught: boom\ndone");
+    }
+
+    @Test
+    void nativeCatchCatchesThrow(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, CATCH_SOURCE);
+        runNative(source, tempDir.resolve("out"), "caught: boom\ndone");
     }
 
     @Test
@@ -109,6 +137,65 @@ class ExceptionsE2ETest {
             }
             """);
         runJvm(source, tempDir.resolve("out"), "inner finally\nouter caught: deep\nend");
+    }
+
+    @Test
+    void nativeNestedFinallyPropagatesToOuterCatch(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    try {
+                        throw "deep"
+                    } finally {
+                        println("inner finally")
+                    }
+                } catch (String e) {
+                    println("outer caught: " + e)
+                }
+                println("end")
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "inner finally\nouter caught: deep\nend");
+    }
+
+    @Test
+    void exceptionAcrossFrames(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            void inner() {
+                throw "from-inner"
+            }
+            String outer() {
+                try {
+                    inner()
+                    return "no"
+                } catch (String e) {
+                    return "got: " + e
+                }
+            }
+            main() {
+                try {
+                    try {
+                        throw "deep"
+                    } finally {
+                        println("inner finally")
+                    }
+                } catch (String e) {
+                    println("outer caught: " + e)
+                }
+                try {
+                    println("normal path")
+                } finally {
+                    println("finally normal")
+                }
+                println(outer())
+                println("end")
+            }
+            """);
+        String expected = "inner finally\nouter caught: deep\nnormal path\nfinally normal\ngot: from-inner\nend";
+        runJvm(source, tempDir.resolve("out-jvm"), expected);
+        runNative(source, tempDir.resolve("out-native"), expected);
     }
 
     @Test

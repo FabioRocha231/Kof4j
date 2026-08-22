@@ -167,8 +167,14 @@ record KofThrow() implements KofOperation {
 /**
  * Marks the start of a protected region. All exception handlers declared
  * with KofCatchStart until the end label are attached to [startLabel, endLabel].
+ *
+ * handlerLabel/exceptionType/excLocalIndex describe the primary handler
+ * (first catch, or the finally catch-all when only finally is present) —
+ * used by backends that need the handler address before the catch clauses
+ * are emitted (native exception frames).
  */
-record KofTryStart(LabelId startLabel, LabelId endLabel) implements KofOperation {
+record KofTryStart(LabelId startLabel, LabelId endLabel, LabelId handlerLabel,
+                   String exceptionType, int excLocalIndex) implements KofOperation {
 }
 
 /**

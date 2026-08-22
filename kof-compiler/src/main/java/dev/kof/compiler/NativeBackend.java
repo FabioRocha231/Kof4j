@@ -351,8 +351,27 @@ public class NativeBackend implements Backend {
                 sb.append("    ret\n");
             }
             case KofLabel kl -> sb.append(resolveLabel(kl.label())).append(":\n");
-            case KofCatchStart kcs -> sb.append(resolveLabel(kcs.handlerLabel())).append(":\n");
-            case KofTryStart kts -> { }
+            case KofCatchStart kcs -> {
+                sb.append(resolveLabel(kcs.handlerLabel())).append(":\n");
+                sb.append("    addq $32, %rsp\n");
+                sb.append("    movq %rdi, -").append((kcs.localIndex() + 1) * 8).append("(%rbp)\n");
+            }
+            case KofTryStart kts -> {
+                sb.append(resolveLabel(kts.startLabel())).append(":\n");
+                sb.append("    subq $32, %rsp\n");
+                sb.append("    leaq ").append(resolveLabel(kts.handlerLabel())).append("(%rip), %rax\n");
+                sb.append("    movq %rax, 0(%rsp)\n");
+                sb.append("    movq %rsp, 8(%rsp)\n");
+                sb.append("    movq %rbp, 16(%rsp)\n");
+                sb.append("    movq kof_exc_chain(%rip), %rcx\n");
+                sb.append("    movq %rcx, 24(%rsp)\n");
+                sb.append("    movq %rsp, kof_exc_chain(%rip)\n");
+            }
+            case KofTryEnd kte -> {
+                sb.append("    movq 24(%rsp), %rcx\n");
+                sb.append("    movq %rcx, kof_exc_chain(%rip)\n");
+                sb.append("    addq $32, %rsp\n");
+            }
             case KofJump kj -> sb.append("    jmp ").append(resolveLabel(kj.target())).append("\n");
             case KofConditionalJump kc -> emitConditionalJump(sb, kc);
             case KofCall kc -> emitCall(sb, kc);
@@ -384,7 +403,7 @@ public class NativeBackend implements Backend {
             case KofArrayLength al -> emitArrayLength(sb);
             case KofThrow thr -> {
                 sb.append("    popq %rdi\n");
-                sb.append("    call kof_panic\n");
+                sb.append("    call kof_throw_string\n");
             }
             default -> { }
         }
