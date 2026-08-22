@@ -1275,6 +1275,12 @@ public class CompilerDriver {
             case "*" -> KofBinaryOp.MUL;
             case "/" -> KofBinaryOp.DIV;
             case "%" -> KofBinaryOp.MOD;
+            case "==" -> KofBinaryOp.EQ;
+            case "!=" -> KofBinaryOp.NE;
+            case "<" -> KofBinaryOp.LT;
+            case "<=" -> KofBinaryOp.LE;
+            case ">" -> KofBinaryOp.GT;
+            case ">=" -> KofBinaryOp.GE;
             default -> KofBinaryOp.ADD;
         };
     }
