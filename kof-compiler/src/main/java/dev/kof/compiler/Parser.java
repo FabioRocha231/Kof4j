@@ -48,6 +48,7 @@ class Parser {
         } else {
             name = expectId("Expected function name", "PARSE010");
         }
+        List<String> typeParams = parseTypeParameters();
         expect(TokenType.LPAREN, "Expected '('", "PARSE011");
         List<FormalParameterNode> params = new ArrayList<>();
         if (!check(TokenType.RPAREN)) {
@@ -71,7 +72,24 @@ class Parser {
         } else {
             expectSemicolon();
         }
-        return new FunctionDeclarationNode(p, mods, returnType, name, params, thrown, body);
+        return new FunctionDeclarationNode(p, mods, returnType, name, params, thrown, typeParams, body);
+    }
+
+    private List<String> parseTypeParameters() {
+        List<String> typeParams = new ArrayList<>();
+        if (check(TokenType.LESS)) {
+            advance();
+            while (!check(TokenType.GREATER) && !atEnd()) {
+                if (check(TokenType.IDENTIFIER)) {
+                    typeParams.add(advance().value());
+                } else {
+                    advance();
+                }
+                if (check(TokenType.COMMA)) advance();
+            }
+            expect(TokenType.GREATER, "Expected '>' after type parameters", "PARSE075");
+        }
+        return typeParams;
     }
 
     private String parsePackage() {
@@ -137,7 +155,7 @@ class Parser {
         if (check(TokenType.RECORD)) return parseRecordDeclaration(mods);
         error("Expected type declaration", "PARSE007");
         advance();
-        return new ClassDeclarationNode(pos(), "error", List.of(), null, List.of(), List.of());
+        return new ClassDeclarationNode(pos(), "error", List.of(), null, List.of(), List.of(), List.of());
     }
 
     private List<String> parseModifiers() {
@@ -154,6 +172,7 @@ class Parser {
         advance();
         String name = expectId("Expected class name", "PARSE008");
         currentClassName = name;
+        List<String> typeParams = parseTypeParameters();
         String superClass = null;
         if (check(TokenType.EXTENDS)) {
             advance();
@@ -168,7 +187,7 @@ class Parser {
             }
             expect(TokenType.RBRACE, "Expected '}' after class body", "PARSE009");
         }
-        return new ClassDeclarationNode(pos(), name, mods, superClass, ifaces, List.copyOf(members));
+        return new ClassDeclarationNode(pos(), name, mods, superClass, ifaces, typeParams, List.copyOf(members));
     }
 
     private InterfaceDeclarationNode parseInterfaceDeclaration(List<String> mods) {
@@ -829,6 +848,14 @@ class Parser {
                 advance();
                 type.append('.').append(advance().value());
             }
+            if (check(TokenType.LESS)) {
+                int depth = 0;
+                do {
+                    if (check(TokenType.LESS)) depth++;
+                    else if (check(TokenType.GREATER)) depth--;
+                    advance();
+                } while (depth > 0 && !atEnd());
+            }
             return type.toString();
         }
         error("Expected type", "PARSE044");
@@ -867,6 +894,14 @@ class Parser {
         } else {
             error("Expected type", "PARSE044");
             return "Object";
+        }
+        if (check(TokenType.LESS)) {
+            int depth = 0;
+            do {
+                if (check(TokenType.LESS)) depth++;
+                else if (check(TokenType.GREATER)) depth--;
+                advance();
+            } while (depth > 0 && !atEnd());
         }
         while (check(TokenType.LBRACKET)) {
             advance();

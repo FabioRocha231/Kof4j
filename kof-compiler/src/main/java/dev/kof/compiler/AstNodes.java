@@ -12,7 +12,7 @@ record CompilationUnitNode(SourcePosition position, String packageName, List<Str
 
 record FunctionDeclarationNode(SourcePosition position, List<String> modifiers, String returnType,
                                String name, List<FormalParameterNode> parameters,
-                               List<String> thrownExceptions,
+                               List<String> thrownExceptions, List<String> typeParameters,
                                List<StatementNode> body) implements AstNode {
 }
 
@@ -22,7 +22,7 @@ sealed interface TypeDeclarationNode extends AstNode {
 }
 
 record ClassDeclarationNode(SourcePosition position, String name, List<String> modifiers,
-                            String superClass, List<String> interfaces,
+                            String superClass, List<String> interfaces, List<String> typeParameters,
                             List<? extends AstNode> members) implements TypeDeclarationNode {
 }
 

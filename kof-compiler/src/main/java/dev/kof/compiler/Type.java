@@ -23,6 +23,9 @@ sealed interface Type {
         }
     }
 
+    record TypeVariable(String name) implements Type {
+    }
+
     record ArrayType(Type componentType) implements Type {
     }
 
@@ -52,7 +55,12 @@ sealed interface Type {
             case "char", "Char" -> PrimitiveType.CHAR;
             case "void", "Void" -> PrimitiveType.VOID;
             case "string", "String" -> BuiltinTypes.STRING;
-            default -> new ClassType("", name, List.of());
+            default -> {
+                if (name != null && name.length() == 1 && Character.isUpperCase(name.charAt(0))) {
+                    yield new TypeVariable(name);
+                }
+                yield new ClassType("", name, List.of());
+            }
         };
     }
 
