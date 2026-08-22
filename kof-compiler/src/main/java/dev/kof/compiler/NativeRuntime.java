@@ -42,6 +42,12 @@ final class NativeRuntime {
         emitStringContains(sb);
         emitStringStartsWith(sb);
         emitStringEndsWith(sb);
+        emitStringIndexOf(sb);
+        emitStringTrim(sb);
+        emitStringCase(sb);
+        emitStringReplace(sb);
+        emitStringEqualsIgnoreCase(sb);
+        emitStringSplit(sb);
         emitArrayAlloc(sb);
         emitArrayLength(sb);
         emitArrayGet(sb);
@@ -1672,6 +1678,446 @@ final class NativeRuntime {
                 ret
             .Lkof_strends_no:
                 xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_index_of(str, needle) → int (byte index or -1)
+     */
+    private static void emitStringIndexOf(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_index_of
+            .type kof_string_index_of, @function
+            kof_string_index_of:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                movl 16(%r12), %r14d
+                testl %r14d, %r14d
+                jz .Lkof_idx_found0
+                cmpl %r13d, %r14d
+                jg .Lkof_idx_notfound
+                xorl %r15d, %r15d
+            .Lkof_idx_outer:
+                movl %r13d, %eax
+                subl %r14d, %eax
+                cmpl %eax, %r15d
+                jg .Lkof_idx_notfound
+                xorl %ecx, %ecx
+            .Lkof_idx_inner:
+                cmpl %r14d, %ecx
+                jge .Lkof_idx_found
+                movl %r15d, %eax
+                addl %ecx, %eax
+                movzbl 24(%rbx,%rax), %eax
+                movzbl 24(%r12,%rcx), %edx
+                cmpl %edx, %eax
+                jne .Lkof_idx_next
+                incq %rcx
+                jmp .Lkof_idx_inner
+            .Lkof_idx_next:
+                incl %r15d
+                jmp .Lkof_idx_outer
+            .Lkof_idx_found0:
+                xorl %r15d, %r15d
+            .Lkof_idx_found:
+                movl %r15d, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_idx_notfound:
+                movl $-1, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_trim(str) → new KofString without leading/trailing whitespace
+     */
+    private static void emitStringTrim(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_trim
+            .type kof_string_trim, @function
+            kof_string_trim:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                xorl %r13d, %r13d
+            .Lkof_trim_lead:
+                cmpl %r12d, %r13d
+                jge .Lkof_trim_done
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $32, %al
+                je .Lkof_trim_skip
+                cmpb $9, %al
+                je .Lkof_trim_skip
+                cmpb $10, %al
+                je .Lkof_trim_skip
+                cmpb $13, %al
+                je .Lkof_trim_skip
+                jmp .Lkof_trim_trail
+            .Lkof_trim_skip:
+                incl %r13d
+                jmp .Lkof_trim_lead
+            .Lkof_trim_trail:
+                movl %r12d, %r14d
+            .Lkof_trim_trail_loop:
+                cmpl %r13d, %r14d
+                jle .Lkof_trim_done
+                decl %r14d
+                movzbl 24(%rbx,%r14), %eax
+                cmpb $32, %al
+                je .Lkof_trim_trail_loop
+                cmpb $9, %al
+                je .Lkof_trim_trail_loop
+                cmpb $10, %al
+                je .Lkof_trim_trail_loop
+                cmpb $13, %al
+                je .Lkof_trim_trail_loop
+                incl %r14d
+            .Lkof_trim_done:
+                movl %r14d, %eax
+                subl %r13d, %eax
+                movl %eax, %r12d
+                leal 25(%r12), %edi
+                call kof_alloc
+                movq %rax, %r15
+                movl $1, (%r15)
+                movl $0, 4(%r15)
+                movq $0, 8(%r15)
+                movl %r12d, 16(%r15)
+                movl $0, 20(%r15)
+                leaq 24(%r15), %rdi
+                leaq 24(%rbx), %rsi
+                addq %r13, %rsi
+                movl %r12d, %edx
+                call kof_memcpy
+                movb $0, 24(%r15,%r12)
+                movq %r15, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_to_upper(str) and kof_string_to_lower(str) — ASCII case conversion
+     */
+    private static void emitStringCase(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_to_upper
+            .type kof_string_to_upper, @function
+            kof_string_to_upper:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                leal 25(%r12), %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, (%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl %r12d, 16(%r13)
+                movl $0, 20(%r13)
+                xorl %ecx, %ecx
+            .Lkof_upper_loop:
+                cmpl %r12d, %ecx
+                jge .Lkof_upper_done
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $97, %al
+                jb .Lkof_upper_store
+                cmpb $122, %al
+                ja .Lkof_upper_store
+                subl $32, %eax
+            .Lkof_upper_store:
+                movb %al, 24(%r13,%rcx)
+                incq %rcx
+                jmp .Lkof_upper_loop
+            .Lkof_upper_done:
+                movb $0, 24(%r13,%r12)
+                movq %r13, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .globl kof_string_to_lower
+            .type kof_string_to_lower, @function
+            kof_string_to_lower:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                leal 25(%r12), %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, (%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl %r12d, 16(%r13)
+                movl $0, 20(%r13)
+                xorl %ecx, %ecx
+            .Lkof_lower_loop:
+                cmpl %r12d, %ecx
+                jge .Lkof_lower_done
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $65, %al
+                jb .Lkof_lower_store
+                cmpb $90, %al
+                ja .Lkof_lower_store
+                addl $32, %eax
+            .Lkof_lower_store:
+                movb %al, 24(%r13,%rcx)
+                incq %rcx
+                jmp .Lkof_lower_loop
+            .Lkof_lower_done:
+                movb $0, 24(%r13,%r12)
+                movq %r13, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_replace(str, from, to) → new KofString with all occurrences of
+     * the single-byte char 'from' replaced by 'to' (JVM replace(char,char) semantics).
+     */
+    private static void emitStringReplace(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_replace
+            .type kof_string_replace, @function
+            kof_string_replace:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movl %edx, %r13d
+                movl 16(%rbx), %r14d
+                leal 25(%r14), %edi
+                call kof_alloc
+                movq %rax, %r15
+                movl $1, (%r15)
+                movl $0, 4(%r15)
+                movq $0, 8(%r15)
+                movl %r14d, 16(%r15)
+                movl $0, 20(%r15)
+                xorl %ecx, %ecx
+            .Lkof_replace_loop:
+                cmpl %r14d, %ecx
+                jge .Lkof_replace_done
+                movzbl 24(%rbx,%rcx), %eax
+                cmpl %r12d, %eax
+                jne .Lkof_replace_store
+                movl %r13d, %eax
+            .Lkof_replace_store:
+                movb %al, 24(%r15,%rcx)
+                incq %rcx
+                jmp .Lkof_replace_loop
+            .Lkof_replace_done:
+                movb $0, 24(%r15,%r14)
+                movq %r15, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_equals_ignore_case(a, b) → bool (ASCII case-insensitive)
+     */
+    private static void emitStringEqualsIgnoreCase(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_equals_ignore_case
+            .type kof_string_equals_ignore_case, @function
+            kof_string_equals_ignore_case:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                movl 16(%r12), %r14d
+                cmpl %r14d, %r13d
+                jne .Lkof_eqic_no
+                xorl %ecx, %ecx
+            .Lkof_eqic_loop:
+                cmpl %r13d, %ecx
+                jge .Lkof_eqic_yes
+                movzbl 24(%rbx,%rcx), %eax
+                movzbl 24(%r12,%rcx), %edx
+                cmpl %edx, %eax
+                je .Lkof_eqic_next
+                cmpb $65, %al
+                jb .Lkof_eqic_no
+                cmpb $90, %al
+                ja .Lkof_eqic_try_up
+                addl $32, %eax
+                cmpl %edx, %eax
+                je .Lkof_eqic_next
+                jmp .Lkof_eqic_no
+            .Lkof_eqic_try_up:
+                cmpb $97, %al
+                jb .Lkof_eqic_no
+                cmpb $122, %al
+                ja .Lkof_eqic_no
+                subl $32, %eax
+                cmpl %edx, %eax
+                je .Lkof_eqic_next
+                jmp .Lkof_eqic_no
+            .Lkof_eqic_next:
+                incq %rcx
+                jmp .Lkof_eqic_loop
+            .Lkof_eqic_yes:
+                movl $1, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_eqic_no:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_split(str, sep) → KofArray of KofString
+     * Splits on the single-byte separator (JVM split(String) for one-char seps).
+     */
+    private static void emitStringSplit(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_split
+            .type kof_string_split, @function
+            kof_string_split:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                pushq %r8
+                pushq %r9
+                pushq %r10
+                pushq %r11
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movl 16(%rbx), %r13d
+                movl $1, %r14d
+                xorl %ecx, %ecx
+            .Lkof_split_count:
+                cmpl %r13d, %ecx
+                jge .Lkof_split_alloc
+                movzbl 24(%rbx,%rcx), %eax
+                cmpl %r12d, %eax
+                jne .Lkof_split_count_next
+                incl %r14d
+            .Lkof_split_count_next:
+                incq %rcx
+                jmp .Lkof_split_count
+            .Lkof_split_alloc:
+                movl %r14d, %edi
+                movq $8, %rsi
+                call kof_array_alloc
+                movq %rax, %r15
+                xorl %r8d, %r8d
+                xorl %ecx, %ecx
+                xorl %r9d, %r9d
+            .Lkof_split_outer:
+                cmpl %r13d, %ecx
+                jge .Lkof_split_lastpiece
+                movzbl 24(%rbx,%rcx), %eax
+                cmpl %r12d, %eax
+                jne .Lkof_split_outer_next
+            .Lkof_split_piece:
+                movl %ecx, %eax
+                subl %r9d, %eax
+                movl %eax, %r10d
+                movq %rcx, 0(%rsp)
+                movq %r9, 8(%rsp)
+                movq %r10, 16(%rsp)
+                movq %r8, 24(%rsp)
+                leal 25(%r10), %edi
+                call kof_alloc
+                movq %rax, %r11
+                movq 24(%rsp), %r8
+                movq 16(%rsp), %r10
+                movq 8(%rsp), %r9
+                movl $1, (%r11)
+                movl $0, 4(%r11)
+                movq $0, 8(%r11)
+                movl %r10d, 16(%r11)
+                movl $0, 20(%r11)
+                leaq 24(%r11), %rdi
+                leaq 24(%rbx), %rsi
+                addq %r9, %rsi
+                movl %r10d, %edx
+                call kof_memcpy
+                movb $0, 24(%r11,%r10)
+                movq %r11, %rax
+                movq %r8, %rcx
+                shlq $3, %rcx
+                movq %rax, 24(%r15,%rcx)
+                movq 0(%rsp), %rcx
+                incl %r8d
+                cmpl %r13d, %ecx
+                jge .Lkof_split_done
+                incl %ecx
+                movq %rcx, %r9
+                jmp .Lkof_split_outer
+            .Lkof_split_outer_next:
+                incq %rcx
+                jmp .Lkof_split_outer
+            .Lkof_split_lastpiece:
+                cmpl %r13d, %r9d
+                jge .Lkof_split_done
+                movl %r13d, %ecx
+                jmp .Lkof_split_piece
+            .Lkof_split_done:
+                movq %r15, %rax
+                popq %r11
+                popq %r10
+                popq %r9
+                popq %r8
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12

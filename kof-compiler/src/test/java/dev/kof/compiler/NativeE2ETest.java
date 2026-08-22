@@ -491,6 +491,50 @@ class NativeE2ETest {
     }
 
     @Test
+    void execStringIndexOf(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var s = "Hello World"
+                println(s.indexOf("W"))
+                println(s.indexOf("o"))
+                println(s.indexOf("zz"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "6\n4\n-1");
+    }
+
+    @Test
+    void execStringTrimCase(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("  padded  ".trim())
+                println("hello".toUpperCase())
+                println("HELLO".toLowerCase())
+                println("a-b-c".replace(45, 95))
+                println("abc".equalsIgnoreCase("ABC"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "padded\nHELLO\nhello\na_b_c\ntrue");
+    }
+
+    @Test
+    void execStringSplit(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var parts = "a,b,c".split(",")
+                println(parts.length)
+                println(parts[0])
+                println(parts[1])
+                println(parts[2])
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "3\na\nb\nc");
+    }
+
+    @Test
     void execDoWhile(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """

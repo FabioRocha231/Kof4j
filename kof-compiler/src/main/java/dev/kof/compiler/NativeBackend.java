@@ -647,6 +647,57 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        if (kc.kind() == KofCallKind.INSTANCE && "indexOf".equals(kc.methodName())) {
+            String[] regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = kc.parameterTypes().size() - 1; i >= 0; i--) {
+                sb.append("    popq ").append(regs[i + 1]).append("\n");
+            }
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_index_of\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "trim".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_trim\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "toUpperCase".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_to_upper\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "toLowerCase".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_to_lower\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "replace".equals(kc.methodName())) {
+            sb.append("    popq %rdx\n");
+            sb.append("    popq %rsi\n");
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_replace\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "equalsIgnoreCase".equals(kc.methodName())) {
+            sb.append("    popq %rsi\n");
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_equals_ignore_case\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "split".equals(kc.methodName())) {
+            sb.append("    popq %rsi\n");
+            sb.append("    movzbl 24(%rsi), %esi\n");
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_split\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
             Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
             if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name())
