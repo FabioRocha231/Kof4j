@@ -288,6 +288,8 @@ class SemanticAnalyzer {
                     expressionTypes.put(ret.value(), valueType);
                 }
             }
+            case BreakStmt ignored -> {}
+            case ContinueStmt ignored -> {}
             case IfStmt ifStmt -> {
                 inferType(ifStmt.condition(), scope);
                 SymbolTable ifScope = scope.enterScope();

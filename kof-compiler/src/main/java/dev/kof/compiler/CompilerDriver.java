@@ -11,6 +11,8 @@ public class CompilerDriver {
     private IRModule currentModule;
     private CompilationUnitNode currentUnit;
     private SemanticAnalyzer semanticAnalyzer;
+    private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
+    private final java.util.Deque<LabelId> continueLabels = new java.util.ArrayDeque<>();
 
     public CompilationResult compile(Path sourceFile, Path outputDir) {
         return compile(sourceFile, outputDir, Target.JVM);
@@ -152,6 +154,14 @@ public class CompilerDriver {
                 }
                 yield localIdx;
             }
+            case BreakStmt ignored -> {
+                if (!breakLabels.isEmpty()) ops.add(new KofJump(breakLabels.peek()));
+                yield localIdx;
+            }
+            case ContinueStmt ignored -> {
+                if (!continueLabels.isEmpty()) ops.add(new KofJump(continueLabels.peek()));
+                yield localIdx;
+            }
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
                     localIdx = emitExpression(es.expression(), ops, owner, localIdx, locals);
@@ -181,17 +191,19 @@ public class CompilerDriver {
             case IfStmt ifStmt -> {
                 LabelId elseLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
+                LabelId thenLabel = LabelId.create();
                 if (ifStmt.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(invertComparison(bin.operator()), elseLabel, endLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), thenLabel, elseLabel));
                 } else {
                     localIdx = emitExpression(ifStmt.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
-                    ops.add(new KofConditionalJump(KofComparison.EQ, elseLabel, endLabel));
+                    ops.add(new KofConditionalJump(KofComparison.NE, thenLabel, elseLabel));
                 }
+                ops.add(new KofLabel(thenLabel));
                 localIdx = emitStatement(ifStmt.thenBranch(), ops, owner, localIdx, locals, returnType);
-                if (ifStmt.elseBranch() != null) ops.add(new KofJump(endLabel));
+                ops.add(new KofJump(endLabel));
                 ops.add(new KofLabel(elseLabel));
                 if (ifStmt.elseBranch() != null) {
                     localIdx = emitStatement(ifStmt.elseBranch(), ops, owner, localIdx, locals, returnType);
@@ -202,17 +214,23 @@ public class CompilerDriver {
             case WhileStmt ws -> {
                 LabelId startLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
+                LabelId bodyLabel = LabelId.create();
                 ops.add(new KofLabel(startLabel));
                 if (ws.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(invertComparison(bin.operator()), endLabel, startLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), bodyLabel, endLabel));
                 } else {
                     localIdx = emitExpression(ws.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
-                    ops.add(new KofConditionalJump(KofComparison.EQ, endLabel, startLabel));
+                    ops.add(new KofConditionalJump(KofComparison.NE, bodyLabel, endLabel));
                 }
+                ops.add(new KofLabel(bodyLabel));
+                breakLabels.push(endLabel);
+                continueLabels.push(startLabel);
                 localIdx = emitStatement(ws.body(), ops, owner, localIdx, locals, returnType);
+                breakLabels.pop();
+                continueLabels.pop();
                 ops.add(new KofJump(startLabel));
                 ops.add(new KofLabel(endLabel));
                 yield localIdx;
@@ -221,20 +239,15 @@ public class CompilerDriver {
                 LabelId startLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
                 ops.add(new KofLabel(startLabel));
+                breakLabels.push(endLabel);
+                continueLabels.push(startLabel);
                 localIdx = emitStatement(dws.body(), ops, owner, localIdx, locals, returnType);
+                breakLabels.pop();
+                continueLabels.pop();
                 if (dws.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(
-                            switch (bin.operator()) {
-                                case ">" -> KofComparison.GT;
-                                case "<" -> KofComparison.LT;
-                                case ">=" -> KofComparison.GE;
-                                case "<=" -> KofComparison.LE;
-                                case "==" -> KofComparison.EQ;
-                                case "!=" -> KofComparison.NE;
-                                default -> KofComparison.NE;
-                            }, startLabel, endLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), startLabel, endLabel));
                 } else {
                     localIdx = emitExpression(dws.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
@@ -246,20 +259,28 @@ public class CompilerDriver {
             case ForStmt fs -> {
                 LabelId startLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
+                LabelId continueLabel = LabelId.create();
+                LabelId bodyLabel = LabelId.create();
                 if (fs.init() != null) localIdx = emitStatement(fs.init(), ops, owner, localIdx, locals, returnType);
                 ops.add(new KofLabel(startLabel));
                 if (fs.condition() != null) {
                     if (fs.condition() instanceof BinaryExpr bin && isComparisonOp(bin.operator())) {
                         localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                         localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                        ops.add(new KofConditionalJump(invertComparison(bin.operator()), endLabel, startLabel));
+                        ops.add(new KofConditionalJump(mapComparison(bin.operator()), bodyLabel, endLabel));
                     } else {
                         localIdx = emitExpression(fs.condition(), ops, owner, localIdx, locals);
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
-                        ops.add(new KofConditionalJump(KofComparison.EQ, endLabel, startLabel));
+                        ops.add(new KofConditionalJump(KofComparison.NE, bodyLabel, endLabel));
                     }
                 }
+                ops.add(new KofLabel(bodyLabel));
+                breakLabels.push(endLabel);
+                continueLabels.push(continueLabel);
                 localIdx = emitStatement(fs.body(), ops, owner, localIdx, locals, returnType);
+                breakLabels.pop();
+                continueLabels.pop();
+                ops.add(new KofLabel(continueLabel));
                 if (fs.update() != null) {
                     if (fs.update() instanceof UnaryExpr ue && "++".equals(ue.operator()) && ue.operand() instanceof IdentifierExpr id) {
                         int idx = findLocalIndex(id.name(), locals);
@@ -392,6 +413,15 @@ public class CompilerDriver {
                     ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                } else if (("==".equals(bin.operator()) || "!=".equals(bin.operator()))
+                        && (Type.isString(leftType) || Type.isString(rightType))) {
+                    ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_equals",
+                            List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                            Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
+                    if ("!=".equals(bin.operator())) {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                        ops.add(new KofBinary(KofBinaryOp.SUB, Type.PrimitiveType.INT));
+                    }
                 } else {
                     Type operandType = leftType;
                     switch (bin.operator()) {
@@ -400,6 +430,12 @@ public class CompilerDriver {
                         case "*" -> ops.add(new KofBinary(KofBinaryOp.MUL, operandType));
                         case "/" -> ops.add(new KofBinary(KofBinaryOp.DIV, operandType));
                         case "%" -> ops.add(new KofBinary(KofBinaryOp.MOD, operandType));
+                        case "==" -> ops.add(new KofBinary(KofBinaryOp.EQ, operandType));
+                        case "!=" -> ops.add(new KofBinary(KofBinaryOp.NE, operandType));
+                        case "<" -> ops.add(new KofBinary(KofBinaryOp.LT, operandType));
+                        case "<=" -> ops.add(new KofBinary(KofBinaryOp.LE, operandType));
+                        case ">" -> ops.add(new KofBinary(KofBinaryOp.GT, operandType));
+                        case ">=" -> ops.add(new KofBinary(KofBinaryOp.GE, operandType));
                         default -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
                     }
                 }
@@ -632,6 +668,7 @@ public class CompilerDriver {
                 }
                 if ("instanceof".equals(bin.operator())) yield Type.PrimitiveType.BOOL;
                 if ("as".equals(bin.operator())) yield rightType;
+                if (isComparisonOp(bin.operator())) yield Type.PrimitiveType.BOOL;
                 yield leftType;
             }
             case MethodCallExpr mc -> {
@@ -737,6 +774,18 @@ public class CompilerDriver {
 
     private boolean isComparisonOp(String op) {
         return ">".equals(op) || "<".equals(op) || ">=".equals(op) || "<=".equals(op) || "==".equals(op) || "!=".equals(op);
+    }
+
+    private KofComparison mapComparison(String op) {
+        return switch (op) {
+            case ">" -> KofComparison.GT;
+            case "<" -> KofComparison.LT;
+            case ">=" -> KofComparison.GE;
+            case "<=" -> KofComparison.LE;
+            case "==" -> KofComparison.EQ;
+            case "!=" -> KofComparison.NE;
+            default -> KofComparison.NE;
+        };
     }
 
     private KofComparison invertComparison(String op) {

@@ -535,46 +535,6 @@ final class NativeRuntime {
     }
 
     /**
-     * kof_string_equals(str1, str2) → bool
-     * Compares two KofStrings for byte-level equality.
-     * %rdi = str1, %rsi = str2
-     * Returns 1 if equal, 0 otherwise in %eax.
-     */
-    private static void emitStringEquals(StringBuilder sb) {
-        sb.append("""
-            .globl kof_string_equals
-            .type kof_string_equals, @function
-            kof_string_equals:
-                pushq %rbx
-                pushq %r12
-                movq %rdi, %rbx
-                movq %rsi, %r12
-                movl 16(%rbx), %eax
-                cmpl 16(%r12), %eax
-                jne .Lkof_str_eq_no
-                xorq %rcx, %rcx
-            .Lkof_str_eq_loop:
-                cmpl %ecx, %eax
-                jg .Lkof_str_eq_cmp
-                movl $1, %eax
-                popq %r12
-                popq %rbx
-                ret
-            .Lkof_str_eq_cmp:
-                movzbl 24(%rbx,%rcx), %edx
-                cmpl %edx, 24(%r12,%rcx)
-                jne .Lkof_str_eq_no
-                incq %rcx
-                jmp .Lkof_str_eq_loop
-            .Lkof_str_eq_no:
-                movl $0, %eax
-                popq %r12
-                popq %rbx
-                ret
-            """);
-    }
-
-    /**
      * kof_print_string(str_ptr) — prints a KofString to stdout.
      * Uses stored length (no strlen scan).
      * %rdi = pointer to KofString
@@ -609,6 +569,47 @@ final class NativeRuntime {
                 call kof_print_string
                 leaq .Lnewline(%rip), %rdi
                 call kof_print
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_equals(str1, str2) → bool
+     * Content equality of two KofStrings.
+     */
+    private static void emitStringEquals(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_equals
+            .type kof_string_equals, @function
+            kof_string_equals:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                cmpl %r13d, 16(%r12)
+                jne .Lkof_strequals_no
+                xorq %rcx, %rcx
+            .Lkof_strequals_loop:
+                cmpl %r13d, %ecx
+                jge .Lkof_strequals_yes
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb %al, 24(%r12,%rcx)
+                jne .Lkof_strequals_no
+                incq %rcx
+                jmp .Lkof_strequals_loop
+            .Lkof_strequals_yes:
+                movl $1, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_strequals_no:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
                 popq %rbx
                 ret
             """);

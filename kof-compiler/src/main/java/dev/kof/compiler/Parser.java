@@ -432,6 +432,18 @@ class Parser {
         if (check(TokenType.SWITCH)) {
             return parseSwitchStatement();
         }
+        if (check(TokenType.BREAK)) {
+            SourcePosition p = pos();
+            advance();
+            expectSemicolon();
+            return new BreakStmt(p);
+        }
+        if (check(TokenType.CONTINUE)) {
+            SourcePosition p = pos();
+            advance();
+            expectSemicolon();
+            return new ContinueStmt(p);
+        }
         if (check(TokenType.VAR, TokenType.VAL)) {
             return parseVarDecl();
         }

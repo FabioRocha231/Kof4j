@@ -491,6 +491,12 @@ public class NativeBackend implements Backend {
             case MUL -> sb.append("    imulq %rbx, %rax\n");
             case DIV -> sb.append("    cqo\n    idivq %rbx\n");
             case MOD -> sb.append("    cqo\n    idivq %rbx\n    movq %rdx, %rax\n");
+            case EQ -> sb.append("    cmpq %rbx, %rax\n    sete %al\n    movzbl %al, %eax\n");
+            case NE -> sb.append("    cmpq %rbx, %rax\n    setne %al\n    movzbl %al, %eax\n");
+            case LT -> sb.append("    cmpq %rbx, %rax\n    setl %al\n    movzbl %al, %eax\n");
+            case LE -> sb.append("    cmpq %rbx, %rax\n    setle %al\n    movzbl %al, %eax\n");
+            case GT -> sb.append("    cmpq %rbx, %rax\n    setg %al\n    movzbl %al, %eax\n");
+            case GE -> sb.append("    cmpq %rbx, %rax\n    setge %al\n    movzbl %al, %eax\n");
         }
         sb.append("    pushq %rax\n");
     }

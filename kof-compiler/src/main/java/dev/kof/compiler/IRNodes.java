@@ -93,7 +93,7 @@ record KofPutStatic(Type ownerType, String name, Type fieldType) implements KofO
 
 // ── Arithmetic ────────────────────────────────────────────────────
 
-enum KofBinaryOp { ADD, SUB, MUL, DIV, MOD }
+enum KofBinaryOp { ADD, SUB, MUL, DIV, MOD, EQ, NE, LT, LE, GT, GE }
 enum KofUnaryOp { NEG, NOT }
 
 record KofBinary(KofBinaryOp op, Type operandType) implements KofOperation {

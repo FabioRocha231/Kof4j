@@ -340,4 +340,107 @@ class NativeE2ETest {
             """);
         runNative(source, tempDir.resolve("out"), "true\ntrue");
     }
+
+    @Test
+    void execIfElse(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 10
+                if (x > 5) {
+                    println("greater")
+                } else {
+                    println("smaller")
+                }
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "greater");
+    }
+
+    @Test
+    void execWhileLoopRuns(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                while (i < 3) {
+                    println(i)
+                    i = i + 1
+                }
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "0\n1\n2");
+    }
+
+    @Test
+    void execForLoopRuns(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                for (var i = 0; i < 3; i++) {
+                    println(i)
+                }
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "0\n1\n2");
+    }
+
+    @Test
+    void execBreak(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                while (true) {
+                    if (i == 3) { break }
+                    println(i)
+                    i = i + 1
+                }
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "0\n1\n2");
+    }
+
+    @Test
+    void execContinue(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                while (i < 5) {
+                    i = i + 1
+                    if (i == 2) { continue }
+                    println(i)
+                }
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "1\n3\n4\n5");
+    }
+
+    @Test
+    void execStringEquals(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = "Hello"
+                var b = "Hello"
+                println(a == b)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "true");
+    }
+
+    @Test
+    void execIntComparison(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println(3 < 5)
+                println(3 > 5)
+                println(3 == 3)
+                println(3 != 4)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "true\nfalse\ntrue\ntrue");
+    }
 }

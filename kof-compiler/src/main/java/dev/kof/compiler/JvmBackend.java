@@ -107,14 +107,32 @@ class JvmBackend implements Backend {
                     ps.ownerType() instanceof Type.ClassType ct ? ct.name() : "?");
             mv.visitFieldInsn(PUTSTATIC, owner, ps.name(), JvmTypeMapper.toDescriptor(ps.fieldType()));
         } else if (op instanceof KofBinary kb) {
-            int opcode = switch (kb.op()) {
-                case ADD -> opcodeForArithmetic(kb.operandType(), IADD);
-                case SUB -> opcodeForArithmetic(kb.operandType(), ISUB);
-                case MUL -> opcodeForArithmetic(kb.operandType(), IMUL);
-                case DIV -> opcodeForArithmetic(kb.operandType(), IDIV);
-                case MOD -> opcodeForArithmetic(kb.operandType(), IREM);
-            };
-            mv.visitInsn(opcode);
+            switch (kb.op()) {
+                case ADD -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IADD));
+                case SUB -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), ISUB));
+                case MUL -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IMUL));
+                case DIV -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IDIV));
+                case MOD -> mv.visitInsn(opcodeForArithmetic(kb.operandType(), IREM));
+                case EQ, NE, LT, LE, GT, GE -> {
+                    int cmpOpcode = switch (kb.op()) {
+                        case EQ -> IF_ICMPEQ;
+                        case NE -> IF_ICMPNE;
+                        case LT -> IF_ICMPLT;
+                        case LE -> IF_ICMPLE;
+                        case GT -> IF_ICMPGT;
+                        case GE -> IF_ICMPGE;
+                        default -> IF_ICMPEQ;
+                    };
+                    Label trueLabel = new Label();
+                    Label endLabel = new Label();
+                    mv.visitJumpInsn(cmpOpcode, trueLabel);
+                    mv.visitInsn(ICONST_0);
+                    mv.visitJumpInsn(GOTO, endLabel);
+                    mv.visitLabel(trueLabel);
+                    mv.visitInsn(ICONST_1);
+                    mv.visitLabel(endLabel);
+                }
+            }
         } else if (op instanceof KofUnary ku) {
             if (ku.op() == KofUnaryOp.NEG) {
                 mv.visitInsn(opcodeForArithmetic(ku.operandType(), INEG));

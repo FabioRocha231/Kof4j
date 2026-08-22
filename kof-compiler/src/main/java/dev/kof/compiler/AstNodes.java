@@ -146,6 +146,12 @@ record VarDeclStmt(SourcePosition position, String type, String name,
 record ThrowStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
 }
 
+record BreakStmt(SourcePosition position) implements StatementNode {
+}
+
+record ContinueStmt(SourcePosition position) implements StatementNode {
+}
+
 record SwitchCase(SourcePosition position, ExpressionNode value, List<StatementNode> body) implements AstNode {
 }
 
