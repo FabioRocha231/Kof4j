@@ -617,3 +617,21 @@ estratégia.
 13. Kof deve esconder complexidade sem esconder poder.
 14. Compatibilidade com legado é feature.
 15. Nenhuma decisão futura deve quebrar o core agnostic da linguagem.
+
+---
+
+## 21. Legacy Migration Platform (plano futuro)
+
+Iniciativa de longo prazo para analisar, recuperar, traduzir e modernizar
+sistemas legados para Kof — **fora do escopo 0.0.x**.
+
+- Documento central: `LEGACY_MIGRATION.md`
+- Componentes planejados: `kof inspect`, `kof decompile`, `kof translate`,
+  `kof migrate`, `kof compare`
+- Arquitetura: `Legacy Input → Legacy Semantic IR → Kof AST → Kof IR → Backend`
+- Java é origem suportada, nunca representação intermediária obrigatória
+- Documentos relacionados: `DECOMPILER.md`, `TRANSLATOR.md`, `LEGACY_IR.md`,
+  `DIFFERENTIAL_TESTING.md`
+
+**Não implementar nada desta seção antes da consolidação da linguagem,
+compilador, runtime, stdlib e tooling.**
