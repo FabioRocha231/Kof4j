@@ -487,7 +487,7 @@ public class NativeBackend implements Backend {
         sb.append("    popq %rax\n");
         switch (kb.op()) {
             case ADD -> sb.append("    addq %rbx, %rax\n");
-            case SUB -> sb.append("    subq %rax, %rbx\n    movq %rbx, %rax\n");
+            case SUB -> sb.append("    subq %rbx, %rax\n");
             case MUL -> sb.append("    imulq %rbx, %rax\n");
             case DIV -> sb.append("    cqo\n    idivq %rbx\n");
             case MOD -> sb.append("    cqo\n    idivq %rbx\n    movq %rdx, %rax\n");

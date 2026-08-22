@@ -443,4 +443,79 @@ class NativeE2ETest {
             """);
         runNative(source, tempDir.resolve("out"), "true\nfalse\ntrue\ntrue");
     }
+
+    @Test
+    void execSwitch(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 2
+                switch (x) {
+                    case 1: println("one")
+                    case 2: println("two")
+                    default: println("other")
+                }
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "two");
+    }
+
+    @Test
+    void execDoWhile(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var i = 0
+                do {
+                    println(i)
+                    i = i + 1
+                } while (i < 3)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "0\n1\n2");
+    }
+
+    @Test
+    void execArray(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var arr = new Int[3]
+                arr[0] = 10
+                arr[1] = 20
+                arr[2] = 30
+                println(arr[1])
+                println(arr.length)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "20\n3");
+    }
+
+    @Test
+    void execRecursion(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun fib(Int n): Int {
+                if (n <= 1) { return n }
+                return fib(n - 1) + fib(n - 2)
+            }
+            fun main() {
+                println(fib(10))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "55");
+    }
+
+    @Test
+    void execSubtraction(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println(10 - 3)
+                println(3 - 10)
+                println(2 - 1 - 1)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "7\n-7\n0");
+    }
 }

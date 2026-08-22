@@ -326,23 +326,35 @@ public class CompilerDriver {
             }
             case SwitchStmt ss -> {
                 LabelId endLabel = LabelId.create();
+                LabelId defaultLabel = LabelId.create();
+                Type switchType = inferExprType(ss.expression(), locals);
+                int switchTmp = localIdx++;
                 localIdx = emitExpression(ss.expression(), ops, owner, localIdx, locals);
-                List<LabelId> caseLabels = new ArrayList<>();
+                ops.add(new KofStoreLocal(switchType, switchTmp));
+                locals.add(new IRLocalVariable(switchTmp, "#switch", switchType));
+                List<LabelId> testLabels = new ArrayList<>();
+                List<LabelId> bodyLabels = new ArrayList<>();
                 for (int i = 0; i < ss.cases().size(); i++) {
-                    caseLabels.add(LabelId.create());
+                    testLabels.add(LabelId.create());
+                    bodyLabels.add(LabelId.create());
                 }
                 for (int i = 0; i < ss.cases().size(); i++) {
+                    if (i > 0) ops.add(new KofLabel(testLabels.get(i)));
                     SwitchCase sc = ss.cases().get(i);
+                    ops.add(new KofLoadLocal(switchType, switchTmp));
                     localIdx = emitExpression(sc.value(), ops, owner, localIdx, locals);
-                    ops.add(new KofLoadLocal(Type.UnknownType.UNKNOWN, 0));
-                    ops.add(new KofBinary(KofBinaryOp.SUB, Type.PrimitiveType.INT));
-                    ops.add(new KofConditionalJump(KofComparison.EQ, caseLabels.get(i), endLabel));
+                    ops.add(new KofBinary(KofBinaryOp.SUB, switchType));
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                    ops.add(new KofConditionalJump(KofComparison.EQ, bodyLabels.get(i),
+                            i + 1 < ss.cases().size() ? testLabels.get(i + 1) : defaultLabel));
                 }
                 for (int i = 0; i < ss.cases().size(); i++) {
                     SwitchCase sc = ss.cases().get(i);
-                    ops.add(new KofLabel(caseLabels.get(i)));
+                    ops.add(new KofLabel(bodyLabels.get(i)));
                     localIdx = emitStatement(new BlockStmt(sc.position(), sc.body()), ops, owner, localIdx, locals, returnType);
+                    ops.add(new KofJump(endLabel));
                 }
+                ops.add(new KofLabel(defaultLabel));
                 if (!ss.defaultBody().isEmpty()) {
                     localIdx = emitStatement(new BlockStmt(ss.defaultBody().get(0).position(), ss.defaultBody()), ops, owner, localIdx, locals, returnType);
                 }
@@ -685,6 +697,12 @@ public class CompilerDriver {
                         if ("substring".equals(mn) || "concat".equals(mn) || "trim".equals(mn)
                                 || "toUpperCase".equals(mn) || "toLowerCase".equals(mn) || "valueOf".equals(mn)) {
                             yield BuiltinTypes.STRING;
+                        }
+                    }
+                } else if (currentUnit != null) {
+                    for (AstNode d : currentUnit.declarations()) {
+                        if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
+                            yield toType(fn.returnType());
                         }
                     }
                 }
