@@ -644,4 +644,55 @@ class NativeE2ETest {
             """);
         runNative(source, tempDir.resolve("out"), "7");
     }
+
+    @Test
+    void execListInt(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var l = new List<Int>()
+                l.add(10)
+                l.add(20)
+                l.add(30)
+                println(l.get(1))
+                println(l.size)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "20\n3");
+    }
+
+    @Test
+    void execListGrow(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var l = new List<Int>()
+                for (var i = 0; i < 10; i++) {
+                    l.add(i)
+                }
+                var sum = 0
+                for (var i = 0; i < l.size; i++) {
+                    sum = sum + l.get(i)
+                }
+                println(sum)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "45");
+    }
+
+    @Test
+    void execListString(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var l = new List<String>()
+                l.add("a")
+                l.add("b")
+                l.add("c")
+                println(l.get(2))
+                println(l.size)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "c\n3");
+    }
 }
