@@ -432,8 +432,8 @@ public class CompilerDriver {
                             List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                             Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
                     if ("!=".equals(bin.operator())) {
-                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                        ops.add(new KofBinary(KofBinaryOp.SUB, Type.PrimitiveType.INT));
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                        ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
                     }
                 } else {
                     Type operandType = leftType;
@@ -1012,6 +1012,17 @@ public class CompilerDriver {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
+            if (semanticAnalyzer != null) {
+                SymbolTable.MethodSymbol resolved = semanticAnalyzer.getResolvedMethod(mc);
+                if (resolved != null) {
+                    Type resolvedType = resolved.returnType();
+                    if (Type.isVoid(resolvedType)) return false;
+                    return !(resolvedType instanceof Type.UnknownType);
+                }
+            }
+            Type t = inferExprType(mc, List.of());
+            if (t instanceof Type.UnknownType || Type.isVoid(t)) return false;
+            return true;
         }
         return true;
     }

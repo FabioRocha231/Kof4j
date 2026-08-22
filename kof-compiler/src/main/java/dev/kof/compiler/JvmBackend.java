@@ -87,10 +87,14 @@ class JvmBackend implements Backend {
         } else if (op instanceof KofStoreLocal sl) {
             mv.visitVarInsn(storeVarOpcode(sl.type()), sl.index());
         } else if (op instanceof KofLoadField lf) {
-            String owner = JvmTypeMapper.toInternalName(
-                    lf.ownerType() instanceof Type.ClassType ct ? ct.packageName() : "",
-                    lf.ownerType() instanceof Type.ClassType ct ? ct.name() : "?");
-            mv.visitFieldInsn(GETFIELD, owner, lf.name(), JvmTypeMapper.toDescriptor(lf.fieldType()));
+            if (BuiltinTypes.isString(lf.ownerType()) && "length".equals(lf.name())) {
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "length", "()I", false);
+            } else {
+                String owner = JvmTypeMapper.toInternalName(
+                        lf.ownerType() instanceof Type.ClassType ct ? ct.packageName() : "",
+                        lf.ownerType() instanceof Type.ClassType ct ? ct.name() : "?");
+                mv.visitFieldInsn(GETFIELD, owner, lf.name(), JvmTypeMapper.toDescriptor(lf.fieldType()));
+            }
         } else if (op instanceof KofStoreField sf) {
             String owner = JvmTypeMapper.toInternalName(
                     sf.ownerType() instanceof Type.ClassType ct ? ct.packageName() : "",
@@ -151,6 +155,14 @@ class JvmBackend implements Backend {
                 case GE -> IF_ICMPGE;
             };
             mv.visitJumpInsn(opcode, resolveLabel(kc.trueLabel()));
+            mv.visitJumpInsn(GOTO, resolveLabel(kc.falseLabel()));
+        } else if (op instanceof KofCall kc && BuiltinTypes.isString(kc.ownerType())
+                && ("kof_string_concat".equals(kc.methodName()) || "kof_string_equals".equals(kc.methodName()))) {
+            if ("kof_string_concat".equals(kc.methodName())) {
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;", false);
+            } else {
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+            }
         } else if (op instanceof KofCall kc && BuiltinTypes.isList(kc.ownerType())) {
             switch (kc.methodName()) {
                 case "kof_list_new" -> {

@@ -2805,6 +2805,51 @@ class CompilerDriverTest {
     }
 
     @Test
+    void parse_genericCallAmbiguity(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun pick<T>(T x, T y): T {
+                return x
+            }
+            fun main() {
+                var a = 10
+                var b = 20
+                var lt = a < b
+                var le = a <= b
+                var arr = new Int[3]
+                var len = arr.length
+                var v = arr[0]
+                var n = pick<Int>(1, 2)
+                if (lt && le) {
+                    println(n + len + v)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Less-than must not be parsed as generic call");
+    }
+
+    @Test
+    void parse_genericCallAmbiguityLoop(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var l = new List<Int>()
+                for (var i = 0; i < l.size; i++) {
+                    l.add(i)
+                }
+                var sum = 0
+                for (var i = 0; i < l.size; i++) {
+                    sum = sum + l.get(i)
+                }
+                println(sum)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "i < l.size must not be parsed as generic call");
+    }
+
+    @Test
     void typeCheck_logicalOperators(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """

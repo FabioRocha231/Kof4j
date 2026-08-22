@@ -754,7 +754,7 @@ class Parser {
                     expr = new MethodCallExpr(pos(), expr, "", List.of(), args);
                 }
             } else if (check(TokenType.LESS) && (expr instanceof IdentifierExpr || expr instanceof FieldAccessExpr)
-                    && (checkNext(TokenType.IDENTIFIER) || isPrimitiveTypeAtNext())) {
+                    && looksLikeGenericCall()) {
                 List<String> typeArgs = parseCallTypeArguments();
                 List<ExpressionNode> args = parseArguments();
                 if (expr instanceof IdentifierExpr ie3) {
@@ -875,6 +875,44 @@ class Parser {
         }
         error("Expected type", "PARSE044");
         return "Object";
+    }
+
+    /**
+     * Disambiguation: a '<' after an identifier may be a less-than comparison or
+     * the start of call type arguments (e.g. listOf<Int>(...)). We only treat it
+     * as generic call when the token stream between '<' and the matching '>'
+     * consists solely of type-like tokens (identifiers, primitives, '.', ',')
+     * and the '>' is immediately followed by '('.
+     */
+    private boolean looksLikeGenericCall() {
+        if (!check(TokenType.LESS)) return false;
+        int i = pos + 1;
+        int depth = 1;
+        while (i < tokens.size()) {
+            Token t = tokens.get(i);
+            switch (t.type()) {
+                case LESS -> depth++;
+                case GREATER -> {
+                    depth--;
+                    if (depth == 0) return i + 1 < tokens.size() && tokens.get(i + 1).type() == TokenType.LPAREN;
+                }
+                case GREATER_GREATER -> {
+                    depth -= 2;
+                    if (depth == 0) return i + 1 < tokens.size() && tokens.get(i + 1).type() == TokenType.LPAREN;
+                }
+                case GREATER_GREATER_GREATER -> {
+                    depth -= 3;
+                    if (depth == 0) return i + 1 < tokens.size() && tokens.get(i + 1).type() == TokenType.LPAREN;
+                }
+                case IDENTIFIER, INT_TYPE, LONG_TYPE, FLOAT_TYPE, DOUBLE_TYPE, BOOL_TYPE,
+                        BYTE_TYPE, SHORT_TYPE, CHAR_TYPE, STRING_TYPE, DOT, COMMA -> { }
+                default -> {
+                    return false;
+                }
+            }
+            i++;
+        }
+        return false;
     }
 
     private List<String> parseCallTypeArguments() {
