@@ -380,7 +380,7 @@ class SemanticAnalyzer {
                     }
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
-                        && !knownClasses.containsKey(ie.name())) {
+                        && !"json".equals(ie.name()) && !knownClasses.containsKey(ie.name())) {
                     diagnostics.error("", 0, 0, 0,
                             "Undefined variable or type: '" + ie.name() + "'", "SEM011");
                 }

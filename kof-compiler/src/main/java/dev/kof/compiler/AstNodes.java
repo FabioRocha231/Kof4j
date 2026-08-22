@@ -91,7 +91,8 @@ record AssignmentExpr(SourcePosition position, ExpressionNode target,
 }
 
 record MethodCallExpr(SourcePosition position, ExpressionNode receiver,
-                      String methodName, List<ExpressionNode> arguments) implements ExpressionNode {
+                      String methodName, List<String> typeArguments,
+                      List<ExpressionNode> arguments) implements ExpressionNode {
 }
 
 record NewExpr(SourcePosition position, String typeName, List<String> typeArguments,

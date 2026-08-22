@@ -23,6 +23,7 @@ final class NativeRuntime {
         emitIntToString(sb);
         emitBoolToString(sb);
         emitListFunctions(sb);
+        emitJsonFunctions(sb);
         emitAlloc(sb);
         emitFree(sb);
         emitPanic(sb);
@@ -714,6 +715,624 @@ final class NativeRuntime {
                 movslq 16(%rdi), %rax
                 ret
             """);
+    }
+
+    /**
+     * JSON support.
+     * JSON builder layout (32 bytes):
+     *   +0  type_id (+4 flags, +8 vtable)
+     *   +16 length (bytes)
+     *   +20 capacity (bytes)
+     *   +24 data ptr
+     * List encode tags: 0=int, 1=string, 2=bool, 3=object
+     */
+    private static void emitJsonFunctions(StringBuilder sb) {
+        sb.append("""
+            .globl kof_json_builder_new
+            .type kof_json_builder_new, @function
+            kof_json_builder_new:
+                pushq %rbx
+                movq $32, %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $101, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl $0, 16(%rbx)
+                movl $64, 20(%rbx)
+                movq $64, %rdi
+                call kof_alloc
+                movq %rax, 24(%rbx)
+                movq %rbx, %rax
+                popq %rbx
+                ret
+
+            .globl kof_json_builder_grow
+            .type kof_json_builder_grow, @function
+            kof_json_builder_grow:
+                pushq %rbx
+                pushq %r13
+                movq %rdi, %rbx
+                movl 20(%rbx), %eax
+                shll $1, %eax
+                movl %eax, 20(%rbx)
+                movslq %eax, %rdi
+                call kof_alloc
+                movq %rax, %rcx
+                movq 24(%rbx), %rsi
+                movl 16(%rbx), %r13d
+                movslq %r13d, %r13
+                xorq %rdx, %rdx
+            .Lkof_json_bgr_copy:
+                cmpq %r13, %rdx
+                jge .Lkof_json_bgr_done
+                movb (%rsi,%rdx), %al
+                movb %al, (%rcx,%rdx)
+                incq %rdx
+                jmp .Lkof_json_bgr_copy
+            .Lkof_json_bgr_done:
+                movq %rcx, 24(%rbx)
+                movq %rbx, %rax
+                popq %r13
+                popq %rbx
+                ret
+
+            .globl kof_json_builder_char
+            .type kof_json_builder_char, @function
+            kof_json_builder_char:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movl 16(%rbx), %eax
+                cmpl 20(%rbx), %eax
+                jl .Lkof_json_bch_ok
+                movq %rbx, %rdi
+                call kof_json_builder_grow
+            .Lkof_json_bch_ok:
+                movl 16(%rbx), %eax
+                movslq %eax, %rcx
+                movq 24(%rbx), %rdx
+                movb %r12b, (%rdx,%rcx)
+                addl $1, 16(%rbx)
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_builder_str
+            .type kof_json_builder_str, @function
+            kof_json_builder_str:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%r12), %r13d
+            .Lkof_json_bst_grow_loop:
+                movl 16(%rbx), %eax
+                addl %r13d, %eax
+                cmpl 20(%rbx), %eax
+                jle .Lkof_json_bst_ok
+                movq %rbx, %rdi
+                call kof_json_builder_grow
+                jmp .Lkof_json_bst_grow_loop
+            .Lkof_json_bst_ok:
+                movl 16(%rbx), %eax
+                movslq %eax, %rcx
+                movq 24(%rbx), %rdx
+                leaq 24(%r12), %rsi
+                xorq %r8, %r8
+            .Lkof_json_bst_copy:
+                cmpq %r13, %r8
+                jge .Lkof_json_bst_done
+                movb (%rsi,%r8), %al
+                movb %al, (%rdx,%rcx)
+                incq %r8
+                incq %rcx
+                jmp .Lkof_json_bst_copy
+            .Lkof_json_bst_done:
+                movl 16(%rbx), %eax
+                addl %r13d, %eax
+                movl %eax, 16(%rbx)
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_builder_result
+            .type kof_json_builder_result, @function
+            kof_json_builder_result:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                leal 25(%r12), %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl %r12d, 16(%r13)
+                movl $0, 20(%r13)
+                movq 24(%rbx), %rsi
+                leaq 24(%r13), %rdi
+                movslq %r12d, %rdx
+                call kof_memcpy
+                movb $0, 24(%r13,%r12)
+                movq %r13, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_encode_int
+            .type kof_json_encode_int, @function
+            kof_json_encode_int:
+                jmp kof_int_to_string
+
+            .globl kof_json_encode_bool
+            .type kof_json_encode_bool, @function
+            kof_json_encode_bool:
+                jmp kof_bool_to_string
+
+            .globl kof_json_encode_string
+            .type kof_json_encode_string, @function
+            kof_json_encode_string:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                call kof_json_builder_new
+                movq %rax, %r12
+                movq %r12, %rdi
+                movl $34, %esi
+                call kof_json_builder_char
+                movl 16(%rbx), %r13d
+                xorq %r14, %r14
+            .Lkof_json_esc_loop:
+                cmpl %r13d, %r14d
+                jge .Lkof_json_esc_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r14), %eax
+                cmpb $34, %al
+                je .Lkof_json_esc_quote
+                cmpb $92, %al
+                je .Lkof_json_esc_backslash
+                movq %r12, %rdi
+                movl %eax, %esi
+                call kof_json_builder_char
+                incq %r14
+                jmp .Lkof_json_esc_loop
+            .Lkof_json_esc_quote:
+                movq %r12, %rdi
+                movl $92, %esi
+                call kof_json_builder_char
+                movq %r12, %rdi
+                movl $34, %esi
+                call kof_json_builder_char
+                incq %r14
+                jmp .Lkof_json_esc_loop
+            .Lkof_json_esc_backslash:
+                movq %r12, %rdi
+                movl $92, %esi
+                call kof_json_builder_char
+                movq %r12, %rdi
+                movl $92, %esi
+                call kof_json_builder_char
+                incq %r14
+                jmp .Lkof_json_esc_loop
+            .Lkof_json_esc_done:
+                movq %r12, %rdi
+                movl $34, %esi
+                call kof_json_builder_char
+                movq %r12, %rdi
+                call kof_json_builder_result
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_encode_list
+            .type kof_json_encode_list, @function
+            kof_json_encode_list:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl %esi, %r15d
+                call kof_json_builder_new
+                movq %rax, %r12
+                movq %r12, %rdi
+                movl $91, %esi
+                call kof_json_builder_char
+                movl 16(%rbx), %r13d
+                xorq %r14, %r14
+            .Lkof_json_el_loop:
+                cmpl %r13d, %r14d
+                jge .Lkof_json_el_done
+                testq %r14, %r14
+                jz .Lkof_json_el_no_comma
+                movq %r12, %rdi
+                movl $44, %esi
+                call kof_json_builder_char
+            .Lkof_json_el_no_comma:
+                movq 24(%rbx), %rax
+                movq (%rax,%r14,8), %rdi
+                cmpl $1, %r15d
+                je .Lkof_json_el_string
+                cmpl $2, %r15d
+                je .Lkof_json_el_bool
+                call kof_json_encode_int
+                jmp .Lkof_json_el_appended
+            .Lkof_json_el_string:
+                call kof_json_encode_string
+                jmp .Lkof_json_el_appended
+            .Lkof_json_el_bool:
+                call kof_json_encode_bool
+            .Lkof_json_el_appended:
+                movq %r12, %rdi
+                movq %rax, %rsi
+                call kof_json_builder_str
+                incq %r14
+                jmp .Lkof_json_el_loop
+            .Lkof_json_el_done:
+                movq %r12, %rdi
+                movl $93, %esi
+                call kof_json_builder_char
+                movq %r12, %rdi
+                call kof_json_builder_result
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_int
+            .type kof_json_decode_int, @function
+            kof_json_decode_int:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movl 16(%rbx), %ecx
+                xorq %rdx, %rdx
+            .Lkof_json_di_skip:
+                cmpl %ecx, %edx
+                jge .Lkof_json_di_err
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%rdx), %eax
+                cmpb $32, %al
+                je .Lkof_json_di_skip_inc
+                cmpb $10, %al
+                je .Lkof_json_di_skip_inc
+                cmpb $13, %al
+                je .Lkof_json_di_skip_inc
+                cmpb $9, %al
+                je .Lkof_json_di_skip_inc
+                jmp .Lkof_json_di_sign
+            .Lkof_json_di_skip_inc:
+                incq %rdx
+                jmp .Lkof_json_di_skip
+            .Lkof_json_di_sign:
+                movq $1, %r12
+                cmpb $45, %al
+                jne .Lkof_json_di_digits
+                movq $-1, %r12
+                incq %rdx
+            .Lkof_json_di_digits:
+                xorq %r8, %r8
+            .Lkof_json_di_loop:
+                cmpl %ecx, %edx
+                jge .Lkof_json_di_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%rdx), %eax
+                cmpb $48, %al
+                jl .Lkof_json_di_done
+                cmpb $57, %al
+                jg .Lkof_json_di_done
+                imulq $10, %r8
+                subl $48, %eax
+                movslq %eax, %rax
+                addq %rax, %r8
+                incq %rdx
+                jmp .Lkof_json_di_loop
+            .Lkof_json_di_done:
+                imulq %r12, %r8
+                movq %r8, %rax
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_json_di_err:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_bool
+            .type kof_json_decode_bool, @function
+            kof_json_decode_bool:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movl 16(%rbx), %ecx
+                xorq %rdx, %rdx
+            .Lkof_json_db_skip:
+                cmpl %ecx, %edx
+                jge .Lkof_json_db_false
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%rdx), %eax
+                cmpb $32, %al
+                je .Lkof_json_db_skip_inc
+                cmpb $10, %al
+                je .Lkof_json_db_skip_inc
+                cmpb $13, %al
+                je .Lkof_json_db_skip_inc
+                cmpb $9, %al
+                je .Lkof_json_db_skip_inc
+                jmp .Lkof_json_db_check
+            .Lkof_json_db_skip_inc:
+                incq %rdx
+                jmp .Lkof_json_db_skip
+            .Lkof_json_db_check:
+                leaq .Lkof_json_true(%rip), %rsi
+                movl $4, %r8d
+                call kof_json_starts_with
+                testl %eax, %eax
+                jz .Lkof_json_db_false
+                movl $1, %eax
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_json_db_false:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_starts_with
+            .type kof_json_starts_with, @function
+            kof_json_starts_with:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movl %edx, %r12d
+                movq %rsi, %rdi
+                movslq %edx, %rdx
+                movl 16(%rbx), %ecx
+                cmpl %ecx, %edx
+                jg .Lkof_json_sw_no
+                xorq %rcx, %rcx
+            .Lkof_json_sw_loop:
+                cmpl %r12d, %ecx
+                jge .Lkof_json_sw_yes
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%rcx), %eax
+                movzbl (%rdi,%rcx), %r8d
+                cmpb %r8b, %al
+                jne .Lkof_json_sw_no
+                incq %rcx
+                jmp .Lkof_json_sw_loop
+            .Lkof_json_sw_yes:
+                movl $1, %eax
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_json_sw_no:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_string
+            .type kof_json_decode_string, @function
+            kof_json_decode_string:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                call kof_json_builder_new
+                movq %rax, %r12
+                movl 16(%rbx), %ecx
+                xorq %r13, %r13
+            .Lkof_json_ds_skip:
+                cmpl %ecx, %r13d
+                jge .Lkof_json_ds_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $32, %al
+                je .Lkof_json_ds_skip_inc
+                cmpb $10, %al
+                je .Lkof_json_ds_skip_inc
+                cmpb $13, %al
+                je .Lkof_json_ds_skip_inc
+                cmpb $9, %al
+                je .Lkof_json_ds_skip_inc
+                jmp .Lkof_json_ds_open
+            .Lkof_json_ds_skip_inc:
+                incq %r13
+                jmp .Lkof_json_ds_skip
+            .Lkof_json_ds_open:
+                cmpb $34, %al
+                jne .Lkof_json_ds_done
+                incq %r13
+            .Lkof_json_ds_loop:
+                cmpl %ecx, %r13d
+                jge .Lkof_json_ds_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $34, %al
+                je .Lkof_json_ds_close
+                cmpb $92, %al
+                jne .Lkof_json_ds_plain
+                incq %r13
+                cmpl %ecx, %r13d
+                jge .Lkof_json_ds_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $110, %al
+                je .Lkof_json_ds_newline
+                cmpb $116, %al
+                je .Lkof_json_ds_tab
+                jmp .Lkof_json_ds_plain
+            .Lkof_json_ds_newline:
+                movl $10, %eax
+                jmp .Lkof_json_ds_plain
+            .Lkof_json_ds_tab:
+                movl $9, %eax
+            .Lkof_json_ds_plain:
+                movq %r12, %rdi
+                movl %eax, %esi
+                call kof_json_builder_char
+                incq %r13
+                jmp .Lkof_json_ds_loop
+            .Lkof_json_ds_close:
+                incq %r13
+            .Lkof_json_ds_done:
+                movq %r12, %rdi
+                call kof_json_builder_result
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_int_list
+            .type kof_json_decode_int_list, @function
+            kof_json_decode_int_list:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                call kof_list_new
+                movq %rax, %r12
+                movl 16(%rbx), %ecx
+                xorq %r13, %r13
+            .Lkof_json_dil_skip:
+                cmpl %ecx, %r13d
+                jge .Lkof_json_dil_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $32, %al
+                je .Lkof_json_dil_skip_inc
+                cmpb $10, %al
+                je .Lkof_json_dil_skip_inc
+                cmpb $13, %al
+                je .Lkof_json_dil_skip_inc
+                cmpb $9, %al
+                je .Lkof_json_dil_skip_inc
+                jmp .Lkof_json_dil_open
+            .Lkof_json_dil_skip_inc:
+                incq %r13
+                jmp .Lkof_json_dil_skip
+            .Lkof_json_dil_open:
+                cmpb $91, %al
+                jne .Lkof_json_dil_done
+                incq %r13
+            .Lkof_json_dil_loop:
+                cmpl %ecx, %r13d
+                jge .Lkof_json_dil_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $93, %al
+                je .Lkof_json_dil_done
+                cmpb $44, %al
+                je .Lkof_json_dil_comma
+                cmpb $32, %al
+                je .Lkof_json_dil_comma
+                cmpb $10, %al
+                je .Lkof_json_dil_comma
+                cmpb $9, %al
+                je .Lkof_json_dil_comma
+                movq %rbx, %rdi
+                call kof_json_decode_int
+                movq %rdx, %r13
+                movq %r12, %rdi
+                movq %rax, %rsi
+                call kof_list_add
+                jmp .Lkof_json_dil_loop
+            .Lkof_json_dil_comma:
+                incq %r13
+                jmp .Lkof_json_dil_loop
+            .Lkof_json_dil_done:
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_string_list
+            .type kof_json_decode_string_list, @function
+            kof_json_decode_string_list:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                call kof_list_new
+                movq %rax, %r12
+                movl 16(%rbx), %ecx
+                xorq %r13, %r13
+            .Lkof_json_dsl_skip:
+                cmpl %ecx, %r13d
+                jge .Lkof_json_dsl_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $32, %al
+                je .Lkof_json_dsl_skip_inc
+                cmpb $10, %al
+                je .Lkof_json_dsl_skip_inc
+                cmpb $13, %al
+                je .Lkof_json_dsl_skip_inc
+                cmpb $9, %al
+                je .Lkof_json_dsl_skip_inc
+                jmp .Lkof_json_dsl_open
+            .Lkof_json_dsl_skip_inc:
+                incq %r13
+                jmp .Lkof_json_dsl_skip
+            .Lkof_json_dsl_open:
+                cmpb $91, %al
+                jne .Lkof_json_dsl_done
+                incq %r13
+            .Lkof_json_dsl_loop:
+                cmpl %ecx, %r13d
+                jge .Lkof_json_dsl_done
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r13), %eax
+                cmpb $93, %al
+                je .Lkof_json_dsl_done
+                cmpb $44, %al
+                je .Lkof_json_dsl_comma
+                cmpb $32, %al
+                je .Lkof_json_dsl_comma
+                cmpb $10, %al
+                je .Lkof_json_dsl_comma
+                cmpb $9, %al
+                je .Lkof_json_dsl_comma
+                movq %rbx, %rdi
+                call kof_json_decode_string
+                movq %rdx, %r13
+                movq %r12, %rdi
+                movq %rax, %rsi
+                call kof_list_add
+                jmp .Lkof_json_dsl_loop
+            .Lkof_json_dsl_comma:
+                incq %r13
+                jmp .Lkof_json_dsl_loop
+            .Lkof_json_dsl_done:
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+        sb.append(".Lkof_json_true: .asciz \"true\"\n");
     }
 
     /**

@@ -68,6 +68,7 @@ public class CompilerDriver {
     }
 
     private Type toType(String typeName) {
+        if ("List".equals(typeName) || "ArrayList".equals(typeName)) return BuiltinTypes.LIST;
         return Type.of(typeName);
     }
 
@@ -485,6 +486,24 @@ public class CompilerDriver {
                             new Type.ClassType("java.io", "PrintStream", List.of()),
                             mc.methodName(), List.of(BuiltinTypes.STRING),
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                } else if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
+                    if ("encode".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        Type argType = inferExprType(mc.arguments().get(0), locals);
+                        if (BuiltinTypes.isList(argType)) {
+                            int tag = jsonListTag(listElementType(argType));
+                            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
+                        }
+                        ops.add(new KofCall(argType, jsonEncodeFunction(argType), List.of(argType),
+                                BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    } else if ("decode".equals(mc.methodName()) && mc.arguments().size() == 1
+                            && !mc.typeArguments().isEmpty()) {
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        Type targetType = toType(mc.typeArguments().get(0));
+                        ops.add(new KofCall(targetType, jsonDecodeFunction(targetType), List.of(BuiltinTypes.STRING),
+                                targetType, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
@@ -740,6 +759,13 @@ public class CompilerDriver {
             }
             case MethodCallExpr mc -> {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
+                    if ("encode".equals(mc.methodName())) yield BuiltinTypes.STRING;
+                    if ("decode".equals(mc.methodName()) && !mc.typeArguments().isEmpty()) {
+                        yield toType(mc.typeArguments().get(0));
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
                     if (BuiltinTypes.isList(recvType)) {
@@ -888,6 +914,49 @@ public class CompilerDriver {
 
     private boolean isComparisonOp(String op) {
         return ">".equals(op) || "<".equals(op) || ">=".equals(op) || "<=".equals(op) || "==".equals(op) || "!=".equals(op);
+    }
+
+    private int jsonListTag(Type elemType) {
+        if (BuiltinTypes.isString(elemType)) return 1;
+        if (elemType instanceof Type.PrimitiveType pt && "bool".equals(pt.name())) return 2;
+        return 0;
+    }
+
+    private String jsonEncodeFunction(Type type) {
+        if (type instanceof Type.PrimitiveType pt) {
+            return switch (pt.name()) {
+                case "int", "char", "byte", "short", "long" -> "kof_json_encode_int";
+                case "bool" -> "kof_json_encode_bool";
+                default -> "kof_json_encode_int";
+            };
+        }
+        if (BuiltinTypes.isString(type)) return "kof_json_encode_string";
+        if (BuiltinTypes.isList(type)) return "kof_json_encode_list";
+        if (type instanceof Type.ArrayType) return "kof_json_encode_array";
+        return "kof_json_encode";
+    }
+
+    private String jsonDecodeFunction(Type type) {
+        if (type instanceof Type.PrimitiveType pt) {
+            return switch (pt.name()) {
+                case "int", "char", "byte", "short", "long" -> "kof_json_decode_int";
+                case "bool" -> "kof_json_decode_bool";
+                default -> "kof_json_decode_int";
+            };
+        }
+        if (BuiltinTypes.isString(type)) return "kof_json_decode_string";
+        if (BuiltinTypes.isList(type)) {
+            Type elem = listElementType(type);
+            if (elem instanceof Type.PrimitiveType ep && "int".equals(ep.name())) return "kof_json_decode_int_list";
+            if (BuiltinTypes.isString(elem)) return "kof_json_decode_string_list";
+            return "kof_json_decode_list";
+        }
+        if (type instanceof Type.ClassType ct) return "kof_json_decode_" + sanitize(ct.name());
+        return "kof_json_decode_string";
+    }
+
+    private String sanitize(String name) {
+        return name.replace(".", "_").replace("/", "_").replace("-", "_");
     }
 
     private Type listElementType(Type listType) {

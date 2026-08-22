@@ -747,11 +747,20 @@ class Parser {
             } else if (check(TokenType.LPAREN)) {
                 List<ExpressionNode> args = parseArguments();
                 if (expr instanceof IdentifierExpr ie) {
-                    expr = new MethodCallExpr(pos(), null, ie.name(), args);
+                    expr = new MethodCallExpr(pos(), null, ie.name(), List.of(), args);
                 } else if (expr instanceof FieldAccessExpr fa) {
-                    expr = new MethodCallExpr(pos(), fa.receiver(), fa.fieldName(), args);
+                    expr = new MethodCallExpr(pos(), fa.receiver(), fa.fieldName(), List.of(), args);
                 } else {
-                    expr = new MethodCallExpr(pos(), expr, "", args);
+                    expr = new MethodCallExpr(pos(), expr, "", List.of(), args);
+                }
+            } else if (check(TokenType.LESS) && (expr instanceof IdentifierExpr || expr instanceof FieldAccessExpr)
+                    && (checkNext(TokenType.IDENTIFIER) || isPrimitiveTypeAtNext())) {
+                List<String> typeArgs = parseCallTypeArguments();
+                List<ExpressionNode> args = parseArguments();
+                if (expr instanceof IdentifierExpr ie3) {
+                    expr = new MethodCallExpr(pos(), null, ie3.name(), typeArgs, args);
+                } else if (expr instanceof FieldAccessExpr fa2) {
+                    expr = new MethodCallExpr(pos(), fa2.receiver(), fa2.fieldName(), typeArgs, args);
                 }
             } else if (check(TokenType.PLUS_PLUS)) {
                 advance();
@@ -868,6 +877,46 @@ class Parser {
         return "Object";
     }
 
+    private List<String> parseCallTypeArguments() {
+        List<String> typeArgs = new ArrayList<>();
+        splitShiftRight();
+        expect(TokenType.LESS, "Expected '<'", "PARSE078");
+        while (!check(TokenType.GREATER) && !atEnd()) {
+            splitShiftRight();
+            if (check(TokenType.IDENTIFIER) || isPrimitiveType()) {
+                typeArgs.add(parseTypeRef());
+            } else {
+                advance();
+            }
+            if (check(TokenType.COMMA)) advance();
+        }
+        splitShiftRight();
+        expect(TokenType.GREATER, "Expected '>'", "PARSE079");
+        return typeArgs;
+    }
+
+    private void splitShiftRight() {
+        Token cur = tokens.get(pos);
+        if (cur.type() == TokenType.GREATER_GREATER) {
+            tokens.set(pos, new Token(TokenType.GREATER, ">", cur.file(), cur.line(), cur.column(), cur.offset(), 1));
+            tokens.add(pos + 1, new Token(TokenType.GREATER, ">", cur.file(), cur.line(), cur.column() + 1, cur.offset() + 1, 1));
+        } else if (cur.type() == TokenType.GREATER_GREATER_GREATER) {
+            tokens.set(pos, new Token(TokenType.GREATER, ">", cur.file(), cur.line(), cur.column(), cur.offset(), 1));
+            tokens.add(pos + 1, new Token(TokenType.GREATER, ">", cur.file(), cur.line(), cur.column() + 1, cur.offset() + 1, 1));
+            tokens.add(pos + 2, new Token(TokenType.GREATER, ">", cur.file(), cur.line(), cur.column() + 2, cur.offset() + 2, 1));
+        }
+    }
+
+    private boolean isPrimitiveTypeAtNext() {
+        if (pos + 1 >= tokens.size()) return false;
+        Token n = tokens.get(pos + 1);
+        return switch (n.type()) {
+            case INT_TYPE, LONG_TYPE, FLOAT_TYPE, DOUBLE_TYPE, BOOL_TYPE, BYTE_TYPE,
+                    SHORT_TYPE, CHAR_TYPE, STRING_TYPE -> true;
+            default -> false;
+        };
+    }
+
     private List<ExpressionNode> parseArguments() {
         expect(TokenType.LPAREN, "Expected '('", "PARSE042");
         List<ExpressionNode> args = new ArrayList<>();
@@ -904,6 +953,7 @@ class Parser {
         if (check(TokenType.LESS)) {
             int depth = 0;
             do {
+                splitShiftRight();
                 if (check(TokenType.LESS)) depth++;
                 else if (check(TokenType.GREATER)) depth--;
                 advance();
