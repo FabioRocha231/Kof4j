@@ -29,9 +29,6 @@ sealed interface Type {
     record ArrayType(Type componentType) implements Type {
     }
 
-    record TypeVariable(String name) implements Type {
-    }
-
     record WildcardType(Type bound, boolean upper) implements Type {
     }
 
@@ -55,12 +52,7 @@ sealed interface Type {
             case "char", "Char" -> PrimitiveType.CHAR;
             case "void", "Void" -> PrimitiveType.VOID;
             case "string", "String" -> BuiltinTypes.STRING;
-            default -> {
-                if (name != null && name.length() == 1 && Character.isUpperCase(name.charAt(0))) {
-                    yield new TypeVariable(name);
-                }
-                yield new ClassType("", name, List.of());
-            }
+            default -> new ClassType("", name, List.of());
         };
     }
 

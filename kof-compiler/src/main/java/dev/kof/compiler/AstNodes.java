@@ -94,7 +94,8 @@ record MethodCallExpr(SourcePosition position, ExpressionNode receiver,
                       String methodName, List<ExpressionNode> arguments) implements ExpressionNode {
 }
 
-record NewExpr(SourcePosition position, String typeName, List<ExpressionNode> arguments) implements ExpressionNode {
+record NewExpr(SourcePosition position, String typeName, List<String> typeArguments,
+               List<ExpressionNode> arguments) implements ExpressionNode {
 }
 
 record NewArrayExpr(SourcePosition position, String elementType, ExpressionNode size) implements ExpressionNode {

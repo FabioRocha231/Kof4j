@@ -117,6 +117,12 @@ class SemanticAnalyzer {
         }
     }
 
+    private Type resolveType(String name, SymbolTable scope) {
+        SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
+        if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
+        return Type.of(name);
+    }
+
     private void analyzeClass(ClassDeclarationNode cls) {
         String prevClass = currentClassName;
         currentClassName = cls.name();
@@ -129,7 +135,7 @@ class SemanticAnalyzer {
         }
         for (AstNode member : cls.members()) {
             if (member instanceof FieldDeclarationNode field) {
-                Type fieldType = Type.of(field.type());
+                Type fieldType = resolveType(field.type(), classScope);
                 SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, 0, cls.name());
                 classSym.members().define(fs);
                 classScope.define(fs);
@@ -189,7 +195,7 @@ class SemanticAnalyzer {
         currentScope = classScope;
         for (AstNode member : iface.members()) {
             if (member instanceof MethodDeclarationNode method) {
-                Type returnType = Type.of(method.returnType());
+                Type returnType = resolveType(method.returnType(), classScope);
                 List<Type> paramTypes = new ArrayList<>();
                 for (FormalParameterNode p : method.parameters()) paramTypes.add(Type.of(p.type()));
                 classScope.define(new SymbolTable.MethodSymbol(method.name(), iface.name(),
@@ -201,11 +207,11 @@ class SemanticAnalyzer {
     }
 
     private void analyzeFunction(FunctionDeclarationNode func) {
-        Type returnType = Type.of(func.returnType());
         SymbolTable funcScope = currentScope.enterScope();
         for (String tp : func.typeParameters()) {
             funcScope.define(new SymbolTable.TypeParameterSymbol(tp));
         }
+        Type returnType = resolveType(func.returnType(), funcScope);
         int idx = 0;
         for (FormalParameterNode param : func.parameters()) {
             Type paramType = Type.of(param.type());
@@ -225,7 +231,7 @@ class SemanticAnalyzer {
                 new Type.ClassType(currentPackage, className, List.of()), 0));
         int idx = 1;
         for (FormalParameterNode param : ctor.parameters()) {
-            Type paramType = Type.of(param.type());
+            Type paramType = resolveType(param.type(), ctorScope);
             paramTypes.add(paramType);
             ctorScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
             idx++;
@@ -241,14 +247,14 @@ class SemanticAnalyzer {
     }
 
     private void analyzeMethod(MethodDeclarationNode method, String className, SymbolTable classScope) {
-        Type returnType = Type.of(method.returnType());
-        List<Type> paramTypes = new ArrayList<>();
         SymbolTable methodScope = classScope.enterScope();
         methodScope.define(new SymbolTable.ParameterSymbol("this",
                 new Type.ClassType(currentPackage, className, List.of()), 0));
+        Type returnType = resolveType(method.returnType(), methodScope);
+        List<Type> paramTypes = new ArrayList<>();
         int idx = 1;
         for (FormalParameterNode param : method.parameters()) {
-            Type paramType = Type.of(param.type());
+            Type paramType = resolveType(param.type(), methodScope);
             paramTypes.add(paramType);
             methodScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
             idx++;
@@ -437,9 +443,11 @@ class SemanticAnalyzer {
                     for (AstNode d : currentUnit.declarations()) {
                         if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
                             found = true;
-                            List<Type> paramTypes = new ArrayList<>();
-                            for (FormalParameterNode p : fn.parameters()) paramTypes.add(Type.of(p.type()));
-                            checkArgTypes(mc.methodName(), argTypes, paramTypes);
+                            if (fn.typeParameters().isEmpty()) {
+                                List<Type> paramTypes = new ArrayList<>();
+                                for (FormalParameterNode p : fn.parameters()) paramTypes.add(resolveType(p.type(), scope));
+                                checkArgTypes(mc.methodName(), argTypes, paramTypes);
+                            }
                             break;
                         }
                     }
@@ -612,6 +620,7 @@ class SemanticAnalyzer {
     private boolean isAssignable(Type from, Type to) {
         if (from == null || to == null) return true;
         if (Type.isUnknown(from) || Type.isUnknown(to)) return true;
+        if (from instanceof Type.TypeVariable || to instanceof Type.TypeVariable) return true;
         if (from.equals(to)) return true;
         if (from instanceof Type.PrimitiveType fp && to instanceof Type.PrimitiveType tp) {
             int fw = primitiveWidth(fp);

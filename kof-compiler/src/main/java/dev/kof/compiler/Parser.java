@@ -42,7 +42,7 @@ class Parser {
         SourcePosition p = pos();
         String returnType = "void";
         String name;
-        if (check(TokenType.IDENTIFIER) && !checkNext(TokenType.LPAREN)) {
+        if (check(TokenType.IDENTIFIER) && !checkNext(TokenType.LPAREN) && !checkNext(TokenType.LESS)) {
             returnType = advance().value();
             name = expectId("Expected function name", "PARSE010");
         } else {
@@ -818,6 +818,20 @@ class Parser {
         SourcePosition p = pos();
         advance();
         String typeName = parseNewTypeRef();
+        List<String> typeArgs = List.of();
+        if (check(TokenType.LESS)) {
+            advance();
+            typeArgs = new ArrayList<>();
+            while (!check(TokenType.GREATER) && !atEnd()) {
+                if (check(TokenType.IDENTIFIER) || isPrimitiveType()) {
+                    typeArgs.add(parseTypeRef());
+                } else {
+                    advance();
+                }
+                if (check(TokenType.COMMA)) advance();
+            }
+            expect(TokenType.GREATER, "Expected '>' after type arguments", "PARSE076");
+        }
         if (check(TokenType.LBRACKET)) {
             advance();
             ExpressionNode size = parseExpression();
@@ -825,7 +839,7 @@ class Parser {
             return new NewArrayExpr(p, typeName, size);
         }
         List<ExpressionNode> args = parseArguments();
-        return new NewExpr(p, typeName, args);
+        return new NewExpr(p, typeName, typeArgs, args);
     }
 
     private String parseNewTypeRef() {
@@ -847,14 +861,6 @@ class Parser {
             while (check(TokenType.DOT) && checkNext(TokenType.IDENTIFIER)) {
                 advance();
                 type.append('.').append(advance().value());
-            }
-            if (check(TokenType.LESS)) {
-                int depth = 0;
-                do {
-                    if (check(TokenType.LESS)) depth++;
-                    else if (check(TokenType.GREATER)) depth--;
-                    advance();
-                } while (depth > 0 && !atEnd());
             }
             return type.toString();
         }

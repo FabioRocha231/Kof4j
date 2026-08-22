@@ -569,6 +569,24 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case AssignmentExpr ae -> {
+                if (ae.target() instanceof IdentifierExpr ie && !owner.isEmpty()) {
+                    boolean isLocal = false;
+                    for (int i = locals.size() - 1; i >= 0; i--) {
+                        if (locals.get(i).name().equals(ie.name())) { isLocal = true; break; }
+                    }
+                    if (!isLocal) {
+                        String className = owner.substring(owner.lastIndexOf('/') + 1);
+                        SymbolTable.Symbol fieldSym = semanticAnalyzer != null
+                                ? resolveFieldInHierarchy(className, ie.name()) : null;
+                        if (fieldSym != null) {
+                            Type ownerType = ownerTypeFromInternal(owner);
+                            ops.add(new KofLoadLocal(ownerType, 0));
+                            localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            ops.add(new KofStoreField(ownerType, ie.name(), fieldSym.type()));
+                            yield localIdx;
+                        }
+                    }
+                }
                 if (ae.target() instanceof FieldAccessExpr fa) {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
@@ -604,6 +622,10 @@ public class CompilerDriver {
             }
             case NewExpr ne -> {
                 Type type = toType(ne.typeName());
+                if (!ne.typeArguments().isEmpty() && type instanceof Type.ClassType cts) {
+                    type = new Type.ClassType(cts.packageName(), cts.name(),
+                            ne.typeArguments().stream().map(this::toType).toList());
+                }
                 List<Type> argTypes = new ArrayList<>();
                 for (ExpressionNode arg : ne.arguments()) argTypes.add(inferExprType(arg, locals));
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
@@ -702,12 +724,32 @@ public class CompilerDriver {
                 } else if (currentUnit != null) {
                     for (AstNode d : currentUnit.declarations()) {
                         if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
-                            yield toType(fn.returnType());
+                            Type returnType = toType(fn.returnType());
+                            if (fn.typeParameters().contains(fn.returnType())) {
+                                returnType = new Type.TypeVariable(fn.returnType());
+                            }
+                            if (returnType instanceof Type.TypeVariable tv) {
+                                for (int pi = 0; pi < fn.parameters().size(); pi++) {
+                                    if (pi < mc.arguments().size() && tv.name().equals(fn.parameters().get(pi).type())) {
+                                        yield inferExprType(mc.arguments().get(pi), locals);
+                                    }
+                                }
+                                yield Type.UnknownType.UNKNOWN;
+                            }
+                            yield returnType;
                         }
                     }
                 }
                 SymbolTable.MethodSymbol resolvedMethod = semanticAnalyzer.getResolvedMethod(mc);
-                if (resolvedMethod != null) yield resolvedMethod.returnType();
+                if (resolvedMethod != null) {
+                    Type rt = resolvedMethod.returnType();
+                    if (rt instanceof Type.TypeVariable tv && mc.receiver() != null) {
+                        Type recvT = inferExprType(mc.receiver(), locals);
+                        Type subst = substituteTypeVariable(tv.name(), recvT);
+                        if (subst != null) yield subst;
+                    }
+                    yield rt;
+                }
                 SymbolTable.ClassSymbol cs = semanticAnalyzer != null ? semanticAnalyzer.getClass(mc.methodName()) : null;
                 if (cs != null) yield cs.type();
                 yield Type.UnknownType.UNKNOWN;
@@ -716,7 +758,14 @@ public class CompilerDriver {
                 Type elemType = toType(na.elementType());
                 yield new Type.ArrayType(elemType);
             }
-            case NewExpr ne -> toType(ne.typeName());
+            case NewExpr ne -> {
+                Type t = toType(ne.typeName());
+                if (!ne.typeArguments().isEmpty() && t instanceof Type.ClassType cts) {
+                    t = new Type.ClassType(cts.packageName(), cts.name(),
+                            ne.typeArguments().stream().map(this::toType).toList());
+                }
+                yield t;
+            }
             case ArrayAccessExpr aa -> {
                 Type recvType = inferExprType(aa.receiver(), locals);
                 if (recvType instanceof Type.ArrayType at) yield at.componentType();
@@ -792,6 +841,22 @@ public class CompilerDriver {
 
     private boolean isComparisonOp(String op) {
         return ">".equals(op) || "<".equals(op) || ">=".equals(op) || "<=".equals(op) || "==".equals(op) || "!=".equals(op);
+    }
+
+    private Type substituteTypeVariable(String tvName, Type recvType) {
+        if (!(recvType instanceof Type.ClassType ct) || ct.typeArguments().isEmpty()) return null;
+        if (currentUnit != null) {
+            for (AstNode d : currentUnit.declarations()) {
+                if (d instanceof ClassDeclarationNode cls && cls.name().equals(ct.name())) {
+                    for (int i = 0; i < cls.typeParameters().size(); i++) {
+                        if (i < ct.typeArguments().size() && cls.typeParameters().get(i).equals(tvName)) {
+                            return ct.typeArguments().get(i);
+                        }
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private KofComparison mapComparison(String op) {

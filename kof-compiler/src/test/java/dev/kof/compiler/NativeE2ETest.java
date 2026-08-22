@@ -607,4 +607,41 @@ class NativeE2ETest {
             """);
         runNative(source, tempDir.resolve("out"), "d");
     }
+
+    @Test
+    void execGenericFunction(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun identity<T>(T x): T {
+                return x
+            }
+            fun main() {
+                println(identity(42))
+                println(identity("hi"))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "42\nhi");
+    }
+
+    @Test
+    void execGenericClass(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Box<T> {
+                T value
+                fun set(T v) {
+                    value = v
+                }
+                fun get(): T {
+                    return value
+                }
+            }
+            fun main() {
+                var b = new Box<Int>()
+                b.set(7)
+                println(b.get())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "7");
+    }
 }
