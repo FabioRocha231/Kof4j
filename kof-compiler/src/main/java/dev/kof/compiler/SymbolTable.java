@@ -56,6 +56,13 @@ class SymbolTable {
     record ParameterSymbol(String name, Type type, int index) implements Symbol {
     }
 
+    record TypeParameterSymbol(String name) implements Symbol {
+        @Override
+        public Type type() {
+            return new Type.TypeVariable(name);
+        }
+    }
+
     record LocalVariableSymbol(String name, Type type, int index) implements Symbol {
     }
 

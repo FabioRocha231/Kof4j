@@ -124,6 +124,9 @@ class SemanticAnalyzer {
         SymbolTable classScope = classSym.members().enterScope();
         SymbolTable prevScope = currentScope;
         currentScope = classScope;
+        for (String tp : cls.typeParameters()) {
+            classScope.define(new SymbolTable.TypeParameterSymbol(tp));
+        }
         for (AstNode member : cls.members()) {
             if (member instanceof FieldDeclarationNode field) {
                 Type fieldType = Type.of(field.type());
@@ -200,6 +203,9 @@ class SemanticAnalyzer {
     private void analyzeFunction(FunctionDeclarationNode func) {
         Type returnType = Type.of(func.returnType());
         SymbolTable funcScope = currentScope.enterScope();
+        for (String tp : func.typeParameters()) {
+            funcScope.define(new SymbolTable.TypeParameterSymbol(tp));
+        }
         int idx = 0;
         for (FormalParameterNode param : func.parameters()) {
             Type paramType = Type.of(param.type());
