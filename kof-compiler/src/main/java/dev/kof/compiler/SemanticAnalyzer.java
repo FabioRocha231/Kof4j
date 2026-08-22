@@ -9,6 +9,7 @@ import java.util.Map;
 class SemanticAnalyzer {
 
     private SymbolTable currentScope;
+    private CompilationUnitNode currentUnit;
     private final Map<String, SymbolTable.ClassSymbol> knownClasses = new HashMap<>();
     private final java.util.Set<String> interfaceNames = new java.util.HashSet<>();
     private final Map<ExpressionNode, Type> expressionTypes = new IdentityHashMap<>();
@@ -22,6 +23,7 @@ class SemanticAnalyzer {
         this.diagnostics = diagnostics;
         this.currentPackage = unit.packageName();
         this.currentScope = new SymbolTable();
+        this.currentUnit = unit;
         for (AstNode decl : unit.declarations()) {
             preDeclareType(decl);
         }
@@ -286,6 +288,11 @@ class SemanticAnalyzer {
                 if (ret.value() != null) {
                     Type valueType = inferType(ret.value(), scope);
                     expressionTypes.put(ret.value(), valueType);
+                    if (diagnostics != null && !Type.isUnknown(returnType) && !Type.isVoid(returnType)
+                            && !Type.isUnknown(valueType) && !isAssignable(valueType, returnType)) {
+                        diagnostics.error("", 0, 0, 0,
+                                "Return type mismatch: expected " + returnType + " but got " + valueType, "SEM010");
+                    }
                 }
             }
             case BreakStmt ignored -> {}
@@ -353,7 +360,37 @@ class SemanticAnalyzer {
             case IdentifierExpr ie -> {
                 SymbolTable.Symbol sym = scope.resolve(ie.name());
                 if (sym != null) yield sym.type();
+                if (currentClassName != null && !currentClassName.isEmpty()) {
+                    SymbolTable.Symbol fieldSym = resolveInHierarchy(currentClassName, ie.name());
+                    if (fieldSym != null) {
+                        expressionTypes.put(ie, fieldSym.type());
+                        yield fieldSym.type();
+                    }
+                }
+                if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
+                        && !knownClasses.containsKey(ie.name())) {
+                    diagnostics.error("", 0, 0, 0,
+                            "Undefined variable or type: '" + ie.name() + "'", "SEM011");
+                }
                 yield Type.UnknownType.UNKNOWN;
+            }
+            case AssignmentExpr ae -> {
+                Type valueType = inferType(ae.value(), scope);
+                Type targetType = Type.UnknownType.UNKNOWN;
+                if (ae.target() instanceof IdentifierExpr ie) {
+                    SymbolTable.Symbol sym = scope.resolve(ie.name());
+                    if (sym != null) {
+                        targetType = sym.type();
+                        if (diagnostics != null && !Type.isUnknown(targetType) && !Type.isUnknown(valueType)
+                                && !isAssignable(valueType, targetType)) {
+                            diagnostics.error("", 0, 0, 0,
+                                    "Type mismatch: cannot assign " + valueType + " to " + targetType, "SEM012");
+                        }
+                    }
+                } else if (ae.target() instanceof FieldAccessExpr fa) {
+                    targetType = inferType(fa, scope);
+                }
+                yield targetType;
             }
             case BinaryExpr bin -> {
                 Type leftType = inferType(bin.left(), scope);
@@ -365,17 +402,6 @@ class SemanticAnalyzer {
                 if ("!".equals(ue.operator())) yield Type.PrimitiveType.BOOL;
                 yield operandType;
             }
-            case AssignmentExpr ae -> {
-                Type valueType = inferType(ae.value(), scope);
-                if (ae.target() instanceof IdentifierExpr ie) {
-                    SymbolTable.Symbol sym = scope.resolve(ie.name());
-                    if (sym != null) {
-                        expressionTypes.put(ae.target(), sym.type());
-                        yield sym.type();
-                    }
-                }
-                yield valueType;
-            }
             case MethodCallExpr mc -> {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
@@ -383,15 +409,38 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
-                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     if (recvType instanceof Type.ClassType ct) {
                         SymbolTable.Symbol m = resolveInHierarchy(ct.name(), mc.methodName());
                         if (m instanceof SymbolTable.MethodSymbol ms) {
                             resolvedMethods.put(mc, ms);
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                            checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
                             yield ms.returnType();
                         }
                     }
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && currentUnit != null
+                        && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())
+                        && !"super".equals(mc.methodName())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                    boolean found = false;
+                    for (AstNode d : currentUnit.declarations()) {
+                        if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
+                            found = true;
+                            List<Type> paramTypes = new ArrayList<>();
+                            for (FormalParameterNode p : fn.parameters()) paramTypes.add(Type.of(p.type()));
+                            checkArgTypes(mc.methodName(), argTypes, paramTypes);
+                            break;
+                        }
+                    }
+                    if (!found && diagnostics != null && !knownClasses.containsKey(mc.methodName())) {
+                        diagnostics.error("", 0, 0, 0,
+                                "Undefined function: '" + mc.methodName() + "'", "SEM015");
+                    }
                 }
                 SymbolTable.ClassSymbol ctorClass = knownClasses.get(mc.methodName());
                 if (ctorClass != null) {
@@ -472,6 +521,7 @@ class SemanticAnalyzer {
                 ">".equals(operator) || "<=".equals(operator) || ">=".equals(operator)) {
             return Type.PrimitiveType.BOOL;
         }
+
         if ("&&".equals(operator) || "||".equals(operator)) {
             return Type.PrimitiveType.BOOL;
         }
@@ -532,6 +582,52 @@ class SemanticAnalyzer {
             return Type.UnknownType.UNKNOWN;
         }
         return left;
+    }
+
+    private void checkArgTypes(String methodName, List<Type> argTypes, List<Type> paramTypes) {
+        if (diagnostics == null || paramTypes.isEmpty() && !argTypes.isEmpty()) return;
+        if (argTypes.size() != paramTypes.size()) {
+            diagnostics.error("", 0, 0, 0,
+                    "Wrong number of arguments for '" + methodName + "': expected "
+                            + paramTypes.size() + " but got " + argTypes.size(), "SEM013");
+            return;
+        }
+        for (int i = 0; i < argTypes.size(); i++) {
+            if (!Type.isUnknown(argTypes.get(i)) && !Type.isUnknown(paramTypes.get(i))
+                    && !isAssignable(argTypes.get(i), paramTypes.get(i))) {
+                diagnostics.error("", 0, 0, 0,
+                        "Argument " + (i + 1) + " of '" + methodName + "': expected "
+                                + paramTypes.get(i) + " but got " + argTypes.get(i), "SEM014");
+                return;
+            }
+        }
+    }
+
+    private boolean isAssignable(Type from, Type to) {
+        if (from == null || to == null) return true;
+        if (Type.isUnknown(from) || Type.isUnknown(to)) return true;
+        if (from.equals(to)) return true;
+        if (from instanceof Type.PrimitiveType fp && to instanceof Type.PrimitiveType tp) {
+            int fw = primitiveWidth(fp);
+            int tw = primitiveWidth(tp);
+            return fw <= tw;
+        }
+        if (to instanceof Type.ClassType) {
+            return from instanceof Type.ClassType;
+        }
+        return false;
+    }
+
+    private int primitiveWidth(Type.PrimitiveType pt) {
+        return switch (pt.name()) {
+            case "bool", "Bool" -> 0;
+            case "char", "Char" -> 1;
+            case "int", "Int", "byte", "short" -> 2;
+            case "long", "Long" -> 3;
+            case "float", "Float" -> 4;
+            case "double", "Double" -> 5;
+            default -> 2;
+        };
     }
 
     private void resolveMethodCalls(CompilationUnitNode unit) {

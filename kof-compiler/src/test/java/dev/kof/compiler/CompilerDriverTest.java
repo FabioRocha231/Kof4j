@@ -96,6 +96,69 @@ class CompilerDriverTest {
     }
 
     @Test
+    void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            fun main() {
+                var x = 1
+                x = "hello"
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Assigning String to Int should fail");
+    }
+
+    @Test
+    void failsOnWrongReturnType(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            fun f(): Int {
+                return "x"
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Returning String from Int function should fail");
+    }
+
+    @Test
+    void failsOnWrongArgCount(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            fun add(Int a, Int b): Int { return a + b }
+            fun main() { add(1) }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Calling add with 1 arg should fail");
+    }
+
+    @Test
+    void failsOnWrongArgType(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            fun greet(String s): String { return s }
+            fun main() { greet(42) }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Passing Int to String param should fail");
+    }
+
+    @Test
+    void failsOnUndefinedVariable(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, "fun main() { println(undefinedVar) }");
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Undefined variable should fail");
+    }
+
+    @Test
+    void failsOnUndefinedFunction(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, "fun main() { nope() }");
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Undefined function should fail");
+    }
+
+    @Test
     void compilesClassWithFieldsAndMethods(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
