@@ -1,25 +1,28 @@
 # MEMORY_MODEL.md — Modelo de Memória do Kof
 
-**Data:** 21 de agosto de 2026
-**Status:** Implementado — Fase F.7
+**Data:** 22 de agosto de 2026
+**Status:** Implementado — Fase F.7 + evolução 0.0.5 (allocator com header)
 
 ---
 
 ## 1. Visão Geral
 
-O modelo de memória do Kof é baseado em alocação via mmap com reclaim pelo SO no exit do processo.
+O modelo de memória do Kof usa um **allocator com header de bloco** sobre mmap.
 
 ```
 kof_alloc(size)
     ↓
-mmap (heap)
+mmap (size + 16 header)
     ↓
-objeto/array/string
++0  total_size (16 bytes)
++16 payload (objeto/array/string) — alinhado a 16
     ↓
-(programa termina)
-    ↓
-SO reivindica memória
+kof_free(ptr) → munmap(bloco exato)
 ```
+
+O usuário da linguagem nunca chama `free` — o gerenciamento é decisão do
+runtime/compiler. O código Kof é semanticamente independente do mecanismo
+de memória do target.
 
 ---
 
@@ -27,22 +30,23 @@ SO reivindica memória
 
 ### Alocação
 
-- `kof_alloc(size)` usa `mmap` com `MAP_PRIVATE | MAP_ANONYMOUS`
-- Memória é alinhada em 16 bytes
-- Tracking de contagem de alocações para debug
+- `kof_alloc(size)` usa `mmap` (`MAP_PRIVATE | MAP_ANONYMOUS`)
+- Cada bloco tem header de 16 bytes: **tamanho total mapeado** (header + payload)
+- Payload devolvido ao chamador, alinhado a 16 bytes
+- Contadores globais: `alloc_count`, `free_count`, `alloc_bytes`, `free_bytes`
 
 ### Deallocation
 
-- `kof_free(ptr)` é no-op (memória não é liberada)
-- Programa de curta duração: SO reivindica no exit
-- Futuro: GC ou reference counting
+- `kof_free(ptr)` lê o tamanho do header e executa `munmap` do bloco exato
+- `kof_free(null)` é no-op seguro
+- Contadores atualizados em tempo real
 
 ### Ownership
 
 - Objetos são alocados via `kof_alloc`
 - Referências são ponteiros diretos
-- Sem referência counting
-- Sem weak references
+- Sem reference counting (futuro)
+- Sem weak references (futuro)
 
 ---
 
@@ -50,10 +54,14 @@ SO reivindica memória
 
 | Tipo | Lifetime | Deallocation |
 |------|----------|--------------|
-| Objeto | Todo o programa | SO no exit |
-| Array | Todo o programa | SO no exit |
-| String | Todo o programa | SO no exit |
+| Objeto | Enquanto referenciado | `kof_free` / GC futuro |
+| Array | Enquanto referenciado | `kof_free` / GC futuro |
+| String | Enquanto referenciado | `kof_free` / GC futuro |
 | Method Table | Todo o programa | SO no exit |
+
+Sem GC nesta fase: a memória é devolvida ao SO no exit do processo.
+O allocator já possui a estrutura (header com tamanho + contadores) para
+a evolução futura: arenas, reference tracking, GC generacional.
 
 ---
 
@@ -72,9 +80,9 @@ Objetos referenciados por roots permanecem válidos durante toda a execução.
 
 | Função | Propósito |
 |--------|-----------|
-| `kof_alloc(size)` | Aloca memória no heap |
-| `kof_free(ptr)` | No-op (deallocation futura) |
-| `kof_memstats()` | Imprime estatísticas de alocação |
+| `kof_alloc(size)` | Aloca bloco mmap com header de 16 bytes |
+| `kof_free(ptr)` | `munmap` do bloco exato (lê tamanho do header) |
+| `kof_memstats()` | Imprime `allocs`, `frees`, `live bytes` reais |
 
 ---
 
@@ -86,7 +94,8 @@ offset 4:  flags (4 bytes)
 offset 8:  method_table_ptr (8 bytes)
 ```
 
-O header não contém informações de memória (sem mark bits, sem forwarding pointer).
+O header do objeto não contém informações de memória (sem mark bits,
+sem forwarding pointer) — o header de alocação fica 16 bytes antes do objeto.
 
 ---
 
@@ -94,7 +103,7 @@ O header não contém informações de memória (sem mark bits, sem forwarding p
 
 | Arquivo | Papel |
 |---------|-------|
-| NativeRuntime.java | `kof_alloc`, `kof_free`, `kof_memstats` |
+| NativeRuntime.java | `kof_alloc`, `kof_free`, `kof_memstats`, contadores |
 | NativeBackend.java | Gera chamadas para funções de runtime |
 | ClassLayout.java | Cálculo de tamanho de objetos |
 
@@ -102,18 +111,19 @@ O header não contém informações de memória (sem mark bits, sem forwarding p
 
 ## 8. Limitações
 
-1. Sem GC (memória não é liberada durante execução)
+1. Sem GC (memória não é liberada automaticamente durante execução)
 2. Sem reference counting
 3. Sem weak references
 4. Sem finalização de objetos
-5. Sem detecção de memory leaks (apenas contagem de alocações)
+5. Sem detecção de memory leaks (apenas contadores)
+6. `kof_free` ainda não é chamado pelo código gerado (fundação para GC)
 
 ---
 
 ## 9. Futuro
 
-- Fase G: GC tracing (mark-and-sweep)
+- Fase G: GC tracing (mark-and-sweep) sobre o header existente
+- Arenas internas para alocações curtas
 - Reference counting para objetos sem ciclos
 - Weak references
-- Finalização de objetos
 - Memory compaction

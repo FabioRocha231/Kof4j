@@ -371,58 +371,121 @@ final class NativeRuntime {
     /**
      * kof_alloc(size) — allocates size bytes on the heap.
      * Returns pointer in %rax. Uses mmap for simplicity.
+     *
+     * Allocation model: every block is prefixed by a 16-byte header
+     * holding the total mapped size (header + payload, 16-byte aligned).
+     * kof_free uses this header to munmap the exact block; counters feed
+     * kof_memstats. The payload is 16-byte aligned.
+     *
+     * This is the foundation for the future allocator evolution:
+     * arenas, reference tracking, generational GC.
      */
     private static void emitAlloc(StringBuilder sb) {
         sb.append("""
+            .section .data
+            .Lstr_alloc_fail: .asciz "Runtime error: out of memory"
+            .section .text
             .globl kof_alloc
             .type kof_alloc, @function
             kof_alloc:
                 pushq %rbx
+                pushq %r12
                 movq %rdi, %rbx
                 addq $15, %rbx
                 andq $~15, %rbx
+                addq $16, %rbx
+                movq %rbx, %r12
                 movq $0, %rdi
-                movq %rbx, %rsi
+                movq %r12, %rsi
                 movq $0x22, %rdx
                 movq $0x22, %r10
                 movq $-1, %r8
                 movq $0, %r9
                 movq $9, %rax
                 syscall
+                testq %rax, %rax
+                js .Lkof_alloc_fail
+                movq %r12, (%rax)
+                addq $16, %rax
+                incq .Lkof_alloc_count(%rip)
+                addq %r12, .Lkof_alloc_bytes(%rip)
+                popq %r12
                 popq %rbx
                 ret
+            .Lkof_alloc_fail:
+                leaq .Lstr_alloc_fail(%rip), %rdi
+                call kof_panic
             """);
     }
 
     /**
-     * kof_free(ptr) — no-op for now (no GC).
-     * Memory is reclaimed by the OS when the process exits.
+     * kof_free(ptr) — releases a block previously returned by kof_alloc.
+     * Reads the block size from the allocation header and munmaps it.
+     * Freeing null is a safe no-op.
      */
     private static void emitFree(StringBuilder sb) {
         sb.append("""
             .globl kof_free
             .type kof_free, @function
             kof_free:
+                testq %rdi, %rdi
+                jz .Lkof_free_done
+                movq -16(%rdi), %rsi
+                leaq -16(%rdi), %rdi
+                movq $11, %rax
+                syscall
+                incq .Lkof_free_count(%rip)
+                addq %rsi, .Lkof_free_bytes(%rip)
+            .Lkof_free_done:
                 ret
             """);
     }
 
     /**
      * kof_memstats() — prints memory allocation statistics.
-     * Useful for debugging memory usage.
+     * Reports real counters maintained by kof_alloc/kof_free:
+     * allocations, frees and live bytes.
      */
     static void emitMemstats(StringBuilder sb) {
         sb.append("""
             .section .data
             .Lkof_alloc_count: .quad 0
-            .section .text
+            .Lkof_free_count: .quad 0
+            .Lkof_alloc_bytes: .quad 0
+            .Lkof_free_bytes: .quad 0
+            .Lkof_memstats_lbl_alloc: .asciz "allocs: "
+            .Lkof_memstats_lbl_free: .asciz "frees: "
+            .Lkof_memstats_lbl_live: .asciz "live bytes: "
             .Lkof_memstats_nl: .asciz "\\n"
+            .section .text
             .globl kof_memstats
             .type kof_memstats, @function
             kof_memstats:
                 pushq %rbx
+                leaq .Lkof_memstats_lbl_alloc(%rip), %rdi
+                call kof_print
                 movq .Lkof_alloc_count(%rip), %rdi
-                call kof_print_int
+                call kof_long_to_string
+                movq %rax, %rdi
+                call kof_print_string
+                leaq .Lkof_memstats_nl(%rip), %rdi
+                call kof_print
+                leaq .Lkof_memstats_lbl_free(%rip), %rdi
+                call kof_print
+                movq .Lkof_free_count(%rip), %rdi
+                call kof_long_to_string
+                movq %rax, %rdi
+                call kof_print_string
+                leaq .Lkof_memstats_nl(%rip), %rdi
+                call kof_print
+                leaq .Lkof_memstats_lbl_live(%rip), %rdi
+                call kof_print
+                movq .Lkof_alloc_bytes(%rip), %rbx
+                subq .Lkof_free_bytes(%rip), %rbx
+                movq %rbx, %rdi
+                call kof_long_to_string
+                movq %rax, %rdi
+                call kof_print_string
                 leaq .Lkof_memstats_nl(%rip), %rdi
                 call kof_print
                 popq %rbx
