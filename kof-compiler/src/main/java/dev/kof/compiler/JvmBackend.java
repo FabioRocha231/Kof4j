@@ -151,6 +151,32 @@ class JvmBackend implements Backend {
                 case GE -> IF_ICMPGE;
             };
             mv.visitJumpInsn(opcode, resolveLabel(kc.trueLabel()));
+        } else if (op instanceof KofCall kc && BuiltinTypes.isList(kc.ownerType())) {
+            switch (kc.methodName()) {
+                case "kof_list_new" -> {
+                    mv.visitTypeInsn(NEW, "java/util/ArrayList");
+                    mv.visitInsn(DUP);
+                    mv.visitMethodInsn(INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V", false);
+                }
+                case "kof_list_add" -> {
+                    Type elemType = listElementType(kc.ownerType());
+                    if (elemType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
+                        mv.visitMethodInsn(INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+                    }
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z", false);
+                }
+                case "kof_list_get" -> {
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
+                    Type elemType = listElementType(kc.ownerType());
+                    if (elemType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
+                        mv.visitTypeInsn(CHECKCAST, "java/lang/Integer");
+                        mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+                    }
+                }
+                case "kof_list_set" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "set", "(ILjava/lang/Object;)Ljava/lang/Object;", false);
+                case "kof_list_size" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "size", "()I", false);
+                default -> {}
+            }
         } else if (op instanceof KofCall kc) {
             String owner = "";
             if (kc.ownerType() instanceof Type.ClassType ct) {
@@ -391,5 +417,12 @@ class JvmBackend implements Backend {
                    "double".equals(pt.name()) || "Double".equals(pt.name());
         }
         return false;
+    }
+
+    private Type listElementType(Type listType) {
+        if (listType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) {
+            return ct.typeArguments().get(0);
+        }
+        return Type.UnknownType.UNKNOWN;
     }
 }

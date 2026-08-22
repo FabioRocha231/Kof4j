@@ -627,13 +627,14 @@ final class NativeRuntime {
                 addq $24, %rdi
                 call kof_alloc
                 movq %rax, %rcx
+                movq 24(%rbx), %rsi
                 movl 16(%rbx), %r13d
                 movslq %r13d, %r13
                 xorq %rdx, %rdx
             .Lkof_list_grow_copy:
                 cmpq %r13, %rdx
                 jge .Lkof_list_grow_done
-                movq 24(%rbx,%rdx,8), %rax
+                movq (%rsi,%rdx,8), %rax
                 movq %rax, (%rcx,%rdx,8)
                 incq %rdx
                 jmp .Lkof_list_grow_copy
@@ -691,22 +692,19 @@ final class NativeRuntime {
             .type kof_list_set, @function
             kof_list_set:
                 pushq %rbx
-                pushq %r12
                 movq %rdi, %rbx
-                movq %rsi, %r12
                 movl 16(%rbx), %eax
-                cmpl %eax, %edx
+                cmpl %eax, %esi
                 jge .Lkof_list_set_bounds
-                testl %edx, %edx
+                testl %esi, %esi
                 jl .Lkof_list_set_bounds
-                movslq %edx, %rcx
+                movslq %esi, %rcx
                 movq 24(%rbx), %rax
-                movq %r12, (%rax,%rcx,8)
-                popq %r12
+                movq %rdx, (%rax,%rcx,8)
                 popq %rbx
                 ret
             .Lkof_list_set_bounds:
-                movl %edx, %edi
+                movl %esi, %edi
                 movl 16(%rbx), %esi
                 call kof_bounds_error
 
