@@ -535,6 +535,32 @@ class NativeE2ETest {
     }
 
     @Test
+    void execListContains(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var l = listOf(1, 2, 3, 4)
+                println(l.size)
+                println(l.contains(3))
+                println(l.contains(99))
+                println(l.isEmpty())
+                var removed = l.remove(1)
+                println(removed)
+                println(l.size)
+                println(l.get(1))
+                l.clear()
+                println(l.isEmpty())
+                var s = listOf("a", "b")
+                println(s.contains("b"))
+                println(s.contains("zz"))
+                var e = listOf<Int>()
+                println(e.size)
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "4\ntrue\nfalse\nfalse\n2\n3\n3\ntrue\ntrue\nfalse\n0");
+    }
+
+    @Test
     void execDoWhile(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """

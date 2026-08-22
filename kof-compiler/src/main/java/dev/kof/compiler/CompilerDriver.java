@@ -520,6 +520,19 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case MethodCallExpr mc -> {
+                if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
+                    Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
+                            : inferExprType(mc.arguments().get(0), locals);
+                    Type listType = new Type.ClassType("kof", "List", List.of(elemType));
+                    ops.add(new KofCall(listType, "kof_list_new", List.of(), listType, KofCallKind.FUNCTION));
+                    for (ExpressionNode arg : mc.arguments()) {
+                        ops.add(new KofDup());
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(listType, "kof_list_add",
+                                List.of(inferExprType(arg, locals)), Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                    }
+                    yield localIdx;
+                }
                 if (("print".equals(mc.methodName()) || "println".equals(mc.methodName())) && mc.arguments().size() == 1) {
                     ops.add(new KofGetStatic(
                             new Type.ClassType("java.lang", "System", List.of()),
@@ -566,6 +579,10 @@ public class CompilerDriver {
                             case "get" -> "kof_list_get";
                             case "set" -> "kof_list_set";
                             case "size", "length", "count" -> "kof_list_size";
+                            case "contains" -> "kof_list_contains";
+                            case "isEmpty" -> "kof_list_is_empty";
+                            case "remove" -> "kof_list_remove";
+                            case "clear" -> "kof_list_clear";
                             default -> null;
                         };
                         if (listFn != null) {
@@ -573,8 +590,19 @@ public class CompilerDriver {
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                             for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                             Type elemType = listElementType(recvType);
-                            Type retType = "kof_list_add".equals(listFn) || "kof_list_set".equals(listFn)
-                                    ? Type.PrimitiveType.VOID : elemType;
+                            Type retType = switch (listFn) {
+                                case "kof_list_add", "kof_list_set", "kof_list_clear" -> Type.PrimitiveType.VOID;
+                                case "kof_list_contains", "kof_list_is_empty" -> Type.PrimitiveType.BOOL;
+                                case "kof_list_remove" -> elemType;
+                                default -> elemType;
+                            };
+                            if ("kof_list_contains".equals(listFn)) {
+                                // Native runtime needs a type tag to compare strings by content.
+                                int tag = BuiltinTypes.isString(elemType) ? 1 : 0;
+                                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
+                                argTypes = new ArrayList<>(argTypes);
+                                argTypes.add(Type.PrimitiveType.INT);
+                            }
                             ops.add(new KofCall(recvType, listFn, argTypes, retType, KofCallKind.INSTANCE));
                             yield localIdx;
                         }
@@ -828,6 +856,11 @@ public class CompilerDriver {
             }
             case MethodCallExpr mc -> {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
+                    Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
+                            : inferExprType(mc.arguments().get(0), locals);
+                    yield new Type.ClassType("kof", "List", List.of(elemType));
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName())) yield BuiltinTypes.STRING;
                     if ("decode".equals(mc.methodName()) && !mc.typeArguments().isEmpty()) {
@@ -839,9 +872,11 @@ public class CompilerDriver {
                     Type recvType = inferExprType(mc.receiver(), locals);
                     if (BuiltinTypes.isList(recvType)) {
                         String mn = mc.methodName();
-                        if ("get".equals(mn)) yield listElementType(recvType);
+                        if ("get".equals(mn) || "remove".equals(mn)) yield listElementType(recvType);
                         if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn)) yield Type.PrimitiveType.INT;
-                        if ("add".equals(mn) || "push".equals(mn) || "append".equals(mn) || "set".equals(mn)) {
+                        if ("contains".equals(mn) || "isEmpty".equals(mn)) yield Type.PrimitiveType.BOOL;
+                        if ("add".equals(mn) || "push".equals(mn) || "append".equals(mn)
+                                || "set".equals(mn) || "clear".equals(mn)) {
                             yield Type.PrimitiveType.VOID;
                         }
                     }

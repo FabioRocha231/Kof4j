@@ -317,6 +317,19 @@ class JvmBackend implements Backend {
                     mv.visitInsn(POP);
                 }
                 case "kof_list_size" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "size", "()I", false);
+                case "kof_list_contains" -> {
+                    if (kc.parameterTypes().size() > 1) {
+                        mv.visitInsn(POP);
+                    }
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "contains", "(Ljava/lang/Object;)Z", false);
+                }
+                case "kof_list_is_empty" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "isEmpty", "()Z", false);
+                case "kof_list_remove" -> {
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "remove", "(I)Ljava/lang/Object;", false);
+                    emitUnboxIfPrimitive(mv, elemType);
+                }
+                case "kof_list_clear" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "clear", "()V", false);
                 default -> {}
             }
         } else if (op instanceof KofCall kc) {

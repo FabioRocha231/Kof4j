@@ -256,6 +256,31 @@ class JvmE2ETest {
     }
 
     @Test
+    void execListRichApi(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var l = listOf(1, 2, 3, 4)
+                println(l.size)
+                println(l.contains(3))
+                println(l.contains(99))
+                println(l.isEmpty())
+                var removed = l.remove(1)
+                println(removed)
+                println(l.size)
+                println(l.get(1))
+                l.clear()
+                println(l.isEmpty())
+                var s = listOf("a", "b")
+                println(s.contains("b"))
+                var e = listOf<Int>()
+                println(e.size)
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "4\ntrue\nfalse\nfalse\n2\n3\n3\ntrue\ntrue\n0");
+    }
+
+    @Test
     void execListString(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """

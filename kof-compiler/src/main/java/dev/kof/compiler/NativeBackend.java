@@ -744,7 +744,9 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 sb.append("    call ").append(listFn).append("\n");
-                sb.append("    pushq %rax\n");
+                if (!Type.isVoid(kc.returnType())) {
+                    sb.append("    pushq %rax\n");
+                }
                 return;
             }
         }
@@ -766,7 +768,9 @@ public class NativeBackend implements Backend {
                 sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
                 sb.append("    movq (%rbx), %rbx\n");
                 sb.append("    call *%rbx\n");
-                sb.append("    pushq %rax\n");
+                if (!Type.isVoid(kc.returnType())) {
+                    sb.append("    pushq %rax\n");
+                }
                 return;
             }
         }
@@ -788,7 +792,9 @@ public class NativeBackend implements Backend {
                 sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
                 sb.append("    movq (%rbx), %rbx\n");
                 sb.append("    call *%rbx\n");
-                sb.append("    pushq %rax\n");
+                if (!Type.isVoid(kc.returnType())) {
+                    sb.append("    pushq %rax\n");
+                }
                 return;
             }
         }
@@ -804,7 +810,9 @@ public class NativeBackend implements Backend {
         }
         String callee = resolveCalleeName(kc);
         sb.append("    call ").append(callee).append("\n");
-        sb.append("    pushq %rax\n");
+        if (!Type.isVoid(kc.returnType())) {
+            sb.append("    pushq %rax\n");
+        }
     }
 
     private String resolveCalleeName(KofCall kc) {

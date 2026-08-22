@@ -791,6 +791,109 @@ final class NativeRuntime {
             kof_list_size:
                 movslq 16(%rdi), %rax
                 ret
+
+            .globl kof_list_contains
+            .type kof_list_contains, @function
+            kof_list_contains:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl %edx, %r13d
+                movl 16(%rbx), %r14d
+                xorl %r15d, %r15d
+            .Lkof_list_contains_loop:
+                cmpl %r14d, %r15d
+                jge .Lkof_list_contains_no
+                movq 24(%rbx), %rax
+                movq (%rax,%r15,8), %rax
+                cmpl $1, %r13d
+                je .Lkof_list_contains_str
+                cmpq %r12, %rax
+                je .Lkof_list_contains_yes
+                jmp .Lkof_list_contains_next
+            .Lkof_list_contains_str:
+                movq %rax, %rdi
+                movq %r12, %rsi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .Lkof_list_contains_yes
+            .Lkof_list_contains_next:
+                incl %r15d
+                jmp .Lkof_list_contains_loop
+            .Lkof_list_contains_yes:
+                movl $1, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_list_contains_no:
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_list_is_empty
+            .type kof_list_is_empty, @function
+            kof_list_is_empty:
+                cmpl $0, 16(%rdi)
+                sete %al
+                movzbl %al, %eax
+                ret
+
+            .globl kof_list_remove
+            .type kof_list_remove, @function
+            kof_list_remove:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movl 16(%rbx), %eax
+                cmpl %eax, %esi
+                jge .Lkof_list_remove_bounds
+                testl %esi, %esi
+                jl .Lkof_list_remove_bounds
+                movslq %esi, %rcx
+                movq 24(%rbx), %rax
+                movq (%rax,%rcx,8), %r12
+            .Lkof_list_remove_shift:
+                movl 16(%rbx), %eax
+                decl %eax
+                cmpl %eax, %ecx
+                jge .Lkof_list_remove_done
+                movq 24(%rbx), %rax
+                movq 8(%rax,%rcx,8), %rdx
+                movq 24(%rbx), %rax
+                movq %rdx, (%rax,%rcx,8)
+                incq %rcx
+                jmp .Lkof_list_remove_shift
+            .Lkof_list_remove_done:
+                movl 16(%rbx), %eax
+                decl %eax
+                movl %eax, 16(%rbx)
+                movq %r12, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_list_remove_bounds:
+                movl %esi, %edi
+                movl 16(%rbx), %esi
+                call kof_bounds_error
+
+            .globl kof_list_clear
+            .type kof_list_clear, @function
+            kof_list_clear:
+                movl $0, 16(%rdi)
+                ret
             """);
     }
 

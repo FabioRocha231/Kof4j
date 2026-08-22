@@ -436,6 +436,7 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())
+                        && !"listOf".equals(mc.methodName())
                         && !"super".equals(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
