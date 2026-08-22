@@ -603,6 +603,7 @@ final class JvmRuntime {
 
                 public static int kof_io_delete(String path) {
                     try {
+                        if (!java.nio.file.Files.exists(p(path))) return 0;
                         java.nio.file.Files.deleteIfExists(p(path));
                         return 1;
                     } catch (java.io.IOException e) {
@@ -675,6 +676,7 @@ final class JvmRuntime {
 
                 public static int kof_io_dir_delete(String path) {
                     try {
+                        if (!java.nio.file.Files.exists(p(path))) return 0;
                         java.nio.file.Files.deleteIfExists(p(path));
                         return 1;
                     } catch (java.io.IOException e) {

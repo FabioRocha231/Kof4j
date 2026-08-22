@@ -80,7 +80,7 @@ class JsBackend implements Backend {
             if (isMainClass(clazz)) {
                 for (IRMethod method : clazz.methods()) {
                     if ("<init>".equals(method.name())) continue;
-                    functions.add(lowerFunction(method, null, false));
+                    functions.add(lowerFunction(method, null, false, true));
                 }
             }
         }
@@ -88,18 +88,17 @@ class JsBackend implements Backend {
             if (skipClass(clazz) || isMainClass(clazz)) continue;
             classes.add(lowerClass(clazz));
         }
+        List<JsIr.JsStatement> moduleStatements = new ArrayList<>();
         for (JsIr.JsFunction fn : functions) {
             if ("main".equals(fn.name())) {
-                functions.add(new JsIr.JsFunction("__kof_entry", List.of(),
-                        List.of(new JsIr.JsExprStmt(new JsIr.JsCall(
-                                new JsIr.JsIdentifier("main"), List.of()))),
-                        false, false));
+                moduleStatements.add(new JsIr.JsExprStmt(new JsIr.JsCall(
+                        new JsIr.JsIdentifier("main"), List.of())));
                 break;
             }
         }
         return new JsIr.JsModule(module.name(), classes, functions,
                 new ArrayList<>(new LinkedHashSet<>(runtimeImports)),
-                new ArrayList<>(new LinkedHashSet<>(nodeRuntimeImports)));
+                new ArrayList<>(new LinkedHashSet<>(nodeRuntimeImports)), moduleStatements);
     }
 
     private static boolean skipClass(IRClass clazz) {
@@ -164,7 +163,7 @@ class JsBackend implements Backend {
             joined = new JsIr.JsBinary(joined, "+", parts.get(i));
         }
         return new JsIr.JsFunction("toString", List.of(),
-                List.of(new JsIr.JsReturn(joined)), false, false);
+                List.of(new JsIr.JsReturn(joined)), false, false, false);
     }
 
     private JsIr.JsFunction lowerConstructor(IRClass clazz, IRMethod method) {
@@ -172,14 +171,18 @@ class JsBackend implements Backend {
         List<JsIr.JsStatement> body = parseMethodBody(ctx);
         insertFieldDefaults(clazz, body);
         insertSuperCall(clazz, body);
-        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true);
+        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false);
     }
 
     private JsIr.JsFunction lowerFunction(IRMethod method, IRClass clazz, boolean isStatic) {
+        return lowerFunction(method, clazz, isStatic, false);
+    }
+
+    private JsIr.JsFunction lowerFunction(IRMethod method, IRClass clazz, boolean isStatic, boolean isTopLevel) {
         MethodCtx ctx = new MethodCtx(method, clazz);
         String name = method.name();
         if ("<init>".equals(name)) name = "constructor";
-        return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false);
+        return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel);
     }
 
     private List<JsIr.JsStatement> parseMethodBody(MethodCtx ctx) {

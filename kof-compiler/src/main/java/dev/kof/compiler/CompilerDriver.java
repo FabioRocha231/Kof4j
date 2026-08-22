@@ -68,7 +68,7 @@ public class CompilerDriver {
         return switch (target) {
             case JVM -> new JvmBackend();
             case NATIVE -> new NativeBackend();
-            case JS -> new JsBackendStub();
+            case JS -> new JsBackend();
         };
     }
 
@@ -1714,6 +1714,14 @@ public class CompilerDriver {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
+            if (mc.receiver() != null && KofIo.instanceMethod(Type.UnknownType.UNKNOWN,
+                    mc.methodName(), mc.arguments().size()) != null) {
+                return true;
+            }
+            if (mc.receiver() instanceof IdentifierExpr rid && KofIo.isConstructor(rid.name())
+                    && KofIo.staticMethod(rid.name(), mc.methodName(), mc.arguments().size()) != null) {
+                return true;
+            }
             if (semanticAnalyzer != null) {
                 SymbolTable.MethodSymbol resolved = semanticAnalyzer.getResolvedMethod(mc);
                 if (resolved != null) {

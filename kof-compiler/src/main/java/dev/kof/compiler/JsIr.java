@@ -20,7 +20,8 @@ final class JsIr {
     // ── Module ──────────────────────────────────────────────────────
 
     record JsModule(String name, List<JsClass> classes, List<JsFunction> functions,
-                    List<String> runtimeImports, List<String> nodeRuntimeImports) {
+                    List<String> runtimeImports, List<String> nodeRuntimeImports,
+                    List<JsStatement> statements) {
     }
 
     // ── Classes ─────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ final class JsIr {
     // ── Functions / Methods ─────────────────────────────────────────
 
     record JsFunction(String name, List<String> parameters, List<JsStatement> body,
-                      boolean isStatic, boolean isConstructor) {
+                      boolean isStatic, boolean isConstructor, boolean isTopLevel) {
     }
 
     // ── Statements ──────────────────────────────────────────────────

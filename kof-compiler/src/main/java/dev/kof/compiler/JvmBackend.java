@@ -86,6 +86,10 @@ class JvmBackend implements Backend {
         }
     }
 
+    private boolean isPrimitiveType(Type type) {
+        return type instanceof Type.PrimitiveType pt && !"void".equals(pt.name());
+    }
+
     private void emitUnboxIfPrimitive(MethodVisitor mv, Type type) {
         String boxed = boxedClassNameFor(type);
         if (boxed != null) {
@@ -354,8 +358,10 @@ class JvmBackend implements Backend {
                 .flatMap(b -> b.operations().stream())
                 .collect(Collectors.toList());
         if ("<init>".equals(method.name())) {
-            boolean hasSuperCall = ops.stream().anyMatch(op ->
-                    op instanceof KofCall kc && kc.kind() == KofCallKind.CONSTRUCTOR);
+            boolean hasSuperCall = !ops.isEmpty() && ops.get(0) instanceof KofLoadLocal ll
+                    && ll.index() == 0
+                    && ops.size() > 1 && ops.get(1) instanceof KofCall kc
+                    && kc.kind() == KofCallKind.CONSTRUCTOR && "<init>".equals(kc.methodName());
             if (!hasSuperCall) {
                 // JVM requires constructors to invoke super() or this() first.
                 Type thisType = classTypeFromInternal(className);
@@ -569,6 +575,11 @@ class JvmBackend implements Backend {
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
+                    if (!isPrimitiveType(elemType)) {
+                        mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(
+                                elemType instanceof Type.ClassType ct ? ct.packageName() : "",
+                                elemType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object"));
+                    }
                     emitUnboxIfPrimitive(mv, elemType);
                 }
                 case "kof_list_set" -> {

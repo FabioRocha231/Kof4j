@@ -351,7 +351,7 @@ public final class Main {
                     + ",\"compiler\":\"" + KofVersion.compiler()
                     + "\",\"runtime\":\"" + KofVersion.runtime()
                     + "\",\"stdlib\":\"" + KofVersion.stdlib()
-                    + "\",\"targets\":["jvm","native","js"]"
+                    + "\",\"targets\":[\"jvm\",\"native\",\"js\"]"
                     + ",\"lsp\":true"
                     + ",\"editorSupport\":true"
                     + ",\"install\":\"" + jsonEscape(installDir) + "\"}");

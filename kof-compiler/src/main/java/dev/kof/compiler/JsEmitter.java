@@ -37,6 +37,10 @@ final class JsEmitter {
             emitFunction(fn);
             line("");
         }
+        for (JsIr.JsStatement stmt : module.statements()) {
+            emitStatement(stmt);
+            line("");
+        }
         return sb.toString();
     }
 
@@ -57,6 +61,9 @@ final class JsEmitter {
 
     private void emitFunction(JsIr.JsFunction fn) {
         StringBuilder header = new StringBuilder();
+        if (fn.isTopLevel()) {
+            header.append("function ");
+        }
         if (fn.isStatic()) header.append("static ");
         if (fn.isConstructor()) {
             header.append("constructor(").append(String.join(", ", fn.parameters())).append(")");

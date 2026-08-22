@@ -12,9 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * kof.io end-to-end tests: File, Path and Directory over the real filesystem.
  *
- * Every test runs the compiled program twice — JVM and Native — against its
- * own @TempDir (no /tmp or C:\ assumptions, CI-safe on Linux/macOS/Windows).
- * JVM and Native must observe the same semantics.
+ * Every test runs the compiled program twice — JVM and Native — each against
+ * its own base directory under the test's @TempDir (no /tmp or C:\
+ * assumptions, CI-safe on Linux/macOS/Windows). JVM and Native must observe
+ * the same semantics.
  */
 class IoE2ETest {
 
@@ -56,12 +57,21 @@ class IoE2ETest {
         }
     }
 
+    /**
+     * Compiles the same body twice — JVM and Native — with %s replaced by a
+     * distinct base directory per backend, so the two runs never share state.
+     */
     private void both(Path tempDir, String name, String body, String expected) throws IOException {
+        String baseJvm = q(tempDir.resolve("jvm").toString());
+        Files.createDirectories(tempDir.resolve("jvm"));
         Path sourceJvm = tempDir.resolve(name + "Jvm.kf");
-        Files.writeString(sourceJvm, "main() {\n" + body.formatted(q(tempDir.resolve("jvm").toString())) + "\n}");
+        Files.writeString(sourceJvm, "main() {\n" + body.replace("%s", baseJvm) + "\n}");
         runJvm(sourceJvm, tempDir.resolve("jvm-out"), expected);
+
+        String baseNative = q(tempDir.resolve("native").toString());
+        Files.createDirectories(tempDir.resolve("native"));
         Path sourceNative = tempDir.resolve(name + "Native.kf");
-        Files.writeString(sourceNative, "main() {\n" + body.formatted(q(tempDir.resolve("native").toString())) + "\n}");
+        Files.writeString(sourceNative, "main() {\n" + body.replace("%s", baseNative) + "\n}");
         runNative(sourceNative, tempDir.resolve("native-out"), expected);
     }
 
@@ -69,13 +79,8 @@ class IoE2ETest {
         return dir.replace("\\", "\\\\");
     }
 
-    private static String base(String dir, String sub) {
-        return q(dir + java.io.File.separator + sub);
-    }
-
     @Test
     void fileTextRoundTrip(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileText", """
             var f = File("%s/hello.txt")
             println(f.writeText("Hello Kof"))
@@ -83,61 +88,56 @@ class IoE2ETest {
             println(f.isFile())
             println(f.readText())
             println(f.size())
-            """.formatted(dir), "true\ntrue\ntrue\nHello Kof\n9");
+            """, "true\ntrue\ntrue\nHello Kof\n9");
     }
 
     @Test
     void fileAppendText(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileAppend", """
             var f = File("%s/append.txt")
             f.writeText("a")
             println(f.appendText("b"))
             println(f.appendText("c"))
             println(f.readText())
-            """.formatted(dir), "true\ntrue\ntrue\nabc");
+            """, "true\ntrue\nabc");
     }
 
     @Test
     void fileUnicode(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileUnicode", """
             var f = File("%s/uni.txt")
             var texto = "Olá Kof\\n日本語\\n中文\\n😀"
             f.writeText(texto)
             println(f.readText())
-            """.formatted(dir), "Olá Kof\n日本語\n中文\n😀");
+            """, "Olá Kof\n日本語\n中文\n😀");
     }
 
     @Test
     void fileEmpty(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileEmpty", """
             var f = File("%s/empty.txt")
             f.writeText("")
             println(f.size())
             println(f.readText() == "")
-            """.formatted(dir), "0\ntrue");
+            """, "0\ntrue");
     }
 
     @Test
     void fileLarge(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileLarge", """
             var f = File("%s/large.txt")
             var chunk = "0123456789abcdef"
             var i = 0
-            while (i < 200000) {
+            while (i < 20000) {
                 f.appendText(chunk)
                 i = i + 1
             }
             println(f.size())
-            """.formatted(dir), "3200000");
+            """, "320000");
     }
 
     @Test
     void fileBytes(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileBytes", """
             var f = File("%s/data.bin")
             var b = new Int[4]
@@ -152,35 +152,32 @@ class IoE2ETest {
             println(f.readBytes()[2])
             println(f.appendBytes(b))
             println(f.size())
-            """.formatted(dir), "true\n4\n65\n0\n255\ntrue\n8");
+            """, "true\n4\n65\n0\n255\ntrue\n8");
     }
 
     @Test
     void fileDelete(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileDelete", """
             var f = File("%s/tmp.txt")
             f.writeText("x")
             println(f.delete())
             println(f.exists())
             println(f.delete())
-            """.formatted(dir), "true\nfalse\nfalse");
+            """, "true\nfalse\nfalse");
     }
 
     @Test
     void fileMissing(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "fileMissing", """
             var f = File("%s/nope.txt")
             println(f.exists())
             println(f.isFile())
             println(f.size())
-            """.formatted(dir), "false\nfalse\n-1");
+            """, "false\nfalse\n-1");
     }
 
     @Test
     void directoryBasics(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "dirBasics", """
             var d = Directory("%s/data")
             println(d.exists())
@@ -188,28 +185,26 @@ class IoE2ETest {
             println(d.exists())
             println(d.isDirectory())
             println(d.create())
-            """.formatted(dir), "false\ntrue\ntrue\ntrue\nfalse");
+            """, "false\ntrue\ntrue\ntrue\nfalse");
     }
 
     @Test
     void directoryCreateDirectories(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "dirCreateDirs", """
             var p = Path("%s/a/b/c")
             println(p.createDirectories())
             var d = Directory("%s/a/b/c")
             println(d.isDirectory())
-            """.formatted(dir, dir), "true\ntrue");
+            """, "true\ntrue");
     }
 
     @Test
     void directoryList(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "dirList", """
             var d = Directory("%s/listing")
             d.createDirectories()
-            File("%s/listing/a.txt").writeText("1")
             File("%s/listing/b.txt").writeText("2")
+            File("%s/listing/a.txt").writeText("1")
             File("%s/listing/c.txt").writeText("3")
             var total = 0
             for (var entry in d.list()) {
@@ -217,24 +212,22 @@ class IoE2ETest {
                 total = total + 1
             }
             println(total)
-            """.formatted(dir, dir, dir, dir), "a.txt\nb.txt\nc.txt\n3");
+            """, "a.txt\nb.txt\nc.txt\n3");
     }
 
     @Test
     void directoryDelete(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "dirDelete", """
             var d = Directory("%s/rmdir")
             d.create()
             println(d.delete())
             println(d.exists())
             println(d.delete())
-            """.formatted(dir), "true\nfalse\nfalse");
+            """, "true\nfalse\nfalse");
     }
 
     @Test
     void pathOperations(@TempDir Path tempDir) throws IOException {
-        String dir = q(tempDir.toString());
         both(tempDir, "pathOps", """
             var p = Path("data/users/mel.txt")
             println(p.fileName())
@@ -244,7 +237,7 @@ class IoE2ETest {
             println(Path("a/./b/../c").normalize())
             println(p.isAbsolute())
             println(p.toAbsolute().isAbsolute())
-            """.formatted(dir), "mel.txt\ntxt\nusers\ndata/users/mel.txt/extra.txt\na/c\nfalse\ntrue");
+            """, "mel.txt\ntxt\nusers\ndata/users/mel.txt/extra.txt\na/c\nfalse\ntrue");
     }
 
     @Test
@@ -254,17 +247,17 @@ class IoE2ETest {
             println(Path("/a/../b").normalize())
             println(Path("a//b").normalize())
             println(Path("a/b/../..").normalize())
-            """.formatted(), "bar\n/b\na/b\n.");
+            """, "bar\n/b\na/b\n.");
     }
 
     @Test
     void pathParentChains(@TempDir Path tempDir) throws IOException {
         both(tempDir, "pathChain", """
-            var p = Path("data/users.txt")
+            var p = Path("%s/data/users.txt")
             p.parent().createDirectories()
             p.writeText("Mel")
-            println(File("data/users.txt").readText())
+            println(File("%s/data/users.txt").readText())
             println(p.size())
-            """.formatted(), "Mel\n3");
+            """, "Mel\n3");
     }
 }

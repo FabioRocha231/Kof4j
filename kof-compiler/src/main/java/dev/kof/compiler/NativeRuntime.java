@@ -3647,9 +3647,7 @@ final class NativeRuntime {
                 syscall
                 testq %rax, %rax
                 je .Lio_mkdir_ok
-                cmpq $-17, %rax
-                je .Lio_mkdir_ok
-                movq $-1, %rax
+                xorl %eax, %eax
                 popq %rbx
                 ret
             .Lio_mkdir_ok:
@@ -3663,13 +3661,50 @@ final class NativeRuntime {
                 pushq %rbx
                 pushq %r12
                 pushq %r13
+                pushq %r14
                 subq $520, %rsp
                 movq %rdi, %rbx
                 movl 16(%rbx), %r13d
                 movq $1, %r12
-            .Lio_dirs_loop:
+            .Lio_dirs_scan:
                 cmpq %r13, %r12
                 jg .Lio_dirs_final
+                leaq 24(%rbx), %rax
+                cmpb $47, (%rax,%r12)
+                jne .Lio_dirs_advance
+                call .Lio_dirs_mkdir_prefix
+                testq %rax, %rax
+                je .Lio_dirs_advance
+                jmp .Lio_dirs_err
+            .Lio_dirs_advance:
+                incq %r12
+                jmp .Lio_dirs_scan
+            .Lio_dirs_final:
+                leaq 24(%rbx), %rdi
+                movq $493, %rsi
+                movq $83, %rax
+                syscall
+                testq %rax, %rax
+                je .Lio_dirs_ok
+                cmpq $-17, %rax
+                jne .Lio_dirs_err
+            .Lio_dirs_ok:
+                movq $1, %rax
+                addq $520, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_dirs_err:
+                xorl %eax, %eax
+                addq $520, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_dirs_mkdir_prefix:
                 movq %r12, %rcx
                 xorq %r8, %r8
                 leaq 24(%rbx), %rsi
@@ -3683,42 +3718,20 @@ final class NativeRuntime {
                 jmp .Lio_dirs_copy
             .Lio_dirs_copy_done:
                 movb $0, (%rdi,%r8)
-                movb -1(%rdi,%r12), %al
-                cmpb $47, %al
-                je .Lio_dirs_next
+                cmpq $1, %rcx
+                jle .Lio_dirs_prefix_skip
                 movq %rsp, %rdi
                 movq $493, %rsi
                 movq $83, %rax
                 syscall
                 testq %rax, %rax
-                je .Lio_dirs_next
+                je .Lio_dirs_prefix_skip
                 cmpq $-17, %rax
-                jne .Lio_dirs_err
-            .Lio_dirs_next:
-                incq %r12
-                jmp .Lio_dirs_loop
-            .Lio_dirs_final:
-                leaq 24(%rbx), %rdi
-                movq $493, %rsi
-                movq $83, %rax
-                syscall
-                testq %rax, %rax
-                je .Lio_dirs_ok
-                cmpq $-17, %rax
-                jne .Lio_dirs_err
-            .Lio_dirs_ok:
-                movq $1, %rax
-                addq $520, %rsp
-                popq %r13
-                popq %r12
-                popq %rbx
+                je .Lio_dirs_prefix_skip
+                movq $-1, %rax
                 ret
-            .Lio_dirs_err:
+            .Lio_dirs_prefix_skip:
                 xorl %eax, %eax
-                addq $520, %rsp
-                popq %r13
-                popq %r12
-                popq %rbx
                 ret
 
             .globl kof_io_dir_delete
