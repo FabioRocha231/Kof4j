@@ -36,6 +36,7 @@ final class NativeRuntime {
         emitArrayLength(sb);
         emitArrayGet(sb);
         emitArraySet(sb);
+        emitMemstats(sb);
         return sb.toString();
     }
 
@@ -162,9 +163,13 @@ final class NativeRuntime {
     /**
      * kof_alloc(size) — allocates size bytes on the heap.
      * Returns pointer in %rax. Uses mmap for simplicity.
+     * Tracks allocation count for debugging.
      */
     private static void emitAlloc(StringBuilder sb) {
         sb.append("""
+            .section .data
+            .Lkof_alloc_count: .quad 0
+            .section .text
             .globl kof_alloc
             .type kof_alloc, @function
             kof_alloc:
@@ -180,6 +185,7 @@ final class NativeRuntime {
                 movq $0, %r9
                 movq $9, %rax
                 syscall
+                incq .Lkof_alloc_count(%rip)
                 popq %rbx
                 ret
             """);
@@ -187,13 +193,34 @@ final class NativeRuntime {
 
     /**
      * kof_free(ptr) — no-op for now (no GC).
-     * Future: implement deallocation.
+     * Memory is reclaimed by the OS when the process exits.
      */
     private static void emitFree(StringBuilder sb) {
         sb.append("""
             .globl kof_free
             .type kof_free, @function
             kof_free:
+                ret
+            """);
+    }
+
+    /**
+     * kof_memstats() — prints memory allocation statistics.
+     * Useful for debugging memory usage.
+     */
+    static void emitMemstats(StringBuilder sb) {
+        sb.append("""
+            .Lkof_memstats_msg: .asciz "Kof Memory: allocations="
+            .Lkof_memstats_nl: .asciz "\\n"
+            .globl kof_memstats
+            .type kof_memstats, @function
+            kof_memstats:
+                pushq %rbx
+                movq .Lkof_alloc_count(%rip), %rdi
+                call kof_print_int
+                leaq .Lkof_memstats_nl(%rip), %rdi
+                call kof_print
+                popq %rbx
                 ret
             """);
     }

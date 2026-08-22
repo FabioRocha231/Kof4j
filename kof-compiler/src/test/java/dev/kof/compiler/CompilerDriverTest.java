@@ -2632,4 +2632,63 @@ class CompilerDriverTest {
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
         assertTrue(result.success(), "Throw in function should compile to native");
     }
+
+    // ── String Concat Integration Tests ──────────────────────────
+
+    @Test
+    void stringConcatJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = "Hello"
+                var b = " World"
+                println(a + b)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String concat should compile to JVM");
+    }
+
+    @Test
+    void stringConcatNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = "Hello"
+                var b = " World"
+                println(a + b)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "String concat should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_string_concat"), "Should call kof_string_concat");
+        }
+    }
+
+    @Test
+    void stringConcatLiteralJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Hello" + " World")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String concat literal should compile to JVM");
+    }
+
+    @Test
+    void stringConcatLiteralNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Hello" + " World")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "String concat literal should compile to native");
+    }
 }

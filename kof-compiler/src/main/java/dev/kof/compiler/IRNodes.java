@@ -163,7 +163,3 @@ record KofArrayLength() implements KofOperation {
 
 record KofThrow() implements KofOperation {
 }
-
-record TryCatchRegion(LabelId tryStart, LabelId tryEnd, LabelId handlerStart,
-                      String catchType) implements KofOperation {
-}

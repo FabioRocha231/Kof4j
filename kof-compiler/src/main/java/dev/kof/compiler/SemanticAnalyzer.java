@@ -29,7 +29,6 @@ class SemanticAnalyzer {
             analyzeDeclaration(decl);
         }
         resolveMethodCalls(unit);
-        resolveNewExpressions(unit);
     }
 
     Type getExpressionType(ExpressionNode expr) {
@@ -480,9 +479,6 @@ class SemanticAnalyzer {
         }
     }
 
-    private void resolveNewExpressions(CompilationUnitNode unit) {
-    }
-
     private void resolveInStatement(StatementNode stmt) {
         switch (stmt) {
             case BlockStmt block -> {
@@ -528,14 +524,5 @@ class SemanticAnalyzer {
             case FieldAccessExpr fa -> resolveInExpression(fa.receiver());
             default -> {}
         }
-    }
-
-    private boolean areTypesCompatible(Type target, Type source) {
-        if (Type.isUnknown(target) || Type.isUnknown(source)) return true;
-        if (target.equals(source)) return true;
-        if (target instanceof Type.PrimitiveType t && source instanceof Type.PrimitiveType s) {
-            return t.sort() >= s.sort();
-        }
-        return true;
     }
 }

@@ -343,7 +343,6 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_panic\n");
             }
-            case TryCatchRegion tcr -> { }
             default -> { }
         }
     }

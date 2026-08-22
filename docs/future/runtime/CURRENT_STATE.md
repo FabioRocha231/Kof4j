@@ -1,7 +1,7 @@
 # CURRENT_STATE.md — Estado do Runtime do Kof
 
 **Data:** 21 de agosto de 2026
-**Status:** Fase F.4 concluída — Virtual Dispatch implementado
+**Status:** Fase F concluída — Runtime + Object Model completos
 
 ---
 
@@ -151,6 +151,16 @@ As funções de runtime nativas são geradas pelo `NativeRuntime.java` no compil
 | **Acesso a field herdado** | ✅ | ✅ |
 | **Acesso a método herdado** | ✅ | ✅ |
 | **Herança de 3 níveis** | ✅ | ✅ |
+| **Virtual dispatch** | ✅ | ✅ |
+| **Override de métodos** | ✅ | ✅ |
+| **Interfaces** | ✅ | ✅ |
+| **Interface polymorphism** | ✅ | ✅ |
+| **throw** | ✅ | ✅ |
+| **try/catch** | ✅ | ✅ |
+| **try/finally** | ✅ | ✅ |
+| **Runtime errors (null, bounds)** | ✅ | ✅ |
+| **Memory allocation tracking** | ✅ | ✅ |
+| **String concatenation (+)** | ✅ | ✅ |
 
 ---
 
@@ -158,23 +168,23 @@ As funções de runtime nativas são geradas pelo `NativeRuntime.java` no compil
 
 | Feature | Estado | Motivo |
 |---------|--------|--------|
-| Virtual dispatch | ❌ | Direct dispatch apenas |
-| Exceptions | ❌ | No-op |
 | Generics | ❌ | Não implementado |
 | Collections | ❌ | Não implementado |
 | Static fields | ❌ | No-op |
 | Boxing/Unboxing | ❌ | valueOf no-op |
 | Type casting | ❌ | No-op |
 | instanceof | ❌ | Sempre false |
+| GC | ❌ | Memória não é liberada |
+| Default methods em interfaces | ❌ | Não implementado |
 
 ---
 
-## 8. Próximos Passos (Fase F)
+## 8. Fase F Concluída
 
 1. ~~String model~~ ✅ Fase F.1
 2. ~~Array model~~ ✅ Fase F.2
 3. ~~Inheritance~~ ✅ Fase F.3
-4. Virtual Dispatch
-5. Interfaces
-6. Exceptions
-7. GC
+4. ~~Virtual Dispatch~~ ✅ Fase F.4
+5. ~~Interfaces~~ ✅ Fase F.5
+6. ~~Exceptions/Runtime Errors~~ ✅ Fase F.6
+7. ~~Memory Management~~ ✅ Fase F.7

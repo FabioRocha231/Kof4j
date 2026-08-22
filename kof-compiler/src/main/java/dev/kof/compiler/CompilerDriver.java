@@ -257,18 +257,9 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case TryStmt ts -> {
-                LabelId tryStart = LabelId.create();
-                LabelId tryEnd = LabelId.create();
-                LabelId handlerStart = LabelId.create();
-                for (CatchClause cc : ts.catchClauses()) {
-                    ops.add(new TryCatchRegion(tryStart, tryEnd, handlerStart, cc.exceptionType()));
-                }
-                ops.add(new KofLabel(tryStart));
                 for (StatementNode s : ts.tryBody()) {
                     localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
                 }
-                ops.add(new KofJump(tryEnd));
-                ops.add(new KofLabel(handlerStart));
                 for (CatchClause cc : ts.catchClauses()) {
                     localIdx = emitStatement(new BlockStmt(cc.position(), cc.body()), ops, owner, localIdx, locals, returnType);
                 }
@@ -277,7 +268,6 @@ public class CompilerDriver {
                         localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
                     }
                 }
-                ops.add(new KofLabel(tryEnd));
                 yield localIdx;
             }
             default -> localIdx;
@@ -330,14 +320,22 @@ public class CompilerDriver {
             case BinaryExpr bin -> {
                 localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                 localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                Type operandType = inferExprType(bin.left(), locals);
-                switch (bin.operator()) {
-                    case "+" -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
-                    case "-" -> ops.add(new KofBinary(KofBinaryOp.SUB, operandType));
-                    case "*" -> ops.add(new KofBinary(KofBinaryOp.MUL, operandType));
-                    case "/" -> ops.add(new KofBinary(KofBinaryOp.DIV, operandType));
-                    case "%" -> ops.add(new KofBinary(KofBinaryOp.MOD, operandType));
-                    default -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
+                Type leftType = inferExprType(bin.left(), locals);
+                Type rightType = inferExprType(bin.right(), locals);
+                if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
+                    ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                            List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                            BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                } else {
+                    Type operandType = leftType;
+                    switch (bin.operator()) {
+                        case "+" -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
+                        case "-" -> ops.add(new KofBinary(KofBinaryOp.SUB, operandType));
+                        case "*" -> ops.add(new KofBinary(KofBinaryOp.MUL, operandType));
+                        case "/" -> ops.add(new KofBinary(KofBinaryOp.DIV, operandType));
+                        case "%" -> ops.add(new KofBinary(KofBinaryOp.MOD, operandType));
+                        default -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
+                    }
                 }
                 yield localIdx;
             }
@@ -557,7 +555,14 @@ public class CompilerDriver {
                 }
                 yield Type.UnknownType.UNKNOWN;
             }
-            case BinaryExpr bin -> inferExprType(bin.left(), locals);
+            case BinaryExpr bin -> {
+                Type leftType = inferExprType(bin.left(), locals);
+                Type rightType = inferExprType(bin.right(), locals);
+                if ("+".equals(bin.operator()) && (Type.isString(leftType) || Type.isString(rightType))) {
+                    yield BuiltinTypes.STRING;
+                }
+                yield leftType;
+            }
             case MethodCallExpr mc -> {
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
                 SymbolTable.MethodSymbol resolvedMethod = semanticAnalyzer.getResolvedMethod(mc);

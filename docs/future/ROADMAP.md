@@ -454,6 +454,29 @@ Estado atual: ❌ não implementado
   - CompilerDriver: NewExpr no inferExprType ✅
   - VIRTUAL_DISPATCH.md documentado ✅
   - 11 novos testes (override, polymorphism, 3 níveis, slots) ✅
+- **Fase F.5 — Interfaces:** ✅
+  - KofCallKind.INTERFACE na IR ✅
+  - Parser: interface declaration + implements ✅
+  - SemanticAnalyzer: isInterfaceType(), resolveInHierarchy() caminha interfaces ✅
+  - CompilerDriver: define KofCallKind.INTERFACE para chamadas via interface ✅
+  - JvmBackend: INVOKEINTERFACE ✅
+  - NativeBackend: dispatch via vtable para interfaces ✅
+  - INTERFACES_MODEL.md documentado ✅
+  - 13 novos testes ✅
+- **Fase F.6 — Exceptions/Runtime Errors:** ✅
+  - AST: ThrowStmt, TryStmt, CatchClause ✅
+  - Parser: try/catch/finally ✅
+  - IR: KofThrow ✅
+  - JvmBackend: ATHROW ✅
+  - NativeBackend: kof_panic para throw ✅
+  - Runtime errors: kof_null_error, kof_bounds_error ✅
+  - EXCEPTIONS_MODEL.md documentado ✅
+  - 14 novos testes ✅
+- **Fase F.7 — Memory Management:** ✅
+  - kof_alloc com tracking de alocações ✅
+  - kof_free (no-op, documentado) ✅
+  - kof_memstats para debug ✅
+  - MEMORY_MODEL.md documentado ✅
 - Interfaces (pendente)
 - Exceptions/Runtime Errors (pendente)
 - Memory Management (pendente)

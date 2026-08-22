@@ -175,7 +175,7 @@ kof build → FUNCIONA
 
 | Tipo | Quantidade |
 |------|-----------|
-| JUnit (kof-compiler) | 115 passando |
+| JUnit (kof-compiler) | 146 passando |
 | Architectural isolation | 7 testes |
 | IR representation | 6 testes |
 | End-to-end JVM | 19 testes |
@@ -186,6 +186,8 @@ kof build → FUNCIONA
 | Phase F.2 (array model) | 25 testes |
 | Phase F.3 (inheritance) | 20 testes |
 | Phase F.4 (virtual dispatch) | 11 testes |
+| Phase F.5 (interfaces) | 13 testes |
+| Phase F.6 (exceptions) | 14 testes |
 
 ---
 

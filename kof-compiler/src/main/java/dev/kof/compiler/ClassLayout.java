@@ -2,9 +2,7 @@ package dev.kof.compiler;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -135,16 +133,6 @@ public class ClassLayout {
         return (value + alignment - 1) & ~(alignment - 1);
     }
 
-    /**
-     * Cache of built layouts keyed by class internal name.
-     */
-    private static final Map<String, ClassLayout> cache = new HashMap<>();
-
-    public static ClassLayout getOrCreate(IRClass clazz) {
-        return cache.computeIfAbsent(clazz.name(), k -> build(clazz));
-    }
-
     public static void clearCache() {
-        cache.clear();
     }
 }
