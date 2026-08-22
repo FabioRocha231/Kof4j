@@ -43,7 +43,7 @@ class JvmE2ETest {
     @Test
     void execHelloWorld(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
-        Files.writeString(source, "fun main() { println(\"Hello, JVM!\") }");
+        Files.writeString(source, "main() { println(\"Hello, JVM!\") }");
         runJvm(source, tempDir.resolve("out"), "Hello, JVM!");
     }
 
@@ -51,7 +51,7 @@ class JvmE2ETest {
     void execArithmetic(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(10 + 20 * 3)
                 println(100 / 7)
                 println(17 % 5)
@@ -64,7 +64,7 @@ class JvmE2ETest {
     void execIfElse(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     println("greater")
@@ -86,7 +86,7 @@ class JvmE2ETest {
     void execIfElseNested(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 7
                 if (x > 5) {
                     if (x > 8) {
@@ -106,7 +106,7 @@ class JvmE2ETest {
     void execWhileLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 var sum = 0
                 while (i < 5) {
@@ -123,7 +123,7 @@ class JvmE2ETest {
     void execForLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var sum = 0
                 for (var i = 0; i < 10; i++) {
                     sum = sum + i
@@ -138,7 +138,7 @@ class JvmE2ETest {
     void execDoWhile(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 do {
                     i = i + 1
@@ -153,7 +153,7 @@ class JvmE2ETest {
     void execBreakContinue(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var sum = 0
                 for (var i = 0; i < 10; i++) {
                     if (i == 2) { continue }
@@ -170,7 +170,7 @@ class JvmE2ETest {
     void execSwitch(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 2
                 switch (x) {
                     case 1: println("one")
@@ -186,7 +186,7 @@ class JvmE2ETest {
     void execStringConcatEquals(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 var t = s + " World"
                 println(t)
@@ -203,7 +203,7 @@ class JvmE2ETest {
     void execStringMethods(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello World"
                 println(s.charAt(1))
                 println(s.substring(6))
@@ -221,7 +221,7 @@ class JvmE2ETest {
     void execStringComparison(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "x"
                 var b = "y"
                 var ne = a != b
@@ -237,7 +237,7 @@ class JvmE2ETest {
     void execListOperations(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = new List<Int>()
                 for (var i = 0; i < 10; i++) {
                     l.add(i)
@@ -259,7 +259,7 @@ class JvmE2ETest {
     void execListRichApi(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = listOf(1, 2, 3, 4)
                 println(l.size)
                 println(l.contains(3))
@@ -284,7 +284,7 @@ class JvmE2ETest {
     void execListString(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = new List<String>()
                 l.add("a")
                 l.add("b")
@@ -300,7 +300,7 @@ class JvmE2ETest {
     void execArrays(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[3]
                 a[0] = 1
                 a[1] = 2
@@ -316,11 +316,11 @@ class JvmE2ETest {
     void execFunctions(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun fib(Int n): Int {
+            fib(Int n): Int {
                 if (n < 2) { return n }
                 return fib(n - 1) + fib(n - 2)
             }
-            fun main() {
+            main() {
                 println(fib(10))
             }
             """);
@@ -332,7 +332,7 @@ class JvmE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
                 println(p.y())
@@ -347,14 +347,14 @@ class JvmE2ETest {
         Files.writeString(source, """
             class Counter {
                 Int value = 0
-                public fun inc() {
+                public inc() {
                     value = value + 1
                 }
-                public fun get(): Int {
+                public get(): Int {
                     return value
                 }
             }
-            fun main() {
+            main() {
                 var c = new Counter()
                 c.inc()
                 c.inc()
@@ -374,15 +374,15 @@ class JvmE2ETest {
                 public constructor(String name) {
                     this.name = name
                 }
-                fun speak(): String = "animal"
+                speak(): String = "animal"
             }
             class Dog extends Animal {
                 public constructor(String name) {
                     super(name)
                 }
-                fun speak(): String = "dog"
+                speak(): String = "dog"
             }
-            fun main() {
+            main() {
                 var d = new Dog("Rex")
                 println(d.speak())
                 println(d.name)
@@ -396,15 +396,15 @@ class JvmE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                fun speak(): String = "animal"
+                speak(): String = "animal"
             }
             class Dog extends Animal {
-                fun speak(): String = "dog"
+                speak(): String = "dog"
             }
             class Cat extends Animal {
-                fun speak(): String = "cat"
+                speak(): String = "cat"
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 println(a.speak())
                 var b = new Cat()
@@ -419,12 +419,12 @@ class JvmE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                fun speak(): String = "woof"
+                speak(): String = "woof"
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 println(d.speak())
             }
@@ -436,10 +436,10 @@ class JvmE2ETest {
     void execGenericFunction(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun identity<T>(T x): T {
+            identity<T>(T x): T {
                 return x
             }
-            fun main() {
+            main() {
                 println(identity<Int>(42))
                 println(identity<String>("hi"))
             }
@@ -456,11 +456,11 @@ class JvmE2ETest {
                 public constructor(T value) {
                     this.value = value
                 }
-                fun get(): T {
+                get(): T {
                     return value
                 }
             }
-            fun main() {
+            main() {
                 var b = new Box<Int>(7)
                 println(b.get())
             }
@@ -472,7 +472,7 @@ class JvmE2ETest {
     void execLongArithmetic(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = 10000000000l
                 var b = 5000000000l
                 println(a + b)
@@ -487,7 +487,7 @@ class JvmE2ETest {
         Files.writeString(source, """
             class Animal { }
             class Dog extends Animal { }
-            fun main() {
+            main() {
                 var d = new Dog()
                 if (d instanceof Dog) {
                     println("is-dog")
@@ -504,7 +504,7 @@ class JvmE2ETest {
     void execBooleanOperators(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = true
                 var b = false
                 var c = a && b
@@ -515,5 +515,52 @@ class JvmE2ETest {
             }
             """);
         runJvm(source, tempDir.resolve("out"), "false\ntrue\ntrue");
+    }
+
+    @Test
+    void execFunctionDeclarationForms(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            String saudacao() {
+                return "oi"
+            }
+            Int soma(Int a, Int b): Int {
+                return a + b
+            }
+            Bool positivo(Int x) = x > 0
+            class Usuario {
+                String nome
+                public constructor(String nome) { this.nome = nome }
+                String buscaNomeDeUsuario() {
+                    return nome
+                }
+            }
+            main() {
+                println(saudacao())
+                println(soma(2, 3))
+                println(positivo(5))
+                var u = new Usuario("Mel")
+                println(u.buscaNomeDeUsuario())
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "oi\n5\ntrue\nMel");
+    }
+
+    @Test
+    void execRecordValueMethods(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Ponto(Int x, Int y)
+            main() {
+                var p = Ponto(3, 7)
+                println(p)
+                var q = Ponto(3, 7)
+                println(p == p)
+                println(p == q)
+                println(p.x() == q.x() && p.y() == q.y())
+                println(p.hashCode() == q.hashCode())
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "Ponto[x=3, y=7]\ntrue\nfalse\ntrue\ntrue");
     }
 }

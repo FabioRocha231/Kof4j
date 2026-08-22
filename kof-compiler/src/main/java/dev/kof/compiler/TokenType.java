@@ -58,7 +58,6 @@ enum TokenType {
     INSTANCEOF,
     VAR,
     VAL,
-    FUN,
     AS,
 
     BOOL_TYPE,

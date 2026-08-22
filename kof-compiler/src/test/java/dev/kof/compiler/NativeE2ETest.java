@@ -16,7 +16,7 @@ class NativeE2ETest {
     @Test
     void nativeHelloWorld(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
-        Files.writeString(source, "fun main() { println(\"Hello, Kof!\") }");
+        Files.writeString(source, "main() { println(\"Hello, Kof!\") }");
         Path outDir = tempDir.resolve("out");
         CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
         assertTrue(result.success(), "Compilation should succeed");
@@ -29,7 +29,7 @@ class NativeE2ETest {
     void nativeArithmetic(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 var y = 20
                 println(x + y)
@@ -44,7 +44,7 @@ class NativeE2ETest {
     void nativeIfElse(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     println("greater")
@@ -62,7 +62,7 @@ class NativeE2ETest {
     void nativeWhileLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 while (i < 3) {
                     println(i)
@@ -79,7 +79,7 @@ class NativeE2ETest {
     void nativeForLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 for (var i = 0; i < 3; i++) {
                     println(i)
                 }
@@ -94,10 +94,10 @@ class NativeE2ETest {
     void nativeFunctionCall(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun add(Int a, Int b): Int {
+            add(Int a, Int b): Int {
                 return a + b
             }
-            fun main() {
+            main() {
                 println(add(2, 3))
             }
             """);
@@ -111,7 +111,7 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -149,12 +149,12 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                fun speak(): String = "animal"
+                speak(): String = "animal"
             }
             class Dog extends Animal {
-                fun speak(): String = "dog"
+                speak(): String = "dog"
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 println(a.speak())
             }
@@ -167,11 +167,11 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                fun speak(): String = "animal"
+                speak(): String = "animal"
             }
             class Dog extends Animal {
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 println(a.speak())
             }
@@ -184,9 +184,9 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class User {
-                fun name(): String = "Mel"
+                name(): String = "Mel"
             }
-            fun main() {
+            main() {
                 var user = new User()
                 println(user.name())
             }
@@ -201,7 +201,7 @@ class NativeE2ETest {
             class User {
                 String name
             }
-            fun main() {
+            main() {
                 var u = new User()
                 u.name = "Mel"
                 println(u.name)
@@ -215,12 +215,12 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                fun describe(Int n): String = "animal"
+                describe(Int n): String = "animal"
             }
             class Dog extends Animal {
-                fun describe(Int n): String = "dog"
+                describe(Int n): String = "dog"
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 println(a.describe(7))
             }
@@ -232,7 +232,7 @@ class NativeE2ETest {
     void execStringLength(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.length)
             }
@@ -244,7 +244,7 @@ class NativeE2ETest {
     void execStringCharAt(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.charAt(0))
                 println(s.charAt(4))
@@ -257,7 +257,7 @@ class NativeE2ETest {
     void execStringSubstring(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.substring(1, 4))
             }
@@ -269,7 +269,7 @@ class NativeE2ETest {
     void execStringContains(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.contains("ell"))
             }
@@ -281,7 +281,7 @@ class NativeE2ETest {
     void execStringStartsWith(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.startsWith("He"))
             }
@@ -293,7 +293,7 @@ class NativeE2ETest {
     void execStringEndsWith(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.endsWith("lo"))
             }
@@ -305,7 +305,7 @@ class NativeE2ETest {
     void execStringConcat(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello"
                 println(s.concat(" World"))
             }
@@ -317,7 +317,7 @@ class NativeE2ETest {
     void execNegativeInt(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(-42)
             }
             """);
@@ -332,7 +332,7 @@ class NativeE2ETest {
             }
             class Dog extends Animal {
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 println(a instanceof Dog)
                 println(a instanceof Animal)
@@ -345,7 +345,7 @@ class NativeE2ETest {
     void execIfElse(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     println("greater")
@@ -361,7 +361,7 @@ class NativeE2ETest {
     void execWhileLoopRuns(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 while (i < 3) {
                     println(i)
@@ -376,7 +376,7 @@ class NativeE2ETest {
     void execForLoopRuns(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 for (var i = 0; i < 3; i++) {
                     println(i)
                 }
@@ -389,7 +389,7 @@ class NativeE2ETest {
     void execBreak(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 while (true) {
                     if (i == 3) { break }
@@ -405,7 +405,7 @@ class NativeE2ETest {
     void execContinue(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 while (i < 5) {
                     i = i + 1
@@ -421,7 +421,7 @@ class NativeE2ETest {
     void execStringEquals(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "Hello"
                 var b = "Hello"
                 println(a == b)
@@ -434,7 +434,7 @@ class NativeE2ETest {
     void execIntComparison(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(3 < 5)
                 println(3 > 5)
                 println(3 == 3)
@@ -448,7 +448,7 @@ class NativeE2ETest {
     void execSwitch(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 2
                 switch (x) {
                     case 1: println("one")
@@ -464,7 +464,7 @@ class NativeE2ETest {
     void execLongPrint(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(10000000000l)
                 var big = 5000000000l
                 println(big + big)
@@ -478,7 +478,7 @@ class NativeE2ETest {
     void execBitwise(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(5 & 3)
                 println(5 | 3)
                 println(5 ^ 3)
@@ -494,7 +494,7 @@ class NativeE2ETest {
     void execStringIndexOf(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "Hello World"
                 println(s.indexOf("W"))
                 println(s.indexOf("o"))
@@ -508,7 +508,7 @@ class NativeE2ETest {
     void execStringTrimCase(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("  padded  ".trim())
                 println("hello".toUpperCase())
                 println("HELLO".toLowerCase())
@@ -523,7 +523,7 @@ class NativeE2ETest {
     void execStringSplit(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var parts = "a,b,c".split(",")
                 println(parts.length)
                 println(parts[0])
@@ -538,7 +538,7 @@ class NativeE2ETest {
     void execListContains(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = listOf(1, 2, 3, 4)
                 println(l.size)
                 println(l.contains(3))
@@ -564,7 +564,7 @@ class NativeE2ETest {
     void execDoWhile(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 do {
                     println(i)
@@ -579,7 +579,7 @@ class NativeE2ETest {
     void execArray(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var arr = new Int[3]
                 arr[0] = 10
                 arr[1] = 20
@@ -595,11 +595,11 @@ class NativeE2ETest {
     void execRecursion(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun fib(Int n): Int {
+            fib(Int n): Int {
                 if (n <= 1) { return n }
                 return fib(n - 1) + fib(n - 2)
             }
-            fun main() {
+            main() {
                 println(fib(10))
             }
             """);
@@ -610,7 +610,7 @@ class NativeE2ETest {
     void execSubtraction(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(10 - 3)
                 println(3 - 10)
                 println(2 - 1 - 1)
@@ -628,11 +628,11 @@ class NativeE2ETest {
                 constructor(String name) {
                     this.name = name
                 }
-                fun greet(): String {
+                greet(): String {
                     return "hi " + name
                 }
             }
-            fun main() {
+            main() {
                 var u = new User("Mel")
                 println(u.greet())
             }
@@ -654,11 +654,11 @@ class NativeE2ETest {
                 constructor(String name) {
                     super(name)
                 }
-                fun speak(): String {
+                speak(): String {
                     return "dog " + name
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog("Rex")
                 println(d.speak())
             }
@@ -671,15 +671,15 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                fun speak(): String = "a"
+                speak(): String = "a"
             }
             class Dog extends Animal {
-                fun speak(): String = "d"
+                speak(): String = "d"
             }
             class Golden extends Dog {
-                fun speak(): String = "g"
+                speak(): String = "g"
             }
-            fun main() {
+            main() {
                 var g = new Golden()
                 println(g.speak())
                 var d = new Dog()
@@ -694,12 +694,12 @@ class NativeE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                fun speak(): String = "a"
+                speak(): String = "a"
             }
             class Dog extends Animal {
-                fun speak(): String = "d"
+                speak(): String = "d"
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 var d = a as Dog
                 println(d.speak())
@@ -712,10 +712,10 @@ class NativeE2ETest {
     void execGenericFunction(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun identity<T>(T x): T {
+            identity<T>(T x): T {
                 return x
             }
-            fun main() {
+            main() {
                 println(identity(42))
                 println(identity("hi"))
             }
@@ -729,14 +729,14 @@ class NativeE2ETest {
         Files.writeString(source, """
             class Box<T> {
                 T value
-                fun set(T v) {
+                set(T v) {
                     value = v
                 }
-                fun get(): T {
+                get(): T {
                     return value
                 }
             }
-            fun main() {
+            main() {
                 var b = new Box<Int>()
                 b.set(7)
                 println(b.get())
@@ -749,7 +749,7 @@ class NativeE2ETest {
     void execListInt(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = new List<Int>()
                 l.add(10)
                 l.add(20)
@@ -765,7 +765,7 @@ class NativeE2ETest {
     void execListGrow(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = new List<Int>()
                 for (var i = 0; i < 10; i++) {
                     l.add(i)
@@ -784,7 +784,7 @@ class NativeE2ETest {
     void execListString(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = new List<String>()
                 l.add("a")
                 l.add("b")
@@ -794,5 +794,19 @@ class NativeE2ETest {
             }
             """);
         runNative(source, tempDir.resolve("out"), "c\n3");
+    }
+
+    @Test
+    void execFunctionDeclarationPrefixForm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            String saudacao() {
+                return "oi"
+            }
+            main() {
+                println(saudacao())
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "oi");
     }
 }

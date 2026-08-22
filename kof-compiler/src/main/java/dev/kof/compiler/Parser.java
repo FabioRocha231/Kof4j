@@ -28,7 +28,7 @@ class Parser {
         List<String> imports = parseImports();
         List<AstNode> declarations = new ArrayList<>();
         while (!atEnd()) {
-            if (check(TokenType.FUN)) {
+            if (check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType()) {
                 declarations.add(parseFunctionDeclaration(List.of()));
             } else {
                 declarations.add(parseTypeDeclaration());
@@ -38,11 +38,11 @@ class Parser {
     }
 
     private FunctionDeclarationNode parseFunctionDeclaration(List<String> mods) {
-        Token funToken = advance();
         SourcePosition p = pos();
         String returnType = "void";
         String name;
-        if (check(TokenType.IDENTIFIER) && !checkNext(TokenType.LPAREN) && !checkNext(TokenType.LESS)) {
+        if ((check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType())
+                && !checkNext(TokenType.LPAREN) && !checkNext(TokenType.LESS)) {
             returnType = advance().value();
             name = expectId("Expected function name", "PARSE010");
         } else {
@@ -268,16 +268,11 @@ class Parser {
 
     private AstNode parseClassMember() {
         List<String> mods = parseModifiers();
-        if (check(TokenType.FUN)) {
-            advance();
-            String returnType = "void";
-            String name;
-            if (check(TokenType.IDENTIFIER) && !checkNext(TokenType.LPAREN)) {
-                returnType = advance().value();
-                name = expectId("Expected method name", "PARSE010");
-            } else {
-                name = expectId("Expected method name", "PARSE010");
-            }
+        if (check(TokenType.IDENTIFIER) && peek().value().equals("constructor") && checkNext(TokenType.LPAREN)) {
+            return parseConstructor(mods);
+        }
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.LPAREN)) {
+            String name = advance().value();
             expect(TokenType.LPAREN, "Expected '('", "PARSE011");
             List<FormalParameterNode> params = new ArrayList<>();
             if (!check(TokenType.RPAREN)) {
@@ -285,6 +280,7 @@ class Parser {
                 while (check(TokenType.COMMA)) { advance(); params.add(parseFormalParameter()); }
             }
             expect(TokenType.RPAREN, "Expected ')'", "PARSE012");
+            String returnType = "void";
             if (check(TokenType.COLON)) {
                 advance();
                 returnType = parseTypeRef();
@@ -303,9 +299,6 @@ class Parser {
             expectSemicolon();
             return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of());
         }
-        if (check(TokenType.IDENTIFIER) && peek().value().equals("constructor") && checkNext(TokenType.LPAREN)) {
-            return parseConstructor(mods);
-        }
         if (check(TokenType.IDENTIFIER, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE, TokenType.SHORT_TYPE,
                 TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE, TokenType.DOUBLE_TYPE,
                 TokenType.CHAR_TYPE, TokenType.STRING_TYPE, TokenType.VOID)) {
@@ -313,7 +306,8 @@ class Parser {
             Token next = pos + 1 < tokens.size() ? tokens.get(pos + 1) : peek();
             Token afterNext = pos + 2 < tokens.size() ? tokens.get(pos + 2) : peek();
             if (next.is(TokenType.IDENTIFIER) && afterNext.is(TokenType.LPAREN)) {
-                return parseMethodOrConstructor(mods, nameTok.value());
+                advance();
+                return parseMethod(mods, nameTok.value());
             }
             return parseField(mods);
         }
@@ -340,20 +334,23 @@ class Parser {
         return new FieldDeclarationNode(pos(), mods, type, name, init);
     }
 
-    private AstNode parseMethodOrConstructor(List<String> mods, String typeName) {
-        if (checkNext(TokenType.IDENTIFIER)) {
-            return parseMethod(mods, typeName);
-        }
-        return parseConstructor(mods);
-    }
-
     private AstNode parseMethod(List<String> mods, String returnType) {
         String name = advance().value();
         List<FormalParameterNode> params = parseFormalParameters();
+        if (check(TokenType.COLON)) {
+            advance();
+            returnType = parseTypeRef();
+        }
         List<String> thrown = parseThrows();
         if (check(TokenType.LBRACE)) {
             List<StatementNode> body = parseBlock();
             return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, body);
+        }
+        if (check(TokenType.EQUAL)) {
+            advance();
+            ExpressionNode expr = parseExpression();
+            if (check(TokenType.SEMICOLON)) advance();
+            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(new ReturnStmt(pos(), expr)));
         }
         expectSemicolon();
         return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of());
@@ -922,7 +919,13 @@ class Parser {
         while (!check(TokenType.GREATER) && !atEnd()) {
             splitShiftRight();
             if (check(TokenType.IDENTIFIER) || isPrimitiveType()) {
-                typeArgs.add(parseTypeRef());
+                String typeRef = parseTypeRef();
+                while (check(TokenType.LBRACKET) && checkNext(TokenType.RBRACKET)) {
+                    advance();
+                    advance();
+                    typeRef += "[]";
+                }
+                typeArgs.add(typeRef);
             } else {
                 advance();
             }

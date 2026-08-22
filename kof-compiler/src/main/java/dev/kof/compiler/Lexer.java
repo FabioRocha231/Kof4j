@@ -52,7 +52,6 @@ class Lexer {
         KEYWORDS.put("instanceof", TokenType.INSTANCEOF);
         KEYWORDS.put("var", TokenType.VAR);
         KEYWORDS.put("val", TokenType.VAL);
-        KEYWORDS.put("fun", TokenType.FUN);
         KEYWORDS.put("as", TokenType.AS);
         KEYWORDS.put("bool", TokenType.BOOL_TYPE);
         KEYWORDS.put("byte", TokenType.BYTE_TYPE);

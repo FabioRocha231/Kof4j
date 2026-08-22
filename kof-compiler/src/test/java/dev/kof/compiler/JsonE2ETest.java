@@ -62,7 +62,7 @@ class JsonE2ETest {
     void jvmEncodePrimitives(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.encode(42))
                 println(json.encode(true))
                 println(json.encode("hi \\"there\\""))
@@ -76,7 +76,7 @@ class JsonE2ETest {
     void jvmEncodeDecodeLists(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.encode(listOf(1, 2, 3)))
                 println(json.encode(listOf("a", "b")))
                 var dl = json.decode<List<Int>>("[1, 2, 3]")
@@ -93,7 +93,7 @@ class JsonE2ETest {
     void jvmEncodeArray(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var arr = new Int[3]
                 arr[0] = 7
                 arr[1] = 8
@@ -108,7 +108,7 @@ class JsonE2ETest {
     void jvmDecodeScalars(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.decode<Int>("77"))
                 println(json.decode<Bool>("true"))
                 println(json.decode<String>("\\"hello\\""))
@@ -126,7 +126,7 @@ class JsonE2ETest {
                 String name
                 Int age
             }
-            fun main() {
+            main() {
                 var u = new User()
                 u.name = "Mel"
                 u.age = 30
@@ -144,7 +144,7 @@ class JsonE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = new Point(3, 4)
                 println(json.encode(p))
                 var dp = json.decode<Point>("{\\"x\\": 10, \\"y\\": 20}")
@@ -161,7 +161,7 @@ class JsonE2ETest {
     void nativeEncodePrimitives(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.encode(42))
                 println(json.encode(true))
                 println(json.encode("hi"))
@@ -174,7 +174,7 @@ class JsonE2ETest {
     void nativeEncodeDecodeLists(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.encode(listOf(1, 2, 3)))
                 println(json.encode(listOf("a", "b")))
                 var dl = json.decode<List<Int>>("[1, 2, 3]")
@@ -191,7 +191,7 @@ class JsonE2ETest {
     void nativeEncodeArray(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var arr = new Int[3]
                 arr[0] = 7
                 arr[1] = 8
@@ -206,7 +206,7 @@ class JsonE2ETest {
     void nativeDecodeScalars(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.decode<Int>("77"))
                 println(json.decode<Bool>("true"))
                 println(json.decode<String>("\\"hello\\""))
@@ -221,7 +221,7 @@ class JsonE2ETest {
     void floatNotSupported(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(json.encode(1.5))
             }
             """);
@@ -238,7 +238,7 @@ class JsonE2ETest {
             class User {
                 String name
             }
-            fun main() {
+            main() {
                 var u = new User()
                 println(json.encode(u))
             }
@@ -253,7 +253,7 @@ class JsonE2ETest {
     void decodeArrayNotSupported(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = json.decode<Int[]>("[1, 2]")
                 println(a.length)
             }

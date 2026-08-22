@@ -9,7 +9,7 @@ class NativeDebugTest {
     @Test
     void debugNativeCompilation(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
-        Files.writeString(source, "fun main() { println(\"Hello, Kof!\") }");
+        Files.writeString(source, "main() { println(\"Hello, Kof!\") }");
         Path outDir = tempDir.resolve("out");
         CompilerDriver driver = new CompilerDriver();
         CompilationResult result = driver.compile(source, outDir, Target.NATIVE);

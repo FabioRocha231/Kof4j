@@ -35,7 +35,7 @@ class CompilerDriverTest {
     void compilesFunctionWithPrintln(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello, Kof!")
             }
             """);
@@ -47,7 +47,7 @@ class CompilerDriverTest {
     void compilesFunctionWithVariables(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var nome = "Mel"
                 var idade = 26
                 println(nome)
@@ -66,7 +66,7 @@ class CompilerDriverTest {
 
             import java.util.ArrayList
 
-            fun main() {
+            main() {
                 println("Package and import work!")
             }
             """);
@@ -78,7 +78,7 @@ class CompilerDriverTest {
     void compilesWithoutSemicolons(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("No semicolons!")
             }
             """);
@@ -99,7 +99,7 @@ class CompilerDriverTest {
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 1
                 x = "hello"
             }
@@ -112,7 +112,7 @@ class CompilerDriverTest {
     void failsOnWrongReturnType(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
         Files.writeString(source, """
-            fun f(): Int {
+            f(): Int {
                 return "x"
             }
             """);
@@ -124,8 +124,8 @@ class CompilerDriverTest {
     void failsOnWrongArgCount(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
         Files.writeString(source, """
-            fun add(Int a, Int b): Int { return a + b }
-            fun main() { add(1) }
+            add(Int a, Int b): Int { return a + b }
+            main() { add(1) }
             """);
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
         assertFalse(result.success(), "Calling add with 1 arg should fail");
@@ -135,8 +135,8 @@ class CompilerDriverTest {
     void failsOnWrongArgType(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
         Files.writeString(source, """
-            fun greet(String s): String { return s }
-            fun main() { greet(42) }
+            greet(String s): String { return s }
+            main() { greet(42) }
             """);
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
         assertFalse(result.success(), "Passing Int to String param should fail");
@@ -145,7 +145,7 @@ class CompilerDriverTest {
     @Test
     void failsOnUndefinedVariable(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
-        Files.writeString(source, "fun main() { println(undefinedVar) }");
+        Files.writeString(source, "main() { println(undefinedVar) }");
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
         assertFalse(result.success(), "Undefined variable should fail");
     }
@@ -153,7 +153,7 @@ class CompilerDriverTest {
     @Test
     void failsOnUndefinedFunction(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
-        Files.writeString(source, "fun main() { nope() }");
+        Files.writeString(source, "main() { nope() }");
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
         assertFalse(result.success(), "Undefined function should fail");
     }
@@ -164,14 +164,14 @@ class CompilerDriverTest {
         Files.writeString(source, """
             public class User {
                 String name
-                public fun getName(): String {
+                public getName(): String {
                     return name
                 }
                 public constructor(String name) {
                     this.name = name
                 }
             }
-            fun main() {
+            main() {
                 var user = new User("Mel")
                 println(user.getName())
             }
@@ -187,9 +187,9 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             public class Calculator {
-                public fun add(Int a, Int b): Int = a + b
+                public add(Int a, Int b): Int = a + b
             }
-            fun main() {
+            main() {
                 var c = new Calculator()
                 println(c.add(2, 3))
             }
@@ -204,7 +204,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -218,7 +218,7 @@ class CompilerDriverTest {
     void compilesClassWithNestedScopes(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     var y = 20
@@ -234,7 +234,7 @@ class CompilerDriverTest {
     void compilesForLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 for (var i = 0; i < 5; i++) {
                     println(i)
                 }
@@ -248,7 +248,7 @@ class CompilerDriverTest {
     void compilesWhileLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 while (i < 5) {
                     println(i)
@@ -264,7 +264,7 @@ class CompilerDriverTest {
     void compilesIfElse(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     println("greater")
@@ -281,7 +281,7 @@ class CompilerDriverTest {
     void compilesArithmetic(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 var y = 20
                 println(x + y)
@@ -296,9 +296,9 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             public class Empty {
-                public fun getValue(): Int = 42
+                public getValue(): Int = 42
             }
-            fun main() {
+            main() {
                 var e = new Empty()
                 println(e.getValue())
             }
@@ -415,7 +415,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
                 println(p.y())
@@ -432,9 +432,9 @@ class CompilerDriverTest {
             public class User {
                 String name
                 public constructor(String name) { this.name = name }
-                public fun getName(): String { return name }
+                public getName(): String { return name }
             }
-            fun main() {
+            main() {
                 var user = new User("Mel")
                 println(user.getName())
             }
@@ -447,7 +447,7 @@ class CompilerDriverTest {
     void compilesNestedControlFlow(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     var y = 20
@@ -468,10 +468,10 @@ class CompilerDriverTest {
             public class Counter {
                 Int value
                 public constructor(Int v) { this.value = v }
-                public fun getValue(): Int { return value }
-                public fun increment() { this.value = this.value + 1 }
+                public getValue(): Int { return value }
+                public increment() { this.value = this.value + 1 }
             }
-            fun main() {
+            main() {
                 var c = new Counter(10)
                 c.increment()
                 println(c.getValue())
@@ -488,7 +488,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -503,7 +503,7 @@ class CompilerDriverTest {
         Files.writeString(source, """
             record Point(Int x, Int y)
             record Size(Int width, Int height)
-            fun main() {
+            main() {
                 var p = Point(1, 2)
                 var s = Size(100, 200)
                 println(p.x())
@@ -523,11 +523,11 @@ class CompilerDriverTest {
                 public constructor(String name) {
                     this.name = name
                 }
-                public fun getName(): String {
+                public getName(): String {
                     return name
                 }
             }
-            fun main() {
+            main() {
                 var u = new User("Mel")
                 println(u.getName())
             }
@@ -540,7 +540,7 @@ class CompilerDriverTest {
     void phaseF_nativeRuntimeFunctionsExist(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello")
             }
             """);
@@ -561,7 +561,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -580,7 +580,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -599,7 +599,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
                 println(p.y())
@@ -620,7 +620,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -640,7 +640,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             record Point(Int x, Int y)
-            fun main() {
+            main() {
                 var p = Point(10, 20)
                 println(p.x())
             }
@@ -660,7 +660,7 @@ class CompilerDriverTest {
     void phaseF1_stringLiteralJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello, Kof!")
             }
             """);
@@ -672,7 +672,7 @@ class CompilerDriverTest {
     void phaseF1_stringLiteralNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello, Kof!")
             }
             """);
@@ -690,7 +690,7 @@ class CompilerDriverTest {
     void phaseF1_stringVariableJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "Hello"
                 println(a)
             }
@@ -703,7 +703,7 @@ class CompilerDriverTest {
     void phaseF1_stringVariableNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "Hello"
                 println(a)
             }
@@ -716,7 +716,7 @@ class CompilerDriverTest {
     void phaseF1_utf8StringNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Olá, mundo!")
             }
             """);
@@ -750,7 +750,7 @@ class CompilerDriverTest {
     void phaseF1_multipleStringLiteralsNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello")
                 println("World")
                 println("!")
@@ -770,7 +770,7 @@ class CompilerDriverTest {
     void phaseF1_stringWithIntPrintlnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println(42)
             }
             """);
@@ -796,7 +796,7 @@ class CompilerDriverTest {
     void phaseF2_arrayCreationJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 println(a.length)
             }
@@ -809,7 +809,7 @@ class CompilerDriverTest {
     void phaseF2_arrayCreationNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 println(a.length)
             }
@@ -828,7 +828,7 @@ class CompilerDriverTest {
     void phaseF2_arrayAccessJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 a[0] = 42
                 println(a[0])
@@ -842,7 +842,7 @@ class CompilerDriverTest {
     void phaseF2_arrayAccessNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 a[0] = 42
                 println(a[0])
@@ -862,7 +862,7 @@ class CompilerDriverTest {
     void phaseF2_arrayLengthJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[10]
                 println(a.length)
             }
@@ -875,7 +875,7 @@ class CompilerDriverTest {
     void phaseF2_arrayLengthNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[10]
                 println(a.length)
             }
@@ -893,7 +893,7 @@ class CompilerDriverTest {
     void phaseF2_arrayReadWriteJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[3]
                 a[0] = 10
                 a[1] = 20
@@ -911,7 +911,7 @@ class CompilerDriverTest {
     void phaseF2_arrayReadWriteNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[3]
                 a[0] = 10
                 a[1] = 20
@@ -929,7 +929,7 @@ class CompilerDriverTest {
     void phaseF2_arrayWithLoopJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 for (var i = 0; i < 5; i++) {
                     a[i] = i * 10
@@ -947,7 +947,7 @@ class CompilerDriverTest {
     void phaseF2_arrayWithLoopNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 for (var i = 0; i < 5; i++) {
                     a[i] = i * 10
@@ -965,14 +965,14 @@ class CompilerDriverTest {
     void phaseF2_arrayAsArgumentJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun sum(Int[] arr): Int {
+            sum(Int[] arr): Int {
                 var total = 0
                 for (var i = 0; i < arr.length; i++) {
                     total = total + arr[i]
                 }
                 return total
             }
-            fun main() {
+            main() {
                 var a = new Int[3]
                 a[0] = 1
                 a[1] = 2
@@ -988,14 +988,14 @@ class CompilerDriverTest {
     void phaseF2_arrayAsArgumentNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun sum(Int[] arr): Int {
+            sum(Int[] arr): Int {
                 var total = 0
                 for (var i = 0; i < arr.length; i++) {
                     total = total + arr[i]
                 }
                 return total
             }
-            fun main() {
+            main() {
                 var a = new Int[3]
                 a[0] = 1
                 a[1] = 2
@@ -1011,14 +1011,14 @@ class CompilerDriverTest {
     void phaseF2_arrayAsReturnJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun createArray(): Int[] {
+            createArray(): Int[] {
                 var a = new Int[3]
                 a[0] = 10
                 a[1] = 20
                 a[2] = 30
                 return a
             }
-            fun main() {
+            main() {
                 var a = createArray()
                 println(a[0])
                 println(a[1])
@@ -1033,14 +1033,14 @@ class CompilerDriverTest {
     void phaseF2_arrayAsReturnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun createArray(): Int[] {
+            createArray(): Int[] {
                 var a = new Int[3]
                 a[0] = 10
                 a[1] = 20
                 a[2] = 30
                 return a
             }
-            fun main() {
+            main() {
                 var a = createArray()
                 println(a[0])
                 println(a[1])
@@ -1055,7 +1055,7 @@ class CompilerDriverTest {
     void phaseF2_arrayLongJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Long[3]
                 a[0] = 100l
                 a[1] = 200l
@@ -1073,7 +1073,7 @@ class CompilerDriverTest {
     void phaseF2_arrayLongNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Long[3]
                 a[0] = 100l
                 a[1] = 200l
@@ -1091,7 +1091,7 @@ class CompilerDriverTest {
     void phaseF2_arrayStringJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new String[3]
                 a[0] = "Hello"
                 a[1] = "World"
@@ -1109,7 +1109,7 @@ class CompilerDriverTest {
     void phaseF2_arrayStringNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new String[3]
                 a[0] = "Hello"
                 a[1] = "World"
@@ -1127,7 +1127,7 @@ class CompilerDriverTest {
     void phaseF2_emptyArrayJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[0]
                 println(a.length)
             }
@@ -1140,7 +1140,7 @@ class CompilerDriverTest {
     void phaseF2_emptyArrayNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[0]
                 println(a.length)
             }
@@ -1153,7 +1153,7 @@ class CompilerDriverTest {
     void phaseF2_arrayFirstAndLastIndexJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 a[0] = 100
                 a[4] = 500
@@ -1169,7 +1169,7 @@ class CompilerDriverTest {
     void phaseF2_arrayFirstAndLastIndexNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 a[0] = 100
                 a[4] = 500
@@ -1206,7 +1206,7 @@ class CompilerDriverTest {
     void phaseF2_arrayAssemblyContainsRuntimeFunctions(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 a[0] = 42
                 println(a[0])
@@ -1232,16 +1232,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog()
                 println(dog.bark())
             }
@@ -1255,16 +1255,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog()
                 println(dog.bark())
             }
@@ -1283,7 +1283,7 @@ class CompilerDriverTest {
                     this.name = name
                 }
             }
-            fun main() {
+            main() {
                 var a = new Animal("Rex")
                 println(a.name)
             }
@@ -1302,7 +1302,7 @@ class CompilerDriverTest {
                     this.name = name
                 }
             }
-            fun main() {
+            main() {
                 var a = new Animal("Rex")
                 println(a.name)
             }
@@ -1331,7 +1331,7 @@ class CompilerDriverTest {
                     super(name)
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog("Rex")
                 println(dog.name)
             }
@@ -1355,7 +1355,7 @@ class CompilerDriverTest {
                     super(name)
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog("Rex")
                 println(dog.name)
             }
@@ -1375,16 +1375,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog()
                 println(dog.speak())
                 println(dog.bark())
@@ -1399,16 +1399,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog()
                 println(dog.speak())
                 println(dog.bark())
@@ -1433,7 +1433,7 @@ class CompilerDriverTest {
                 public constructor(String name) {
                     this.name = name
                 }
-                public fun speak(): String {
+                public speak(): String {
                     return name
                 }
             }
@@ -1441,11 +1441,11 @@ class CompilerDriverTest {
                 public constructor(String name) {
                     super(name)
                 }
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog("Rex")
                 println(dog.speak())
                 println(dog.bark())
@@ -1464,7 +1464,7 @@ class CompilerDriverTest {
                 public constructor(String name) {
                     this.name = name
                 }
-                public fun speak(): String {
+                public speak(): String {
                     return name
                 }
             }
@@ -1472,11 +1472,11 @@ class CompilerDriverTest {
                 public constructor(String name) {
                     super(name)
                 }
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog("Rex")
                 println(dog.speak())
                 println(dog.bark())
@@ -1509,7 +1509,7 @@ class CompilerDriverTest {
                     this.age = age
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog("Rex", 5)
                 println(dog.name)
                 println(dog.age)
@@ -1536,7 +1536,7 @@ class CompilerDriverTest {
                     this.age = age
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog("Rex", 5)
                 println(dog.name)
                 println(dog.age)
@@ -1569,7 +1569,7 @@ class CompilerDriverTest {
                     this.weight = w
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog(5, 20)
                 println(dog.age)
                 println(dog.weight)
@@ -1600,7 +1600,7 @@ class CompilerDriverTest {
                     super(v)
                 }
             }
-            fun main() {
+            main() {
                 var d = new Derived(42)
                 println(d.value)
             }
@@ -1624,7 +1624,7 @@ class CompilerDriverTest {
                     super(v)
                 }
             }
-            fun main() {
+            main() {
                 var d = new Derived(42)
                 println(d.value)
             }
@@ -1657,7 +1657,7 @@ class CompilerDriverTest {
                     this.z = z
                 }
             }
-            fun main() {
+            main() {
                 var c = new C(1, 2, 3)
                 println(c.x)
                 println(c.y)
@@ -1692,7 +1692,7 @@ class CompilerDriverTest {
                     this.z = z
                 }
             }
-            fun main() {
+            main() {
                 var c = new C(1, 2, 3)
                 println(c.x)
                 println(c.y)
@@ -1715,16 +1715,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog()
                 println(dog.speak())
                 println(dog.bark())
@@ -1739,16 +1739,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var dog = new Dog()
                 println(dog.speak())
                 println(dog.bark())
@@ -1777,7 +1777,7 @@ class CompilerDriverTest {
                         this.weight = w
                     }
                 }
-                fun main() {
+                main() {
                     var dog = new Dog(5, 20)
                     println(dog.age)
                 }
@@ -1804,16 +1804,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 Animal a = new Dog()
                 println(a.speak())
             }
@@ -1827,16 +1827,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 Animal a = new Dog()
                 println(a.speak())
             }
@@ -1856,7 +1856,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Shape {
-                public fun area(): Int {
+                public area(): Int {
                     return 0
                 }
             }
@@ -1865,7 +1865,7 @@ class CompilerDriverTest {
                 public constructor(Int r) {
                     this.radius = r
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return radius * radius
                 }
             }
@@ -1874,11 +1874,11 @@ class CompilerDriverTest {
                 public constructor(Int s) {
                     this.side = s
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return side * side
                 }
             }
-            fun main() {
+            main() {
                 Shape c = new Circle(5)
                 Shape s = new Square(4)
                 println(c.area())
@@ -1894,7 +1894,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Shape {
-                public fun area(): Int {
+                public area(): Int {
                     return 0
                 }
             }
@@ -1903,7 +1903,7 @@ class CompilerDriverTest {
                 public constructor(Int r) {
                     this.radius = r
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return radius * radius
                 }
             }
@@ -1912,11 +1912,11 @@ class CompilerDriverTest {
                 public constructor(Int s) {
                     this.side = s
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return side * side
                 }
             }
-            fun main() {
+            main() {
                 Shape c = new Circle(5)
                 Shape s = new Square(4)
                 println(c.area())
@@ -1932,21 +1932,21 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class A {
-                public fun greet(): String {
+                public greet(): String {
                     return "A"
                 }
             }
             class B extends A {
-                public fun greet(): String {
+                public greet(): String {
                     return "B"
                 }
             }
             class C extends B {
-                public fun greet(): String {
+                public greet(): String {
                     return "C"
                 }
             }
-            fun main() {
+            main() {
                 A a = new C()
                 println(a.greet())
             }
@@ -1960,21 +1960,21 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class A {
-                public fun greet(): String {
+                public greet(): String {
                     return "A"
                 }
             }
             class B extends A {
-                public fun greet(): String {
+                public greet(): String {
                     return "B"
                 }
             }
             class C extends B {
-                public fun greet(): String {
+                public greet(): String {
                     return "C"
                 }
             }
-            fun main() {
+            main() {
                 A a = new C()
                 println(a.greet())
             }
@@ -1988,19 +1988,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
-                public fun describe(): String {
+                public describe(): String {
                     return "I am a dog"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 println(d.speak())
                 println(d.describe())
@@ -2015,19 +2015,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
-                public fun describe(): String {
+                public describe(): String {
                     return "I am a dog"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 println(d.speak())
                 println(d.describe())
@@ -2042,19 +2042,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
-                public fun walk(): String {
+                public walk(): String {
                     return "walking"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 println(d.speak())
                 println(d.walk())
@@ -2069,19 +2069,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
-                public fun walk(): String {
+                public walk(): String {
                     return "walking"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 println(d.speak())
                 println(d.walk())
@@ -2096,19 +2096,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
-                public fun bark(): String {
+                public bark(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 println(d.speak())
             }
@@ -2132,14 +2132,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
             }
@@ -2153,14 +2153,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
             }
@@ -2174,14 +2174,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Speaker s = new Dog()
                 println(s.speak())
             }
@@ -2195,14 +2195,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Speaker s = new Dog()
                 println(s.speak())
             }
@@ -2216,20 +2216,20 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             interface Walker {
-                fun walk(): String
+                walk(): String
             }
             class Dog implements Speaker, Walker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
-                public fun walk(): String {
+                public walk(): String {
                     return "walking"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
                 println(d.walk())
@@ -2244,20 +2244,20 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             interface Walker {
-                fun walk(): String
+                walk(): String
             }
             class Dog implements Speaker, Walker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
-                public fun walk(): String {
+                public walk(): String {
                     return "walking"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
                 println(d.walk())
@@ -2272,19 +2272,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
             }
@@ -2298,19 +2298,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
             }
@@ -2324,16 +2324,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
             }
-            fun main() {
+            main() {
                 Speaker s = new Dog()
                 println(s.speak())
             }
@@ -2347,16 +2347,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
             }
-            fun main() {
+            main() {
                 Speaker s = new Dog()
                 println(s.speak())
             }
@@ -2370,19 +2370,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Speaker s1 = new Animal()
                 Speaker s2 = new Dog()
                 println(s1.speak())
@@ -2398,19 +2398,19 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 Speaker s1 = new Animal()
                 Speaker s2 = new Dog()
                 println(s1.speak())
@@ -2426,17 +2426,17 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
-                public fun bark(): String {
+                public bark(): String {
                     return "bark"
                 }
             }
-            fun main() {
+            main() {
                 Dog d = new Dog()
                 println(d.speak())
             }
@@ -2457,7 +2457,7 @@ class CompilerDriverTest {
     void phaseF6_throwJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 throw "error"
             }
             """);
@@ -2469,7 +2469,7 @@ class CompilerDriverTest {
     void phaseF6_throwNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 throw "error"
             }
             """);
@@ -2486,7 +2486,7 @@ class CompilerDriverTest {
     void phaseF6_tryCatchJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } catch (String e) {
@@ -2502,7 +2502,7 @@ class CompilerDriverTest {
     void phaseF6_tryCatchNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } catch (String e) {
@@ -2518,7 +2518,7 @@ class CompilerDriverTest {
     void phaseF6_tryFinallyJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } finally {
@@ -2534,7 +2534,7 @@ class CompilerDriverTest {
     void phaseF6_tryFinallyNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } finally {
@@ -2550,7 +2550,7 @@ class CompilerDriverTest {
     void phaseF6_tryCatchFinallyJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } catch (String e) {
@@ -2568,7 +2568,7 @@ class CompilerDriverTest {
     void phaseF6_tryCatchFinallyNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } catch (String e) {
@@ -2586,7 +2586,7 @@ class CompilerDriverTest {
     void phaseF6_nestedTryJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     try {
                         throw "inner"
@@ -2606,7 +2606,7 @@ class CompilerDriverTest {
     void phaseF6_nestedTryNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     try {
                         throw "inner"
@@ -2626,7 +2626,7 @@ class CompilerDriverTest {
     void phaseF6_multipleCatchJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } catch (String e) {
@@ -2644,7 +2644,7 @@ class CompilerDriverTest {
     void phaseF6_multipleCatchNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     throw "error"
                 } catch (String e) {
@@ -2662,10 +2662,10 @@ class CompilerDriverTest {
     void phaseF6_throwExpressionJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun boom(): String {
+            boom(): String {
                 throw "boom"
             }
-            fun main() {
+            main() {
                 try {
                     boom()
                 } catch (String e) {
@@ -2681,10 +2681,10 @@ class CompilerDriverTest {
     void phaseF6_throwExpressionNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun boom(): String {
+            boom(): String {
                 throw "boom"
             }
-            fun main() {
+            main() {
                 try {
                     boom()
                 } catch (String e) {
@@ -2702,7 +2702,7 @@ class CompilerDriverTest {
     void stringConcatJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "Hello"
                 var b = " World"
                 println(a + b)
@@ -2716,7 +2716,7 @@ class CompilerDriverTest {
     void stringConcatNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "Hello"
                 var b = " World"
                 println(a + b)
@@ -2735,7 +2735,7 @@ class CompilerDriverTest {
     void stringConcatLiteralJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello" + " World")
             }
             """);
@@ -2747,7 +2747,7 @@ class CompilerDriverTest {
     void stringConcatLiteralNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 println("Hello" + " World")
             }
             """);
@@ -2761,7 +2761,7 @@ class CompilerDriverTest {
     void typeCheck_stringConcatResultType(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = "Hello"
                 var b = " World"
                 var c = a + b
@@ -2776,7 +2776,7 @@ class CompilerDriverTest {
     void typeCheck_intArithmetic(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = 10
                 var b = 20
                 var c = a + b
@@ -2791,7 +2791,7 @@ class CompilerDriverTest {
     void typeCheck_comparisonReturnsBool(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = 10
                 var b = 20
                 var c = a < b
@@ -2808,10 +2808,10 @@ class CompilerDriverTest {
     void parse_genericCallAmbiguity(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun pick<T>(T x, T y): T {
+            pick<T>(T x, T y): T {
                 return x
             }
-            fun main() {
+            main() {
                 var a = 10
                 var b = 20
                 var lt = a < b
@@ -2833,7 +2833,7 @@ class CompilerDriverTest {
     void parse_genericCallAmbiguityLoop(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var l = new List<Int>()
                 for (var i = 0; i < l.size; i++) {
                     l.add(i)
@@ -2853,7 +2853,7 @@ class CompilerDriverTest {
     void typeCheck_logicalOperators(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = true
                 var b = false
                 var c = a && b
@@ -2874,7 +2874,7 @@ class CompilerDriverTest {
     void typeCheck_arrayLengthReturnsInt(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[10]
                 var len = a.length
                 println(len)
@@ -2888,10 +2888,10 @@ class CompilerDriverTest {
     void typeCheck_methodReturnType(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun add(Int a, Int b): Int {
+            add(Int a, Int b): Int {
                 return a + b
             }
-            fun main() {
+            main() {
                 var result = add(2, 3)
                 println(result)
             }
@@ -2905,16 +2905,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 var s = d.speak()
                 println(s)
@@ -2929,14 +2929,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Dog implements Speaker {
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog()
                 var s = d.speak()
                 println(s)
@@ -2953,14 +2953,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal {
                 String name
                 public constructor(String n) {
                     this.name = n
                 }
-                public fun getName(): String {
+                public getName(): String {
                     return name
                 }
             }
@@ -2968,14 +2968,14 @@ class CompilerDriverTest {
                 public constructor(String n) {
                     super(n)
                 }
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
-                public fun bark(): String {
+                public bark(): String {
                     return "bark!"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog("Rex")
                 println(d.getName())
                 println(d.speak())
@@ -2993,14 +2993,14 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             interface Speaker {
-                fun speak(): String
+                speak(): String
             }
             class Animal {
                 String name
                 public constructor(String n) {
                     this.name = n
                 }
-                public fun getName(): String {
+                public getName(): String {
                     return name
                 }
             }
@@ -3008,14 +3008,14 @@ class CompilerDriverTest {
                 public constructor(String n) {
                     super(n)
                 }
-                public fun speak(): String {
+                public speak(): String {
                     return "woof"
                 }
-                public fun bark(): String {
+                public bark(): String {
                     return "bark!"
                 }
             }
-            fun main() {
+            main() {
                 var d = new Dog("Rex")
                 println(d.getName())
                 println(d.speak())
@@ -3032,7 +3032,7 @@ class CompilerDriverTest {
     void integration_arraysAndStringsJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 for (var i = 0; i < 5; i++) {
                     a[i] = i * 10
@@ -3053,7 +3053,7 @@ class CompilerDriverTest {
     void integration_arraysAndStringsNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var a = new Int[5]
                 for (var i = 0; i < 5; i++) {
                     a[i] = i * 10
@@ -3074,7 +3074,7 @@ class CompilerDriverTest {
     void integration_exceptionHandlingJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     var a = new Int[3]
                     a[0] = 10
@@ -3094,7 +3094,7 @@ class CompilerDriverTest {
     void integration_exceptionHandlingNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 try {
                     var a = new Int[3]
                     a[0] = 10
@@ -3115,7 +3115,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Shape {
-                public fun area(): Int {
+                public area(): Int {
                     return 0
                 }
             }
@@ -3124,7 +3124,7 @@ class CompilerDriverTest {
                 public constructor(Int r) {
                     this.radius = r
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return radius * radius
                 }
             }
@@ -3133,11 +3133,11 @@ class CompilerDriverTest {
                 public constructor(Int s) {
                     this.side = s
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return side * side
                 }
             }
-            fun main() {
+            main() {
                 Shape c = new Circle(5)
                 Shape s = new Square(4)
                 println(c.area())
@@ -3153,7 +3153,7 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Shape {
-                public fun area(): Int {
+                public area(): Int {
                     return 0
                 }
             }
@@ -3162,7 +3162,7 @@ class CompilerDriverTest {
                 public constructor(Int r) {
                     this.radius = r
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return radius * radius
                 }
             }
@@ -3171,11 +3171,11 @@ class CompilerDriverTest {
                 public constructor(Int s) {
                     this.side = s
                 }
-                public fun area(): Int {
+                public area(): Int {
                     return side * side
                 }
             }
-            fun main() {
+            main() {
                 Shape c = new Circle(5)
                 Shape s = new Square(4)
                 println(c.area())
@@ -3196,7 +3196,7 @@ class CompilerDriverTest {
                 public constructor() {
                 }
             }
-            fun main() {
+            main() {
                 var c = new Config()
                 println(c.host)
                 println(c.port)
@@ -3216,7 +3216,7 @@ class CompilerDriverTest {
                 public constructor() {
                 }
             }
-            fun main() {
+            main() {
                 var c = new Config()
                 println(c.host)
                 println(c.port)
@@ -3230,7 +3230,7 @@ class CompilerDriverTest {
     void integration_nestedControlFlowJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     var y = 20
@@ -3257,7 +3257,7 @@ class CompilerDriverTest {
     void integration_nestedControlFlowNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 10
                 if (x > 5) {
                     var y = 20
@@ -3284,13 +3284,13 @@ class CompilerDriverTest {
     void integration_recursionJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun factorial(Int n): Int {
+            factorial(Int n): Int {
                 if (n <= 1) {
                     return 1
                 }
                 return n * factorial(n - 1)
             }
-            fun main() {
+            main() {
                 println(factorial(5))
             }
             """);
@@ -3302,13 +3302,13 @@ class CompilerDriverTest {
     void integration_recursionNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun factorial(Int n): Int {
+            factorial(Int n): Int {
                 if (n <= 1) {
                     return 1
                 }
                 return n * factorial(n - 1)
             }
-            fun main() {
+            main() {
                 println(factorial(5))
             }
             """);
@@ -3328,14 +3328,14 @@ class CompilerDriverTest {
                     this.topLeft = tl
                     this.bottomRight = br
                 }
-                public fun width(): Int {
+                public width(): Int {
                     return bottomRight.x() - topLeft.x()
                 }
-                public fun height(): Int {
+                public height(): Int {
                     return bottomRight.y() - topLeft.y()
                 }
             }
-            fun main() {
+            main() {
                 var tl = Point(0, 0)
                 var br = Point(10, 5)
                 var r = new Rect(tl, br)
@@ -3359,14 +3359,14 @@ class CompilerDriverTest {
                     this.topLeft = tl
                     this.bottomRight = br
                 }
-                public fun width(): Int {
+                public width(): Int {
                     return bottomRight.x() - topLeft.x()
                 }
-                public fun height(): Int {
+                public height(): Int {
                     return bottomRight.y() - topLeft.y()
                 }
             }
-            fun main() {
+            main() {
                 var tl = Point(0, 0)
                 var br = Point(10, 5)
                 var r = new Rect(tl, br)
@@ -3384,7 +3384,7 @@ class CompilerDriverTest {
     void doWhileSimpleJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 do {
                     println(i)
@@ -3400,7 +3400,7 @@ class CompilerDriverTest {
     void doWhileSimpleNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 do {
                     println(i)
@@ -3416,7 +3416,7 @@ class CompilerDriverTest {
     void doWhileNestedJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 do {
                     var j = 0
@@ -3436,7 +3436,7 @@ class CompilerDriverTest {
     void doWhileNestedNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 0
                 do {
                     var j = 0
@@ -3456,7 +3456,7 @@ class CompilerDriverTest {
     void doWhileRunsAtLeastOnceJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 10
                 do {
                     println(i)
@@ -3472,7 +3472,7 @@ class CompilerDriverTest {
     void doWhileRunsAtLeastOnceNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var i = 10
                 do {
                     println(i)
@@ -3491,16 +3491,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 if (a instanceof Dog) {
                     println("is Dog")
@@ -3516,16 +3516,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 if (a instanceof Dog) {
                     println("is Dog")
@@ -3541,16 +3541,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 if (a instanceof Animal) {
                     println("is Animal")
@@ -3566,16 +3566,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 if (a instanceof Animal) {
                     println("is Animal")
@@ -3591,16 +3591,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 var d = a as Dog
                 println(d.speak())
@@ -3615,16 +3615,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 var d = a as Dog
                 println(d.speak())
@@ -3639,16 +3639,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 if (a instanceof Dog) {
                     println("Dog")
@@ -3666,16 +3666,16 @@ class CompilerDriverTest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "animal"
                 }
             }
             class Dog extends Animal {
-                public fun speak(): String {
+                public speak(): String {
                     return "dog"
                 }
             }
-            fun main() {
+            main() {
                 var a = new Dog()
                 if (a instanceof Dog) {
                     println("Dog")
@@ -3694,7 +3694,7 @@ class CompilerDriverTest {
     void switchBasicJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 1
                 switch (x) {
                     case 1:
@@ -3714,7 +3714,7 @@ class CompilerDriverTest {
     void switchBasicNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 1
                 switch (x) {
                     case 1:
@@ -3734,7 +3734,7 @@ class CompilerDriverTest {
     void switchStringJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "hello"
                 switch (s) {
                     case "hello":
@@ -3754,7 +3754,7 @@ class CompilerDriverTest {
     void switchStringNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var s = "hello"
                 switch (s) {
                     case "hello":
@@ -3774,7 +3774,7 @@ class CompilerDriverTest {
     void switchNestedJvm(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 1
                 switch (x) {
                     case 1:
@@ -3798,7 +3798,7 @@ class CompilerDriverTest {
     void switchNestedNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            fun main() {
+            main() {
                 var x = 1
                 switch (x) {
                     case 1:

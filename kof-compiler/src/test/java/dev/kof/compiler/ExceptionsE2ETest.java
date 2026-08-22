@@ -1,0 +1,154 @@
+package dev.kof.compiler;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Exception handling end-to-end tests (JVM execution).
+ *
+ * The JVM backend implements real try/catch/finally with an exception table;
+ * throw of a String is wrapped in a RuntimeException at the JVM level and
+ * unwrapped back to String in catch handlers.
+ *
+ * Native target: throw terminates the process (kof_panic); try/catch/finally
+ * compile, but exceptions are not recoverable (documented limitation).
+ */
+class ExceptionsE2ETest {
+
+    private final CompilerDriver driver = new CompilerDriver();
+
+    private String runJvm(Path source, Path outDir, String expected) throws IOException {
+        CompilationResult result = driver.compile(source, outDir, Target.JVM);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running JVM class", e);
+        }
+    }
+
+    @Test
+    void catchCatchesThrow(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    throw "boom"
+                    println("unreachable")
+                } catch (String e) {
+                    println("caught: " + e)
+                }
+                println("done")
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "caught: boom\ndone");
+    }
+
+    @Test
+    void finallyRunsOnNormalPath(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    println("body")
+                } finally {
+                    println("finally")
+                }
+                println("end")
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "body\nfinally\nend");
+    }
+
+    @Test
+    void finallyRunsWithCaughtException(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    throw "x"
+                } catch (String e) {
+                    println("caught")
+                } finally {
+                    println("finally")
+                }
+                println("end")
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "caught\nfinally\nend");
+    }
+
+    @Test
+    void nestedFinallyPropagatesToOuterCatch(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    try {
+                        throw "deep"
+                    } finally {
+                        println("inner finally")
+                    }
+                } catch (String e) {
+                    println("outer caught: " + e)
+                }
+                println("end")
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "inner finally\nouter caught: deep\nend");
+    }
+
+    @Test
+    void multipleCatches(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    throw "first"
+                } catch (String e) {
+                    println("c1: " + e)
+                } catch (Exception e2) {
+                    println("c2")
+                }
+                try {
+                    throw "second"
+                } catch (String e) {
+                    println("c3: " + e)
+                }
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "c1: first\nc3: second");
+    }
+
+    @Test
+    void uncaughtInInnerTryReachesOuter(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                try {
+                    try {
+                        throw "up"
+                    } catch (String e) {
+                        println("inner caught")
+                    }
+                } catch (String e) {
+                    println("outer caught")
+                }
+            }
+            """);
+        runJvm(source, tempDir.resolve("out"), "inner caught");
+    }
+}
