@@ -512,7 +512,13 @@ class SemanticAnalyzer {
                 }
                 yield Type.UnknownType.UNKNOWN;
             }
-            case LambdaExpr le -> Type.UnknownType.UNKNOWN;
+            case LambdaExpr le -> {
+                if (diagnostics != null) {
+                    diagnostics.error("", 0, 0, 0,
+                            "Lambdas are not supported yet (planned for 0.0.5)", "SEM016");
+                }
+                yield Type.UnknownType.UNKNOWN;
+            }
             case IfExpr ie -> Type.UnknownType.UNKNOWN;
             default -> Type.UnknownType.UNKNOWN;
         };

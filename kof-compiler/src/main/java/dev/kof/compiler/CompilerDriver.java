@@ -1113,15 +1113,18 @@ public class CompilerDriver {
 
     private boolean isNumeric(Type t) {
         if (!(t instanceof Type.PrimitiveType pt)) return false;
-        return switch (pt.name()) {
-            case "int", "Int", "long", "Long", "float", "Float", "double", "Double",
-                    "byte", "Byte", "short", "Short", "char", "Char" -> true;
+        String name = Type.canonicalPrimitiveName(pt.name());
+        return switch (name) {
+            case "int", "long", "float", "double", "byte", "short", "char" -> true;
             default -> false;
         };
     }
 
     private String primitiveName(Type t) {
-        return t instanceof Type.PrimitiveType pt ? pt.name() : "";
+        if (t instanceof Type.PrimitiveType pt) {
+            return Type.canonicalPrimitiveName(pt.name());
+        }
+        return "";
     }
 
     private Type commonNumericType(Type a, Type b) {
@@ -1267,19 +1270,19 @@ public class CompilerDriver {
 
     private void boxPrimitive(List<KofOperation> ops, Type type) {
         if (type instanceof Type.PrimitiveType pt) {
-            Type boxed = switch (pt.name()) {
-                case "int", "Int" -> new Type.ClassType("java.lang", "Integer", List.of());
-                case "long", "Long" -> new Type.ClassType("java.lang", "Long", List.of());
-                case "float", "Float" -> new Type.ClassType("java.lang", "Float", List.of());
-                case "double", "Double" -> new Type.ClassType("java.lang", "Double", List.of());
-                case "boolean", "bool", "Bool" -> new Type.ClassType("java.lang", "Boolean", List.of());
-                case "char", "Char" -> new Type.ClassType("java.lang", "Integer", List.of());
-                case "byte", "Byte" -> new Type.ClassType("java.lang", "Byte", List.of());
-                case "short", "Short" -> new Type.ClassType("java.lang", "Short", List.of());
+            String name = Type.canonicalPrimitiveName(pt.name());
+            Type boxed = switch (name) {
+                case "int" -> new Type.ClassType("java.lang", "Integer", List.of());
+                case "long" -> new Type.ClassType("java.lang", "Long", List.of());
+                case "float" -> new Type.ClassType("java.lang", "Float", List.of());
+                case "double" -> new Type.ClassType("java.lang", "Double", List.of());
+                case "bool" -> new Type.ClassType("java.lang", "Boolean", List.of());
+                case "char" -> new Type.ClassType("java.lang", "Integer", List.of());
+                case "byte" -> new Type.ClassType("java.lang", "Byte", List.of());
+                case "short" -> new Type.ClassType("java.lang", "Short", List.of());
                 default -> Type.UnknownType.UNKNOWN;
             };
-            Type boxParam = ("char".equals(pt.name()) || "Char".equals(pt.name()))
-                    ? Type.PrimitiveType.INT : type;
+            Type boxParam = "char".equals(name) ? Type.PrimitiveType.INT : type;
             ops.add(new KofCall(boxed, "valueOf", List.of(boxParam), boxed, KofCallKind.STATIC));
         }
     }

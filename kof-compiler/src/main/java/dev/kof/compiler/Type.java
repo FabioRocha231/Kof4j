@@ -85,6 +85,29 @@ sealed interface Type {
         return type instanceof ArrayType;
     }
 
+    static String canonicalPrimitiveName(String name) {
+        return switch (name) {
+            case "bool", "boolean", "Bool", "Boolean" -> "bool";
+            case "byte", "Byte" -> "byte";
+            case "short", "Short" -> "short";
+            case "int", "Int" -> "int";
+            case "long", "Long" -> "long";
+            case "float", "Float" -> "float";
+            case "double", "Double" -> "double";
+            case "char", "Char" -> "char";
+            case "void", "Void" -> "void";
+            default -> name;
+        };
+    }
+
+    static String canonicalName(String name) {
+        String canonical = canonicalPrimitiveName(name);
+        if (!canonical.equals(name)) return canonical;
+        if ("string".equals(name)) return "String";
+        if ("list".equals(name) || "arraylist".equals(name)) return "List";
+        return name;
+    }
+
     static Type arrayElementType(Type type) {
         if (type instanceof ArrayType at) return at.componentType();
         return UnknownType.UNKNOWN;
