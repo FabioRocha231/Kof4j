@@ -1,0 +1,181 @@
+name: Release
+
+# Every push to main is a release candidate: tests must pass, the version is
+# bumped to the next Alpha, platform packages are built and published as a
+# GitHub Release with changelog and checksums.
+#
+# main never points to a state that does not compile.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-bump:
+    name: Test + version bump
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Test (gate — a broken release is never published)
+        run: mvn clean test
+
+      - name: Compute next version
+        id: bump
+        run: |
+          CURRENT=$(cat VERSION)
+          BASE="${CURRENT%%-*}"          # 0.0.4
+          PATCH="${BASE##*.}"            # 4
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT="${BASE%.*}.${NEXT_PATCH}-alpha"   # 0.0.5-alpha
+          echo "current=$CURRENT next=$NEXT"
+          scripts/bump-version.sh "$NEXT"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Insert changelog section for next release
+        run: |
+          scripts/changelog.sh > /tmp/changelog-section.md
+          python3 - <<'PY'
+          text = open('CHANGELOG.md').read()
+          section = open('/tmp/changelog-section.md').read().strip()
+          marker = '<!-- NEXT-RELEASE -->'
+          assert marker in text, 'NEXT-RELEASE marker missing in CHANGELOG.md'
+          text = text.replace(marker, section + '\n\n' + marker)
+          open('CHANGELOG.md', 'w').write(text)
+          PY
+          git diff --stat CHANGELOG.md
+
+      - name: Commit version bump
+        run: |
+          git config user.name "kof-release-bot"
+          git config user.email "release@kof.dev"
+          git add VERSION pom.xml kof-compiler/src/main/resources/dev/kof/version.properties CHANGELOG.md
+          git commit -m "build: bump version to $(cat VERSION) [skip ci]"
+          git push
+
+  package:
+    name: Package (${{ matrix.os }})
+    needs: test-and-bump
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+          - os: windows-latest
+            target: windows-x86_64
+          - os: macos-latest
+            target: macos-x86_64
+    steps:
+      - name: Checkout (bumped main)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build
+        run: mvn clean package -DskipTests
+
+      - name: Package with embedded JDK
+        shell: bash
+        run: |
+          VERSION=$(cat VERSION)
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            scripts/package.sh --jdk
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            scripts/package.sh --jdk
+          else
+            scripts/package.sh --jdk
+          fi
+          ls -la dist/
+
+      - name: Validate artifact
+        shell: bash
+        run: |
+          VERSION=$(cat VERSION)
+          ARCHIVE=$(ls dist/kof-${VERSION}-*.tar.gz dist/kof-${VERSION}-*.zip 2>/dev/null | head -1)
+          echo "validating $ARCHIVE"
+          rm -rf /tmp/kof-validate && mkdir -p /tmp/kof-validate
+          if [[ "$ARCHIVE" == *.zip ]]; then
+            cd /tmp/kof-validate && unzip -q "$GITHUB_WORKSPACE/$ARCHIVE"
+          else
+            cd /tmp/kof-validate && tar -xzf "$GITHUB_WORKSPACE/$ARCHIVE"
+          fi
+          DIR=$(ls -d /tmp/kof-validate/*/)
+          "$DIR/bin/kof" version
+          "$DIR/bin/kof" info
+          test -x "$DIR/jdk/bin/java" && echo "embedded JDK present"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kof-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS
+
+  release:
+    name: GitHub Release
+    needs: [test-and-bump, package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Prepare changelog
+        run: |
+          VERSION=$(cat VERSION)
+          scripts/changelog.sh > /tmp/changelog-section.md
+          { echo "# Kof $VERSION"; echo ""; cat /tmp/changelog-section.md; } > release-notes.md
+          cat release-notes.md
+
+      - name: Compute checksums (single combined file)
+        run: |
+          cd release-artifacts
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum *.tar.gz *.zip > SHA256SUMS
+          else
+            shasum -a 256 *.tar.gz *.zip > SHA256SUMS
+          fi
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kof-${{ needs.test-and-bump.outputs.version }}
+          name: Kof ${{ needs.test-and-bump.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            release-artifacts/*.tar.gz
+            release-artifacts/*.zip
+            release-artifacts/SHA256SUMS

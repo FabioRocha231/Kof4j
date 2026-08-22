@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - '**'
+      - '!main'
+
+jobs:
+  build-and-test:
+    name: Build + Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Verify version sources agree
+        run: |
+          VERSION=$(cat VERSION)
+          REV=$(grep -oP '(?<=<revision>)[^<]+' pom.xml)
+          if [ "$VERSION" != "$REV" ]; then
+            echo "VERSION ($VERSION) and pom.xml revision ($REV) disagree — run scripts/bump-version.sh" >&2
+            exit 1
+          fi
+          scripts/bump-version.sh
+          git diff --exit-code
+
+      - name: Test
+        run: mvn clean test
+
+      - name: Package check
+        run: mvn clean package -DskipTests
