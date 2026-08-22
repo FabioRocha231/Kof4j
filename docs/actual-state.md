@@ -14,11 +14,9 @@ O projeto possui um **frontend sólido** (lexer + parser + AST) e um **backend J
 
 **Fase D CONCLUÍDA**: IR generalizada para múltiplos backends. Kof IR é backend-agnostic.
 
-**Fase E EM PROGRESSO**: NativeBackend reescrito como stack machine real consumindo Kof IR.
+**Fase E CONCLUÍDA**: NativeBackend funcional — gera x86-64 ELF, 7/7 testes E2E passam.
 
-O **backend nativo** compila para x86-64 ELF. O assembly é gerado e montado, mas a execução end-to-end precisa de runtime nativa para binários.
-
-O **kof-runtime** está vazio.
+**Fase F EM PROGRESSO**: Runtime ABI definida, ClassLayout/NativeRuntime implementados, NativeBackend refatorado.
 
 ---
 
@@ -27,7 +25,7 @@ O **kof-runtime** está vazio.
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package -DskipTests` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (32/32) |
+| `mvn test` | ✅ PASSA (49/49) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build` | ✅ FUNCIONA |
 
@@ -43,6 +41,14 @@ record Point(Int x, Int y)
 
 Gera: classe `.class` válida, construtor, accessors, `toString()`.
 
+### Records para Native
+
+```kf
+record Point(Int x, Int y)
+```
+
+Gera binário ELF x86-64. Acessors (x(), y()) funcionam.
+
 ### Funções com println
 
 ```kf
@@ -51,7 +57,20 @@ fun main() {
 }
 ```
 
-Compila e executa corretamente.
+Compila e executa corretamente em JVM e Native.
+
+### Funções com retorno
+
+```kf
+fun add(Int a, Int b): Int {
+    return a + b
+}
+fun main() {
+    println(add(2, 3))
+}
+```
+
+Compila e executa corretamente em JVM e Native.
 
 ### Variáveis
 
@@ -65,14 +84,6 @@ fun main() {
 ```
 
 Resultado: `Mel` / `26`
-
-### Records nativos
-
-```kf
-record Point(Int x, Int y)
-```
-
-Gera binário ELF x86-64.
 
 ### Classes
 
@@ -88,11 +99,11 @@ Compila, gera `.class`, executa na JVM.
 
 ### Controle de fluxo
 
-`if/else`, `while`, `for` — todos funcionam.
+`if/else`, `while`, `for` — todos funcionam em JVM e Native.
 
 ---
 
-## O que está PARCIALMENTE implementado
+## O que está implementado
 
 ### Type System
 
@@ -120,6 +131,12 @@ Compila, gera `.class`, executa na JVM.
 | Expressões binárias | ✅ |
 | `print`/`println` | ✅ |
 
+### Backend JVM
+
+| Feature | Status |
+|---------|--------|
+| Tudo acima | ✅ |
+
 ### Backend Native
 
 | Feature | Status |
@@ -131,7 +148,11 @@ Compila, gera `.class`, executa na JVM.
 | kof_print/kof_println | ✅ |
 | kof_print_int | ✅ |
 | Field offsets do IRClass | ✅ |
-| println com integer | ✅ |
+| Multi-classe em .s único | ✅ |
+| Funções top-level | ✅ |
+| Records (decl + accessors) | ✅ |
+| if/else, while, for | ✅ |
+| Arithmetic | ✅ |
 
 ### CLI
 
@@ -182,11 +203,12 @@ Source (.kf)
 |--------|--------|
 | kof-compiler | Funcional |
 | kof-cli | Funcional |
-| kof-runtime | Vazio |
+| kof-runtime | Estrutura criada (runtime nativa no NativeBackend) |
 
 | Métrica | Valor |
 |---------|-------|
-| Linhas de código (compiler) | ~3.000 |
-| Arquivos de código | 20 |
-| Testes JUnit | 32 |
+| Linhas de código (compiler) | ~4.500 |
+| Arquivos de código | 27 |
+| Testes JUnit | 49 |
 | Features JVM | ~15 |
+| Features Native | ~15 |

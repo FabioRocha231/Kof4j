@@ -15,6 +15,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>dev.kof</groupId>
+            <artifactId>kof-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm</artifactId>
         </dependency>

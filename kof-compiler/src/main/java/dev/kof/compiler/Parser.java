@@ -55,6 +55,10 @@ class Parser {
             while (check(TokenType.COMMA)) { advance(); params.add(parseFormalParameter()); }
         }
         expect(TokenType.RPAREN, "Expected ')'", "PARSE012");
+        if (check(TokenType.COLON)) {
+            advance();
+            returnType = parseTypeRef();
+        }
         List<String> thrown = new ArrayList<>();
         List<StatementNode> body = List.of();
         if (check(TokenType.LBRACE)) {
@@ -419,6 +423,9 @@ class Parser {
         if (check(TokenType.THROW)) {
             return parseThrowStatement();
         }
+        if (check(TokenType.TRY)) {
+            return parseTryStatement();
+        }
         if (check(TokenType.VAR, TokenType.VAL)) {
             return parseVarDecl();
         }
@@ -428,6 +435,10 @@ class Parser {
             if (checkNext(TokenType.IDENTIFIER)) {
                 return parseVarDecl();
             }
+        }
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.IDENTIFIER)
+                && pos + 2 < tokens.size() && tokens.get(pos + 2).is(TokenType.EQUAL)) {
+            return parseVarDecl();
         }
         if (check(TokenType.SEMICOLON)) {
             advance();
@@ -511,6 +522,29 @@ class Parser {
         ExpressionNode expr = parseExpression();
         expectSemicolon();
         return new ThrowStmt(p, expr);
+    }
+
+    private StatementNode parseTryStatement() {
+        SourcePosition p = pos();
+        advance();
+        List<StatementNode> tryBody = parseBlock();
+        List<CatchClause> catchClauses = new ArrayList<>();
+        while (check(TokenType.CATCH)) {
+            SourcePosition cp = pos();
+            advance();
+            expect(TokenType.LPAREN, "Expected '('", "PARSE050");
+            String excType = parseTypeRef();
+            String excName = expectId("Expected exception name", "PARSE051");
+            expect(TokenType.RPAREN, "Expected ')'", "PARSE052");
+            List<StatementNode> catchBody = parseBlock();
+            catchClauses.add(new CatchClause(cp, excType, excName, catchBody));
+        }
+        List<StatementNode> finallyBody = List.of();
+        if (check(TokenType.FINALLY)) {
+            advance();
+            finallyBody = parseBlock();
+        }
+        return new TryStmt(p, tryBody, catchClauses, finallyBody);
     }
 
     private StatementNode parseVarDecl() {
@@ -620,6 +654,12 @@ class Parser {
                 advance();
                 String field = expectId("Expected field name", "PARSE039");
                 expr = new FieldAccessExpr(pos(), expr, field);
+            } else if (check(TokenType.LBRACKET)) {
+                SourcePosition p = pos();
+                advance();
+                ExpressionNode index = parseExpression();
+                expect(TokenType.RBRACKET, "Expected ']'", "PARSE045");
+                expr = new ArrayAccessExpr(p, expr, index);
             } else if (check(TokenType.LPAREN)) {
                 List<ExpressionNode> args = parseArguments();
                 if (expr instanceof IdentifierExpr ie) {
@@ -691,10 +731,43 @@ class Parser {
     }
 
     private ExpressionNode parseNewExpression() {
+        SourcePosition p = pos();
         advance();
-        String typeName = parseTypeRef();
+        String typeName = parseNewTypeRef();
+        if (check(TokenType.LBRACKET)) {
+            advance();
+            ExpressionNode size = parseExpression();
+            expect(TokenType.RBRACKET, "Expected ']'", "PARSE046");
+            return new NewArrayExpr(p, typeName, size);
+        }
         List<ExpressionNode> args = parseArguments();
-        return new NewExpr(pos(), typeName, args);
+        return new NewExpr(p, typeName, args);
+    }
+
+    private String parseNewTypeRef() {
+        if (check(TokenType.VOID)) {
+            advance();
+            return "void";
+        }
+        if (isPrimitiveType()) {
+            return advance().value();
+        }
+        if (check(TokenType.IDENTIFIER)) {
+            String name = peek().value();
+            if (PRIMITIVE_TYPE_NAMES.contains(name.toLowerCase()) || PRIMITIVE_TYPE_NAMES.contains(name)) {
+                advance();
+                return name;
+            }
+            StringBuilder type = new StringBuilder();
+            type.append(advance().value());
+            while (check(TokenType.DOT) && checkNext(TokenType.IDENTIFIER)) {
+                advance();
+                type.append('.').append(advance().value());
+            }
+            return type.toString();
+        }
+        error("Expected type", "PARSE044");
+        return "Object";
     }
 
     private List<ExpressionNode> parseArguments() {

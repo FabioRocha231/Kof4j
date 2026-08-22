@@ -20,9 +20,17 @@ public class NativeBackend implements Backend {
     private int stringCounter = 0;
     private Type lastPushedType = Type.UnknownType.UNKNOWN;
     private IRClass currentClass = null;
+    private final Map<String, String> functionMangleMap = new HashMap<>();
+    private final Map<String, ClassLayout> layoutCache = new HashMap<>();
+    private Map<String, IRClass> allClassesMap = new HashMap<>();
 
     private String resolveLabel(LabelId id) {
         return labelMap.computeIfAbsent(id, k -> ".Lkof_" + (labelCounter++));
+    }
+
+    private String sanitizeName(String name) {
+        return name.replace("/", "_").replace(".", "_").replace("-", "_")
+                .replace("<", "").replace(">", "");
     }
 
     private String internString(String value) {
@@ -34,43 +42,69 @@ public class NativeBackend implements Backend {
         return label;
     }
 
+    private ClassLayout getLayout(IRClass clazz) {
+        return layoutCache.computeIfAbsent(clazz.name(), k ->
+            ClassLayout.buildWithSuper(clazz, name -> allClassesMap.get(name)));
+    }
+
+    private ClassLayout getLayoutForType(Type type) {
+        if (type instanceof Type.ClassType ct) {
+            String name = ct.name();
+            for (IRClass clazz : allClassesMap.values()) {
+                if (clazz.name().equals(name) || clazz.name().endsWith("/" + name) || name.endsWith("/" + clazz.name())) {
+                    return getLayout(clazz);
+                }
+            }
+        }
+        return null;
+    }
+
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
-        for (IRClass clazz : module.classes()) {
-            emitNative(clazz, outputDir);
-        }
-    }
-
-    private void emitNative(IRClass clazz, Path outputDir) throws IOException {
-        String sourceName = clazz.name();
-        Path asmFile = outputDir.resolve(sourceName + ".s");
-        Path binFile = outputDir.resolve(sourceName);
-        generateAssembly(clazz, asmFile);
-        System.err.println("NativeBackend: Generated " + asmFile + " (" + Files.size(asmFile) + " bytes)");
-        assemble(asmFile, binFile);
-    }
-
-    private void generateAssembly(IRClass clazz, Path asmFile) throws IOException {
-        StringBuilder sb = new StringBuilder();
+        if (module.classes().isEmpty()) return;
         labelCounter = 0;
         labelMap.clear();
         stringLiterals.clear();
         stringCounter = 0;
-        currentClass = clazz;
-
-        collectStrings(clazz);
-
-        sb.append(".section .data\n");
-        emitStringData(sb);
-        sb.append("\n.section .text\n");
-        emitBuiltinFunctions(sb);
-
-        for (IRMethod method : clazz.methods()) {
-            emitMethod(sb, clazz, method);
+        functionMangleMap.clear();
+        layoutCache.clear();
+        allClassesMap.clear();
+        for (IRClass clazz : module.classes()) {
+            allClassesMap.put(clazz.name(), clazz);
         }
-
-        emitStart(sb, clazz);
+        StringBuilder sb = new StringBuilder();
+        sb.append(".section .data\n");
+        for (IRClass clazz : module.classes()) {
+            currentClass = clazz;
+            getLayout(clazz);
+            collectStrings(clazz);
+        }
+        emitStringData(sb);
+        for (IRClass clazz : module.classes()) {
+            currentClass = clazz;
+            emitMethodTable(sb, clazz);
+        }
+        sb.append("\n.section .text\n");
+        sb.append(NativeRuntime.generateRuntimeAssembly());
+        NativeRuntime.emitInitObject(sb);
+        IRClass mainClass = null;
+        for (IRClass clazz : module.classes()) {
+            currentClass = clazz;
+            for (IRMethod method : clazz.methods()) {
+                emitMethod(sb, clazz, method);
+            }
+            if (clazz.methods().stream().anyMatch(m -> "main".equals(m.name()))) {
+                mainClass = clazz;
+            }
+        }
+        if (mainClass != null) emitStart(sb, mainClass);
+        String mainClassName = mainClass != null ? mainClass.name() : module.classes().getFirst().name();
+        Path asmFile = outputDir.resolve(mainClassName + ".s");
+        Path binFile = outputDir.resolve(mainClassName);
+        Files.createDirectories(asmFile.getParent());
         Files.writeString(asmFile, sb.toString());
+        System.err.println("NativeBackend: Generated " + asmFile + " (" + Files.size(asmFile) + " bytes)");
+        assemble(asmFile, binFile);
     }
 
     private void collectStrings(IRClass clazz) {
@@ -83,6 +117,100 @@ public class NativeBackend implements Backend {
                 }
             }
         }
+    }
+
+    private List<String> collectVirtualMethods(IRClass clazz) {
+        List<String> methods = new ArrayList<>();
+        List<String> methodNames = new ArrayList<>();
+        java.util.Queue<String> queue = new java.util.LinkedList<>();
+        java.util.Set<String> visited = new java.util.HashSet<>();
+        String current = clazz.superName();
+        while (current != null && !current.isEmpty() && !"java/lang/Object".equals(current)) {
+            IRClass superClazz = allClassesMap.get(current);
+            if (superClazz == null) break;
+            for (IRMethod m : superClazz.methods()) {
+                if (!"<init>".equals(m.name()) && !"<clinit>".equals(m.name())
+                        && !m.name().startsWith("kof_")) {
+                    if (!methodNames.contains(m.name())) {
+                        methodNames.add(m.name());
+                        methods.add(sanitizeName(superClazz.name()) + "_" + sanitizeName(m.name()));
+                    }
+                }
+            }
+            for (String iface : superClazz.interfaces()) {
+                if (!visited.contains(iface)) {
+                    visited.add(iface);
+                    queue.add(iface);
+                }
+            }
+            current = superClazz.superName();
+        }
+        while (!queue.isEmpty()) {
+            String ifaceName = queue.poll();
+            IRClass ifaceClazz = allClassesMap.get(ifaceName);
+            if (ifaceClazz == null) continue;
+            for (IRMethod m : ifaceClazz.methods()) {
+                if (!"<init>".equals(m.name()) && !"<clinit>".equals(m.name())
+                        && !m.name().startsWith("kof_")) {
+                    if (!methodNames.contains(m.name())) {
+                        methodNames.add(m.name());
+                        methods.add(sanitizeName(ifaceClazz.name()) + "_" + sanitizeName(m.name()));
+                    }
+                }
+            }
+            for (String iface : ifaceClazz.interfaces()) {
+                if (!visited.contains(iface)) {
+                    visited.add(iface);
+                    queue.add(iface);
+                }
+            }
+        }
+        for (IRMethod m : clazz.methods()) {
+            if (!"<init>".equals(m.name()) && !"<clinit>".equals(m.name())
+                    && !m.name().startsWith("kof_")) {
+                int idx = methodNames.indexOf(m.name());
+                if (idx >= 0) {
+                    methods.set(idx, sanitizeName(clazz.name()) + "_" + sanitizeName(m.name()));
+                } else {
+                    methodNames.add(m.name());
+                    methods.add(sanitizeName(clazz.name()) + "_" + sanitizeName(m.name()));
+                }
+            }
+        }
+        return methods;
+    }
+
+    private void emitMethodTable(StringBuilder sb, IRClass clazz) {
+        List<String> methods = collectVirtualMethods(clazz);
+        if (methods.isEmpty()) {
+            sb.append(sanitizeName(clazz.name()) + "_vtable:\n");
+            sb.append("    .quad 0\n");
+            return;
+        }
+        NativeRuntime.generateMethodTable(sb, sanitizeName(clazz.name()), methods);
+    }
+
+    private int findVirtualMethodIndex(String ownerTypeName, String methodName) {
+        for (IRClass clazz : allClassesMap.values()) {
+            if (clazz.name().equals(ownerTypeName) || clazz.name().endsWith("/" + ownerTypeName)
+                    || ownerTypeName.endsWith("/" + clazz.name()) || ownerTypeName.equals(sanitizeName(clazz.name()))) {
+                List<String> methods = collectVirtualMethods(clazz);
+                String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(methodName);
+                for (int i = 0; i < methods.size(); i++) {
+                    if (methods.get(i).equals(mangled)) return i;
+                }
+                for (IRMethod m : clazz.methods()) {
+                    if (m.name().equals(methodName) && !"<init>".equals(m.name()) && !"<clinit>".equals(m.name())) {
+                        String m2 = sanitizeName(clazz.name()) + "_" + sanitizeName(m.name());
+                        for (int i = 0; i < methods.size(); i++) {
+                            if (methods.get(i).equals(m2)) return i;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        return -1;
     }
 
     private void emitStringData(StringBuilder sb) {
@@ -98,81 +226,13 @@ public class NativeBackend implements Backend {
         sb.append(".Lnewline: .asciz \"\\n\"\n");
     }
 
-    private void emitBuiltinFunctions(StringBuilder sb) {
-        sb.append(".globl kof_print\n");
-        sb.append(".type kof_print, @function\n");
-        sb.append("kof_print:\n");
-        sb.append("    pushq %rbx\n");
-        sb.append("    movq %rdi, %rbx\n");
-        sb.append("    xorq %rdx, %rdx\n");
-        sb.append(".Lkof_print_len:\n");
-        sb.append("    cmpb $0, (%rbx,%rdx)\n");
-        sb.append("    je .Lkof_print_do\n");
-        sb.append("    incq %rdx\n");
-        sb.append("    jmp .Lkof_print_len\n");
-        sb.append(".Lkof_print_do:\n");
-        sb.append("    movq $1, %rax\n");
-        sb.append("    movq $1, %rdi\n");
-        sb.append("    movq %rbx, %rsi\n");
-        sb.append("    syscall\n");
-        sb.append("    popq %rbx\n");
-        sb.append("    ret\n");
-
-        sb.append(".globl kof_println\n");
-        sb.append(".type kof_println, @function\n");
-        sb.append("kof_println:\n");
-        sb.append("    call kof_print\n");
-        sb.append("    pushq %rbx\n");
-        sb.append("    leaq .Lnewline(%rip), %rdi\n");
-        sb.append("    call kof_print\n");
-        sb.append("    popq %rbx\n");
-        sb.append("    ret\n");
-
-        sb.append(".globl kof_print_int\n");
-        sb.append(".type kof_print_int, @function\n");
-        sb.append("kof_print_int:\n");
-        sb.append("    pushq %rbx\n");
-        sb.append("    pushq %r12\n");
-        sb.append("    movl %edi, %eax\n");
-        sb.append("    movq $0, %r12\n");
-        sb.append("    testl %eax, %eax\n");
-        sb.append("    jns .Lkof_print_int_pos\n");
-        sb.append("    movq $1, %r12\n");
-        sb.append("    negl %eax\n");
-        sb.append(".Lkof_print_int_pos:\n");
-        sb.append("    movq $0, %rbx\n");
-        sb.append("    movq $10, %rcx\n");
-        sb.append(".Lkof_print_int_loop:\n");
-        sb.append("    xorq %rdx, %rdx\n");
-        sb.append("    divq %rcx\n");
-        sb.append("    addl $48, %edx\n");
-        sb.append("    pushq %rdx\n");
-        sb.append("    incq %rbx\n");
-        sb.append("    testl %eax, %eax\n");
-        sb.append("    jnz .Lkof_print_int_loop\n");
-        sb.append("    testq %r12, %r12\n");
-        sb.append("    jz .Lkof_print_int_digits\n");
-        sb.append("    movq $45, %rax\n");
-        sb.append("    pushq %rax\n");
-        sb.append("    incq %rbx\n");
-        sb.append(".Lkof_print_int_digits:\n");
-        sb.append("    movq $1, %rax\n");
-        sb.append("    movq $1, %rdi\n");
-        sb.append("    movq %rsp, %rsi\n");
-        sb.append("    movq %rbx, %rdx\n");
-        sb.append("    syscall\n");
-        sb.append("    addq %rbx, %rsp\n");
-        sb.append("    popq %r12\n");
-        sb.append("    popq %rbx\n");
-        sb.append("    ret\n");
-    }
-
     private void emitMethod(StringBuilder sb, IRClass clazz, IRMethod method) {
-        if ("<init>".equals(method.name()) || "<clinit>".equals(method.name())) return;
+        if ("<clinit>".equals(method.name())) return;
 
         currentClass = clazz;
 
-        String mangled = clazz.name() + "_" + method.name();
+        String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
+        functionMangleMap.put(method.name(), mangled);
         sb.append("\n.globl ").append(mangled).append("\n");
         sb.append(".type ").append(mangled).append(", @function\n");
         sb.append(mangled).append(":\n");
@@ -217,7 +277,6 @@ public class NativeBackend implements Backend {
     }
 
     private void emitOperation(StringBuilder sb, KofOperation op, IRMethod currentMethod) {
-        // Track the type of the last pushed value for println dispatch
         if (op instanceof KofLoadLiteral lit) {
             lastPushedType = lit.type();
         } else if (op instanceof KofLoadLocal ll) {
@@ -242,14 +301,14 @@ public class NativeBackend implements Backend {
             }
             case KofLoadField lf -> {
                 sb.append("    popq %rax\n");
-                int offset = computeFieldOffset(lf.ownerType(), lf.name());
+                int offset = resolveFieldOffset(lf.ownerType(), lf.name());
                 sb.append("    movq ").append(offset).append("(%rax), %rax\n");
                 sb.append("    pushq %rax\n");
             }
             case KofStoreField sf -> {
                 sb.append("    popq %rax\n");
                 sb.append("    popq %rcx\n");
-                int offset = computeFieldOffset(sf.ownerType(), sf.name());
+                int offset = resolveFieldOffset(sf.ownerType(), sf.name());
                 sb.append("    movq %rax, ").append(offset).append("(%rcx)\n");
             }
             case KofBinary kb -> emitBinary(sb, kb);
@@ -269,20 +328,94 @@ public class NativeBackend implements Backend {
             case KofJump kj -> sb.append("    jmp ").append(resolveLabel(kj.target())).append("\n");
             case KofConditionalJump kc -> emitConditionalJump(sb, kc);
             case KofCall kc -> emitCall(sb, kc);
-            case KofNewObject no -> {
-                int size = computeObjectSize(no.type());
-                sb.append("    subq $").append(size).append(", %rsp\n");
-                sb.append("    movq %rsp, %rax\n");
-                sb.append("    pushq %rax\n");
-            }
-            case KofDup dup -> { }
+            case KofNewObject no -> emitNewObject(sb, no);
+            case KofDup dup -> sb.append("    movq (%rsp), %rax\n    pushq %rax\n");
             case KofPop pop -> sb.append("    addq $8, %rsp\n");
             case KofGetStatic gs -> { }
             case KofPutStatic ps -> sb.append("    addq $8, %rsp\n");
             case KofCheckCast cc -> { }
             case KofInstanceOf io -> sb.append("    pushq $0\n");
+            case KofNewArray na -> emitNewArray(sb, na);
+            case KofArrayLoad al -> emitArrayLoad(sb, al);
+            case KofArrayStore as -> emitArrayStore(sb, as);
+            case KofArrayLength al -> emitArrayLength(sb);
+            case KofThrow thr -> {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_panic\n");
+            }
+            case TryCatchRegion tcr -> { }
             default -> { }
         }
+    }
+
+    private void emitNewObject(StringBuilder sb, KofNewObject no) {
+        ClassLayout layout = null;
+        String className = null;
+        if (no.type() instanceof Type.ClassType ct) {
+            className = ct.name();
+            for (IRClass clazz : allClassesMap.values()) {
+                if (clazz.name().equals(className) || clazz.name().endsWith("/" + className)
+                        || className.endsWith("/" + clazz.name()) || className.equals(sanitizeName(clazz.name()))) {
+                    layout = getLayout(clazz);
+                    className = clazz.name();
+                    break;
+                }
+            }
+        }
+        int size = layout != null ? layout.totalSize() : ClassLayout.HEADER_SIZE + 64;
+        sb.append("    movq $").append(size).append(", %rdi\n");
+        sb.append("    call kof_alloc\n");
+        if (className != null) {
+            String mangled = sanitizeName(className);
+            sb.append("    movq %rax, %rdi\n");
+            sb.append("    movl $0, %esi\n");
+            sb.append("    leaq ").append(mangled).append("_vtable(%rip), %rdx\n");
+            sb.append("    call kof_init_object\n");
+        }
+        sb.append("    pushq %rax\n");
+    }
+
+    private int elementTypeSize(Type elemType) {
+        return switch (elemType) {
+            case Type.PrimitiveType pt -> switch (pt.name()) {
+                case "byte", "Byte", "bool", "Bool", "boolean" -> 1;
+                case "short", "Short" -> 2;
+                case "int", "Int", "char", "Char" -> 4;
+                case "long", "Long" -> 8;
+                case "float", "Float" -> 4;
+                case "double", "Double" -> 8;
+                default -> 8;
+            };
+            default -> 8;
+        };
+    }
+
+    private void emitNewArray(StringBuilder sb, KofNewArray na) {
+        sb.append("    popq %rdi\n");
+        sb.append("    movl $").append(elementTypeSize(na.elementType())).append(", %esi\n");
+        sb.append("    call kof_array_alloc\n");
+        sb.append("    pushq %rax\n");
+    }
+
+    private void emitArrayLoad(StringBuilder sb, KofArrayLoad al) {
+        sb.append("    popq %rsi\n");
+        sb.append("    popq %rdi\n");
+        sb.append("    call kof_array_get\n");
+        sb.append("    pushq %rax\n");
+    }
+
+    private void emitArrayStore(StringBuilder sb, KofArrayStore as) {
+        sb.append("    popq %rdx\n");
+        sb.append("    popq %rsi\n");
+        sb.append("    popq %rdi\n");
+        sb.append("    call kof_array_set\n");
+    }
+
+    private void emitArrayLength(StringBuilder sb) {
+        sb.append("    popq %rdi\n");
+        sb.append("    call kof_array_length\n");
+        sb.append("    movslq %eax, %rax\n");
+        sb.append("    pushq %rax\n");
     }
 
     private void emitLoadLiteral(StringBuilder sb, KofLoadLiteral lit) {
@@ -296,7 +429,10 @@ public class NativeBackend implements Backend {
             sb.append("    movq $").append(Double.doubleToLongBits(d)).append(", %rax\n");
         } else if (lit.value() instanceof String s) {
             String label = internString(s);
-            sb.append("    leaq ").append(label).append("(%rip), %rax\n");
+            int byteLen = s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            sb.append("    leaq ").append(label).append("(%rip), %rdi\n");
+            sb.append("    movl $").append(byteLen).append(", %esi\n");
+            sb.append("    call kof_string_from_literal\n");
         } else if (lit.value() instanceof Boolean b) {
             sb.append("    movq $").append(b ? 1 : 0).append(", %rax\n");
         } else if (lit.value() == null) {
@@ -348,13 +484,16 @@ public class NativeBackend implements Backend {
 
     private void emitCall(StringBuilder sb, KofCall kc) {
         if (kc.kind() == KofCallKind.INSTANCE && "println".equals(kc.methodName())) {
-            // Use the tracked last pushed type to dispatch
             if (lastPushedType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_print_int\n");
                 sb.append("    pushq $0\n");
                 sb.append("    leaq .Lnewline(%rip), %rdi\n");
                 sb.append("    call kof_print\n");
+            } else if (BuiltinTypes.isString(lastPushedType)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_println_string\n");
+                sb.append("    pushq $0\n");
             } else {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_println\n");
@@ -363,9 +502,15 @@ public class NativeBackend implements Backend {
             return;
         }
         if (kc.kind() == KofCallKind.INSTANCE && "print".equals(kc.methodName())) {
-            sb.append("    popq %rdi\n");
-            sb.append("    call kof_print\n");
-            sb.append("    pushq $0\n");
+            if (BuiltinTypes.isString(lastPushedType)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_print_string\n");
+                sb.append("    pushq $0\n");
+            } else {
+                sb.append("    popq %rdi\n");
+                sb.append("    call kof_print\n");
+                sb.append("    pushq $0\n");
+            }
             return;
         }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
@@ -373,6 +518,49 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR && "<init>".equals(kc.methodName())) {
             return;
+        }
+
+        if (kc.kind() == KofCallKind.INSTANCE && kc.ownerType() instanceof Type.ClassType ct) {
+            int vtableIdx = findVirtualMethodIndex(ct.name(), kc.methodName());
+            if (vtableIdx >= 0) {
+                int argCount = kc.parameterTypes().size();
+                String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                for (int i = argCount - 1; i >= 0; i--) {
+                    if (i < 6) {
+                        sb.append("    popq ").append(intRegs[i]).append("\n");
+                    } else {
+                        sb.append("    addq $8, %rsp\n");
+                    }
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq 8(%rax), %rbx\n");
+                sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
+                sb.append("    movq (%rbx), %rbx\n");
+                sb.append("    call *%rbx\n");
+                sb.append("    pushq %rax\n");
+                return;
+            }
+        }
+        if (kc.kind() == KofCallKind.INTERFACE && kc.ownerType() instanceof Type.ClassType ct) {
+            int vtableIdx = findVirtualMethodIndex(ct.name(), kc.methodName());
+            if (vtableIdx >= 0) {
+                int argCount = kc.parameterTypes().size();
+                String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                for (int i = argCount - 1; i >= 0; i--) {
+                    if (i < 6) {
+                        sb.append("    popq ").append(intRegs[i]).append("\n");
+                    } else {
+                        sb.append("    addq $8, %rsp\n");
+                    }
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq 8(%rax), %rbx\n");
+                sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
+                sb.append("    movq (%rbx), %rbx\n");
+                sb.append("    call *%rbx\n");
+                sb.append("    pushq %rax\n");
+                return;
+            }
         }
 
         int argCount = kc.parameterTypes().size();
@@ -390,29 +578,33 @@ public class NativeBackend implements Backend {
     }
 
     private String resolveCalleeName(KofCall kc) {
-        if (kc.ownerType() instanceof Type.ClassType ct) {
-            return ct.name() + "_" + kc.methodName();
+        if (kc.kind() == KofCallKind.FUNCTION) {
+            return functionMangleMap.getOrDefault(kc.methodName(), sanitizeName(kc.methodName()));
         }
-        return kc.methodName();
-    }
-
-    private int computeFieldOffset(Type ownerType, String fieldName) {
-        // Compute field offset based on the owner type's fields
-        // Fields are laid out in declaration order, each 8 bytes (pointer-sized)
-        if (currentClass != null) {
-            int offset = 0;
-            for (IRField field : currentClass.fields()) {
-                if (field.name().equals(fieldName)) return offset;
-                offset += NativeTypeMapper.typeSize(field.type());
+        if (kc.kind() == KofCallKind.CONSTRUCTOR) {
+            if (kc.ownerType() instanceof Type.ClassType ct) {
+                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>");
             }
         }
-        // Fallback: hash-based offset
-        int hash = Math.abs(fieldName.hashCode()) % 8;
-        return hash * 8;
+        if (kc.ownerType() instanceof Type.ClassType ct) {
+            String key = ct.name() + "." + kc.methodName();
+            return functionMangleMap.getOrDefault(key, sanitizeName(ct.name()) + "_" + sanitizeName(kc.methodName()));
+        }
+        return sanitizeName(kc.methodName());
     }
 
-    private int computeObjectSize(Type type) {
-        return 64;
+    private int resolveFieldOffset(Type ownerType, String fieldName) {
+        ClassLayout layout = getLayoutForType(ownerType);
+        if (layout != null) {
+            int offset = layout.fieldOffset(fieldName);
+            if (offset >= 0) return offset;
+        }
+        if (currentClass != null) {
+            layout = getLayout(currentClass);
+            int offset = layout.fieldOffset(fieldName);
+            if (offset >= 0) return offset;
+        }
+        return ClassLayout.HEADER_SIZE;
     }
 
     private void emitStart(StringBuilder sb, IRClass clazz) {
@@ -420,7 +612,7 @@ public class NativeBackend implements Backend {
         if (!hasMain) return;
         sb.append("\n.globl _start\n");
         sb.append("_start:\n");
-        sb.append("    call Main_main\n");
+        sb.append("    call ").append(sanitizeName(clazz.name())).append("_main\n");
         sb.append("    movq $60, %rax\n");
         sb.append("    xorq %rdi, %rdi\n");
         sb.append("    syscall\n");
@@ -433,7 +625,6 @@ public class NativeBackend implements Backend {
             runCommand(new String[]{"as", "-o", objFile.toString(), asmFile.toString()}, "as");
         } catch (IOException e) {
             System.err.println("NativeBackend: as failed: " + e.getMessage());
-            // Keep .s file for debugging
             throw e;
         }
         runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");

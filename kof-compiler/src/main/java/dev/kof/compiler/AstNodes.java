@@ -97,6 +97,12 @@ record MethodCallExpr(SourcePosition position, ExpressionNode receiver,
 record NewExpr(SourcePosition position, String typeName, List<ExpressionNode> arguments) implements ExpressionNode {
 }
 
+record NewArrayExpr(SourcePosition position, String elementType, ExpressionNode size) implements ExpressionNode {
+}
+
+record ArrayAccessExpr(SourcePosition position, ExpressionNode receiver, ExpressionNode index) implements ExpressionNode {
+}
+
 record FieldAccessExpr(SourcePosition position, ExpressionNode receiver,
                        String fieldName) implements ExpressionNode {
 }
@@ -138,4 +144,12 @@ record VarDeclStmt(SourcePosition position, String type, String name,
 }
 
 record ThrowStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
+}
+
+record CatchClause(SourcePosition position, String exceptionType, String exceptionName,
+                   List<StatementNode> body) implements AstNode {
+}
+
+record TryStmt(SourcePosition position, List<StatementNode> tryBody,
+               List<CatchClause> catchClauses, List<StatementNode> finallyBody) implements StatementNode {
 }

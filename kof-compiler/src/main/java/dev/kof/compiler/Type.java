@@ -37,6 +37,10 @@ sealed interface Type {
     }
 
     static Type of(String name) {
+        if (name.endsWith("[]")) {
+            Type component = of(name.substring(0, name.length() - 2));
+            return new ArrayType(component);
+        }
         return switch (name) {
             case "bool", "boolean", "Bool", "Boolean" -> PrimitiveType.BOOL;
             case "byte", "Byte" -> PrimitiveType.BYTE;
@@ -47,7 +51,7 @@ sealed interface Type {
             case "double", "Double" -> PrimitiveType.DOUBLE;
             case "char", "Char" -> PrimitiveType.CHAR;
             case "void", "Void" -> PrimitiveType.VOID;
-            case "string", "String" -> new ClassType("java.lang", "String", List.of());
+            case "string", "String" -> BuiltinTypes.STRING;
             default -> new ClassType("", name, List.of());
         };
     }
@@ -62,5 +66,18 @@ sealed interface Type {
 
     static boolean isUnknown(Type type) {
         return type instanceof UnknownType;
+    }
+
+    static boolean isString(Type type) {
+        return BuiltinTypes.isString(type);
+    }
+
+    static boolean isArray(Type type) {
+        return type instanceof ArrayType;
+    }
+
+    static Type arrayElementType(Type type) {
+        if (type instanceof ArrayType at) return at.componentType();
+        return UnknownType.UNKNOWN;
     }
 }

@@ -417,4 +417,2219 @@ class CompilerDriverTest {
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
         assertTrue(result.success(), "Compilation should succeed");
     }
+
+    // ── Phase F: Runtime + Object Model Tests ──────────────────────
+
+    @Test
+    void phaseF_recordNativeConstructorEmitted(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            fun main() {
+                var p = Point(10, 20)
+                println(p.x())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Record with constructor should compile to native");
+    }
+
+    @Test
+    void phaseF_multipleRecordTypesNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            record Size(Int width, Int height)
+            fun main() {
+                var p = Point(1, 2)
+                var s = Size(100, 200)
+                println(p.x())
+                println(s.width())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Multiple record types should compile to native");
+    }
+
+    @Test
+    void phaseF_classNativeCompilation(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            public class User {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+                public fun getName(): String {
+                    return name
+                }
+            }
+            fun main() {
+                var u = new User("Mel")
+                println(u.getName())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Class should compile to native");
+    }
+
+    @Test
+    void phaseF_nativeRuntimeFunctionsExist(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Hello")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("kof_alloc"), "Assembly should contain kof_alloc");
+            assertTrue(asm.contains("kof_panic"), "Assembly should contain kof_panic");
+            assertTrue(asm.contains("kof_null_error"), "Assembly should contain kof_null_error");
+            assertTrue(asm.contains("kof_bounds_error"), "Assembly should contain kof_bounds_error");
+        }
+    }
+
+    @Test
+    void phaseF_heapAllocationInAssembly(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            fun main() {
+                var p = Point(10, 20)
+                println(p.x())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_alloc"), "Assembly should use kof_alloc for object creation");
+        }
+    }
+
+    @Test
+    void phaseF_constructorEmittedInNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            fun main() {
+                var p = Point(10, 20)
+                println(p.x())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Point_init"), "Assembly should contain Point constructor");
+        }
+    }
+
+    @Test
+    void phaseF_fieldLayoutCorrectOffsets(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            fun main() {
+                var p = Point(10, 20)
+                println(p.x())
+                println(p.y())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("16(%rax)"), "Field x should be at offset 16");
+            assertTrue(asm.contains("24(%rax)"), "Field y should be at offset 24");
+        }
+    }
+
+    @Test
+    void phaseF_kofDupFunctional(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            fun main() {
+                var p = Point(10, 20)
+                println(p.x())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("movq (%rsp), %rax"), "KofDup should duplicate stack value");
+            assertTrue(asm.contains("pushq %rax"), "KofDup should push duplicated value");
+        }
+    }
+
+    @Test
+    void phaseF_classLayoutTotalSize(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            record Point(Int x, Int y)
+            fun main() {
+                var p = Point(10, 20)
+                println(p.x())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("movq $32, %rdi"), "Object size should be 32 bytes (16 header + 2×8 fields)");
+        }
+    }
+
+    // ── Phase F.1: String Model Tests ──────────────────────────────
+
+    @Test
+    void phaseF1_stringLiteralJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Hello, Kof!")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String literal should compile to JVM");
+    }
+
+    @Test
+    void phaseF1_stringLiteralNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Hello, Kof!")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "String literal should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_string_from_literal"), "Native should create KofString from literal");
+            assertTrue(asm.contains("call kof_println_string"), "Native should use kof_println_string");
+        }
+    }
+
+    @Test
+    void phaseF1_stringVariableJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = "Hello"
+                println(a)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String variable should compile to JVM");
+    }
+
+    @Test
+    void phaseF1_stringVariableNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = "Hello"
+                println(a)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "String variable should compile to native");
+    }
+
+    @Test
+    void phaseF1_utf8StringNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Olá, mundo!")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "UTF-8 string should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_string_from_literal"), "Should create KofString");
+        }
+    }
+
+    @Test
+    void phaseF1_stringTypeIsBuiltinString() {
+        Type stringType = Type.of("String");
+        assertTrue(BuiltinTypes.isString(stringType), "Type.of('String') should be recognized as BuiltinTypes.STRING");
+        stringType = Type.of("string");
+        assertTrue(BuiltinTypes.isString(stringType), "Type.of('string') should be recognized as BuiltinTypes.STRING");
+    }
+
+    @Test
+    void phaseF1_stringTypeInIr() {
+        Type stringType = BuiltinTypes.STRING;
+        assertFalse(Type.isPrimitive(stringType), "String should not be primitive");
+        assertFalse(Type.isVoid(stringType), "String should not be void");
+        assertFalse(Type.isUnknown(stringType), "String should not be unknown");
+        assertTrue(stringType instanceof Type.ClassType, "String should be ClassType");
+    }
+
+    @Test
+    void phaseF1_multipleStringLiteralsNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println("Hello")
+                println("World")
+                println("!")
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Multiple string literals should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("kof_string_from_literal"), "Should create KofStrings");
+            assertTrue(asm.contains("kof_println_string"), "Should use kof_println_string");
+        }
+    }
+
+    @Test
+    void phaseF1_stringWithIntPrintlnNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                println(42)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "println(int) should still work");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_print_int"), "Should use kof_print_int for int");
+            assertFalse(asm.contains("kof_println_string"), "Should NOT use kof_println_string for int");
+        }
+    }
+
+    @Test
+    void phaseF1_kofStringLayoutConstants() {
+        assertEquals(1, NativeRuntime.KOF_STRING_TYPE_ID, "KofString type_id should be 1");
+        assertEquals(24, NativeRuntime.KOF_STRING_HEADER_SIZE, "KofString header should be 24 bytes");
+    }
+
+    // ── Phase F.2: Array Model Tests ──────────────────────────────
+
+    @Test
+    void phaseF2_arrayCreationJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array creation should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayCreationNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array creation should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_array_alloc"), "Native should call kof_array_alloc");
+            assertTrue(asm.contains("call kof_array_length"), "Native should call kof_array_length");
+        }
+    }
+
+    @Test
+    void phaseF2_arrayAccessJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                a[0] = 42
+                println(a[0])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array access should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayAccessNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                a[0] = 42
+                println(a[0])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array access should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_array_get"), "Native should call kof_array_get");
+            assertTrue(asm.contains("call kof_array_set"), "Native should call kof_array_set");
+        }
+    }
+
+    @Test
+    void phaseF2_arrayLengthJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[10]
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array length should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayLengthNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[10]
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array length should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_array_length"), "Native should call kof_array_length");
+        }
+    }
+
+    @Test
+    void phaseF2_arrayReadWriteJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[3]
+                a[0] = 10
+                a[1] = 20
+                a[2] = 30
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array read/write should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayReadWriteNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[3]
+                a[0] = 10
+                a[1] = 20
+                a[2] = 30
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array read/write should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayWithLoopJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                for (var i = 0; i < 5; i++) {
+                    a[i] = i * 10
+                }
+                for (var i = 0; i < 5; i++) {
+                    println(a[i])
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array with loop should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayWithLoopNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                for (var i = 0; i < 5; i++) {
+                    a[i] = i * 10
+                }
+                for (var i = 0; i < 5; i++) {
+                    println(a[i])
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array with loop should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayAsArgumentJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun sum(Int[] arr): Int {
+                var total = 0
+                for (var i = 0; i < arr.length; i++) {
+                    total = total + arr[i]
+                }
+                return total
+            }
+            fun main() {
+                var a = new Int[3]
+                a[0] = 1
+                a[1] = 2
+                a[2] = 3
+                println(sum(a))
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array as argument should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayAsArgumentNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun sum(Int[] arr): Int {
+                var total = 0
+                for (var i = 0; i < arr.length; i++) {
+                    total = total + arr[i]
+                }
+                return total
+            }
+            fun main() {
+                var a = new Int[3]
+                a[0] = 1
+                a[1] = 2
+                a[2] = 3
+                println(sum(a))
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array as argument should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayAsReturnJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun createArray(): Int[] {
+                var a = new Int[3]
+                a[0] = 10
+                a[1] = 20
+                a[2] = 30
+                return a
+            }
+            fun main() {
+                var a = createArray()
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Array as return should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayAsReturnNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun createArray(): Int[] {
+                var a = new Int[3]
+                a[0] = 10
+                a[1] = 20
+                a[2] = 30
+                return a
+            }
+            fun main() {
+                var a = createArray()
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Array as return should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayLongJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Long[3]
+                a[0] = 100l
+                a[1] = 200l
+                a[2] = 300l
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Long array should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayLongNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Long[3]
+                a[0] = 100l
+                a[1] = 200l
+                a[2] = 300l
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Long array should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayStringJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new String[3]
+                a[0] = "Hello"
+                a[1] = "World"
+                a[2] = "Kof"
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "String array should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayStringNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new String[3]
+                a[0] = "Hello"
+                a[1] = "World"
+                a[2] = "Kof"
+                println(a[0])
+                println(a[1])
+                println(a[2])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "String array should compile to native");
+    }
+
+    @Test
+    void phaseF2_emptyArrayJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[0]
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Empty array should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_emptyArrayNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[0]
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Empty array should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayFirstAndLastIndexJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                a[0] = 100
+                a[4] = 500
+                println(a[0])
+                println(a[4])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "First/last index should compile to JVM");
+    }
+
+    @Test
+    void phaseF2_arrayFirstAndLastIndexNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                a[0] = 100
+                a[4] = 500
+                println(a[0])
+                println(a[4])
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "First/last index should compile to native");
+    }
+
+    @Test
+    void phaseF2_arrayRuntimeConstants() {
+        assertEquals(2, NativeRuntime.KOF_ARRAY_TYPE_ID, "KofArray type_id should be 2");
+        assertEquals(24, NativeRuntime.KOF_ARRAY_HEADER_SIZE, "KofArray header should be 24 bytes");
+    }
+
+    @Test
+    void phaseF2_arrayTypeSystem() {
+        Type intArray = Type.of("Int[]");
+        assertTrue(Type.isArray(intArray), "Int[] should be array type");
+        assertEquals(Type.PrimitiveType.INT, Type.arrayElementType(intArray), "Int[] element type should be Int");
+
+        Type stringArray = Type.of("String[]");
+        assertTrue(Type.isArray(stringArray), "String[] should be array type");
+        assertTrue(Type.isString(Type.arrayElementType(stringArray)), "String[] element type should be String");
+
+        Type nestedArray = Type.of("Int[][]");
+        assertTrue(Type.isArray(nestedArray), "Int[][] should be array type");
+        assertTrue(Type.isArray(Type.arrayElementType(nestedArray)), "Int[][] element type should be array");
+    }
+
+    @Test
+    void phaseF2_arrayAssemblyContainsRuntimeFunctions(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                var a = new Int[5]
+                a[0] = 42
+                println(a[0])
+                println(a.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("kof_array_alloc"), "Should contain kof_array_alloc");
+            assertTrue(asm.contains("kof_array_length"), "Should contain kof_array_length");
+            assertTrue(asm.contains("kof_array_get"), "Should contain kof_array_get");
+            assertTrue(asm.contains("kof_array_set"), "Should contain kof_array_set");
+        }
+    }
+
+    // ── Phase F.3: Inheritance Tests ──────────────────────────────
+
+    @Test
+    void phaseF3_simpleSubclassJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog()
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Simple subclass should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_simpleSubclassNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog()
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Simple subclass should compile to native");
+    }
+
+    @Test
+    void phaseF3_superclassFieldJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+            }
+            fun main() {
+                var a = new Animal("Rex")
+                println(a.name)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Superclass field should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_superclassFieldNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+            }
+            fun main() {
+                var a = new Animal("Rex")
+                println(a.name)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Superclass field should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Animal_init"), "Should contain Animal constructor");
+        }
+    }
+
+    @Test
+    void phaseF3_inheritedFieldAccessJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+            }
+            class Dog extends Animal {
+                public constructor(String name) {
+                    super(name)
+                }
+            }
+            fun main() {
+                var dog = new Dog("Rex")
+                println(dog.name)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Inherited field access should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_inheritedFieldAccessNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+            }
+            class Dog extends Animal {
+                public constructor(String name) {
+                    super(name)
+                }
+            }
+            fun main() {
+                var dog = new Dog("Rex")
+                println(dog.name)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Inherited field access should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Dog_init"), "Should contain Dog constructor");
+            assertTrue(asm.contains("Animal_init"), "Should contain Animal constructor");
+        }
+    }
+
+    @Test
+    void phaseF3_inheritedMethodJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog()
+                println(dog.speak())
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Inherited method should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_inheritedMethodNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog()
+                println(dog.speak())
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Inherited method should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Animal_speak"), "Should contain Animal.speak method");
+            assertTrue(asm.contains("Dog_bark"), "Should contain Dog.bark method");
+        }
+    }
+
+    @Test
+    void phaseF3_constructorChainingJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+                public fun speak(): String {
+                    return name
+                }
+            }
+            class Dog extends Animal {
+                public constructor(String name) {
+                    super(name)
+                }
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog("Rex")
+                println(dog.speak())
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Constructor chaining should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_constructorChainingNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+                public fun speak(): String {
+                    return name
+                }
+            }
+            class Dog extends Animal {
+                public constructor(String name) {
+                    super(name)
+                }
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog("Rex")
+                println(dog.speak())
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Constructor chaining should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Dog_init"), "Should contain Dog constructor");
+            assertTrue(asm.contains("Animal_init"), "Should contain Animal constructor");
+        }
+    }
+
+    @Test
+    void phaseF3_subclassOwnFieldJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+            }
+            class Dog extends Animal {
+                Int age
+                public constructor(String name, Int age) {
+                    super(name)
+                    this.age = age
+                }
+            }
+            fun main() {
+                var dog = new Dog("Rex", 5)
+                println(dog.name)
+                println(dog.age)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Subclass with own field should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_subclassOwnFieldNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                String name
+                public constructor(String name) {
+                    this.name = name
+                }
+            }
+            class Dog extends Animal {
+                Int age
+                public constructor(String name, Int age) {
+                    super(name)
+                    this.age = age
+                }
+            }
+            fun main() {
+                var dog = new Dog("Rex", 5)
+                println(dog.name)
+                println(dog.age)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Subclass with own field should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Dog_init"), "Should contain Dog constructor");
+            assertTrue(asm.contains("Animal_init"), "Should contain Animal constructor");
+        }
+    }
+
+    @Test
+    void phaseF3_fieldLayoutInheritance(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                Int age
+                public constructor(Int a) {
+                    this.age = a
+                }
+            }
+            class Dog extends Animal {
+                Int weight
+                public constructor(Int a, Int w) {
+                    super(a)
+                    this.weight = w
+                }
+            }
+            fun main() {
+                var dog = new Dog(5, 20)
+                println(dog.age)
+                println(dog.weight)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Field layout with inheritance should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("16(%rax)") || asm.contains("16(%rcx)"), "Animal.age should be at offset 16");
+            assertTrue(asm.contains("24(%rax)") || asm.contains("24(%rcx)"), "Dog.weight should be at offset 24");
+        }
+    }
+
+    @Test
+    void phaseF3_superCallWithArgsJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Base {
+                Int value
+                public constructor(Int v) {
+                    this.value = v
+                }
+            }
+            class Derived extends Base {
+                public constructor(Int v) {
+                    super(v)
+                }
+            }
+            fun main() {
+                var d = new Derived(42)
+                println(d.value)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Super call with args should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_superCallWithArgsNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Base {
+                Int value
+                public constructor(Int v) {
+                    this.value = v
+                }
+            }
+            class Derived extends Base {
+                public constructor(Int v) {
+                    super(v)
+                }
+            }
+            fun main() {
+                var d = new Derived(42)
+                println(d.value)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Super call with args should compile to native");
+    }
+
+    @Test
+    void phaseF3_threeLevelInheritanceJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class A {
+                Int x
+                public constructor(Int x) {
+                    this.x = x
+                }
+            }
+            class B extends A {
+                Int y
+                public constructor(Int x, Int y) {
+                    super(x)
+                    this.y = y
+                }
+            }
+            class C extends B {
+                Int z
+                public constructor(Int x, Int y, Int z) {
+                    super(x, y)
+                    this.z = z
+                }
+            }
+            fun main() {
+                var c = new C(1, 2, 3)
+                println(c.x)
+                println(c.y)
+                println(c.z)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Three-level inheritance should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_threeLevelInheritanceNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class A {
+                Int x
+                public constructor(Int x) {
+                    this.x = x
+                }
+            }
+            class B extends A {
+                Int y
+                public constructor(Int x, Int y) {
+                    super(x)
+                    this.y = y
+                }
+            }
+            class C extends B {
+                Int z
+                public constructor(Int x, Int y, Int z) {
+                    super(x, y)
+                    this.z = z
+                }
+            }
+            fun main() {
+                var c = new C(1, 2, 3)
+                println(c.x)
+                println(c.y)
+                println(c.z)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Three-level inheritance should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("A_init"), "Should contain A constructor");
+            assertTrue(asm.contains("B_init"), "Should contain B constructor");
+            assertTrue(asm.contains("C_init"), "Should contain C constructor");
+        }
+    }
+
+    @Test
+    void phaseF3_defaultConstructorInheritanceJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog()
+                println(dog.speak())
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Default constructor with inheritance should compile to JVM");
+    }
+
+    @Test
+    void phaseF3_defaultConstructorInheritanceNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var dog = new Dog()
+                println(dog.speak())
+                println(dog.bark())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Default constructor with inheritance should compile to native");
+    }
+
+    @Test
+    void phaseF3_objectSizeInheritance() throws IOException {
+        java.nio.file.Path tmpDir = java.nio.file.Files.createTempDirectory("kof_test");
+        try {
+            Path source = tmpDir.resolve("Main.kf");
+            Files.writeString(source, """
+                class Animal {
+                    Int age
+                    public constructor(Int a) {
+                        this.age = a
+                    }
+                }
+                class Dog extends Animal {
+                    Int weight
+                    public constructor(Int a, Int w) {
+                        super(a)
+                        this.weight = w
+                    }
+                }
+                fun main() {
+                    var dog = new Dog(5, 20)
+                    println(dog.age)
+                }
+                """);
+            CompilationResult result = driver.compile(source, tmpDir.resolve("out"), Target.NATIVE);
+            assertTrue(result.success(), "Compilation should succeed");
+            Path asmFile = tmpDir.resolve("out/Default/Main.s");
+            if (Files.exists(asmFile)) {
+                String asm = Files.readString(asmFile);
+                assertTrue(asm.contains("movq $24, %rdi") || asm.contains("movq $32, %rdi"),
+                        "Dog object size should include inherited fields (24 or 32 bytes)");
+            }
+        } finally {
+            java.nio.file.Files.walk(tmpDir).sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try { java.nio.file.Files.deleteIfExists(p); } catch (Exception e) {}
+            });
+        }
+    }
+
+    // ── Phase F.4: Virtual Dispatch Tests ──────────────────────────
+
+    @Test
+    void phaseF4_simpleOverrideJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                Animal a = new Dog()
+                println(a.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Simple override should compile to JVM");
+    }
+
+    @Test
+    void phaseF4_simpleOverrideNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                Animal a = new Dog()
+                println(a.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Simple override should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Animal_vtable"), "Should contain Animal vtable");
+            assertTrue(asm.contains("Dog_vtable"), "Should contain Dog vtable");
+        }
+    }
+
+    @Test
+    void phaseF4_polymorphismJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Shape {
+                public fun area(): Int {
+                    return 0
+                }
+            }
+            class Circle extends Shape {
+                Int radius
+                public constructor(Int r) {
+                    this.radius = r
+                }
+                public fun area(): Int {
+                    return radius * radius
+                }
+            }
+            class Square extends Shape {
+                Int side
+                public constructor(Int s) {
+                    this.side = s
+                }
+                public fun area(): Int {
+                    return side * side
+                }
+            }
+            fun main() {
+                Shape c = new Circle(5)
+                Shape s = new Square(4)
+                println(c.area())
+                println(s.area())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Polymorphism should compile to JVM");
+    }
+
+    @Test
+    void phaseF4_polymorphismNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Shape {
+                public fun area(): Int {
+                    return 0
+                }
+            }
+            class Circle extends Shape {
+                Int radius
+                public constructor(Int r) {
+                    this.radius = r
+                }
+                public fun area(): Int {
+                    return radius * radius
+                }
+            }
+            class Square extends Shape {
+                Int side
+                public constructor(Int s) {
+                    this.side = s
+                }
+                public fun area(): Int {
+                    return side * side
+                }
+            }
+            fun main() {
+                Shape c = new Circle(5)
+                Shape s = new Square(4)
+                println(c.area())
+                println(s.area())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Polymorphism should compile to native");
+    }
+
+    @Test
+    void phaseF4_threeLevelOverrideJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class A {
+                public fun greet(): String {
+                    return "A"
+                }
+            }
+            class B extends A {
+                public fun greet(): String {
+                    return "B"
+                }
+            }
+            class C extends B {
+                public fun greet(): String {
+                    return "C"
+                }
+            }
+            fun main() {
+                A a = new C()
+                println(a.greet())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Three-level override should compile to JVM");
+    }
+
+    @Test
+    void phaseF4_threeLevelOverrideNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class A {
+                public fun greet(): String {
+                    return "A"
+                }
+            }
+            class B extends A {
+                public fun greet(): String {
+                    return "B"
+                }
+            }
+            class C extends B {
+                public fun greet(): String {
+                    return "C"
+                }
+            }
+            fun main() {
+                A a = new C()
+                println(a.greet())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Three-level override should compile to native");
+    }
+
+    @Test
+    void phaseF4_superMethodJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+                public fun describe(): String {
+                    return "I am a dog"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                println(d.speak())
+                println(d.describe())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Super method should compile to JVM");
+    }
+
+    @Test
+    void phaseF4_superMethodNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+                public fun describe(): String {
+                    return "I am a dog"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                println(d.speak())
+                println(d.describe())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Super method should compile to native");
+    }
+
+    @Test
+    void phaseF4_methodNotOverriddenJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+                public fun walk(): String {
+                    return "walking"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                println(d.speak())
+                println(d.walk())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Method not overridden should compile to JVM");
+    }
+
+    @Test
+    void phaseF4_methodNotOverriddenNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+                public fun walk(): String {
+                    return "walking"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                println(d.speak())
+                println(d.walk())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Method not overridden should compile to native");
+    }
+
+    @Test
+    void phaseF4_vtableContainsMethods(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            class Animal {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "dog"
+                }
+                public fun bark(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                var d = new Dog()
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Dog_vtable"), "Should contain Dog vtable");
+            assertTrue(asm.contains("Animal_vtable"), "Should contain Animal vtable");
+            assertTrue(asm.contains("Dog_speak"), "Should contain Dog.speak method");
+            assertTrue(asm.contains("Dog_bark"), "Should contain Dog.bark method");
+        }
+    }
+
+    // ── Phase F.5: Interface Tests ────────────────────────────────
+
+    @Test
+    void phaseF5_simpleInterfaceJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Dog implements Speaker {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Simple interface should compile to JVM");
+    }
+
+    @Test
+    void phaseF5_simpleInterfaceNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Dog implements Speaker {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Simple interface should compile to native");
+    }
+
+    @Test
+    void phaseF5_interfacePolymorphismJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Dog implements Speaker {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Speaker s = new Dog()
+                println(s.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Interface polymorphism should compile to JVM");
+    }
+
+    @Test
+    void phaseF5_interfacePolymorphismNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Dog implements Speaker {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Speaker s = new Dog()
+                println(s.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Interface polymorphism should compile to native");
+    }
+
+    @Test
+    void phaseF5_multipleInterfacesJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            interface Walker {
+                fun walk(): String
+            }
+            class Dog implements Speaker, Walker {
+                public fun speak(): String {
+                    return "woof"
+                }
+                public fun walk(): String {
+                    return "walking"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+                println(d.walk())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Multiple interfaces should compile to JVM");
+    }
+
+    @Test
+    void phaseF5_multipleInterfacesNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            interface Walker {
+                fun walk(): String
+            }
+            class Dog implements Speaker, Walker {
+                public fun speak(): String {
+                    return "woof"
+                }
+                public fun walk(): String {
+                    return "walking"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+                println(d.walk())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Multiple interfaces should compile to native");
+    }
+
+    @Test
+    void phaseF5_inheritedInterfaceJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal implements Speaker {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Inherited interface should compile to JVM");
+    }
+
+    @Test
+    void phaseF5_inheritedInterfaceNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal implements Speaker {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Inherited interface should compile to native");
+    }
+
+    @Test
+    void phaseF5_interfaceThroughSuperclassJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal implements Speaker {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+            }
+            fun main() {
+                Speaker s = new Dog()
+                println(s.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Interface through superclass should compile to JVM");
+    }
+
+    @Test
+    void phaseF5_interfaceThroughSuperclassNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal implements Speaker {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+            }
+            fun main() {
+                Speaker s = new Dog()
+                println(s.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Interface through superclass should compile to native");
+    }
+
+    @Test
+    void phaseF5_interfaceWithMethodOverrideJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal implements Speaker {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Speaker s1 = new Animal()
+                Speaker s2 = new Dog()
+                println(s1.speak())
+                println(s2.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Interface with override should compile to JVM");
+    }
+
+    @Test
+    void phaseF5_interfaceWithMethodOverrideNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Animal implements Speaker {
+                public fun speak(): String {
+                    return "animal"
+                }
+            }
+            class Dog extends Animal {
+                public fun speak(): String {
+                    return "woof"
+                }
+            }
+            fun main() {
+                Speaker s1 = new Animal()
+                Speaker s2 = new Dog()
+                println(s1.speak())
+                println(s2.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Interface with override should compile to native");
+    }
+
+    @Test
+    void phaseF5_interfaceMethodInVtable(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            interface Speaker {
+                fun speak(): String
+            }
+            class Dog implements Speaker {
+                public fun speak(): String {
+                    return "woof"
+                }
+                public fun bark(): String {
+                    return "bark"
+                }
+            }
+            fun main() {
+                Dog d = new Dog()
+                println(d.speak())
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Interface method in vtable should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("Dog_speak"), "Should contain Dog.speak in vtable");
+            assertTrue(asm.contains("Dog_bark"), "Should contain Dog.bark in vtable");
+        }
+    }
+
+    // ── Phase F.6: Exception Tests ────────────────────────────────
+
+    @Test
+    void phaseF6_throwJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                throw "error"
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Throw should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_throwNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                throw "error"
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Throw should compile to native");
+        Path asmFile = tempDir.resolve("out/Default/Main.s");
+        if (Files.exists(asmFile)) {
+            String asm = Files.readString(asmFile);
+            assertTrue(asm.contains("call kof_panic"), "Should call kof_panic for throw");
+        }
+    }
+
+    @Test
+    void phaseF6_tryCatchJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } catch (String e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Try/catch should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_tryCatchNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } catch (String e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Try/catch should compile to native");
+    }
+
+    @Test
+    void phaseF6_tryFinallyJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } finally {
+                    println("finally")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Try/finally should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_tryFinallyNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } finally {
+                    println("finally")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Try/finally should compile to native");
+    }
+
+    @Test
+    void phaseF6_tryCatchFinallyJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } catch (String e) {
+                    println(e)
+                } finally {
+                    println("finally")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Try/catch/finally should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_tryCatchFinallyNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } catch (String e) {
+                    println(e)
+                } finally {
+                    println("finally")
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Try/catch/finally should compile to native");
+    }
+
+    @Test
+    void phaseF6_nestedTryJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    try {
+                        throw "inner"
+                    } catch (String e) {
+                        println(e)
+                    }
+                } catch (String e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Nested try should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_nestedTryNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    try {
+                        throw "inner"
+                    } catch (String e) {
+                        println(e)
+                    }
+                } catch (String e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Nested try should compile to native");
+    }
+
+    @Test
+    void phaseF6_multipleCatchJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } catch (String e) {
+                    println(e)
+                } catch (Int e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Multiple catch should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_multipleCatchNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun main() {
+                try {
+                    throw "error"
+                } catch (String e) {
+                    println(e)
+                } catch (Int e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Multiple catch should compile to native");
+    }
+
+    @Test
+    void phaseF6_throwExpressionJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun boom(): String {
+                throw "boom"
+            }
+            fun main() {
+                try {
+                    boom()
+                } catch (String e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Throw in function should compile to JVM");
+    }
+
+    @Test
+    void phaseF6_throwExpressionNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            fun boom(): String {
+                throw "boom"
+            }
+            fun main() {
+                try {
+                    boom()
+                } catch (String e) {
+                    println(e)
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Throw in function should compile to native");
+    }
 }

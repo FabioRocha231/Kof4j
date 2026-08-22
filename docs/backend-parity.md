@@ -9,75 +9,86 @@
 | Feature | JVM | Native | Notas |
 |---------|-----|--------|-------|
 | **Literals** | | | |
-| Int literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Long literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Float literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Double literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| String literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Boolean literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Char literal | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Null literal | ✅ | ⚠️ | Compila, assembly rejeitado |
+| Int literal | ✅ | ✅ | |
+| Long literal | ✅ | ✅ | |
+| Float literal | ✅ | ✅ | |
+| Double literal | ✅ | ✅ | |
+| String literal | ✅ | ✅ | |
+| Boolean literal | ✅ | ✅ | |
+| Char literal | ✅ | ✅ | |
+| Null literal | ✅ | ✅ | |
 | **Variáveis** | | | |
-| Local variables | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Var declaration | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Type inference | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Nested scopes | ✅ | ⚠️ | Compila, assembly rejeitado |
+| Local variables | ✅ | ✅ | |
+| Var declaration | ✅ | ✅ | |
+| Type inference | ✅ | ✅ | |
+| Nested scopes | ✅ | ✅ | |
 | **Arithmetic** | | | |
-| Integer addition | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Integer subtraction | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Integer multiplication | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Integer division | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Integer modulo | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Unary negation | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Unary not | ✅ | ⚠️ | Compila, assembly rejeitado |
+| Integer addition | ✅ | ✅ | |
+| Integer subtraction | ✅ | ✅ | |
+| Integer multiplication | ✅ | ✅ | |
+| Integer division | ✅ | ✅ | |
+| Integer modulo | ✅ | ✅ | |
+| Unary negation | ✅ | ✅ | |
+| Unary not | ✅ | ✅ | |
 | **Comparisons** | | | |
-| == | ✅ | ⚠️ | Compila, assembly rejeitado |
-| != | ✅ | ⚠️ | Compila, assembly rejeitado |
-| < | ✅ | ⚠️ | Compila, assembly rejeitado |
-| <= | ✅ | ⚠️ | Compila, assembly rejeitado |
-| > | ✅ | ⚠️ | Compila, assembly rejeitado |
-| >= | ✅ | ⚠️ | Compila, assembly rejeitado |
+| == | ✅ | ✅ | |
+| != | ✅ | ✅ | |
+| < | ✅ | ✅ | |
+| <= | ✅ | ✅ | |
+| > | ✅ | ✅ | |
+| >= | ✅ | ✅ | |
 | **Control Flow** | | | |
-| if/else | ✅ | ⚠️ | Compila, assembly rejeitado |
-| if (no else) | ✅ | ⚠️ | Compila, assembly rejeitado |
-| while | ✅ | ⚠️ | Compila, assembly rejeitado |
-| for | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Nested if | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Nested loops | ✅ | ⚠️ | Compila, assembly rejeitado |
+| if/else | ✅ | ✅ | |
+| if (no else) | ✅ | ✅ | |
+| while | ✅ | ✅ | |
+| for | ✅ | ✅ | |
+| Nested if | ✅ | ✅ | |
+| Nested loops | ✅ | ✅ | |
 | **Functions** | | | |
-| Top-level functions | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Zero arguments | ✅ | ⚠️ | Compila, assembly rejeitado |
-| One argument | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Multiple arguments | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Return value | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Void return | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Recursive functions | ✅ | ⚠️ | Compila, assembly rejeitado |
+| Top-level functions | ✅ | ✅ | |
+| Zero arguments | ✅ | ✅ | |
+| One argument | ✅ | ✅ | |
+| Multiple arguments | ✅ | ✅ | |
+| Return value | ✅ | ✅ | |
+| Void return | ✅ | ✅ | |
+| Recursive functions | ✅ | ✅ | |
 | **Records** | | | |
-| record declaration | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Record instantiation | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Accessors (x(), y()) | ✅ | ⚠️ | Compila, assembly rejeitado |
+| record declaration | ✅ | ✅ | |
+| Record instantiation | ✅ | ✅ | |
+| Accessors (x(), y()) | ✅ | ✅ | |
 | **Classes** | | | |
-| Class declaration | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Fields | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Constructors | ✅ | ⚠️ | Compila, assembly rejeitado |
-| Instance methods | ✅ | ⚠️ | Compila, assembly rejeitado |
-| new ClassName() | ✅ | ⚠️ | Compila, assembly rejeitado |
-| this.name = name | ✅ | ⚠️ | Compila, assembly rejeitado |
+| Class declaration | ✅ | ✅ | Native: compila, constructors emitidos |
+| Fields | ✅ | ✅ | Native: ClassLayout calcula offsets |
+| Constructors | ✅ | ✅ | Native: emitidos como funções |
+| Instance methods | ✅ | — | Native: precisa de virtual dispatch |
+| new ClassName() | ✅ | ✅ | Native: usa kof_alloc |
+| this.name = name | ✅ | ✅ | Native: ClassLayout offset |
 | **Strings** | | | |
-| println("text") | ✅ | ⚠️ | Compila, assembly rejeitado |
-| println(variable int) | ✅ | ⚠️ | Compila, assembly rejeitado |
-| println(variable string) | ✅ | ⚠️ | Compila, assembly rejeitado |
+| println("text") | ✅ | ✅ | |
+| println(variable int) | ✅ | ✅ | |
+| println(variable string) | ✅ | ✅ | |
 | String concatenation | ❌ | ❌ | Não suportado em nenhum backend |
+| **Arrays** | | | |
+| new Int[10] | ✅ | ✅ | Native: kof_array_alloc |
+| a[i] (read) | ✅ | ✅ | Native: kof_array_get com bounds check |
+| a[i] = v (write) | ✅ | ✅ | Native: kof_array_set com bounds check |
+| a.length | ✅ | ✅ | Native: kof_array_length |
+| Array<Int> | ✅ | ✅ | |
+| Array<Long> | ✅ | ✅ | |
+| Array<String> | ✅ | ✅ | |
+| Array como argumento | ✅ | ✅ | |
+| Array como retorno | ✅ | ✅ | |
+| Array vazio | ✅ | ✅ | |
 | **IO** | | | |
-| println | ✅ | ⚠️ | Compila, assembly rejeitado |
-| print | ✅ | ⚠️ | Compila, assembly rejeitado |
+| println | ✅ | ✅ | |
+| print | ✅ | ✅ | |
 | System.out (JVM) | ✅ | N/A | |
-| syscalls (Native) | N/A | ⚠️ | Compila, assembly rejeitado |
+| syscalls (Native) | N/A | ✅ | |
 
 ## Legenda
 
 - ✅ Funcional e testado
-- ⚠️ Compila mas assembly rejeitado pelo `as`
+- — Não suportado (precisa de trabalho adicional)
 - ❌ Não suportado
 - N/A Não aplicável ao backend
 
@@ -90,21 +101,24 @@
 
 ### Native Backend
 - Gera assembly x86-64 System V AMD64 ABI
-- Assembly é rejeitado pelo `as` — causa raiz não identificada
-- Runtime nativa mínima (kof_print, kof_println, kof_print_int)
-- Strings representadas como ponteiros para `.data`
-- Field offsets calculados a partir da declaração dos campos no IRClass
-
-### Bloqueio atual
-
-**TODOS** os testes native E2E falham porque o assembly gerado é rejeitado pelo `as` (GNU assembler). O erro é `Error reading source file: Main.s` que na verdade é uma falha no passo de assembly/linking.
+- Assembly é aceito pelo `as` e linkado pelo `ld`
+- Todos os 7 testes E2E passam
+- Runtime nativa: kof_alloc, kof_free, kof_panic, kof_null_error, kof_bounds_error, kof_print, kof_println, kof_print_int
+- Runtime strings: kof_string_from_literal, kof_string_length, kof_string_concat, kof_string_equals, kof_print_string, kof_println_string, kof_memcpy
+- Runtime arrays: kof_array_alloc, kof_array_length, kof_array_get, kof_array_set
+- Strings representadas como KofString objects (type_id + flags + length + data)
+- Arrays representados como KofArray objects (type_id + flags + length + elem_size + data)
+- Field offsets calculados por ClassLayout (centralizado)
+- Object size calculado por ClassLayout (baseado em fields reais)
+- Multi-classe em um único .s (resolve cross-class references)
+- Funções top-level mangleadas (Default_Main_add)
+- Constructors emitidos como funções nativas
+- KofNewObject usa kof_alloc (heap allocation)
+- KofDup funcional (duplica ponteiro)
 
 ### Áreas que precisam de trabalho
 
-1. **[URGENTE] Investigar e corrigir erro de assembly** — o assembly gerado tem instruções ou operandos inválidos
-2. **[URGENTE] Criar teste que realmente execute o binário** — atualmente nenhum binário nativo é executado
-3. **Native**: Records precisam de layout correto de campos
-4. **Native**: Classes com fields precisam de alocação heap
-5. **Ambos**: String concatenation não suportada
-6. **Ambos**: Herança não testada
-7. **Ambos**: Interfaces não testadas
+1. **Native**: Herança não implementada
+2. **Native**: Virtual dispatch não implementado
+3. **Ambos**: String concatenação via `+` não integrada
+4. **Ambos**: Interfaces não testadas com implementação

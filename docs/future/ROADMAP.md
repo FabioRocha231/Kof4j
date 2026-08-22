@@ -51,7 +51,7 @@ Objetivos:
 - reutilização da mesma semântica da linguagem;
 - mesma aplicação podendo ser compilada para JVM ou Native.
 
-Estado atual: ⏳ Fase E em progresso (funcional para records e funções built-in)
+Estado atual: ✅ funcional (Fase E concluída, 7/7 testes E2E passam)
 
 ### KofJS — Web
 
@@ -366,7 +366,7 @@ Regras:
 - generated code > runtime discovery;
 - explicit semantics > hidden framework behavior.
 
-Estado atual: ✅ JVM funcional, Native em progresso
+Estado atual: ✅ JVM funcional, Native funcional
 
 ---
 
@@ -403,11 +403,64 @@ Estado atual: ❌ não implementado
 - semantic model;
 - Kof IR;
 - JVM backend;
-- Native backend (parcial).
+- Native backend (concluído).
+
+### Fase F — Runtime + Object Model (em progresso)
+
+- auditoria do runtime atual ✅
+- Kof Runtime ABI definida ✅
+- Object Model definido ✅
+- ClassLayout / FieldLayout centralizados ✅
+- NativeRuntime (kof_alloc, kof_panic, etc.) ✅
+- NativeBackend refatorado (heap alloc, constructors, KofDup) ✅
+- **Fase F.1 — String Model:** ✅
+  - BuiltinTypes.STRING centralizado ✅
+  - KofString layout (type_id, flags, length, UTF-8 data) ✅
+  - kof_string_from_literal ✅
+  - kof_string_length ✅
+  - kof_string_concat ✅
+  - kof_string_equals ✅
+  - kof_print_string / kof_println_string ✅
+  - NativeBackend usa KofString para literals ✅
+  - STRING_MODEL.md documentado ✅
+- **Fase F.2 — Array Model:** ✅
+  - ArrayType no Type System ✅
+  - NewArrayExpr + ArrayAccessExpr no AST ✅
+  - Parser: new Type[size], expr[expr], expr.length ✅
+  - SemanticAnalyzer: type checking de arrays ✅
+  - CompilerDriver: lowering para KofNewArray/KofArrayLoad/KofArrayStore/KofArrayLength ✅
+  - NativeRuntime: kof_array_alloc, kof_array_length, kof_array_get, kof_array_set ✅
+  - NativeBackend: lowering completo das operações de array ✅
+  - JVM Backend: NEWARRAY/IALOAD/IASTORE/ARRAYLENGTH ✅
+  - ARRAY_MODEL.md documentado ✅
+  - 25 novos testes (criação, acesso, length, long, string, loop, argumento, retorno, vazio) ✅
+- **Fase F.3 — Inheritance:** ✅
+  - SemanticAnalyzer: resolveInHierarchy() caminha cadeia de superclasses ✅
+  - ClassLayout: buildWithSuper() inclui fields herdados ✅
+  - NativeBackend: allClassesMap para resolver superclasses ✅
+  - CompilerDriver: super(args) com argumentos, findSuperClass() ✅
+  - Constructor chaining com super(args) explícito ✅
+  - Acesso a fields e métodos herdados ✅
+  - Herança de 3 níveis ✅
+  - INHERITANCE_MODEL.md documentado ✅
+  - 20 novos testes (subclasse, fields herdados, methods herdados, constructor chaining, 3 níveis) ✅
+- **Fase F.4 — Virtual Dispatch:** ✅
+  - Object header estendido: 8 → 16 bytes (type_id + flags + method_table_ptr) ✅
+  - Method tables geradas por classe ✅
+  - kof_init_object para inicializar header ✅
+  - Virtual dispatch via vtable no NativeBackend ✅
+  - JVM usa INVOKEVIRTUAL nativo ✅
+  - Parser: suporte a `ClassName varName = value` ✅
+  - CompilerDriver: NewExpr no inferExprType ✅
+  - VIRTUAL_DISPATCH.md documentado ✅
+  - 11 novos testes (override, polymorphism, 3 níveis, slots) ✅
+- Interfaces (pendente)
+- Exceptions/Runtime Errors (pendente)
+- Memory Management (pendente)
 
 ### Fase 1 — Core
 
-- runtime;
+- runtime (consolidação);
 - standard types;
 - collections;
 - IO;

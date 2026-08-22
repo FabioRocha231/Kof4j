@@ -117,7 +117,7 @@ public class CompilerDriver {
         }
         List<Type> paramTypes = func.parameters().stream().map(p -> toType(p.type())).toList();
         if ("main".equals(func.name()) && paramTypes.isEmpty()) {
-            paramTypes = List.of(new Type.ArrayType(new Type.ClassType("java.lang", "String", List.of())));
+            paramTypes = List.of(new Type.ArrayType(BuiltinTypes.STRING));
         }
         int access = AccessFlags.PUBLIC | AccessFlags.STATIC;
         List<IRLocalVariable> locals = new ArrayList<>();
@@ -161,8 +161,6 @@ public class CompilerDriver {
             case VarDeclStmt vds -> {
                 Type varType = toType(vds.type());
                 if (vds.initializer() != null) {
-                    Type inferred = inferExprType(vds.initializer(), locals);
-                    varType = inferred;
                     localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
                 }
                 ops.add(new KofStoreLocal(varType, localIdx));
@@ -258,6 +256,30 @@ public class CompilerDriver {
                 ops.add(new KofThrow());
                 yield localIdx;
             }
+            case TryStmt ts -> {
+                LabelId tryStart = LabelId.create();
+                LabelId tryEnd = LabelId.create();
+                LabelId handlerStart = LabelId.create();
+                for (CatchClause cc : ts.catchClauses()) {
+                    ops.add(new TryCatchRegion(tryStart, tryEnd, handlerStart, cc.exceptionType()));
+                }
+                ops.add(new KofLabel(tryStart));
+                for (StatementNode s : ts.tryBody()) {
+                    localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
+                }
+                ops.add(new KofJump(tryEnd));
+                ops.add(new KofLabel(handlerStart));
+                for (CatchClause cc : ts.catchClauses()) {
+                    localIdx = emitStatement(new BlockStmt(cc.position(), cc.body()), ops, owner, localIdx, locals, returnType);
+                }
+                if (!ts.finallyBody().isEmpty()) {
+                    for (StatementNode s : ts.finallyBody()) {
+                        localIdx = emitStatement(s, ops, owner, localIdx, locals, returnType);
+                    }
+                }
+                ops.add(new KofLabel(tryEnd));
+                yield localIdx;
+            }
             default -> localIdx;
         };
     }
@@ -268,9 +290,9 @@ public class CompilerDriver {
             case LiteralExpr lit -> {
                 switch (lit.kind()) {
                     case ConcreteLiteralKind.INT -> ops.add(KofLoadLiteral.ofInt(Integer.parseInt(lit.value())));
-                    case ConcreteLiteralKind.LONG -> ops.add(KofLoadLiteral.ofLong(Long.parseLong(lit.value())));
-                    case ConcreteLiteralKind.FLOAT -> ops.add(KofLoadLiteral.ofFloat(Float.parseFloat(lit.value())));
-                    case ConcreteLiteralKind.DOUBLE -> ops.add(KofLoadLiteral.ofDouble(Double.parseDouble(lit.value())));
+                    case ConcreteLiteralKind.LONG -> ops.add(KofLoadLiteral.ofLong(Long.parseLong(stripSuffix(lit.value()))));
+                    case ConcreteLiteralKind.FLOAT -> ops.add(KofLoadLiteral.ofFloat(Float.parseFloat(stripSuffix(lit.value()))));
+                    case ConcreteLiteralKind.DOUBLE -> ops.add(KofLoadLiteral.ofDouble(Double.parseDouble(stripSuffix(lit.value()))));
                     case ConcreteLiteralKind.STRING -> ops.add(KofLoadLiteral.ofString(lit.value()));
                     case ConcreteLiteralKind.BOOLEAN -> ops.add(KofLoadLiteral.ofBool(Boolean.parseBoolean(lit.value())));
                     case ConcreteLiteralKind.CHAR -> ops.add(KofLoadLiteral.ofInt(lit.value().charAt(0)));
@@ -294,7 +316,7 @@ public class CompilerDriver {
                         }
                     }
                     if (cs != null) {
-                        SymbolTable.Symbol fieldSym = cs.members().resolve(ie.name());
+                        SymbolTable.Symbol fieldSym = resolveFieldInHierarchy(cs.name(), ie.name());
                         if (fieldSym instanceof SymbolTable.FieldSymbol fs) {
                             ops.add(new KofLoadLocal(cs.type(), 0));
                             ops.add(new KofLoadField(cs.type(), ie.name(), fs.type()));
@@ -344,12 +366,12 @@ public class CompilerDriver {
                         boxPrimitive(ops, argType);
                     }
                     ops.add(new KofCall(
-                            new Type.ClassType("java.lang", "String", List.of()),
+                            BuiltinTypes.STRING,
                             "valueOf", List.of(Type.UnknownType.UNKNOWN),
-                            new Type.ClassType("java.lang", "String", List.of()), KofCallKind.STATIC));
+                            BuiltinTypes.STRING, KofCallKind.STATIC));
                     ops.add(new KofCall(
                             new Type.ClassType("java.io", "PrintStream", List.of()),
-                            mc.methodName(), List.of(new Type.ClassType("java.lang", "String", List.of())),
+                            mc.methodName(), List.of(BuiltinTypes.STRING),
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
@@ -368,8 +390,40 @@ public class CompilerDriver {
                     for (ExpressionNode arg : mc.arguments()) {
                         localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                     }
-                    ops.add(new KofCall(recvType, mc.methodName(), methodParamTypes, methodReturnType, KofCallKind.INSTANCE));
+                    KofCallKind callKind = KofCallKind.INSTANCE;
+                    if (recvType instanceof Type.ClassType rt && semanticAnalyzer != null) {
+                        if (semanticAnalyzer.isInterfaceType(rt.name())) {
+                            callKind = KofCallKind.INTERFACE;
+                        }
+                    }
+                    if (callKind == KofCallKind.INSTANCE && resolvedMethod != null && semanticAnalyzer != null) {
+                        String ownerName = resolvedMethod.ownerClass();
+                        if (ownerName.contains("/")) ownerName = ownerName.substring(ownerName.lastIndexOf('/') + 1);
+                        if (semanticAnalyzer.isInterfaceType(ownerName)) {
+                            callKind = KofCallKind.INTERFACE;
+                        }
+                    }
+                    ops.add(new KofCall(recvType, mc.methodName(), methodParamTypes, methodReturnType, callKind));
                 } else {
+                    if ("super".equals(mc.methodName()) && semanticAnalyzer != null) {
+                        String superName = findSuperClass(owner);
+                        if (superName != null) {
+                            Type superType = ownerTypeFromInternal(superName);
+                            SymbolTable.ClassSymbol superCs = semanticAnalyzer.getClass(superName.substring(superName.lastIndexOf('/') + 1));
+                            SymbolTable.ConstructorSymbol ctor = null;
+                            if (superCs != null) {
+                                SymbolTable.Symbol ctorSym = superCs.members().resolve("<init>");
+                                if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
+                            }
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                            ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
+                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
+                            ops.add(new KofCall(superType, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                            yield localIdx;
+                        }
+                    }
                     SymbolTable.ClassSymbol cs = semanticAnalyzer != null ? semanticAnalyzer.getClass(mc.methodName()) : null;
                     if (cs != null) {
                         List<Type> argTypes = new ArrayList<>();
@@ -409,13 +463,19 @@ public class CompilerDriver {
                     Type recvType = inferExprType(fa.receiver(), locals);
                     Type fieldType = Type.UnknownType.UNKNOWN;
                     if (recvType instanceof Type.ClassType ct) {
-                        SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(ct.name());
-                        if (cs != null) {
-                            SymbolTable.Symbol fs = cs.members().resolve(fa.fieldName());
-                            if (fs != null) fieldType = fs.type();
-                        }
+                        SymbolTable.Symbol fs = resolveFieldInHierarchy(ct.name(), fa.fieldName());
+                        if (fs != null) fieldType = fs.type();
                     }
                     ops.add(new KofStoreField(recvType, fa.fieldName(), fieldType));
+                    yield localIdx;
+                }
+                if (ae.target() instanceof ArrayAccessExpr aa) {
+                    localIdx = emitExpression(aa.receiver(), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(aa.index(), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                    Type recvType = inferExprType(aa.receiver(), locals);
+                    Type elemType = Type.arrayElementType(recvType);
+                    ops.add(new KofArrayStore(elemType));
                     yield localIdx;
                 }
                 localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
@@ -442,6 +502,35 @@ public class CompilerDriver {
                 ops.add(new KofCall(type, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
             }
+            case NewArrayExpr na -> {
+                Type elemType = toType(na.elementType());
+                localIdx = emitExpression(na.size(), ops, owner, localIdx, locals);
+                ops.add(new KofNewArray(elemType));
+                yield localIdx;
+            }
+            case ArrayAccessExpr aa -> {
+                localIdx = emitExpression(aa.receiver(), ops, owner, localIdx, locals);
+                localIdx = emitExpression(aa.index(), ops, owner, localIdx, locals);
+                Type recvType = inferExprType(aa.receiver(), locals);
+                Type elemType = Type.arrayElementType(recvType);
+                ops.add(new KofArrayLoad(elemType));
+                yield localIdx;
+            }
+            case FieldAccessExpr fa -> {
+                localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                Type recvType = inferExprType(fa.receiver(), locals);
+                if (recvType instanceof Type.ArrayType && "length".equals(fa.fieldName())) {
+                    ops.add(new KofArrayLength());
+                } else {
+                    Type fieldType = Type.UnknownType.UNKNOWN;
+                    if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
+                        SymbolTable.Symbol fs = resolveFieldInHierarchy(ct.name(), fa.fieldName());
+                        if (fs != null) fieldType = fs.type();
+                    }
+                    ops.add(new KofLoadField(recvType, fa.fieldName(), fieldType));
+                }
+                yield localIdx;
+            }
             default -> localIdx;
         };
     }
@@ -453,7 +542,7 @@ public class CompilerDriver {
                 case ConcreteLiteralKind.LONG -> Type.PrimitiveType.LONG;
                 case ConcreteLiteralKind.FLOAT -> Type.PrimitiveType.FLOAT;
                 case ConcreteLiteralKind.DOUBLE -> Type.PrimitiveType.DOUBLE;
-                case ConcreteLiteralKind.STRING -> new Type.ClassType("java.lang", "String", List.of());
+                case ConcreteLiteralKind.STRING -> BuiltinTypes.STRING;
                 case ConcreteLiteralKind.BOOLEAN -> Type.PrimitiveType.BOOL;
                 case ConcreteLiteralKind.CHAR -> Type.PrimitiveType.CHAR;
                 case ConcreteLiteralKind.NULL -> Type.UnknownType.UNKNOWN;
@@ -477,6 +566,23 @@ public class CompilerDriver {
                 if (cs != null) yield cs.type();
                 yield Type.UnknownType.UNKNOWN;
             }
+            case NewArrayExpr na -> {
+                Type elemType = toType(na.elementType());
+                yield new Type.ArrayType(elemType);
+            }
+            case NewExpr ne -> toType(ne.typeName());
+            case ArrayAccessExpr aa -> {
+                Type recvType = inferExprType(aa.receiver(), locals);
+                if (recvType instanceof Type.ArrayType at) yield at.componentType();
+                yield Type.UnknownType.UNKNOWN;
+            }
+            case FieldAccessExpr fa -> {
+                Type recvType = inferExprType(fa.receiver(), locals);
+                if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
+                }
+                yield Type.UnknownType.UNKNOWN;
+            }
             default -> Type.UnknownType.UNKNOWN;
         };
     }
@@ -489,6 +595,25 @@ public class CompilerDriver {
             if (s != null) return s;
         }
         return null;
+    }
+
+    private SymbolTable.Symbol resolveFieldInHierarchy(String className, String fieldName) {
+        if (semanticAnalyzer == null) return null;
+        return semanticAnalyzer.resolveInHierarchy(className, fieldName);
+    }
+
+    private String findSuperClass(String internalName) {
+        if (semanticAnalyzer == null) return null;
+        String simpleName = internalName.substring(internalName.lastIndexOf('/') + 1);
+        SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(simpleName);
+        if (cs == null) return null;
+        String superName = cs.superClass();
+        if (superName == null || superName.isEmpty() || "Object".equals(superName)) return null;
+        if (!superName.contains("/")) {
+            SymbolTable.ClassSymbol superCs = semanticAnalyzer.getClass(superName);
+            if (superCs != null) return superCs.internalName();
+        }
+        return superName;
     }
 
     private boolean isPrimitiveType(Type type) {
@@ -600,9 +725,9 @@ public class CompilerDriver {
         if (field.initializer() instanceof LiteralExpr lit) {
             initVal = switch (lit.kind()) {
                 case ConcreteLiteralKind.INT -> Integer.parseInt(lit.value());
-                case ConcreteLiteralKind.LONG -> Long.parseLong(lit.value());
-                case ConcreteLiteralKind.FLOAT -> Float.parseFloat(lit.value());
-                case ConcreteLiteralKind.DOUBLE -> Double.parseDouble(lit.value());
+                case ConcreteLiteralKind.LONG -> Long.parseLong(stripSuffix(lit.value()));
+                case ConcreteLiteralKind.FLOAT -> Float.parseFloat(stripSuffix(lit.value()));
+                case ConcreteLiteralKind.DOUBLE -> Double.parseDouble(stripSuffix(lit.value()));
                 case ConcreteLiteralKind.STRING -> lit.value();
                 case ConcreteLiteralKind.BOOLEAN -> Boolean.parseBoolean(lit.value()) ? 1 : 0;
                 default -> null;
@@ -649,8 +774,14 @@ public class CompilerDriver {
         Type ownerType = ownerTypeFromInternal(owner);
         Type superType = ownerTypeFromInternal(superName);
         localVars.add(new IRLocalVariable(0, "this", ownerType));
-        ops.add(new KofLoadLocal(ownerType, 0));
-        ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+        boolean hasExplicitSuper = !ctor.body().isEmpty() &&
+                ctor.body().getFirst() instanceof ExpressionStmt es &&
+                es.expression() instanceof MethodCallExpr mc &&
+                "super".equals(mc.methodName());
+        if (!hasExplicitSuper) {
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+        }
         int localIdx = 1;
         for (FormalParameterNode param : ctor.parameters()) {
             Type paramType = toType(param.type());
@@ -722,6 +853,15 @@ public class CompilerDriver {
 
     private boolean isAbstractMethod(MethodDeclarationNode method) {
         return method.body() == null || method.body().isEmpty();
+    }
+
+    private String stripSuffix(String value) {
+        if (value.endsWith("l") || value.endsWith("L") ||
+            value.endsWith("f") || value.endsWith("F") ||
+            value.endsWith("d") || value.endsWith("D")) {
+            return value.substring(0, value.length() - 1);
+        }
+        return value;
     }
 
     private boolean isDoubleWidth(Type type) {

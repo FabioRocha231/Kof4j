@@ -60,7 +60,7 @@ record KofLoadLiteral(Type type, Object value) implements KofOperation {
         return new KofLoadLiteral(Type.PrimitiveType.DOUBLE, value);
     }
     static KofLoadLiteral ofString(String value) {
-        return new KofLoadLiteral(new Type.ClassType("java.lang", "String", List.of()), value);
+        return new KofLoadLiteral(BuiltinTypes.STRING, value);
     }
     static KofLoadLiteral ofBool(boolean value) {
         return new KofLoadLiteral(Type.PrimitiveType.BOOL, value ? 1 : 0);
@@ -116,7 +116,7 @@ record KofConditionalJump(KofComparison comparison, LabelId trueLabel, LabelId f
 
 // ── Calls ─────────────────────────────────────────────────────────
 
-enum KofCallKind { INSTANCE, STATIC, CONSTRUCTOR, FUNCTION }
+enum KofCallKind { INSTANCE, STATIC, CONSTRUCTOR, FUNCTION, INTERFACE }
 
 record KofCall(Type ownerType, String methodName, List<Type> parameterTypes,
                Type returnType, KofCallKind kind) implements KofOperation {
@@ -162,4 +162,8 @@ record KofArrayLength() implements KofOperation {
 // ── Exception ─────────────────────────────────────────────────────
 
 record KofThrow() implements KofOperation {
+}
+
+record TryCatchRegion(LabelId tryStart, LabelId tryEnd, LabelId handlerStart,
+                      String catchType) implements KofOperation {
 }

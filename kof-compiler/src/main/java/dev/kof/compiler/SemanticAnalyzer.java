@@ -10,6 +10,7 @@ class SemanticAnalyzer {
 
     private SymbolTable currentScope;
     private final Map<String, SymbolTable.ClassSymbol> knownClasses = new HashMap<>();
+    private final java.util.Set<String> interfaceNames = new java.util.HashSet<>();
     private final Map<ExpressionNode, Type> expressionTypes = new IdentityHashMap<>();
     private final Map<MethodCallExpr, SymbolTable.MethodSymbol> resolvedMethods = new IdentityHashMap<>();
     private final Map<NewExpr, SymbolTable.ConstructorSymbol> resolvedConstructors = new IdentityHashMap<>();
@@ -52,6 +53,35 @@ class SemanticAnalyzer {
         return knownClasses;
     }
 
+    boolean isInterfaceType(String name) {
+        return interfaceNames.contains(name);
+    }
+
+    SymbolTable.Symbol resolveInHierarchy(String className, String memberName) {
+        java.util.Set<String> visited = new java.util.HashSet<>();
+        java.util.Queue<String> queue = new java.util.LinkedList<>();
+        queue.add(className);
+        visited.add(className);
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            SymbolTable.ClassSymbol cs = knownClasses.get(current);
+            if (cs == null) continue;
+            SymbolTable.Symbol s = cs.members().resolve(memberName);
+            if (s != null) return s;
+            if (cs.superClass() != null && !"Object".equals(cs.superClass()) && !visited.contains(cs.superClass())) {
+                visited.add(cs.superClass());
+                queue.add(cs.superClass());
+            }
+            for (String iface : cs.interfaces()) {
+                if (!visited.contains(iface)) {
+                    visited.add(iface);
+                    queue.add(iface);
+                }
+            }
+        }
+        return null;
+    }
+
     private void preDeclareType(AstNode decl) {
         if (decl instanceof ClassDeclarationNode cls) {
             SymbolTable members = new SymbolTable();
@@ -71,6 +101,7 @@ class SemanticAnalyzer {
             SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(iface.name(), currentPackage,
                     "Object", iface.interfaces(), members);
             knownClasses.put(iface.name(), sym);
+            interfaceNames.add(iface.name());
             currentScope.define(sym);
         }
     }
@@ -335,13 +366,10 @@ class SemanticAnalyzer {
                     Type recvType = inferType(mc.receiver(), scope);
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     if (recvType instanceof Type.ClassType ct) {
-                        SymbolTable.ClassSymbol cs = knownClasses.get(ct.name());
-                        if (cs != null) {
-                            SymbolTable.Symbol m = cs.members().resolve(mc.methodName());
-                            if (m instanceof SymbolTable.MethodSymbol ms) {
-                                resolvedMethods.put(mc, ms);
-                                yield ms.returnType();
-                            }
+                        SymbolTable.Symbol m = resolveInHierarchy(ct.name(), mc.methodName());
+                        if (m instanceof SymbolTable.MethodSymbol ms) {
+                            resolvedMethods.put(mc, ms);
+                            yield ms.returnType();
                         }
                     }
                     yield Type.UnknownType.UNKNOWN;
@@ -376,12 +404,25 @@ class SemanticAnalyzer {
             }
             case FieldAccessExpr fa -> {
                 Type recvType = inferType(fa.receiver(), scope);
+                if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
+                }
                 if (recvType instanceof Type.ClassType ct) {
-                    SymbolTable.ClassSymbol cs = knownClasses.get(ct.name());
-                    if (cs != null) {
-                        SymbolTable.Symbol field = cs.members().resolve(fa.fieldName());
-                        if (field != null) yield field.type();
-                    }
+                    SymbolTable.Symbol field = resolveInHierarchy(ct.name(), fa.fieldName());
+                    if (field != null) yield field.type();
+                }
+                yield Type.UnknownType.UNKNOWN;
+            }
+            case NewArrayExpr na -> {
+                Type elemType = Type.of(na.elementType());
+                inferType(na.size(), scope);
+                yield new Type.ArrayType(elemType);
+            }
+            case ArrayAccessExpr aa -> {
+                Type recvType = inferType(aa.receiver(), scope);
+                inferType(aa.index(), scope);
+                if (recvType instanceof Type.ArrayType at) {
+                    yield at.componentType();
                 }
                 yield Type.UnknownType.UNKNOWN;
             }
@@ -397,7 +438,7 @@ class SemanticAnalyzer {
             case ConcreteLiteralKind.LONG -> Type.PrimitiveType.LONG;
             case ConcreteLiteralKind.FLOAT -> Type.PrimitiveType.FLOAT;
             case ConcreteLiteralKind.DOUBLE -> Type.PrimitiveType.DOUBLE;
-            case ConcreteLiteralKind.STRING -> new Type.ClassType("java.lang", "String", List.of());
+            case ConcreteLiteralKind.STRING -> BuiltinTypes.STRING;
             case ConcreteLiteralKind.BOOLEAN -> Type.PrimitiveType.BOOL;
             case ConcreteLiteralKind.CHAR -> Type.PrimitiveType.CHAR;
             case ConcreteLiteralKind.NULL -> Type.UnknownType.UNKNOWN;

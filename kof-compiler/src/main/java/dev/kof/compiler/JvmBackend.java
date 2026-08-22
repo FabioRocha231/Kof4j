@@ -69,9 +69,27 @@ class JvmBackend implements Backend {
             maxStack = Math.max(maxStack, computeStack(block.operations()));
         }
 
+        java.util.List<TryCatchRegion> tryCatchRegions = new java.util.ArrayList<>();
         for (IRBasicBlock block : method.basicBlocks()) {
             for (KofOperation op : block.operations()) {
-                emitOperation(mv, className, op);
+                if (op instanceof TryCatchRegion tcr) {
+                    tryCatchRegions.add(tcr);
+                } else {
+                    emitOperation(mv, className, op);
+                }
+            }
+        }
+
+        for (TryCatchRegion tcr : tryCatchRegions) {
+            org.objectweb.asm.Label start = resolveLabel(tcr.tryStart());
+            org.objectweb.asm.Label end = resolveLabel(tcr.tryEnd());
+            org.objectweb.asm.Label handler = resolveLabel(tcr.handlerStart());
+            String catchType = tcr.catchType();
+            if (catchType != null && !catchType.isEmpty()) {
+                String internalName = JvmTypeMapper.toInternalName("", catchType);
+                mv.visitTryCatchBlock(start, end, handler, internalName);
+            } else {
+                mv.visitTryCatchBlock(start, end, handler, null);
             }
         }
 
@@ -144,6 +162,7 @@ class JvmBackend implements Backend {
                 case STATIC -> mv.visitMethodInsn(INVOKESTATIC, owner, kc.methodName(), desc, false);
                 case CONSTRUCTOR -> mv.visitMethodInsn(INVOKESPECIAL, owner, kc.methodName(), desc, false);
                 case FUNCTION -> mv.visitMethodInsn(INVOKESTATIC, owner, kc.methodName(), desc, false);
+                case INTERFACE -> mv.visitMethodInsn(INVOKEINTERFACE, owner, kc.methodName(), desc, true);
             }
         } else if (op instanceof KofNewObject no) {
             String typeName = no.type() instanceof Type.ClassType ct
@@ -159,6 +178,17 @@ class JvmBackend implements Backend {
             mv.visitInsn(RETURN);
         } else if (op instanceof KofThrow) {
             mv.visitInsn(ATHROW);
+        } else if (op instanceof TryCatchRegion tcr) {
+            org.objectweb.asm.Label start = resolveLabel(tcr.tryStart());
+            org.objectweb.asm.Label end = resolveLabel(tcr.tryEnd());
+            org.objectweb.asm.Label handler = resolveLabel(tcr.handlerStart());
+            String catchType = tcr.catchType();
+            if (catchType != null && !catchType.isEmpty()) {
+                String internalName = JvmTypeMapper.toInternalName("", catchType);
+                mv.visitTryCatchBlock(start, end, handler, internalName);
+            } else {
+                mv.visitTryCatchBlock(start, end, handler, null);
+            }
         } else if (op instanceof KofCheckCast cc) {
             String type = cc.type() instanceof Type.ClassType ct
                     ? JvmTypeMapper.toInternalName(ct.packageName(), ct.name()) : "?";
@@ -329,6 +359,7 @@ class JvmBackend implements Backend {
             } else if (op instanceof KofThrow) {
                 depth--;
             } else if (op instanceof KofLabel || op instanceof KofJump || op instanceof KofConditionalJump) {
+            } else if (op instanceof TryCatchRegion) {
             } else if (op instanceof KofCall) {
                 depth -= 1;
             }
