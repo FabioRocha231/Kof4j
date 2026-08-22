@@ -11,11 +11,11 @@ Kof suporta interfaces com métodos abstratos. Uma classe pode implementar uma o
 
 ```kof
 interface Speaker {
-    fun speak(): String
+    speak(): String
 }
 
 class Dog implements Speaker {
-    fun speak(): String = "woof"
+    speak(): String = "woof"
 }
 ```
 
@@ -27,7 +27,7 @@ class Dog implements Speaker {
 
 ```kof
 interface Nome {
-    fun metodo(): TipoRetorno
+    metodo(): TipoRetorno
 }
 ```
 
@@ -43,10 +43,10 @@ class Classe implements Interface1, Interface2 {
 
 ```kof
 interface Base {
-    fun metodo(): String
+    metodo(): String
 }
 interface Derivada extends Base {
-    fun outroMetodo(): String
+    outroMetodo(): String
 }
 ```
 

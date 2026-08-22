@@ -5,6 +5,7 @@
 </p>
 
 ### Uma linguagem. Um compilador. Vários mundos.
+se pronuncia coffe
 
 **Menos código. Mais intenção. JVM, nativo, script e web. Tudo partindo da mesma linguagem.**
 
@@ -123,7 +124,7 @@ Kof não depende de Java como linguagem intermediária.
 
 # Estado Atual
 
-Kof está em desenvolvimento ativo.
+Kof está em desenvolvimento ativo — **Alpha 0.0.4** (`0.0.4-alpha`).
 
 O compilador já possui uma fundação funcional.
 
@@ -143,29 +144,56 @@ O compilador já possui uma fundação funcional.
 | fields | ✅ | ✅ |
 | field access | ✅ | ✅ |
 | field assignment | ✅ | ✅ |
+| JSON encode/decode | ✅ | ✅ |
+| List\<T\> | ✅ | ✅ |
+
+---
+
+# Instalação
+
+Kof é uma **distribuição**: instale e receba compilador, CLI, runtime,
+stdlib, tooling, editor support e um OpenJDK embutido. **Nenhuma instalação
+externa de Java é necessária.**
+
+```bash
+# Baixe o artefato do GitHub Releases e extraia:
+tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+
+kof version        # kof 0.0.4-alpha
+kof info           # ambiente completo (JVM embutida, Tooling API 21, target)
+```
+
+Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) e
+[docs/distribution/ARCHITECTURE.md](docs/distribution/ARCHITECTURE.md).
+
+---
+
+# CLI
+
+```bash
+kof build <dir> [--target jvm|native] [--output <dir>]
+kof run <file.kf> [args...]
+kof serve <file.kf> [--port <port>] [--host <host>]
+kof check <file.kf|dir>
+kof info [--json]
+kof lsp
+kof version
+```
+
+`kof test` e `kof fmt` são planejados (ver [docs/tooling/README.md](docs/tooling/README.md)).
 
 ---
 
 # Construindo
 
 ```bash
-mvn clean install -DskipTests
+mvn clean package -DskipTests
+bin/kof info
 ```
 
----
-
-# Executando
-
-```bash
-# Compilar para JVM
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar build <source-dir> --target=jvm
-
-# Compilar para nativo
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar build <source-dir> --target=native
-
-# Executar
-java -jar kof-cli/target/kof-cli-0.1.0-SNAPSHOT.jar run <file.kf>
-```
+Versionamento centralizado em `VERSION` — ver
+[docs/distribution/VERSIONING.md](docs/distribution/VERSIONING.md).
 
 ---
 

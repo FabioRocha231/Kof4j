@@ -11,12 +11,12 @@ Kof suporta dispatch dinâmico (virtual dispatch) para métodos de instância. Q
 
 ```kof
 class Animal {
-    fun speak(): String = "animal"
+    speak(): String = "animal"
 }
 class Dog extends Animal {
-    fun speak(): String = "dog"
+    speak(): String = "dog"
 }
-fun main() {
+main() {
     Animal a = new Dog()
     println(a.speak())  // imprime "dog", não "animal"
 }

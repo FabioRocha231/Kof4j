@@ -73,7 +73,7 @@ println(a.length)    // retorna Int
 ### Como parâmetro
 
 ```kof
-fun sum(Int[] arr): Int {
+sum(Int[] arr): Int {
     var total = 0
     for (var i = 0; i < arr.length; i++) {
         total = total + arr[i]
@@ -85,7 +85,7 @@ fun sum(Int[] arr): Int {
 ### Como retorno
 
 ```kof
-fun createArray(): Int[] {
+createArray(): Int[] {
     var a = new Int[3]
     a[0] = 10
     a[1] = 20

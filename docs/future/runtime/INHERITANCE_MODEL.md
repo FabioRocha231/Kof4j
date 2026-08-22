@@ -15,7 +15,7 @@ class Animal {
     public constructor(String name) {
         this.name = name
     }
-    public fun speak(): String {
+    public speak(): String {
         return name
     }
 }
@@ -24,7 +24,7 @@ class Dog extends Animal {
     public constructor(String name) {
         super(name)
     }
-    public fun bark(): String {
+    public bark(): String {
         return "woof"
     }
 }

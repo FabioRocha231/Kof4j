@@ -162,7 +162,7 @@ response.body(jsonString)
 
 ```kof
 // Conceitual — forma mínima
-fun handle(request: Request): Response {
+handle(request: Request): Response {
     return response(200, "Hello, World!")
 }
 ```
@@ -237,8 +237,8 @@ Middleware como composição de funções:
 
 ```kof
 // Conceitual
-fun auth(handler: Handler): Handler {
-    return fun(req: Request): Response {
+auth(handler: Handler): Handler {
+    return (req: Request) -> Response {
         if (!req.headers.has("Authorization")) {
             return response(401, "Unauthorized")
         }
@@ -393,9 +393,9 @@ log("Response sent", level=INFO)
 ```kof
 // Conceitual
 interface HttpServer {
-    fun start(port: Int)
-    fun stop()
-    fun route(method: String, path: String, handler: Handler)
+    start(port: Int)
+    stop()
+    route(method: String, path: String, handler: Handler)
 }
 ```
 

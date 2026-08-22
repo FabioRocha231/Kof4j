@@ -51,7 +51,7 @@ Objetivos:
 - reutilização da mesma semântica da linguagem;
 - mesma aplicação podendo ser compilada para JVM ou Native.
 
-Estado atual: ✅ funcional (Fase E concluída, 7/7 testes E2E passam)
+Estado atual: ✅ funcional (Fases E+F concluídas, 292/292 testes passam, JSON parity, exceptions reais no JVM)
 
 ### KofJS — Web
 
@@ -555,7 +555,52 @@ Estado atual: ❌ não implementado
 
 ---
 
-## 17. Princípios de Design
+## 17. Distribuição e Tooling (0.0.4+)
+
+O Kof é uma plataforma distribuível, não apenas um JAR:
+
+- distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK embutido);
+- OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
+- versionamento centralizado (`VERSION` → pom/properties via `scripts/bump-version.sh`);
+- releases automáticas por push na `main` (testes → bump → package → GitHub Release);
+- artefatos multiplataforma + SHA256SUMS;
+- editor support oficial: grammar TextMate + LSP consumindo o frontend real;
+- `kof info`, `kof check`, `kof lsp` (test/fmt planejados).
+
+Referências: `docs/distribution/`, `docs/tooling/`.
+
+---
+
+## 18. Kof Escrito em Kof (auto-hospedagem)
+
+Planejado desde já como evolução arquitetural real, não demonstração.
+
+Pré-requisitos antes da migração:
+
+- generics; collections; exceptions;
+- stdlib; filesystem; strings; concurrency; HTTP;
+- tooling; expressividade suficiente da linguagem.
+
+O compilador atual permanece arquiteturalmente preparado para a migração
+(frontend único alimentando compiler, LSP, formatter e diagnostics), mas a
+migração **não** deve ser tentada prematuramente.
+
+---
+
+## 19. Kof + LLM
+
+Kof é *Human First, LLM Friendly by Consequence*:
+
+- menos ceremony; menos arquivos; menos abstrações artificiais;
+- menos configuração; mais intenção.
+
+A consistência do design faz com que humanos e LLMs entendam a mesma
+linguagem da mesma forma. O diretório `training/` é parte oficial dessa
+estratégia.
+
+---
+
+## 20. Princípios de Design
 
 1. Simplicidade primeiro.
 2. Legibilidade primeiro.

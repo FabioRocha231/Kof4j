@@ -21,7 +21,7 @@ O caso comum deve ser o mais simples possível. Se o programador precisa escreve
 
 ```kof
 // Kof: simples
-fun main() {
+main() {
     println("Hello")
 }
 
@@ -87,7 +87,7 @@ Se algo pode ser resolvido por convenção, não precisa de configuração.
 
 ```kof
 // Por convenção, main() é o ponto de entrada
-fun main() {
+main() {
     // ...
 }
 
@@ -160,6 +160,33 @@ Kof é uma linguagem de programação geral, compilada, com múltiplos backends.
 
 ---
 
+## Distribuição
+
+Kof não é "um projeto Java que você monta" — é **uma linguagem que você
+instala**. O pacote oficial inclui compilador, CLI, runtime, stdlib,
+tooling, editor support e um OpenJDK embutido. A instalação não depende de
+Java externo, `JAVA_HOME` ou SDKMAN.
+
+O usuário que instala o Kof recebe tudo o que precisa para desenvolver,
+compilar, executar e usar o tooling da linguagem.
+
+---
+
+## Kof + LLM
+
+> **Human First, LLM Friendly by Consequence.**
+
+Kof não é projetada "para IA". A consistência do design (menos ceremony,
+menos arquivos, menos abstrações artificiais, menos configuração, mais
+intenção) faz com que humanos e LLMs entendam a mesma linguagem da mesma
+forma. O que é explícito para uma pessoa é explícito para um modelo — e
+vice-versa.
+
+O diretório `training/` é parte oficial dessa estratégia: um corpus
+estruturado para que modelos produzam Kof idiomático.
+
+---
+
 ## Visão de Futuro
 
 Kof deve evoluir para ser uma plataforma onde:
@@ -171,3 +198,6 @@ Kof deve evoluir para ser uma plataforma onde:
 5. **Concorrência** é parte da linguagem, não de APIs
 
 O objetivo é que a complexidade que hoje vive em Spring, Hibernate, e dezenas de outras bibliotecas, seja resolvida pelo compilador e runtime do Kof.
+
+E, no limite, **Kof escrito em Kof** — não como demonstração, mas como
+evolução arquitetural real.

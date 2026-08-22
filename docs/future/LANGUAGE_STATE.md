@@ -1,8 +1,9 @@
 # Estado Atual da Linguagem Kof
 
 **Data:** 22 de agosto de 2026
-**Testes:** 204/204 passando (incluindo execução real de binários nativos)
-**Status:** Compilador funcional com backends JVM e Native, web server funcional
+**Versão:** 0.0.4-alpha
+**Testes:** 292/292 passando (incluindo execução real de binários nativos, JSON E2E e exceptions E2E)
+**Status:** Compilador funcional com backends JVM e Native, web server funcional, distribuição e tooling oficiais
 
 ---
 
@@ -20,12 +21,12 @@ class Animal {
     public constructor(String name) {
         this.name = name
     }
-    public fun speak(): String {
+    public speak(): String {
         return name
     }
 }
 
-fun main() {
+main() {
     var a = new Animal("Rex")
     println(a.speak())
 }
@@ -37,13 +38,13 @@ fun main() {
 |-----------|---------|---------|
 | Package | `package a.b.c` | `package com.example` |
 | Import | `import a.b.c` | `import java.util.List` |
-| Função | `fun name(args): RetType` | `fun add(Int a, Int b): Int` |
+| Função | `name(args): RetType` | `add(Int a, Int b): Int` |
 | Classe | `class Name extends Super implements Iface` | `class Dog extends Animal` |
 | Record | `record Name(Type field, ...)` | `record Point(Int x, Int y)` |
 | Interface | `interface Name extends Iface` | `interface Speaker` |
 | Constructor | `constructor(args)` | `constructor(String name)` |
 | Campo | `Type name = value` | `String name = "default"` |
-| Método | `fun name(args): RetType` | `fun speak(): String` |
+| Método | `name(args): RetType` | `speak(): String` |
 | Variável | `var name = value` ou `Type name = value` | `var x = 10` |
 | Se | `if (cond) { } else { }` | `if (x > 0) { ... }` |
 | Enquanto | `while (cond) { }` | `while (i < 10) { ... }` |
@@ -61,7 +62,7 @@ fun main() {
 | Herança | `class Sub extends Super` | `class Dog extends Animal` |
 | Implementação | `class Name implements Iface` | `class Dog implements Speaker` |
 | Super | `super(args)` | `super(name)` |
-| Override | implícito (mesmo nome) | `fun speak()` sobrescreve |
+| Override | implícito (mesmo nome) | `speak()` sobrescreve |
 
 ### Modificadores suportados
 
@@ -137,7 +138,7 @@ class User {
         this.name = name
         this.age = age
     }
-    public fun getName(): String {
+    public getName(): String {
         return name
     }
 }
@@ -163,10 +164,10 @@ class Dog extends Animal {
 
 ```kof
 interface Speaker {
-    fun speak(): String
+    speak(): String
 }
 class Dog implements Speaker {
-    public fun speak(): String {
+    public speak(): String {
         return "woof"
     }
 }
@@ -288,19 +289,25 @@ Fields:
 
 ## O que NÃO existe
 
-- Generics
-- Collections (List, Map, Set)
+- Map, Set
 - Async/await
 - Concorrência
 - Reflection
 - Annotations
 - Macros
-- Módulos/pacotes reais
+- Módulos/pacotes reais (package/import existem, mas o ecossistema é inicial)
 - Standard library completa
-- HTTP (em desenvolvimento — `kof serve`)
 - Database
-- Serialization
-- JSON
-- Testes
+- Test runner nativo (`kof test` planejado)
 - REPL
-- Language server
+- Formatter (`kof fmt` planejado)
+
+## O que existe desde 0.0.4
+
+- Generics (com erasure)
+- List\<T\> (JVM + Native)
+- JSON encode/decode (JVM + Native; objetos/records no JVM)
+- HTTP básico (`kof serve`)
+- Language Server (`kof lsp` — frontend real do compilador)
+- Type-check via CLI (`kof check`)
+- Distribuição oficial com JDK embutido, versionamento e releases automáticas

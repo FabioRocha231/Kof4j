@@ -1,6 +1,7 @@
 # Estado Atual do Projeto Kof
 
-**Última atualização:** 21 de agosto de 2026
+**Última atualização:** 22 de agosto de 2026
+**Versão:** 0.0.4-alpha
 
 ---
 
@@ -8,15 +9,13 @@
 
 Kof é uma linguagem compilada para múltiplos targets (JVM, Native, Web, Script).
 
-O projeto possui um **frontend sólido** (lexer + parser + AST) e um **backend JVM funcional** para o subconjunto de features que são corretamente loweradas.
+O projeto possui um **frontend completo** (lexer + parser + AST + symbol table + semantic + type checking), uma **IR backend-agnóstica** e **dois backends funcionais**: JVM (bytecode via ASM) e Native (ELF x86-64, syscalls, sem libc obrigatória).
 
-**Fase C CONCLUÍDA**: Type System + Symbol Resolution criados e integrados.
+**Fases C, D, E CONCLUÍDAS**: Type System, IR generalizada, NativeBackend ELF.
 
-**Fase D CONCLUÍDA**: IR generalizada para múltiplos backends. Kof IR é backend-agnostic.
+**Fase F CONCLUÍDA**: String model, Array model, Inheritance, Virtual Dispatch, Interfaces, Exceptions, Memory (mmap, sem GC).
 
-**Fase E CONCLUÍDA**: NativeBackend funcional — gera x86-64 ELF, 7/7 testes E2E passam.
-
-**Fase F EM PROGRESSO**: Runtime ABI definida, ClassLayout/NativeRuntime implementados, NativeBackend refatorado.
+**Pipeline 0.0.4 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
 
 ---
 
@@ -24,82 +23,96 @@ O projeto possui um **frontend sólido** (lexer + parser + AST) e um **backend J
 
 | Verificação | Resultado |
 |-------------|-----------|
-| `mvn clean package -DskipTests` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (49/49) |
+| `mvn clean package` | ✅ PASSA |
+| `mvn test` | ✅ PASSA (292/292) |
 | `kof run` | ✅ FUNCIONA |
-| `kof build` | ✅ FUNCIONA |
+| `kof build --target jvm` | ✅ FUNCIONA |
+| `kof build --target native` | ✅ FUNCIONA |
+| `kof serve` | ✅ FUNCIONA |
+| `kof check` | ✅ FUNCIONA |
+| `kof info` | ✅ FUNCIONA |
+| `kof lsp` | ✅ FUNCIONA |
+| `kof install` | ✅ FUNCIONA |
+| `scripts/package.sh` | ✅ GERA PACOTE + SHA256SUMS |
 
 ---
 
 ## O que FUNCIONA de ponta a ponta
 
-### Records para JVM
+### Sintaxe de funções (sem `fun`)
+
+```kf
+main() { ... }                       // entry point, void implícito
+String saudacao() { ... }            // retorno antes do nome
+despedida(): String { ... }          // retorno após os parâmetros
+void fazIsso() { ... }               // void explícito
+Bool positivo(Int x) = x > 0         // expression body
+int dobro(int x) { ... }             // primitivos em qualquer caixa
+```
+
+### Records
 
 ```kf
 record Point(Int x, Int y)
-```
-
-Gera: classe `.class` válida, construtor, accessors, `toString()`.
-
-### Records para Native
-
-```kf
-record Point(Int x, Int y)
-```
-
-Gera binário ELF x86-64. Acessors (x(), y()) funcionam.
-
-### Funções com println
-
-```kf
-fun main() {
-    println("Hello, Kof!")
+main() {
+    var p = Point(3, 7)
+    println(p)                       // Ponto[x=3, y=7] (toString no JVM)
+    println(p.x() == q.x())
 }
 ```
 
-Compila e executa corretamente em JVM e Native.
-
-### Funções com retorno
-
-```kf
-fun add(Int a, Int b): Int {
-    return a + b
-}
-fun main() {
-    println(add(2, 3))
-}
-```
-
-Compila e executa corretamente em JVM e Native.
-
-### Variáveis
-
-```kf
-fun main() {
-    var nome = "Mel"
-    var idade = 26
-    println(nome)
-    println(idade)
-}
-```
-
-Resultado: `Mel` / `26`
+Gera `.class` válido (construtor, accessors, toString/equals/hashCode no JVM) e binário ELF x86-64 no Native.
 
 ### Classes
 
 ```kf
-public class User {
+class User {
     String name
     public constructor(String name) { this.name = name }
-    public fun getName(): String { return name }
+    public getName(): String { return name }
 }
 ```
 
-Compila, gera `.class`, executa na JVM.
+Compila, gera `.class`, executa na JVM e no Native (herança, virtual dispatch, interfaces).
 
-### Controle de fluxo
+### JSON
 
-`if/else`, `while`, `for` — todos funcionam em JVM e Native.
+```kf
+json.encode(42)                      // "42"
+json.encode(user)                    // {"name":"Mel","age":30} (JVM: objetos/records)
+json.encode(listOf(1, 2, 3))         // [1,2,3]
+var u = json.decode<User>("{\"name\": \"Ana\", \"age\": 25}")
+var l = json.decode<List<Int>>("[1, 2, 3]")
+```
+
+JVM + Native parity para int/long/bool/string/list/array. Objetos/records: JVM (reflection).
+
+### Exceptions (JVM — reais)
+
+```kf
+try {
+    throw "boom"
+} catch (String e) {
+    println("caught: " + e)
+} finally {
+    println("finally")
+}
+```
+
+Exception table real + StackMapTable. `throw "msg"` wrap em RuntimeException; `catch (String e)` unwrap. `finally` roda em todos os caminhos (normal, capturado, propagado). Native: `throw` = `kof_panic` (limitação documentada).
+
+### HTTP (`kof serve`)
+
+```kf
+handle(String method, String path, String body): String {
+    if (path == "/hello") {
+        return "{\"msg\": \"hi\"}"
+    }
+    return "{\"msg\": \"not found\"}"
+}
+```
+
+Handlers top-level (static), Content-Type automático, `--port`/`--host`, graceful shutdown.
 
 ---
 
@@ -109,79 +122,86 @@ Compila, gera `.class`, executa na JVM.
 
 | Feature | Status |
 |---------|--------|
-| `Type.java` | ✅ PrimitiveType, ClassType, UnknownType |
-| `SymbolTable.java` | ✅ Scopes encadeados |
-| `SemanticAnalyzer.java` | ✅ Resolução de métodos, constructors, fields, locals |
-| Type checking | ⚠️ Básico |
+| `Type.java` | ✅ PrimitiveType, ClassType, TypeVariable, ArrayType, WildcardType |
+| `SymbolTable.java` | ✅ Scopes encadeados, resolução em hierarquia |
+| `SemanticAnalyzer.java` | ✅ Métodos, constructors, fields, locals, generics por erasure |
+| Type checking | ✅ Assignability, larguras primitivas, arg types |
 
 ### IR Lowering
 
 | Feature | Status |
 |---------|--------|
-| Records | ✅ |
-| Classes | ✅ |
-| Funções top-level | ✅ |
-| Métodos | ✅ |
-| Construtores | ✅ |
-| `var`/`val` | ✅ |
-| `return` | ✅ |
-| `if`/`else` | ✅ |
-| `while` | ✅ |
-| `for` | ✅ |
-| Expressões binárias | ✅ |
-| `print`/`println` | ✅ |
+| Records, classes, interfaces, herança | ✅ |
+| Funções top-level (todas as formas) | ✅ |
+| Métodos, construtores, `super` | ✅ |
+| `var`/`val`, `return` | ✅ |
+| `if`/`else`, `while`, `for`, `do-while`, `switch`, `break`/`continue` | ✅ |
+| `try`/`catch`/`finally` + `throw` | ✅ (JVM real; Native panic) |
+| Expressões binárias, unárias, bitwise | ✅ |
+| Arrays, List\<T\>, generics | ✅ |
+| JSON, strings (API completa), `instanceof`/`as` | ✅ |
 
-### Backend JVM
+### Backend JVM (ASM)
 
 | Feature | Status |
 |---------|--------|
-| Tudo acima | ✅ |
+| Bytecode V21 direto, COMPUTE_FRAMES | ✅ |
+| Exception table + StackMapTable | ✅ |
+| Records com atributo Record + toString/equals/hashCode | ✅ |
+| Virtual dispatch, interfaces | ✅ |
+| Erasure boxing (`kof_box`/`kof_unbox`) | ✅ |
+| JSON helper `dev.kof.runtime.KofJson` (gerado via javac) | ✅ |
+| List = java.util.ArrayList | ✅ |
 
-### Backend Native
+### Backend Native (x86-64)
 
 | Feature | Status |
 |---------|--------|
-| Stack machine real | ✅ |
-| Kof IR consumption | ✅ |
-| x86-64 System V ABI | ✅ |
-| String literals em .data | ✅ |
-| kof_print/kof_println | ✅ |
-| kof_print_int | ✅ |
-| Field offsets do IRClass | ✅ |
-| Multi-classe em .s único | ✅ |
-| Funções top-level | ✅ |
-| Records (decl + accessors) | ✅ |
-| if/else, while, for | ✅ |
-| Arithmetic | ✅ |
+| Stack machine real sobre a IR | ✅ |
+| System V AMD64 ABI, ELF via `as`+`ld` | ✅ |
+| Heap via mmap (`kof_alloc`) | ✅ |
+| Vtables, dispatch virtual e de interface | ✅ |
+| Strings, arrays, lists, JSON em assembly | ✅ |
+| Syscalls de rede (`kof_net_*`) emitidos (API futura) | ✅ |
 
 ### CLI
 
 | Feature | Status |
 |---------|--------|
-| `kof build` | ✅ |
-| `kof build --target=jvm` | ✅ |
-| `kof build --target=native` | ✅ |
-| `kof run` | ✅ |
-| `kof version` | ✅ |
+| `kof build` (jvm/native), `kof run` | ✅ |
+| `kof serve`, `kof check`, `kof info [--json]` | ✅ |
+| `kof lsp` (LSP mínimo com frontend real) | ✅ |
+| `kof install`, `kof version` | ✅ |
 
 ---
 
 ## O que NÃO está implementado
 
 ### Language Features
-- `do-while`, `switch`/`case`, `break`/`continue`
-- `try`/`catch`/`finally`
-- Generics, Enums, Annotations, Arrays
-- Pattern matching
+- Enums, Annotations, Pattern matching
+- Lambdas/closures (parseados, não lowerados)
+- Map, Set
+- Async/await, concorrência
+- Reflection
 
 ### Type System
-- Type checking completo
-- Overload resolution
-- Generic type inference
+- Overload resolution completo
+- Variance
+- Sealed types
 
 ### Backends
-- KofJS (Web) — não iniciado
-- KofScript — só compila para JVM e executa
+- KofJS (Web) — planejado
+- KofScript — hoje = compilar para JVM e executar (`kof run`)
+
+### Runtime
+- GC no Native (`kof_free` é no-op)
+- Exceptions recuperáveis no Native (`throw` = `kof_panic`)
+- JSON de objetos no Native (JSN002 — diagnostic claro)
+
+### Tooling
+- `kof test` (planejado — suite como parte da stdlib)
+- REPL
+- `kof fmt` (planejado)
 
 ---
 
@@ -192,8 +212,9 @@ Source (.kf)
   ↓ Lexer
   ↓ Parser
   ↓ AST
-  ↓ Type System
+  ↓ Symbol Resolution
   ↓ Semantic Analysis
+  ↓ Type Checking
   ↓ Kof IR (backend-agnostic)
   ├── JVM Backend (ASM)
   └── Native Backend (x86-64)
@@ -201,14 +222,15 @@ Source (.kf)
 
 | Módulo | Estado |
 |--------|--------|
-| kof-compiler | Funcional |
-| kof-cli | Funcional |
-| kof-runtime | Estrutura criada (runtime nativa no NativeBackend) |
+| kof-compiler | Funcional (~10k LOC) |
+| kof-cli | Funcional (build, run, serve, check, info, lsp, install) |
+| kof-runtime | Estrutura criada (runtime nativa embutida no NativeBackend; KofJson no JVM) |
 
 | Métrica | Valor |
 |---------|-------|
-| Linhas de código (compiler) | ~4.500 |
-| Arquivos de código | 27 |
-| Testes JUnit | 49 |
-| Features JVM | ~15 |
-| Features Native | ~15 |
+| Testes JUnit | 292 (todos passando) |
+| E2E JVM | 29 |
+| E2E Native | 49 |
+| E2E JSON | 13 |
+| E2E Exceptions | 6 |
+| E2E Sintaxe de funções | 4 |

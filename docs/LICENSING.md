@@ -1,6 +1,6 @@
 # Licenciamento do Kof
 
-**Última atualização:** 21 de agosto de 2026
+**Última atualização:** 22 de agosto de 2026
 
 ---
 
@@ -11,6 +11,18 @@ O código-fonte do projeto Kof — incluindo compilador, ferramentas, backends e
 Isso significa que qualquer pessoa pode usar, modificar e distribuir o código-fonte do Kof, desde que respeite os termos da GPLv3.
 
 O arquivo `LICENSE` na raiz do repositório contém o texto completo da GPLv3.
+
+---
+
+## 2. JDK embutido na distribuição oficial
+
+O pacote oficial do Kof embarca um **OpenJDK Eclipse Temurin** (binários da
+Adoptium), distribuído sob a **GPLv2 com Classpath Exception**. O JDK
+embutido é um componente separado do código-fonte do Kof, empacotado apenas
+na distribuição (não no repositório), e mantém sua própria licença.
+
+O Kof não modifica o JDK embutido; o launcher (`bin/kof`) apenas o localiza
+e executa.
 
 ---
 
