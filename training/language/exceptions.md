@@ -62,13 +62,19 @@ try {
 
 ## Behavior
 
-- **JVM**: Exceptions propagate naturally via JVM mechanism
-- **Native**: `throw` calls `kof_panic` (fatal error, process exits)
-- **try/catch**: Parsed and analyzed, but Native treats as sequential (no real exception propagation)
-- **finally**: Always executed
+- **JVM**: Exceptions propagate naturally via the JVM exception table; the thrown
+  String is wrapped in a `RuntimeException` and unwrapped back in the catch.
+- **Native**: real unwinding via an exception frame chain (`kof_throw_string`):
+  frames restore `rsp`/`rbp` and jump to the handler; `finally` runs and the
+  exception is rethrown; propagation across function frames works.
+- **try/catch**: works on both targets. In Native, the FIRST catch of a try
+  captures (no type dispatch between multiple catches).
+- **finally**: always executed (normal path, caught path, propagation).
 
 ## Limitations
 
 - No stack traces in Native
+- In Native, multiple catches on one try: the first one captures
+- Exceptions are Strings (no exception object model yet)
 - No exception object model (exceptions are simple values)
 - Native exceptions are fatal (no recovery)
