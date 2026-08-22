@@ -9,6 +9,6 @@ target/
 *~
 .DS_Store
 build/
+dist/
 *.env
 dependency-reduced-pom.xml
-

@@ -6,7 +6,7 @@
 
     <groupId>dev.kof</groupId>
     <artifactId>kof-parent</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>Kof</name>
@@ -19,6 +19,12 @@
     </modules>
 
     <properties>
+        <!--
+          Single source of truth for the build version is the VERSION file at the
+          repository root. The release pipeline reads it and updates this property
+          (scripts/bump-version.sh). Do not edit this by hand.
+        -->
+        <revision>0.0.4-alpha</revision>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <asm.version>9.8</asm.version>
@@ -52,15 +58,18 @@
     </dependencyManagement>
 
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
-                <configuration>
-                    <release>21</release>
-                </configuration>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                        <release>21</release>
+                        <compilerReuseStrategy>alwaysNew</compilerReuseStrategy>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>

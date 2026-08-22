@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# kof — Kof platform launcher.
+#
+# Uses the embedded OpenJDK shipped with the official distribution when
+# present (jdk/ next to bin/). Falls back to a system `java` only in
+# development builds that do not carry an embedded JDK.
+#
+# Resolves symlinks so the distribution can be invoked from anywhere.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+KOF_BIN="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+KOF_HOME="$(dirname "$KOF_BIN")"
+
+JAR="$KOF_HOME/lib/kof.jar"
+if [ ! -f "$JAR" ]; then
+    echo "kof: distribution incomplete — missing $JAR" >&2
+    echo "kof: build it with: mvn clean package -DskipTests && scripts/package.sh" >&2
+    exit 1
+fi
+
+EMBEDDED=false
+JAVA="$(command -v java || true)"
+if [ -x "$KOF_HOME/jdk/bin/java" ]; then
+    JAVA="$KOF_HOME/jdk/bin/java"
+    EMBEDDED=true
+fi
+if [ -z "$JAVA" ]; then
+    echo "kof: no java found — install the official Kof distribution (it embeds a JDK)" >&2
+    exit 1
+fi
+
+exec "$JAVA" -Dkof.install.dir="$KOF_HOME" -Dkof.embedded.jdk="$EMBEDDED" \
+    -jar "$JAR" "$@"
