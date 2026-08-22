@@ -59,6 +59,7 @@ final class NativeRuntime {
      * methods is a list of mangled method names in order.
      */
     static void generateMethodTable(StringBuilder sb, String className, List<String> methodNames) {
+        sb.append(".balign 8\n");
         sb.append(".globl ").append(className).append("_vtable\n");
         sb.append(".type ").append(className).append("_vtable, @object\n");
         sb.append(className).append("_vtable:\n");
