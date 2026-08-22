@@ -514,6 +514,69 @@ public class NativeBackend implements Backend {
             }
             return;
         }
+        if (kc.kind() == KofCallKind.INSTANCE && "charAt".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                sb.append("    popq ").append(intRegs[i]).append("\n");
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %rsi\n");
+            sb.append("    movq %rax, %rsi\n");
+            sb.append("    call kof_string_char_at\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "substring".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                sb.append("    popq ").append(intRegs[i]).append("\n");
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rdx, %rsi\n");
+            sb.append("    movq %rdi, %rdx\n");
+            sb.append("    movq %rax, %rdi\n");
+            sb.append("    call kof_string_substring\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "contains".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                sb.append("    popq ").append(intRegs[i]).append("\n");
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %rsi\n");
+            sb.append("    call kof_string_contains\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "startsWith".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                sb.append("    popq ").append(intRegs[i]).append("\n");
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %rsi\n");
+            sb.append("    call kof_string_starts_with\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && "endsWith".equals(kc.methodName())) {
+            int argCount = kc.parameterTypes().size();
+            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = argCount - 1; i >= 0; i--) {
+                sb.append("    popq ").append(intRegs[i]).append("\n");
+            }
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %rsi\n");
+            sb.append("    call kof_string_ends_with\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
             return;
         }

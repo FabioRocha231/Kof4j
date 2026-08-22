@@ -32,11 +32,23 @@ final class NativeRuntime {
         emitStringEquals(sb);
         emitPrintString(sb);
         emitPrintlnString(sb);
+        emitStringCharAt(sb);
+        emitStringSubstring(sb);
+        emitStringContains(sb);
+        emitStringStartsWith(sb);
+        emitStringEndsWith(sb);
         emitArrayAlloc(sb);
         emitArrayLength(sb);
         emitArrayGet(sb);
         emitArraySet(sb);
         emitMemstats(sb);
+        emitNetSocket(sb);
+        emitNetBind(sb);
+        emitNetListen(sb);
+        emitNetAccept(sb);
+        emitNetRead(sb);
+        emitNetWrite(sb);
+        emitNetClose(sb);
         return sb.toString();
     }
 
@@ -505,6 +517,231 @@ final class NativeRuntime {
             """);
     }
 
+    // ── Additional String Runtime Functions ──────────────────────
+
+    /**
+     * kof_string_char_at(str, index) → byte value
+     * Returns the byte at the given index.
+     */
+    private static void emitStringCharAt(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_char_at
+            .type kof_string_char_at, @function
+            kof_string_char_at:
+                movl 16(%rdi), %edx
+                cmpl %edx, %esi
+                jge .Lkof_strcharAt_bounds
+                testl %esi, %esi
+                jl .Lkof_strcharAt_bounds
+                movzbl 24(%rdi,%rsi), %eax
+                ret
+            .Lkof_strcharAt_bounds:
+                movl %esi, %edi
+                movl 16(%rdi), %esi
+                call kof_bounds_error
+            """);
+    }
+
+    /**
+     * kof_string_substring(str, start, end) → new_str_ptr
+     */
+    private static void emitStringSubstring(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_substring
+            .type kof_string_substring, @function
+            kof_string_substring:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movl %edx, %r13d
+                movl 16(%rbx), %ecx
+                cmpl %ecx, %r13d
+                jg .Lkof_substr_bounds
+                testl %r12d, %r12d
+                jl .Lkof_substr_bounds
+                cmpl %r13d, %r12d
+                jg .Lkof_substr_bounds
+                movl %r13d, %edi
+                subl %r12d, %edi
+                movl %edi, %r14d
+                leal 25(%r14), %edi
+                call kof_alloc
+                movq %rax, %rcx
+                movl $1, (%rcx)
+                movl $0, 4(%rcx)
+                movq $0, 8(%rcx)
+                movl %r14d, 16(%rcx)
+                movl $0, 20(%rcx)
+                movq %rcx, %rdi
+                addq $24, %rdi
+                movq %rbx, %rsi
+                addq $24, %rsi
+                movl %r12d, %eax
+                addq %rax, %rsi
+                movl %r14d, %edx
+                call kof_memcpy
+                movb $0, 24(%rcx,%r14)
+                movq %rcx, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_substr_bounds:
+                movl %r12d, %edi
+                movl %r13d, %esi
+                call kof_bounds_error
+            """);
+    }
+
+    /**
+     * kof_string_contains(str, sub) → bool
+     */
+    private static void emitStringContains(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_contains
+            .type kof_string_contains, @function
+            kof_string_contains:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%r12), %r13d
+                testl %r13d, %r13d
+                jz .Lkof_strcontains_found
+                movl 16(%rbx), %r14d
+                cmpl %r14d, %r13d
+                jg .Lkof_strcontains_no
+                xorq %rcx, %rcx
+            .Lkof_strcontains_outer:
+                cmpl %r14d, %ecx
+                jge .Lkof_strcontains_no
+                leaq 24(%rbx,%rcx), %rax
+                xorq %rdx, %rdx
+            .Lkof_strcontains_inner:
+                cmpl %r13d, %edx
+                jge .Lkof_strcontains_found
+                movzbl (%rax,%rdx), %r8d
+                movzbl 24(%r12,%rdx), %r9d
+                cmpl %r9d, %r8d
+                jne .Lkof_strcontains_next
+                incq %rdx
+                jmp .Lkof_strcontains_inner
+            .Lkof_strcontains_next:
+                incq %rcx
+                jmp .Lkof_strcontains_outer
+            .Lkof_strcontains_found:
+                movl $1, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_strcontains_no:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_starts_with(str, prefix) → bool
+     */
+    private static void emitStringStartsWith(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_starts_with
+            .type kof_string_starts_with, @function
+            kof_string_starts_with:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%r12), %r13d
+                movl 16(%rbx), %ecx
+                cmpl %ecx, %r13d
+                jg .Lkof_strstarts_no
+                xorq %rcx, %rcx
+            .Lkof_strstarts_loop:
+                cmpl %r13d, %ecx
+                jge .Lkof_strstarts_found
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb %al, 24(%r12,%rcx)
+                jne .Lkof_strstarts_no
+                incq %rcx
+                jmp .Lkof_strstarts_loop
+            .Lkof_strstarts_found:
+                movl $1, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_strstarts_no:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_string_ends_with(str, suffix) → bool
+     */
+    private static void emitStringEndsWith(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_ends_with
+            .type kof_string_ends_with, @function
+            kof_string_ends_with:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%r12), %r13d
+                movl 16(%rbx), %r14d
+                cmpl %r14d, %r13d
+                jg .Lkof_strends_no
+                movl %r14d, %ecx
+                subl %r13d, %ecx
+            .Lkof_strends_loop:
+                cmpl %r14d, %ecx
+                jge .Lkof_strends_found
+                movzbl 24(%rbx,%rcx), %eax
+                movl %ecx, %edx
+                addl %r13d, %edx
+                subl $1, %edx
+                movzbl 24(%r12,%rdx), %edx
+                cmpl %edx, %eax
+                jne .Lkof_strends_no
+                incq %rcx
+                jmp .Lkof_strends_loop
+            .Lkof_strends_found:
+                movl $1, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_strends_no:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
     // ── KofArray Runtime Functions ─────────────────────────────────
 
     /**
@@ -649,6 +886,146 @@ final class NativeRuntime {
                 movl %r12d, %edi
                 movl 16(%rbx), %esi
                 call kof_bounds_error
+            """);
+    }
+
+    // ── Network Runtime Functions ──────────────────────────────────
+
+    /**
+     * kof_net_socket(domain, type, protocol) → fd
+     * Creates a socket. %rdi=domain, %rsi=type, %rdx=protocol
+     * Returns file descriptor in %rax, or -1 on error.
+     */
+    private static void emitNetSocket(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_socket
+            .type kof_net_socket, @function
+            kof_net_socket:
+                movq $41, %rax
+                syscall
+                ret
+            """);
+    }
+
+    /**
+     * kof_net_bind(fd, port, addr) → status
+     * Binds socket. %rdi=fd, %esi=port, %rdx=addr_ptr
+     * Returns 0 on success, -1 on error.
+     */
+    private static void emitNetBind(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_bind
+            .type kof_net_bind, @function
+            kof_net_bind:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movl %edi, %ebx
+                movl %esi, %r12d
+                movq %rdx, %r13
+                subq $16, %rsp
+                movw $2, (%rsp)
+                movl %r12d, %eax
+                xchgb %al, %ah
+                movw %ax, 2(%rsp)
+                movl $0, 4(%rsp)
+                movq %r13, %rdx
+                testq %rdx, %rdx
+                jnz .Lkof_net_bind_custom
+                leaq 4(%rsp), %rdx
+            .Lkof_net_bind_custom:
+                movl %ebx, %edi
+                movq %rdx, %rsi
+                movq $16, %rdx
+                movq $49, %rax
+                syscall
+                addq $16, %rsp
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * kof_net_listen(fd, backlog) → status
+     * Listens on socket. %rdi=fd, %esi=backlog
+     */
+    private static void emitNetListen(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_listen
+            .type kof_net_listen, @function
+            kof_net_listen:
+                movq $50, %rax
+                syscall
+                ret
+            """);
+    }
+
+    /**
+     * kof_net_accept(fd) → client_fd
+     * Accepts a connection. %rdi=fd
+     * Returns client fd in %rax.
+     */
+    private static void emitNetAccept(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_accept
+            .type kof_net_accept, @function
+            kof_net_accept:
+                subq $16, %rsp
+                movq $0, (%rsp)
+                movq $0, 8(%rsp)
+                movq %rsp, %rsi
+                leaq 8(%rsp), %rdx
+                movq $43, %rax
+                syscall
+                addq $16, %rsp
+                ret
+            """);
+    }
+
+    /**
+     * kof_net_read(fd, buf, len) → bytes_read
+     * Reads from socket. %rdi=fd, %rsi=buf, %rdx=len
+     */
+    private static void emitNetRead(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_read
+            .type kof_net_read, @function
+            kof_net_read:
+                movq $0, %rax
+                syscall
+                ret
+            """);
+    }
+
+    /**
+     * kof_net_write(fd, buf, len) → bytes_written
+     * Writes to socket. %rdi=fd, %rsi=buf, %rdx=len
+     */
+    private static void emitNetWrite(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_write
+            .type kof_net_write, @function
+            kof_net_write:
+                movq $1, %rax
+                syscall
+                ret
+            """);
+    }
+
+    /**
+     * kof_net_close(fd) → status
+     * Closes socket. %rdi=fd
+     */
+    private static void emitNetClose(StringBuilder sb) {
+        sb.append("""
+            .globl kof_net_close
+            .type kof_net_close, @function
+            kof_net_close:
+                movq $3, %rax
+                syscall
+                ret
             """);
     }
 }

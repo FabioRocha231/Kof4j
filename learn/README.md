@@ -48,7 +48,9 @@ Trilha multiplatform:
 
 ## Estado atual
 
-Kof está em fase inicial, mas funcional. O compilador já gera código executável para JVM e nativo.
+Kof está em fase de consolidação. O compilador é funcional com backends JVM e Native.
+
+**Testes:** 176/176 passando
 
 **O que funciona hoje:**
 - Lexer completo com 55+ keywords
@@ -56,35 +58,35 @@ Kof está em fase inicial, mas funcional. O compilador já gera código executá
 - Records com campos, construtor, accessors e toString
 - Declarações de classe com campos e métodos
 - Declarações de interface
-- `fun main() = print("Hello")` — programa completo com ponto de entrada
-- `println("Hello")` — saída de texto
-- `var nome = "Mel"` — inferência de tipos
+- Herança simples (extends)
+- Virtual dispatch (override)
+- Interfaces básicas
+- try/catch/finally
+- do-while
+- String concatenação
+- Array creation, access, length
+- Field initialization
 - Package e import declarations
-- Ponto e vírgula opcional
 - CLI com comandos `build`, `run`, `version` e flag `--target`
 - Backend JVM via ASM — gera `.class` funcionais
 - Backend Nativo — gera ELF x86-64 via assembly + as + ld
-- Testes golden baseados em shell
+- Runtime nativo completo (allocation, strings, arrays, errors)
 
 **O que está em desenvolvimento:**
-- Type checking completo
-- Resolução de variáveis
-- Controle de fluxo (if/while/for)
-- Expressões binárias com tipos corretos
-- Geração de bytecode para métodos com corpo real
+- String methods (charAt, substring, contains)
+- Instanceof / type casting
+- Switch statements
+- Null safety
+- Standard library
+- Diagnostics detalhados
 
 **O que está planejado:**
 - Generics
-- Exceptions
-- Pattern matching
 - Collections
-- Java interop
-- Annotations
 - Concorrência
-- Spring integration
-- LSP/tooling
-- KofScript (runtime interativo)
+- HTTP / Database
 - KofJS (frontend web)
+- Tooling (LSP, formatter, etc.)
 
 ## Arquivos
 

@@ -405,7 +405,7 @@ Estado atual: ❌ não implementado
 - JVM backend;
 - Native backend (concluído).
 
-### Fase F — Runtime + Object Model (em progresso)
+### Fase F — Runtime + Object Model ✅
 
 - auditoria do runtime atual ✅
 - Kof Runtime ABI definida ✅
@@ -497,11 +497,16 @@ Estado atual: ❌ não implementado
 - `kof update` / `kof check` / `kof fmt` / `kof test` / `kof clean`;
 - REPL / LSP.
 
-### Fase 3 — Backend
+### Fase 3 — Web Platform (`kof serve`)
 
-- HTTP / REST / JSON / WebSocket / SSE;
-- HTTP client;
-- database / SQL / NoSQL / migrations / cache.
+- syscalls de rede no NativeRuntime (socket, bind, listen, accept, read, write, close) ✅;
+- `kof serve` command no CLI ✅;
+- HTTP server mínimo (single-threaded, JVM) ✅;
+- Request/Response model (HTTP parsing) ✅;
+- Path parameters (pendente);
+- JSON serialization (pendente);
+- Testes E2E JVM + Native;
+- Documentação (`docs/future/web/WEB_ARCHITECTURE.md`) ✅.
 
 ### Fase 4 — Security
 
