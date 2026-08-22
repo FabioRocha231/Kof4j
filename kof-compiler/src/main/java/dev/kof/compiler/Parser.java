@@ -951,13 +951,21 @@ class Parser {
             return "Object";
         }
         if (check(TokenType.LESS)) {
+            StringBuilder args = new StringBuilder("<");
             int depth = 0;
+            boolean first = true;
             do {
                 splitShiftRight();
+                boolean isClose = check(TokenType.GREATER);
                 if (check(TokenType.LESS)) depth++;
-                else if (check(TokenType.GREATER)) depth--;
+                else if (isClose) depth--;
+                if (!first && !isClose) args.append(tokens.get(pos).value());
+                else if (!first && isClose && depth > 0) args.append(tokens.get(pos).value());
+                first = false;
                 advance();
             } while (depth > 0 && !atEnd());
+            args.append(">");
+            type.append(args);
         }
         while (check(TokenType.LBRACKET)) {
             advance();

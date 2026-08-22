@@ -41,6 +41,15 @@ sealed interface Type {
             Type component = of(name.substring(0, name.length() - 2));
             return new ArrayType(component);
         }
+        if (name != null && name.contains("<")) {
+            int lt = name.indexOf('<');
+            String base = name.substring(0, lt);
+            String argsStr = name.substring(lt + 1, name.lastIndexOf('>'));
+            List<Type> args = java.util.Arrays.stream(argsStr.split(","))
+                    .map(String::trim).map(Type::of).toList();
+            if ("List".equals(base) || "ArrayList".equals(base)) return new ClassType("kof", "List", args);
+            return new ClassType("", base, args);
+        }
         return switch (name) {
             case "bool", "boolean", "Bool", "Boolean" -> PrimitiveType.BOOL;
             case "byte", "Byte" -> PrimitiveType.BYTE;

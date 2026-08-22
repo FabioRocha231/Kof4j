@@ -1134,13 +1134,14 @@ final class NativeRuntime {
                 pushq %rbx
                 pushq %r12
                 pushq %r13
+                pushq %r14
                 movq %rdi, %rbx
                 call kof_json_builder_new
                 movq %rax, %r12
-                movl 16(%rbx), %ecx
+                movl 16(%rbx), %r14d
                 xorq %r13, %r13
             .Lkof_json_ds_skip:
-                cmpl %ecx, %r13d
+                cmpl %r14d, %r13d
                 jge .Lkof_json_ds_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1161,7 +1162,7 @@ final class NativeRuntime {
                 jne .Lkof_json_ds_done
                 incq %r13
             .Lkof_json_ds_loop:
-                cmpl %ecx, %r13d
+                cmpl %r14d, %r13d
                 jge .Lkof_json_ds_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1170,7 +1171,7 @@ final class NativeRuntime {
                 cmpb $92, %al
                 jne .Lkof_json_ds_plain
                 incq %r13
-                cmpl %ecx, %r13d
+                cmpl %r14d, %r13d
                 jge .Lkof_json_ds_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1195,6 +1196,7 @@ final class NativeRuntime {
             .Lkof_json_ds_done:
                 movq %r12, %rdi
                 call kof_json_builder_result
+                popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
@@ -1207,13 +1209,14 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 movq %rdi, %rbx
                 call kof_list_new
                 movq %rax, %r12
-                movl 16(%rbx), %ecx
+                movl 16(%rbx), %r15d
                 xorq %r13, %r13
             .Lkof_json_dil_skip:
-                cmpl %ecx, %r13d
+                cmpl %r15d, %r13d
                 jge .Lkof_json_dil_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1234,7 +1237,7 @@ final class NativeRuntime {
                 jne .Lkof_json_dil_done
                 incq %r13
             .Lkof_json_dil_loop:
-                cmpl %ecx, %r13d
+                cmpl %r15d, %r13d
                 jge .Lkof_json_dil_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1260,6 +1263,7 @@ final class NativeRuntime {
                 jmp .Lkof_json_dil_loop
             .Lkof_json_dil_done:
                 movq %r12, %rax
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
@@ -1273,13 +1277,14 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 movq %rdi, %rbx
                 call kof_list_new
                 movq %rax, %r12
-                movl 16(%rbx), %ecx
+                movl 16(%rbx), %r15d
                 xorq %r13, %r13
             .Lkof_json_dsl_skip:
-                cmpl %ecx, %r13d
+                cmpl %r15d, %r13d
                 jge .Lkof_json_dsl_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1300,7 +1305,7 @@ final class NativeRuntime {
                 jne .Lkof_json_dsl_done
                 incq %r13
             .Lkof_json_dsl_loop:
-                cmpl %ecx, %r13d
+                cmpl %r15d, %r13d
                 jge .Lkof_json_dsl_done
                 leaq 24(%rbx), %rax
                 movzbl (%rax,%r13), %eax
@@ -1326,6 +1331,7 @@ final class NativeRuntime {
                 jmp .Lkof_json_dsl_loop
             .Lkof_json_dsl_done:
                 movq %r12, %rax
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12

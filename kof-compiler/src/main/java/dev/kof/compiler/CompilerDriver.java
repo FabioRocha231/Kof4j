@@ -490,11 +490,13 @@ public class CompilerDriver {
                     if ("encode".equals(mc.methodName()) && mc.arguments().size() == 1) {
                         localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                         Type argType = inferExprType(mc.arguments().get(0), locals);
+                        List<Type> paramTypes = List.of(argType);
                         if (BuiltinTypes.isList(argType)) {
                             int tag = jsonListTag(listElementType(argType));
                             ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
+                            paramTypes = List.of(argType, Type.PrimitiveType.INT);
                         }
-                        ops.add(new KofCall(argType, jsonEncodeFunction(argType), List.of(argType),
+                        ops.add(new KofCall(argType, jsonEncodeFunction(argType), paramTypes,
                                 BuiltinTypes.STRING, KofCallKind.FUNCTION));
                     } else if ("decode".equals(mc.methodName()) && mc.arguments().size() == 1
                             && !mc.typeArguments().isEmpty()) {
