@@ -202,17 +202,31 @@ class JsonE2ETest {
         runNative(source, tempDir.resolve("out"), "[7,8,9]");
     }
 
-    @Test
+@Test
     void nativeDecodeScalars(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            main() {
+            fun main() {
                 println(json.decode<Int>("77"))
                 println(json.decode<Bool>("true"))
                 println(json.decode<String>("\\"hello\\""))
             }
             """);
         runNative(source, tempDir.resolve("out"), "77\ntrue\nhello");
+    }
+
+    @Test
+    void nativeLongAndListDecode(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                println(json.encode(9000000000))
+                println(json.decode<Long>("9000000000"))
+                var dl = json.decode<List<Long>>("[1, 2, 3]")
+                println(dl.get(0) + dl.get(2))
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "9000000000\n9000000000\n4");
     }
 
     // ── Diagnostics ───────────────────────────────────────────────

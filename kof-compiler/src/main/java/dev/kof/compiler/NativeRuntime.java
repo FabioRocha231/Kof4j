@@ -1051,6 +1051,11 @@ final class NativeRuntime {
             kof_json_encode_int:
                 jmp kof_int_to_string
 
+            .globl kof_json_encode_long
+            .type kof_json_encode_long, @function
+            kof_json_encode_long:
+                jmp kof_long_to_string
+
             .globl kof_json_encode_bool
             .type kof_json_encode_bool, @function
             kof_json_encode_bool:
@@ -1295,6 +1300,16 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+
+            .globl kof_json_decode_long
+            .type kof_json_decode_long, @function
+            kof_json_decode_long:
+                jmp kof_json_decode_int
+
+            .globl kof_json_decode_list
+            .type kof_json_decode_list, @function
+            kof_json_decode_list:
+                jmp kof_json_decode_int_list
 
             .globl kof_json_decode_bool
             .type kof_json_decode_bool, @function
@@ -2400,7 +2415,23 @@ final class NativeRuntime {
                 imulq %rdx, %rax
                 addq $24, %rax
                 addq %rbx, %rax
+                cmpl $8, %edx
+                je .Lkof_array_get_q
+                cmpl $4, %edx
+                je .Lkof_array_get_d
+                cmpl $2, %edx
+                je .Lkof_array_get_w
+                movzbl (%rax), %eax
+                jmp .Lkof_array_get_done
+            .Lkof_array_get_w:
+                movzwl (%rax), %eax
+                jmp .Lkof_array_get_done
+            .Lkof_array_get_d:
+                movl (%rax), %eax
+                jmp .Lkof_array_get_done
+            .Lkof_array_get_q:
                 movq (%rax), %rax
+            .Lkof_array_get_done:
                 popq %r12
                 popq %rbx
                 ret
@@ -2442,7 +2473,23 @@ final class NativeRuntime {
                 imulq %rdx, %rax
                 addq $24, %rax
                 addq %rbx, %rax
+                cmpl $8, %edx
+                je .Lkof_array_set_q
+                cmpl $4, %edx
+                je .Lkof_array_set_d
+                cmpl $2, %edx
+                je .Lkof_array_set_w
+                movb %r13b, (%rax)
+                jmp .Lkof_array_set_done
+            .Lkof_array_set_w:
+                movw %r13w, (%rax)
+                jmp .Lkof_array_set_done
+            .Lkof_array_set_d:
+                movl %r13d, (%rax)
+                jmp .Lkof_array_set_done
+            .Lkof_array_set_q:
                 movq %r13, (%rax)
+            .Lkof_array_set_done:
                 popq %r13
                 popq %r12
                 popq %rbx

@@ -592,6 +592,26 @@ class NativeE2ETest {
     }
 
     @Test
+    void execArrayArithmetic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                var arr = new Int[3]
+                arr[0] = 10
+                arr[1] = 20
+                arr[2] = 30
+                println(arr[1] + arr[2])
+                println(arr[0] + arr[1] + arr[2])
+                var small = new Byte[2]
+                small[0] = 5
+                small[1] = 7
+                println(small[0] + small[1])
+            }
+            """);
+        runNative(source, tempDir.resolve("out"), "50\n60\n12");
+    }
+
+    @Test
     void execRecursion(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
