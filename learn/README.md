@@ -2,19 +2,22 @@
 
 Bem-vindo à trilha de aprendizado da Kof.
 
-Kof é uma linguagem de programação compilada para múltiplas plataformas, fortemente tipada, orientada a objetos, com suporte a herança, virtual dispatch, interfaces, exceptions e web server nativo.
+Kof é uma linguagem de programação compilada para múltiplas plataformas, fortemente tipada, orientada a objetos, com suporte a herança, virtual dispatch, interfaces, exceptions, web server nativo e uma plataforma de UI (kof.ui) que renderiza em webview nativo via KofJS.
 
 ## O que Kof é hoje
 
-* Compilador completo (Lexer → Parser → AST → Type System → IR → JVM/Native)
+* Compilador completo (Lexer → Parser → AST → Type System → IR → JVM/Native/KofJS)
 * Classes, records, interfaces, herança, virtual dispatch
-* Strings, arrays, exceptions, JSON, List\<T\>
-* Web server via `kof serve`
+* Strings, arrays, exceptions, JSON, List\<T\>, lambdas com capturas
+* Web server via `kof serve` + stack web nativa (`web.app()`)
 * Runtime nativo x86-64
+* Target **KofJS**: ES Modules executados na engine embarcada (sem Node)
+* **kof.ui**: Window, Label, Button (ações), Input, Column/Row, View+Style —
+  renderização em webview nativo (WebKitGTK)
 * Distribuição oficial (JDK embutido, tooling, editor support)
-* CLI: build, run, serve, check, info, lsp, version
+* CLI: build, run, serve, check, test, info, lsp, version
 * kof.io: File, Path, Directory (JVM + Native)
-* 458 testes (456 PASS)
+* 508 testes
 
 ## Para quem é
 
@@ -34,6 +37,10 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 31 — Distribuição
 32 — CLI e Tooling
 33 — Versionamento e Releases
+34 — Filesystem (kof.io)
+35 — kof.ui (cores, widgets, janelas)
+36 — Segurança (kof.security)
+37 — KofJS (o caminho da Web)
 ```
 
 ## Índice
@@ -75,8 +82,9 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 | 32 | [CLI e Tooling](32-cli-tooling.md) |
 | 33 | [Versionamento e Releases](33-versioning-releases.md) |
 | 34 | [Filesystem (kof.io)](34-file-system.md) |
-| 35 | [kof.ui — Cores, Paletas e Temas](35-kof-ui.md) |
+| 35 | [kof.ui — Cores, Widgets e Janelas](35-kof-ui.md) |
 | 36 | [Segurança (kof.security)](36-security.md) |
+| 37 | [KofJS — o caminho da Web](37-kofjs.md) |
 
 ## Ordem recomendada
 
@@ -128,10 +136,13 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | Glossário | Glossário | ✅ |
 | Multiplatform | Native | ✅ |
 | 36 | Segurança (kof.security) | ✅ (JVM/Native/JS; gaps SECN00x) |
+| 35 | kof.ui (widgets, janelas, webview) | ✅ (JS render; JVM/Native no-ops) |
+| 37 | KofJS (caminho da Web) | ✅ (alpha) |
 
-Kof está em fase de consolidação. O compilador é funcional com backends JVM e Native.
+Kof está em fase de consolidação. O compilador é funcional com backends JVM,
+Native e KofJS.
 
-**Testes:** 458 (456 PASS — 2 em áreas em progresso)
+**Testes:** 508
 
 **O que funciona hoje (0.0.5-alpha):**
 - Frontend completo (lexer, parser, type system, semântica)

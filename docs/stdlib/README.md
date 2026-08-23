@@ -3,8 +3,10 @@
 **Última atualização:** 21 de agosto de 2026
 > **Atualizado (0.0.5):** implementado parcialmente — `kof.io`
 > (File/Path/Directory), `kof.json` (`json.encode`/`json.decode`),
-> `kof.time` (`now()`), `kof.concurrent` (`spawn`, JVM) e `kof.test`
-> (`assert` + `kof test`). A tabela abaixo é o plano completo.
+> `kof.time` (`now()`), `kof.concurrent` (`spawn`, JVM), `kof.test`
+> (`assert` + `kof test`) e `kof.ui` (Color/Theme/Palette + widgets
+> Window/Label/Button/Input/Column/Row/View/Style — renderização KofJS via
+> webview nativo). A tabela abaixo é o plano completo.
 
 **Status:** Parcialmente implementado (0.0.5)
 

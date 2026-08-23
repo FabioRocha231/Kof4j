@@ -78,7 +78,23 @@ Default.mjs (programa gerado — JS puro)
 O código gerado nunca chama `console.*`/`process.*` diretamente; tudo passa
 pelo runtime. Quando executado por outra engine, o núcleo (`kof-runtime.mjs`)
 funciona; as operações de IO precisam de um `kof_platform` correspondente
-(no futuro: `kof_platform` web para o browser).
+(no browser: fallback com console para `print` e erro claro para IO).
+
+## kof.ui no KofJS
+
+A plataforma de UI (`Color`/`Theme`/`Palette`, `Window`/`Label`/`Button`/
+`Input`, `Column`/`Row`, `View`+`Style`) é renderizada pelo KofJS:
+
+1. `kof run --target=js` executa o programa na engine embarcada;
+2. escreve o app interativo (`index.html` + `Default.mjs` + runtimes);
+3. o webview nativo (`bin/kof-webview`, WebKitGTK) roda a página — o DOM
+   shim é browser-safe (mesmo código em GraalJS e no browser real);
+4. cliques/edição executam dentro da página; fechar a janela encerra o
+   programa.
+
+O DOM shim em `kof-runtime.mjs` usa o `document` real quando existe
+(browser/webview) e um DOM mínimo em memória na engine embarcada — a
+serialização (`kofUiFlush`) alimenta testes e o snapshot estático.
 
 ## CLI
 
@@ -153,11 +169,14 @@ kof.time/kof.io.
 - Pipeline completo `.kf → IR → JS → execução` na engine embarcada
 - Classes, herança, construtores, records, interfaces (type-level)
 - List, String API, arrays, JSON (encode/decode com binding)
-- Exceções (try/catch/finally), lambdas, if-expressões
+- Exceções (try/catch/finally), lambdas **com capturas**, if-expressões
 - kof.time, kof.io (via `kof_platform`), `kof run --target=js`
+- **kof.ui**: widgets, layout, estilo, eventos — renderização em webview
+  nativo (WebKitGTK) e browser (`index.html` estático)
 
 **Em andamento / futuro:**
-- Browser como plataforma (`--platform=browser`, `kof_platform` web)
+- UI declarativa (components) e layout avançado
+- WebKit embutido multiplataforma (Windows WebView2 / macOS WKWebView)
 - `async/await` quando a semântica Kof for definida
 - Interoperabilidade (`js.import(...)` — sintaxe futura)
 - Source maps precisos (posições na IR)

@@ -105,6 +105,15 @@ View homeView() {
 - **Multi-target** — a mesma árvore de objetos é desenhada por cada backend.
 - **Zero conversão** — a paleta é a API; hex e ANSI são detalhes internos.
 
+## Estado real (0.0.5)
+
+Esta visão está **implementada** como `kof.ui` (renderização KofJS):
+`Window`, `Label` (text/fontSize/bold/color), `Button` (ação por lambda com
+capturas), `Input`, `Column`/`Row`, `View`+`Style(background, foreground,
+padding, radius)`, `w.theme = Theme.dark()`. A execução abre o webview
+nativo (WebKitGTK) e fechar a janela encerra o programa. Ver
+[`learn/35-kof-ui.md`](35-kof-ui.md) e [`learn/37-kofjs.md`](37-kofjs.md).
+
 Ver também: `docs/stdlib/COLOR.md` (paleta e semântica),
 `training/idioms/composition.md` (o padrão) e
 `training/idioms/collections.md`.

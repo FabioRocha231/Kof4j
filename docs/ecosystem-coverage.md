@@ -56,7 +56,7 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 | `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8) |
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
 | `kof.test` | `assert(cond[, msg])`, `kof test` | CompilerDriver/CLI | AssertE2ETest (5) |
-| `kof.ui` | `Color/Theme/Window/Label/Button`, `Palette.*` | KofUi.java | UiE2ETest (6), WindowE2ETest (3) |
+| `kof.ui` | `Color/Theme/Palette`, `Window/Label/Button/Input`, `Column/Row/View/Style`, eventos por lambda com capturas, webview nativo | KofUi.java, JsBackend (runtime), kof-webview.c | UiE2ETest (14), WindowE2ETest (3) |
 | `kof.config` | `config.get/env/has`, `config.str/int/long/bool(name, fallback)` — arquivo + profiles + env, precedência | KofConfig.java | KofConfigE2ETest (8) |
 | `kof.log` | `log.debug/info/warn/error`, níveis (default INFO), `off`, warn→stderr | KofLog.java | KofLogE2ETest (7) |
 | `kof.cli` | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` | kof-cli | Bench, KofDebug E2E |

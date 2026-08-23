@@ -53,7 +53,10 @@ dark.background().toCss()   // rgb(18, 18, 18)
 - Color/Theme são valores Int de 32 bits — o compilador manipula os canais
   com bitwise; `toCss()` usa helpers de runtime idênticos em JVM, Native e
   JS.
-- A renderização (widgets → DOM) é uma frente futura e será **KofJS only**.
+- A renderização (widgets → DOM) é **KofJS only** e está implementada:
+  `Window`/`Label`/`Button`/`Input`, `Column`/`Row`, `View`+`Style`,
+  eventos por lambda com capturas, webview nativo (`bin/kof-webview`,
+  WebKitGTK). JVM/Native: handles no-ops.
 - Não há JavaFX, AWT ou dependência de GUI em nenhum backend.
 
 ## Referência

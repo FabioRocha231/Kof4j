@@ -191,7 +191,7 @@ resolve a função de runtime e cada target fornece a implementação.
 | `kof.cli` (CLI kof) | SIM | SIM | SIM | JVM | SIM | SIM | SIM |
 | `kof.process` | NÃO | — | — | — | — | — | — |
 | `kof.crypto` | NÃO (faz parte de kof.security) | — | — | — | — | — | — |
-| `kof.ui` (em desenvolvimento) | PARCIAL | PARCIAL | — | JS | — | PARCIAL | PARCIAL |
+| `kof.ui` (plataforma de UI) | PARCIAL | PARCIAL | — | JS | — | PARCIAL | PARCIAL |
 
 ## 4.1 Estado da segurança na plataforma hoje
 

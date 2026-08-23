@@ -71,7 +71,13 @@ kof build app.kf --target js --output out/
 kof run app.kf --target js
 ```
 
-Cobertura: classes, records, herança, interfaces (estruturais), lambdas,
-if-expr, switch, loops (incl. for-in), List, JSON, kof.io, try/catch/finally.
+Cobertura: classes, records, herança, interfaces (estruturais), lambdas
+(com capturas), if-expr, switch, loops (incl. for-in), List, JSON, kof.io,
+try/catch/finally.
 
-Não suporta: `spawn` (planned). Ver `docs/targets/KOFJS.md`.
+**kof.ui**: widgets (Window/Label/Button/Input, Column/Row, View+Style) com
+renderização em webview nativo (WebKitGTK) ou browser; ações por lambda;
+fechar a janela encerra o programa. JVM/Native: handles no-ops.
+
+Não suporta: `spawn` (planned). Ver `docs/targets/KOFJS.md` e
+`learn/37-kofjs.md`.

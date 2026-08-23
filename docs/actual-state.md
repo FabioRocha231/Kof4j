@@ -145,11 +145,15 @@ log.info("servindo na porta 8080")               // debug/info/warn/error, níve
 warn→stderr) — JVM; Native/JS reportam CONFIG001/LOG001. Testes:
 `KofConfigE2ETest` (8), `KofLogE2ETest` (7).
 
-### kof.ui (fundação)
+### kof.ui (plataforma de UI)
 
-`Color` (RGBA 32-bit), `Theme` (light/dark), `Window/Label/Button`,
-`Palette.*` — webview embarcado no JS runner (`--openWindow`) e shell
-nativo `kof-webview` (WebKitGTK).
+`Color` (RGBA 32-bit), `Theme` (light/dark), `Palette.*`, widgets
+`Window`/`Label`/`Button`/`Input`/`Column`/`Row`/`View`/`Style` — renderização
+**KofJS**: `kof run --target=js` abre o app interativo no webview nativo
+(`bin/kof-webview`, WebKitGTK embutido; módulos ES sobre `file://` habilitados
+via `webkit_settings_set_allow_file_access_from_file_urls`). Ações de botão
+por lambdas com capturas; fechar a janela encerra o programa. JVM/Native:
+handles no-ops.
 
 ---
 
