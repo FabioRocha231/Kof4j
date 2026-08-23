@@ -1,0 +1,9 @@
+main() {
+    var items = listOf("a", "b", "c")
+    println(items.size)
+    for (var item in items) {
+        println(item)
+    }
+    println(items.contains("b"))
+    println(items.isEmpty())
+}

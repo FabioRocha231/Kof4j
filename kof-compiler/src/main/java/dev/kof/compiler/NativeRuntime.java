@@ -1790,6 +1790,10 @@ final class NativeRuntime {
                 movl %esi, %r12d
                 movl %edx, %r13d
                 movl 16(%rbx), %ecx
+                cmpl $0, %r13d
+                jne .Lkof_substr_end_ok
+                movl %ecx, %r13d
+            .Lkof_substr_end_ok:
                 cmpl %ecx, %r13d
                 jg .Lkof_substr_bounds
                 testl %r12d, %r12d
@@ -3705,22 +3709,23 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lio_dirs_mkdir_prefix:
+                leaq 8(%rsp), %r8
                 movq %r12, %rcx
-                xorq %r8, %r8
+                xorq %r9, %r9
                 leaq 24(%rbx), %rsi
-                movq %rsp, %rdi
+                movq %r8, %rdi
             .Lio_dirs_copy:
-                cmpq %rcx, %r8
+                cmpq %rcx, %r9
                 jge .Lio_dirs_copy_done
-                movb (%rsi,%r8), %al
-                movb %al, (%rdi,%r8)
-                incq %r8
+                movb (%rsi,%r9), %al
+                movb %al, (%rdi,%r9)
+                incq %r9
                 jmp .Lio_dirs_copy
             .Lio_dirs_copy_done:
-                movb $0, (%rdi,%r8)
+                movb $0, (%rdi,%r9)
                 cmpq $1, %rcx
                 jle .Lio_dirs_prefix_skip
-                movq %rsp, %rdi
+                movq %r8, %rdi
                 movq $493, %rsi
                 movq $83, %rax
                 syscall
@@ -3759,6 +3764,7 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 subq $32768, %rsp
                 movq %rdi, %rbx
                 movq $-100, %rdi
@@ -3781,32 +3787,33 @@ final class NativeRuntime {
                 testq %rax, %rax
                 jle .Lio_list_done
                 movq %rax, %r14
-                movq %r13, %rcx
+                movq %r13, %r15
             .Lio_list_entry:
-                movzwq 16(%rcx), %rdx
+                movzwq 16(%r15), %rdx
                 testq %rdx, %rdx
                 je .Lio_list_next_buf
-                cmpb $46, 19(%rcx)
+                cmpb $46, 19(%r15)
                 jne .Lio_list_add
-                cmpb $0, 20(%rcx)
+                cmpb $0, 20(%r15)
                 je .Lio_list_skip
-                cmpb $46, 20(%rcx)
+                cmpb $46, 20(%r15)
                 jne .Lio_list_add
-                cmpb $0, 21(%rcx)
+                cmpb $0, 21(%r15)
                 je .Lio_list_skip
             .Lio_list_add:
-                leaq 19(%rcx), %rdi
+                leaq 19(%r15), %rdi
                 call kof_io_strlen
                 movq %rax, %rsi
-                leaq 19(%rcx), %rdi
+                leaq 19(%r15), %rdi
                 call kof_io_make_string
                 movq %rax, %rsi
                 movq %r12, %rdi
                 call kof_list_add
             .Lio_list_skip:
-                addq %rdx, %rcx
+                movzwq 16(%r15), %rdx
+                addq %rdx, %r15
                 leaq (%r13,%r14), %rax
-                cmpq %rax, %rcx
+                cmpq %rax, %r15
                 jb .Lio_list_entry
                 jmp .Lio_list_loop
             .Lio_list_next_buf:
@@ -3815,21 +3822,89 @@ final class NativeRuntime {
                 movq %rbx, %rdi
                 movq $3, %rax
                 syscall
+                call .Lio_list_sort
                 movq %r12, %rax
                 addq $32768, %rsp
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
+                ret
+            .Lio_list_sort:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r11
+                movq %r12, %rbx
+                movl 16(%rbx), %r12d
+                movq 24(%rbx), %r11
+                movq $1, %r13
+            .Lio_sort_i:
+                cmpl %r12d, %r13d
+                jge .Lio_sort_done
+                movq (%r11,%r13,8), %r15
+                movl %r13d, %r14d
+            .Lio_sort_j:
+                testl %r14d, %r14d
+                jle .Lio_sort_place
+                movq -8(%r11,%r14,8), %rdi
+                movq %r15, %rsi
+                call .Lio_str_less
+                testq %rax, %rax
+                jne .Lio_sort_place
+                movq -8(%r11,%r14,8), %rax
+                movq %rax, (%r11,%r14,8)
+                decl %r14d
+                jmp .Lio_sort_j
+            .Lio_sort_place:
+                movq %r15, (%r11,%r14,8)
+                incq %r13
+                jmp .Lio_sort_i
+            .Lio_sort_done:
+                popq %r11
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_str_less:
+                movl 16(%rdi), %ecx
+                movl 16(%rsi), %r8d
+                xorl %r9d, %r9d
+            .Lio_less_loop:
+                cmpl %ecx, %r9d
+                jge .Lio_less_left_done
+                cmpl %r8d, %r9d
+                jge .Lio_less_longer
+                movzbl 24(%rdi,%r9), %eax
+                movzbl 24(%rsi,%r9), %r10d
+                cmpl %r10d, %eax
+                jl .Lio_less_true
+                jg .Lio_less_false
+                incl %r9d
+                jmp .Lio_less_loop
+            .Lio_less_left_done:
+                cmpl %r8d, %r9d
+                jl .Lio_less_true
+            .Lio_less_false:
+                xorl %eax, %eax
+                ret
+            .Lio_less_longer:
+                xorl %eax, %eax
+                ret
+            .Lio_less_true:
+                movq $1, %rax
                 ret
             .Lio_list_err:
                 xorl %eax, %eax
                 addq $32768, %rsp
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
                 ret
+
             """);
     }
 
@@ -3972,6 +4047,7 @@ final class NativeRuntime {
      * %rdi = obj_ptr, %esi = target_type_id
      * Returns 1 if object's type is target or a subtype, 0 otherwise.
      */
+
     private static void emitInstanceof(StringBuilder sb) {
         sb.append("""
             .globl kof_instanceof

@@ -1,0 +1,11 @@
+main() {
+    try {
+        throw "boom"
+        println("unreachable")
+    } catch (String e) {
+        println("caught: " + e)
+    } finally {
+        println("finally")
+    }
+    println("done")
+}
