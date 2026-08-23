@@ -157,23 +157,32 @@ handle(String method, String path, String body): String {
 
 ## Próximos Passos
 
-### PRIORIDADE 1 — Consolidação (em andamento)
-- Generics, Collections, Type System, String API, Exceptions, Inheritance, Interfaces com equivalência JVM/Native ✅
-- JSON parity JVM/Native ✅
-- Exceptions reais no JVM ✅
+### Fase H — HTTP (concluída ✅)
+- `KofHttpServer` (engine cru: Content-Length, query, headers, JSON detection, 404/500, thread pool, graceful shutdown)
+- `ReflectiveHandler` (funções top-level static: 5/4/3/0 args + get()/post()...; null = 404)
+- `kof serve` usando o engine novo (removido fallback "Hello from Kof!" e truncamento de 4096)
+- 8 testes E2E in-process com sockets reais
 
-### PRIORIDADE 2 — Standard Library
-- `kof.core`, `kof.collections`, `kof.io`, `kof.time`, `kof.json`
+### Fase I — Concurrency (design ✅)
+- `docs/future/CONCURRENCY.md`: semântica de tarefas, isolamento por valor, mapeamento por target (JVM virtual threads / Native scheduler / JS event loop)
+- Sintaxe ainda não escolhida — semântica primeiro
+
+### Fase J — Tooling (concluída ✅)
+- LSP validado (initialize + publishDiagnostics com diagnóstico real SEM011; corrigido bug de URI absoluta)
+- Editor grammar: `constructor`, `listOf`, `json` como builtins
+
+### Fase K — Tests (concluída ✅)
+- `tests/run-golden.sh`: 5 casos (hello, collections, exceptions, json, strings) × 2 targets = 10 checks
+- `tests/run-integration.sh`: CLI E2E (build jvm/native, run, check, serve /ping + 404) = 8 checks
+- Ambos no CI
+
+### Fase L — Distribution (validada ✅)
+- `scripts/package.sh` validado (layout dist + tar.gz + SHA256SUMS)
+- Launcher `bin/kof` do pacote executando programas
+
+### PRIORIDADE 2 — Standard Library (outro agente em progresso)
+- `kof.core`, `kof.collections`, `kof.io` (File/Path/Directory), `kof.time` (now), `kof.json`
 - Zero imports para operações fundamentais
-
-### PRIORIDADE 3 — kof serve utilizável
-- routing tipado, path parameters, JSON, middleware, concorrência
-
-### PRIORIDADE 4/5 — Desenho formal
-- database, security, messaging, modelo de concorrência Kof (sem expor threads)
-
-### PRIORIDADE 6 — learn/ e training/
-- Evoluir continuamente junto com cada feature
 
 ### kof.test — suite de testes como parte da stdlib
 - Testes unitários e de integração da própria linguagem (Kof testando Kof)
