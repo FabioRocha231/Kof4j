@@ -59,7 +59,6 @@ final class JdwpClient {
         }
         in = new DataInputStream(socket.getInputStream());
         out = new DataOutputStream(socket.getOutputStream());
-        System.err.println("[jdwp] connected, handshaking...");
         out.write("JDWP-Handshake".getBytes(StandardCharsets.US_ASCII));
         out.flush();
         byte[] reply = new byte[14];
@@ -67,7 +66,6 @@ final class JdwpClient {
         if (!"JDWP-Handshake".equals(new String(reply, StandardCharsets.US_ASCII))) {
             throw new IOException("JDWP handshake failed");
         }
-        System.err.println("[jdwp] handshake ok");
         int idsId = sendRaw(1, 7, new Packet());
         Packet ids = null;
         while (ids == null) {
@@ -102,13 +100,16 @@ final class JdwpClient {
      */
     long setClassPrepareRequest(String className, EventHandler handler) throws IOException {
         Packet req = new Packet();
-        req.writeByte(6);   // event kind: ClassPrepare
+        req.writeByte(8);   // event kind: ClassPrepare (JDK 25)
         req.writeByte(2);   // suspend policy: ALL
         req.writeInt(1);    // modifier count
-        req.writeByte(1);   // ClassMatch
+        req.writeByte(5);   // ClassMatch
         req.writeString(className);
         sendRaw(15, 1, req);
         Packet reply = readPacketLocked();
+        if (reply.errorCode != 0) {
+            throw new IOException("EventRequest.Set error " + reply.errorCode);
+        }
         long requestId = reply.readInt();
         eventLoopStarted = true;
         Thread loop = new Thread(() -> eventLoop(handler), "jdwp-events");
@@ -128,12 +129,22 @@ final class JdwpClient {
     void setLineBreakpoint(long typeId, int line) throws IOException {
         long methodId = methodWithLine(typeId, line);
         long[] lines = lineTable(typeId, methodId);
-        long codeIndex = lines[0];
+        long codeIndex = -1;
+        for (int i = 0; i + 1 < lines.length; i += 2) {
+            if (lines[i + 1] == line) {
+                codeIndex = lines[i];
+                break;
+            }
+        }
+        if (codeIndex < 0) {
+            codeIndex = lines[0];
+        }
         Packet req = new Packet();
         req.writeByte(2);   // event kind: Breakpoint
         req.writeByte(2);   // suspend policy: ALL
         req.writeInt(1);    // modifier count
-        req.writeByte(3);   // LocationOnly
+        req.writeByte(7);   // LocationOnly
+        req.writeByte(1);   // location tag: ClassType
         req.writeReference(typeId);
         req.writeReference(methodId);
         req.writeLong(codeIndex);
@@ -146,14 +157,13 @@ final class JdwpClient {
         req.writeReference(typeId);
         Packet reply = sendCommand(2, 5, req);
         int count = reply.readInt();
-        long bestMethod = 0;
         for (int i = 0; i < count; i++) {
-            long methodId = reply.readReference();
+            reply.readReference();
+            reply.readString();
             reply.readString();
             reply.readInt(); // modifiers
         }
-        // find a method whose line table contains the requested line
-        bestMethod = findMethodWithLine(typeId, line);
+        long bestMethod = findMethodWithLine(typeId, line);
         if (bestMethod == 0) {
             throw new IOException("no method contains line " + line);
         }
@@ -169,13 +179,14 @@ final class JdwpClient {
         for (int i = 0; i < count; i++) {
             long methodId = reply.readReference();
             String name = reply.readString();
+            reply.readString();
             reply.readInt();
             methods.add(new long[]{methodId});
             if ("<init>".equals(name) || "<clinit>".equals(name)) continue;
             try {
                 long[] lines = lineTable(typeId, methodId);
                 for (int li = 0; li + 1 < lines.length; li += 2) {
-                    if (lines[li] == line) {
+                    if (lines[li + 1] == line) {
                         return methodId;
                     }
                 }
@@ -196,8 +207,8 @@ final class JdwpClient {
         int count = reply.readInt();
         long[] lines = new long[count * 2];
         for (int i = 0; i < count; i++) {
-            lines[i * 2] = reply.readLong();     // line code (long in JDWP)
-            lines[i * 2 + 1] = reply.readLong(); // code index
+            lines[i * 2] = reply.readLong(); // code index
+            lines[i * 2 + 1] = reply.readInt(); // line code
         }
         return lines;
     }
@@ -234,25 +245,19 @@ final class JdwpClient {
         Packet req = new Packet();
         req.writeReference(threadId);
         req.writeInt(0);   // startFrame
-        req.writeInt(depth > 0 ? depth : 100);
-        Packet reply = sendCommand(10, 6, req);
+        req.writeInt(depth > 0 ? Math.min(depth, 1) : 1);
+        Packet reply = sendCommand(11, 6, req); // ThreadReference.Frames
         int count = reply.readInt();
         List<FrameInfo> frames = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             reply.readReference(); // frameID
-            long locationType = reply.readByte();
-            if (locationType == 1) { // ObjectReference
-                reply.readReference();
-                reply.readReference();
-                reply.readLong();
-            } else { // ClassType location (for methods)
-                long typeId = reply.readReference();
-                long methodId = reply.readReference();
-                long codeIndex = reply.readLong();
-                String methodName = methodName(typeId, methodId);
-                int line = lineAt(typeId, methodId, codeIndex);
-                frames.add(new FrameInfo(methodId, methodName, line, codeIndex));
-            }
+            reply.readByte();      // location tag (1 = ClassType, 2 = InterfaceType)
+            long typeId = reply.readReference();
+            long methodId = reply.readReference();
+            long codeIndex = reply.readLong();
+            String methodName = methodName(typeId, methodId);
+            int line = lineAt(typeId, methodId, codeIndex);
+            frames.add(new FrameInfo(methodId, methodName, line, codeIndex));
         }
         return frames;
     }
@@ -271,6 +276,7 @@ final class JdwpClient {
         for (int i = 0; i < count; i++) {
             long id = methods.readReference();
             String n = methods.readString();
+            methods.readString();
             methods.readInt();
             if (id == methodId) {
                 name = n;
@@ -284,8 +290,8 @@ final class JdwpClient {
         long[] lines = lineTable(typeId, methodId);
         int best = -1;
         for (int i = 0; i + 1 < lines.length; i += 2) {
-            if (lines[i + 1] <= codeIndex) {
-                best = (int) lines[i];
+            if (lines[i] <= codeIndex) {
+                best = (int) lines[i + 1];
             }
         }
         return best;
@@ -295,7 +301,6 @@ final class JdwpClient {
         try {
             while (true) {
                 Packet evt = readPacketLocked();
-                System.err.println("[jdwp-events] pkt id=" + evt.id + " event=" + evt.eventData + " len=" + evt.data.length);
                 if (evt.id >= 0 && !evt.eventData) {
                     synchronized (lock) {
                         replies.put(evt.id, evt);
@@ -305,28 +310,23 @@ final class JdwpClient {
                 }
                 int sp = evt.readByte(); // suspendPolicy
                 int eventCount = evt.readInt();
-                System.err.println("[jdwp-events] composite suspend=" + sp + " count=" + eventCount);
                 for (int e = 0; e < eventCount; e++) {
-                    System.err.println("[jdwp-events] event index=" + e + " remaining=" + (evt.data.length - evt.pos));
                     int kind = evt.readByte();
                     evt.readInt(); // requestId
-                    if (kind == 6) { // ClassPrepare: threadID, tag, typeID, signature, status
+                    if (kind == 8) { // ClassPrepare: threadID, tag, typeID, signature, status
                         long threadId = evt.readReference();
                         evt.readByte();
                         long typeId = evt.readReference();
-                        handler.onEvent(kind, threadId, typeId);
-                    } else if (kind == 2) { // Breakpoint: threadID, location(tag, [obj], type, method, codeIndex)
+                        dispatch(handler, kind, threadId, typeId);
+                    } else if (kind == 2) { // Breakpoint: threadID, location(tag, type, method, codeIndex)
                         long threadId = evt.readReference();
-                        int tag = evt.readByte();
-                        if (tag == 1) {
-                            evt.readReference();
-                        }
+                        evt.readByte();       // location tag
                         long typeId = evt.readReference();
                         evt.readReference(); // method
                         evt.readLong();      // codeIndex
-                        handler.onEvent(kind, threadId, typeId);
+                        dispatch(handler, kind, threadId, typeId);
                     } else if (kind == 0) { // VMStart: threadID
-                        handler.onEvent(kind, evt.readReference(), 0);
+                        dispatch(handler, kind, evt.readReference(), 0);
                     }
                 }
             }
@@ -336,6 +336,14 @@ final class JdwpClient {
             e.printStackTrace();
             handler.onDisconnect();
         }
+    }
+
+    private void dispatch(EventHandler handler, int kind, long threadId, long typeId) {
+        // handlers may issue JDWP commands (breakpoints, resume), which need
+        // the event loop to deliver replies — run them off the loop
+        Thread t = new Thread(() -> handler.onEvent(kind, threadId, typeId), "jdwp-handler");
+        t.setDaemon(true);
+        t.start();
     }
 
     interface EventHandler {

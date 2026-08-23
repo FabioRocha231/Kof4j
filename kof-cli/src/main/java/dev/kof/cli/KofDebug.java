@@ -248,9 +248,8 @@ final class KofDebug {
             jdwp = new JdwpClient("127.0.0.1", port);
             jdwp.connect();
             jdwp.setClassPrepareRequest("Default.Main", (kind, threadId, typeId) -> {
-                System.err.println("[kof-debug] event kind=" + kind + " thread=" + threadId + " type=" + typeId);
                 try {
-                    if (kind == 6) {
+                    if (kind == 8) {
                         for (Integer line : pendingBreakpoints) {
                             jdwp.setLineBreakpoint(typeId, line);
                         }
