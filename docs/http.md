@@ -1,12 +1,12 @@
 # Web Architecture — `kof serve`
 
 **Data:** 22 de agosto de 2026
-> **Atualizado (0.0.5):** `kof serve` está implementado — KofHttpServer
-> (thread pool, Content-Length-aware, query string, headers, JSON detection,
-> 404/500, graceful shutdown) + ReflectiveHandler (funções top-level
-> `handle(...)`, variantes 5/4/3/0 args + `get()`/`post()`...). 8 testes E2E.
-> A arquitetura abaixo é o desenho original; o modelo real é documentado no
-> status e nos testes.
+> **Atualizado (0.0.5):** além do `kof serve` com handlers top-level, a stack
+> web nativa `web.app()` está implementada (Fase 1 da independência do
+> Spring): rotas com lambda trailing, path params, query, headers, body,
+> middleware, JSON tipado e servidor HTTP gerado no runtime do programa.
+> Ver [docs/stdlib-web.md](stdlib-web.md). A arquitetura abaixo é o desenho
+> original; o modelo real é documentado no status e nos testes.
 
 **Status:** Implementado (Fase H)
 

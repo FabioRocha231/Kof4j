@@ -175,6 +175,8 @@ spawn {
 
 ### HTTP (`kof serve`)
 
+API legada (handler top-level):
+
 ```kof
 handle(String method, String path, String body, String query, String headers): String {
     if (path == "/hello") {
@@ -184,10 +186,40 @@ handle(String method, String path, String body, String query, String headers): S
 }
 ```
 
-- KofHttpServer: Content-Length-aware, query string, headers, JSON detection,
-  thread pool, graceful shutdown.
-- Handlers top-level (static): variantes 5/4/3/0 args + `get()`/`post()`...
-- Ver: `docs/http.md`.
+Stack web nativa (Fase 1 — independência do Spring):
+
+```kof
+record User(String name, Int age)
+
+main() {
+    var app = web.app()
+    app.use {
+        if (header("x-auth") == "secret") {
+            return null
+        }
+        return "{\"error\": \"unauthorized\"}"
+    }
+    app.get("/hello") {
+        return "Hello from Kof"
+    }
+    app.get("/users/:id") {
+        return "user " + param("id") + " q=" + query("name")
+    }
+    app.post("/user") {
+        var user = json.decode<User>(body())
+        return json.encode(user)
+    }
+    app.listen(8080)
+}
+```
+
+- `web.app()` + rotas com lambda trailing; path params (`:id`), query,
+  headers, body, `method()`, `path()`; middleware `app.use { ... }`.
+- Engine HTTP gerado dentro do runtime do programa (sem servlet container,
+  sem Spring); cada conexão em virtual thread.
+- `kof serve <file.kf>` detecta `main()` e executa apps `web.app()`;
+  a API legada `handle(...)` continua funcionando.
+- Ver: `docs/stdlib-web.md` e `KofWebE2ETest` (9 testes E2E com sockets reais).
 
 ### Testes da linguagem
 
@@ -204,7 +236,7 @@ main() {
 
 ---
 
-## Testes (416/416 PASS)
+## Testes (425/425 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -218,6 +250,7 @@ main() {
 | BackendParityTest | 10 | paridade JVM/Native/JS |
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
+| KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
@@ -227,7 +260,7 @@ main() {
 | IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **416** | |
+| **Total** | **425** | |
 
 ---
 

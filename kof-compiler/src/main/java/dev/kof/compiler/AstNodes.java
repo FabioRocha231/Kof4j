@@ -60,7 +60,11 @@ record ConstructorDeclarationNode(SourcePosition position, List<String> modifier
 }
 
 record FormalParameterNode(SourcePosition position, List<String> modifiers, String type,
-                           String name) implements AstNode {
+                           String name, ExpressionNode defaultExpression) implements AstNode {
+
+    FormalParameterNode(SourcePosition position, List<String> modifiers, String type, String name) {
+        this(position, modifiers, type, name, null);
+    }
 }
 
 sealed interface ExpressionNode extends AstNode {

@@ -162,7 +162,10 @@ private Target target = Target.JVM;
             if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
             else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
             else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
-            else if (decl instanceof FunctionDeclarationNode func) topLevelFunctions.add(lowerFunction(func));
+            else if (decl instanceof FunctionDeclarationNode func) {
+                topLevelFunctions.add(lowerFunction(func));
+                topLevelFunctions.addAll(lowerFunctionDefaults(func));
+            }
         }
         if (!topLevelFunctions.isEmpty()) {
             String mainClassName = moduleName.isEmpty() ? "Main" : moduleName + "/Main";
@@ -508,7 +511,7 @@ private Target target = Target.JVM;
                 LabelId okLabel = LabelId.create();
                 LabelId failLabel = LabelId.create();
                 ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
-                ops.add(new KofConditionalJump(KofComparison.NE, failLabel, okLabel));
+                ops.add(new KofConditionalJump(KofComparison.EQ, failLabel, okLabel));
                 ops.add(new KofLabel(failLabel));
                 String message = asrt.message() != null ? asrt.message() : "assertion failed";
                 if (target == Target.JVM) {
@@ -1134,6 +1137,14 @@ private Target target = Target.JVM;
                             methodParamTypes = osig.parameterTypes();
                         }
                     }
+                    if (methodReturnType instanceof Type.UnknownType) {
+                        // fall back to the lowering's own inference (list-get
+                        // chains, user classes resolved through hierarchy)
+                        Type inferred = inferExprType(mc, locals);
+                        if (!(inferred instanceof Type.UnknownType)) {
+                            methodReturnType = inferred;
+                        }
+                    }
                     localIdx = emitArgumentsWithFormalTypes(mc.arguments(), methodParamTypes, ops, owner, localIdx, locals);
                     KofCallKind callKind = KofCallKind.INSTANCE;
                     if (recvType instanceof Type.ClassType rt && semanticAnalyzer != null) {
@@ -1633,6 +1644,10 @@ private Target target = Target.JVM;
                 }
                 if (mc.receiver() != null) {
                     Type recvT = inferExprType(mc.receiver(), locals);
+                    if (recvT instanceof Type.ClassType ct && semanticAnalyzer != null) {
+                        SymbolTable.Symbol m = semanticAnalyzer.resolveInHierarchy(ct.name(), mc.methodName());
+                        if (m instanceof SymbolTable.MethodSymbol ms) yield ms.returnType();
+                    }
                     if (recvT instanceof Type.ClassType) {
                         ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
                         if (osig != null) yield osig.returnType();

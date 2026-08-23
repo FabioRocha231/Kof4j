@@ -154,6 +154,7 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.ui (Color, Palette, Theme) | ✅ | ✅ |
 | kof.ui Window + Label (bind) | ✅ | ✅ (JS render) | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
+| kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
 (ECMAScript 2022+) executados na engine JS embarcada (GraalJS — sem Node.js
@@ -182,6 +183,49 @@ println(Palette.green.toCss())       // rgb(0, 255, 0)
 ```
 
 Ver: [learn/35-kof-ui.md](learn/35-kof-ui.md).
+
+---
+
+# kof.web — Stack Web Nativa
+
+Aplicações web sem Spring, sem servlet container, sem annotations:
+
+```kof
+record User(String name, Int age)
+
+main() {
+    var app = web.app()
+
+    app.use {
+        if (header("x-auth") == "secret") {
+            return null
+        }
+        return "{\"error\": \"unauthorized\"}"
+    }
+
+    app.get("/hello") {
+        return "Hello from Kof"
+    }
+
+    app.get("/users/:id") {
+        return "user " + param("id") + " q=" + query("name")
+    }
+
+    app.post("/user") {
+        var user = json.decode<User>(body())
+        return json.encode(user)
+    }
+
+    app.listen(8080)
+}
+```
+
+```bash
+kof serve app.kf
+```
+
+Path params, query, headers, body, middleware, JSON tipado e servidor HTTP
+embutido no runtime do programa. Ver: [docs/stdlib-web.md](docs/stdlib-web.md).
 
 ---
 

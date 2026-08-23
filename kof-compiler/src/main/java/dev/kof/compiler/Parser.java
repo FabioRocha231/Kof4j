@@ -455,7 +455,12 @@ class Parser {
         List<String> mods = parseModifiers();
         String type = parseTypeRef();
         String name = expectId("Expected parameter name", "PARSE023");
-        return new FormalParameterNode(pos(), mods, type, name);
+        ExpressionNode defaultValue = null;
+        if (check(TokenType.EQUAL)) {
+            advance();
+            defaultValue = parseExpression();
+        }
+        return new FormalParameterNode(pos(), mods, type, name, defaultValue);
     }
 
     private List<String> parseThrows() {
@@ -733,15 +738,15 @@ class Parser {
         String type = "var";
         if (check(TokenType.VAR, TokenType.VAL)) {
             advance();
-            if (check(TokenType.COLON)) {
-                // var name: Type = value — explicit type annotation
-                advance();
-                type = parseTypeRef();
-            }
         } else {
             type = parseTypeRef();
         }
         String name = expectId("Expected variable name", "PARSE037");
+        if (check(TokenType.COLON)) {
+            // var name: Type = value — explicit type annotation
+            advance();
+            type = parseTypeRef();
+        }
         ExpressionNode init = null;
         if (check(TokenType.EQUAL)) {
             advance();

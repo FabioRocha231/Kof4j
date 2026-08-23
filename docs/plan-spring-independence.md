@@ -75,26 +75,31 @@ Stack Kof-native (mapeamento de referência, sem copiar APIs):
 
 ## 2. Fases
 
-### Fase 1 — Web nativa Kof (em andamento)
+### Fase 1 — Web nativa Kof ✅ (concluída em 23/08/2026)
 
 Evoluir `kof serve` para a stack web completa. Critérios de aceite:
 
-- [ ] `web.app()` cria uma aplicação; `app.get("/hello") { return "Hello" }`
+- [x] `web.app()` cria uma aplicação; `app.get("/hello") { return "Hello" }`
       registra rota com lambda trailing (bloco).
-- [ ] Path parameters: `/users/:id` + `param("id")`.
-- [ ] Query parameters: `query("name")`.
-- [ ] Headers: `header("x")`; corpo: `body()`.
-- [ ] JSON tipado nos handlers: `return json.encode(user)` e
+- [x] Path parameters: `/users/:id` + `param("id")`.
+- [x] Query parameters: `query("name")`.
+- [x] Headers: `header("x")`; corpo: `body()`.
+- [x] JSON tipado nos handlers: `return json.encode(user)` e
       `json.decode<User>(body())`.
-- [ ] Middleware: `app.use { ... }` (null = continua, String = resposta curta).
-- [ ] `app.listen(port)`, `app.port()`, `app.close()` (graceful shutdown).
-- [ ] `kof serve <file.kf>` executa programas `web.app()`; API legada
+- [x] Middleware: `app.use { ... }` (null = continua, String = resposta curta).
+- [x] `app.listen(port)`, `app.port()`, `app.close()` (graceful shutdown).
+- [x] `kof serve <file.kf>` executa programas `web.app()`; API legada
       `handle(...)` continua funcionando.
-- [ ] Testes E2E (subprocesso + sockets reais) verdes; `mvn test` verde.
-- [ ] Docs: `docs/stdlib-web.md`, `docs/status.md`, `docs/http.md`, README.
+- [x] Testes E2E (subprocesso + sockets reais) verdes; `mvn test` verde
+      (459/459, incluindo os 9 de `KofWebE2ETest`).
+- [x] Docs: `docs/stdlib-web.md`, `docs/status.md`, `docs/http.md`, README.
 
-Depende de: parser (lambda trailing), SemanticAnalyzer/CompilerDriver
-(dispatch `web.*`, contexto de request), JvmRuntime (engine HTTP gerado).
+Implementado em: `KofWeb` (tabela compile-time), `Parser` (lambda trailing),
+`SemanticAnalyzer`/`CompilerDriver` (dispatch `web.*` + contexto de request),
+`JvmRuntime` (engine HTTP gerado), CLI `kof serve` (detecção de `main()`).
+
+Gaps documentados: status codes/headers customizados (fase posterior);
+target `js` reporta `WEB001`; target `native` sem servidor web ainda.
 
 ### Fase 2 — JSON nativo completo
 
@@ -217,3 +222,39 @@ arquitetural). Critérios de aceite:
 5. Cada fase termina com testes verdes (`mvn test`) e documentação.
 6. O roadmap existente (`docs/roadmap.md`) permanece a visão de longo prazo;
    este documento é o plano de execução da independência + starter.
+
+---
+
+## 4. Nota de operação: múltiplas sessões na mesma branch
+
+Durante a execução da Fase 1 (23/08/2026), sessões paralelas trabalharam na
+mesma branch (`feat/kofjs`) ao mesmo tempo. Isso causou conflitos reais que
+foram resolvidos e devem ser esperados em sessões futuras:
+
+- **Builds Maven concorrentes sobre os mesmos `target/`**: dois `mvn`
+  simultâneos produzem erros transitórios (stale classpath, `cannot find
+  symbol`, `surefire` silencioso). Mitigação: aguardar builds alheios
+  terminarem ou testar em um clone isolado
+  (`git clone` + `-Dmaven.repo.local=<dir>` dedicado).
+- **`${revision}` no parent pom**: instalar a partir de um diretório
+  sandbox sem a propriedade `<revision>` polui `~/.m2` com um descriptor
+  quebrado (`kof-parent:pom:${revision}`). Limpar `~/.m2/repository/dev/kof`
+  e reinstalar a partir da raiz do repositório.
+- **Arquivos mid-edit**: `NativeRuntime.java` (faltava `}`), `JsBackend.java`
+  (`writeHtmlEntry` referenciado antes de definido), `JvmRuntime.java`
+  (template com escapes `\"` dentro de text blocks — em text block, para
+  gerar `\"` no código-fonte é preciso escrever `\\"`). Todos foram
+  corrigidos mecanicamente e documentados aqui.
+- **Pegadinha de text block**: código de runtime embutido em
+  `JvmRuntime.java`/`JsBackend.java` é gerado a partir de text blocks Java.
+  Escapes de string (`\"`, `\n`) sofrem DUPLA interpretação. Escrever
+  `\\"`/`\\n` no text block para produzir `\"`/`\n` no código gerado.
+- **`pkill -f` suicida**: padrões que casam com a própria linha de comando
+  do shell matam a sessão. Usar padrões distintos ou `kill` por PID.
+- **Commit intercalado**: sessões podem commitar o trabalho umas das outras
+  (`git add -A`). Sempre verificar `git status`/`git log` antes de assumir o
+  estado da árvore; nunca rebasear sobre trabalho alheio em andamento.
+
+Resultado: a Fase 1 foi validada em um clone isolado com repositório local
+Maven dedicado, e o estado final da árvore de trabalho contém o trabalho das
+duas frentes (web nativa + debugger/UI/security da sessão paralela).
