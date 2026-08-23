@@ -220,8 +220,14 @@ class JsBackend implements Backend {
     private JsIr.JsFunction lowerDecodeHelper(IRClass clazz) {
         String jsName = jsClassName(clazz.name());
         boolean isRecord = "java/lang/Record".equals(clazz.superName());
-        JsIr.JsExpression parsed = new JsIr.JsCall(
-                new JsIr.JsIdentifier("JSON.parse"), List.of(new JsIr.JsIdentifier("json")));
+        // Accept both a JSON string and an already-parsed object (list decode
+        // maps parsed elements through this helper).
+        JsIr.JsExpression parsed = new JsIr.JsConditional(
+                new JsIr.JsBinary(new JsIr.JsUnary("typeof", new JsIr.JsIdentifier("json")),
+                        "===", new JsIr.JsString("string")),
+                new JsIr.JsCall(new JsIr.JsIdentifier("JSON.parse"),
+                        List.of(new JsIr.JsIdentifier("json"))),
+                new JsIr.JsIdentifier("json"));
         List<JsIr.JsStatement> body = new ArrayList<>();
         body.add(new JsIr.JsVarDecl("p", parsed, true));
         List<JsIr.JsExpression> ctorArgs = new ArrayList<>();
@@ -1464,6 +1470,13 @@ class JsBackend implements Backend {
         throw new StatementEnd(new JsIr.JsCall(new JsIr.JsIdentifier("super"), args));
     }
 
+    private Type listElementType(Type listType) {
+        if (listType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) {
+            return ct.typeArguments().get(0);
+        }
+        return Type.UnknownType.UNKNOWN;
+    }
+
     private String capitalizeUiFn(String name) {
         String rest = name.startsWith("kof_") ? name.substring(4) : name;
         StringBuilder sb = new StringBuilder("kof");
@@ -1570,7 +1583,31 @@ class JsBackend implements Backend {
         if (value instanceof Float f) return Float.toString(f);
         if (value instanceof Double d) return Double.toString(d);
         if (value instanceof Boolean b) return b ? "1" : "0";
+        if (value instanceof String s) return jsStringLiteral(s);
         return String.valueOf(value);
+    }
+
+    private String jsStringLiteral(String s) {
+        StringBuilder sb = new StringBuilder("\"");
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 
     private String arrayFill(Type elementType) {
@@ -1701,6 +1738,26 @@ class JsBackend implements Backend {
                     ? args.get(0) : receiver;
             if (name.contains("encode")) {
                 stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("JSON.stringify"), List.of(value)));
+            } else if (name.startsWith("kof_json_decode_")
+                    && BuiltinTypes.isList(kc.ownerType())) {
+                // decode<List<T>> — bind each element to the Kof class
+                Type elem = kc.ownerType() instanceof Type.ClassType lct
+                        && !lct.typeArguments().isEmpty() ? lct.typeArguments().get(0) : Type.UnknownType.UNKNOWN;
+                if (elem instanceof Type.ClassType ect
+                        && classMethodNames.containsKey(ect.internalName())) {
+                    String jsName = jsClassName(ect.internalName());
+                    decodeHelpers.add(jsName);
+                    JsIr.JsExpression parsed = new JsIr.JsCall(
+                            new JsIr.JsIdentifier("JSON.parse"), List.of(value));
+                    JsIr.JsExpression mapper = new JsIr.JsCall(
+                            new JsIr.JsIdentifier("__kof_decode_" + jsName),
+                            List.of(new JsIr.JsIdentifier("o")));
+                    stack.add(new JsIr.JsCall(
+                            new JsIr.JsMember(parsed, "map"),
+                            List.of(new JsIr.JsArrow(List.of("o"), mapper))));
+                } else {
+                    stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("JSON.parse"), List.of(value)));
+                }
             } else if (name.startsWith("kof_json_decode_")
                     && classMethodNames.containsKey(ownerInternalName(kc.ownerType()))) {
                 // decode<Class> — bind the parsed object to the Kof class
@@ -1994,16 +2051,16 @@ class JsBackend implements Backend {
                 if (node.id) attrs += ' id="' + kofEscapeHtml(node.id) + '"';
                 if (node.className) attrs += ' class="' + kofEscapeHtml(node.className) + '"';
                 const inner = node.children.map(kofSerialize).join("");
-                const content = node.textContent || inner;
-                return "<" + tag + attrs + ">" + kofEscapeHtml(content) + "</" + tag + ">";
+                const content = inner.length > 0 ? inner : kofEscapeHtml(node.textContent || "");
+                return "<" + tag + attrs + ">" + content + "</" + tag + ">";
             }
 
             export function kofUiFlush() {
                 const root = document.getElementById("kof-root");
                 if (!root) return "";
-                const html = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
-                        + "<title>" + kofEscapeHtml(document.title || "Kof") + "</title>\n"
-                        + "</head>\n<body>\n" + kofSerialize(root) + "\n</body>\n</html>\n";
+                const html = "<!DOCTYPE html>\\n<html>\\n<head>\\n<meta charset=\\"utf-8\\">\\n"
+                        + "<title>" + kofEscapeHtml(document.title || "Kof") + "</title>\\n"
+                        + "</head>\\n<body>\\n" + kofSerialize(root) + "\\n</body>\\n</html>\\n";
                 globalThis.kof__uiRootHtml = html;
                 return html;
             }
@@ -2034,12 +2091,13 @@ class JsBackend implements Backend {
                 return typeof document !== "undefined" ? document.title : "";
             }
 
-            export function kofUiWindowBind(window, label) {
+            export function kofUiWindowBind(win, label) {
                 if (typeof document === "undefined") {
                     return;
                 }
                 const root = document.getElementById("kof-root");
-                const node = window.__kofNodes && window.__kofNodes[label];
+                const nodes = globalThis.window && globalThis.window.__kofNodes;
+                const node = nodes && nodes[label];
                 if (root && node) {
                     root.appendChild(node);
                 }
