@@ -42,6 +42,11 @@ class SemanticAnalyzer {
         return resolvedMethods.get(mc);
     }
 
+    Type resolvedMethodReturnType(MethodDeclarationNode method) {
+        SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+        return ms != null ? ms.returnType() : null;
+    }
+
     SymbolTable.ConstructorSymbol getResolvedConstructor(NewExpr ne) {
         return resolvedConstructors.get(ne);
     }
@@ -240,8 +245,8 @@ class SemanticAnalyzer {
         currentScope = methodScope;
         analyzeBody(method.body(), methodScope, returnType);
         currentScope = prevScope;
-        if (Type.isVoid(returnType) && method.body().size() == 1
-                && method.body().getFirst() instanceof ReturnStmt ret && ret.value() != null) {
+        if (Type.isVoid(returnType) && method.body().getLast() instanceof ReturnStmt ret
+                && ret.value() != null) {
             Type inferred = inferType(ret.value(), methodScope);
             SymbolTable.MethodSymbol ms = methodSymbols.get(method);
             if (ms != null && !(inferred instanceof Type.UnknownType)) {
