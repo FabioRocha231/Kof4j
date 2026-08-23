@@ -858,49 +858,70 @@ class JsBackend implements Backend {
 
     private JsIr.JsStatement parseExpressionStatement(MethodCtx ctx, int[] pos) {
         List<Object> stack = new ArrayList<>();
+        List<JsIr.JsStatement> preamble = new ArrayList<>();
         while (pos[0] < ctx.ops.size()) {
             KofOperation op = ctx.ops.get(pos[0]);
             if (op instanceof KofStoreLocal sl) {
                 pos[0]++;
-                return storeLocalStatement(ctx, sl, pop(stack));
+                JsIr.JsStatement stmt = storeLocalStatement(ctx, sl, pop(stack));
+                if (stack.isEmpty()) {
+                    return finishExpressionStatement(preamble, stmt);
+                }
+                // mid-expression store (++/-- on locals): keep evaluating
+                preamble.add(stmt);
+                continue;
             }
             if (op instanceof KofStoreField sf) {
                 pos[0]++;
                 JsIr.JsExpression value = pop(stack);
                 JsIr.JsExpression receiver = pop(stack);
-                return new JsIr.JsExprStmt(new JsIr.JsBinary(
+                JsIr.JsStatement stmt = new JsIr.JsExprStmt(new JsIr.JsBinary(
                         new JsIr.JsMember(receiver,
                                 ctx.recordClass ? "_" + sanitizeName(sf.name()) : sanitizeName(sf.name())), "=", value));
+                if (stack.isEmpty()) {
+                    return finishExpressionStatement(preamble, stmt);
+                }
+                preamble.add(stmt);
+                continue;
             }
             if (op instanceof KofPutStatic ps) {
                 pos[0]++;
                 JsIr.JsExpression value = pop(stack);
                 String owner = jsClassName(ownerInternalName(ps.ownerType()));
-                return new JsIr.JsExprStmt(new JsIr.JsBinary(
-                        new JsIr.JsMember(new JsIr.JsIdentifier(owner), sanitizeName(ps.name())), "=", value));
+                return finishExpressionStatement(preamble, new JsIr.JsExprStmt(new JsIr.JsBinary(
+                        new JsIr.JsMember(new JsIr.JsIdentifier(owner), sanitizeName(ps.name())), "=", value)));
             }
             if (op instanceof KofArrayStore as) {
                 pos[0]++;
                 JsIr.JsExpression value = pop(stack);
                 JsIr.JsExpression index = pop(stack);
                 JsIr.JsExpression array = pop(stack);
-                return new JsIr.JsExprStmt(new JsIr.JsBinary(
+                JsIr.JsStatement stmt = new JsIr.JsExprStmt(new JsIr.JsBinary(
                         new JsIr.JsIndex(array, index), "=", value));
+                if (stack.isEmpty()) {
+                    return finishExpressionStatement(preamble, stmt);
+                }
+                preamble.add(stmt);
+                continue;
             }
             if (op instanceof KofPop) {
                 pos[0]++;
+                if (stack.isEmpty()) {
+                    throw new IllegalStateException("KofJS: dangling pop");
+                }
+                pop(stack);
                 if (!stack.isEmpty()) {
                     throw new IllegalStateException("KofJS: dangling stack at pop");
                 }
-                return new JsIr.JsExprStmt(new JsIr.JsSequence(List.of(), pop(stack)));
+                return finishExpressionStatement(preamble, null);
             }
             if (op instanceof KofReturn kr) {
                 pos[0]++;
-                return new JsIr.JsReturn(pop(stack));
+                return finishExpressionStatement(preamble, new JsIr.JsReturn(pop(stack)));
             }
             if (op instanceof KofThrow) {
                 pos[0]++;
-                return new JsIr.JsThrow(pop(stack));
+                return finishExpressionStatement(preamble, new JsIr.JsThrow(pop(stack)));
             }
             if (op instanceof KofConditionalJump cj && pos[0] + 1 < ctx.ops.size()
                     && ctx.ops.get(pos[0] + 1) instanceof KofLabel kl
@@ -944,6 +965,22 @@ class JsBackend implements Backend {
         throw new IllegalStateException("KofJS: unterminated expression statement");
     }
 
+    private JsIr.JsStatement finishExpressionStatement(List<JsIr.JsStatement> preamble,
+                                                    JsIr.JsStatement finalStmt) {
+        if (preamble.isEmpty()) {
+            return finalStmt;
+        }
+        if (finalStmt != null) {
+            List<JsIr.JsStatement> all = new ArrayList<>(preamble);
+            all.add(finalStmt);
+            return new JsIr.JsBlock(all);
+        }
+        if (preamble.size() == 1) {
+            return preamble.get(0);
+        }
+        return new JsIr.JsBlock(preamble);
+    }
+
     private JsIr.JsExpression wrapStack(List<Object> stack) {
         if (stack.size() == 1) {
             return pop(stack);
@@ -984,7 +1021,7 @@ class JsBackend implements Backend {
                 || op instanceof KofLoadField || op instanceof KofGetStatic
                 || op instanceof KofBinary || op instanceof KofUnary
                 || op instanceof KofCall || op instanceof KofNewObject
-                || op instanceof KofDup || op instanceof KofNewArray
+                || op instanceof KofDup || op instanceof KofDupX1 || op instanceof KofNewArray
                 || op instanceof KofArrayLoad || op instanceof KofArrayLength
                 || op instanceof KofInstanceOf || op instanceof KofCheckCast;
     }
@@ -1031,6 +1068,12 @@ class JsBackend implements Backend {
             stack.add(new JsIr.JsSequence(
                     List.of(new JsIr.JsAssignExpr(temp, top)), new JsIr.JsIdentifier(temp)));
             stack.add(new JsIr.JsIdentifier(temp));
+        } else if (op instanceof KofDupX1) {
+            JsIr.JsExpression top = pop(stack);
+            JsIr.JsExpression below = pop(stack);
+            stack.add(top);
+            stack.add(below);
+            stack.add(top);
         } else if (op instanceof KofNewArray na) {
             JsIr.JsExpression size = pop(stack);
             stack.add(new JsIr.JsArray(size, arrayFill(na.elementType())));

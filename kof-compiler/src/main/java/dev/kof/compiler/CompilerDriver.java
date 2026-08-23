@@ -713,18 +713,16 @@ public class CompilerDriver {
                 yield localIdx;
             }
             case UnaryExpr ue -> {
-                localIdx = emitExpression(ue.operand(), ops, owner, localIdx, locals);
                 Type operandType = inferExprType(ue.operand(), locals);
+                if ("++".equals(ue.operator()) || "--".equals(ue.operator())) {
+                    localIdx = emitIncrement(ue, operandType, ops, owner, localIdx, locals);
+                    yield localIdx;
+                }
+                localIdx = emitExpression(ue.operand(), ops, owner, localIdx, locals);
                 if ("-".equals(ue.operator())) {
                     ops.add(new KofUnary(KofUnaryOp.NEG, operandType));
                 } else if ("!".equals(ue.operator())) {
                     ops.add(new KofUnary(KofUnaryOp.NOT, operandType));
-                } else if ("++".equals(ue.operator())) {
-                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                    ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
-                } else if ("--".equals(ue.operator())) {
-                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                    ops.add(new KofBinary(KofBinaryOp.SUB, operandType));
                 }
                 yield localIdx;
             }
@@ -1643,6 +1641,100 @@ public class CompilerDriver {
             if (locals.get(i).name().equals(name)) return locals.get(i).index();
         }
         return 0;
+    }
+
+    /**
+     * Emits ++/-- on assignable targets (locals, fields, array elements) with
+     * correct prefix/postfix semantics: the result value stays on the stack
+     * and the target is stored back.
+     */
+    private int emitIncrement(UnaryExpr ue, Type operandType, List<KofOperation> ops,
+                              String owner, int localIdx, List<IRLocalVariable> locals) {
+        boolean prefix = ue.prefix();
+        KofBinaryOp op = "++".equals(ue.operator()) ? KofBinaryOp.ADD : KofBinaryOp.SUB;
+        ExpressionNode target = ue.operand();
+        if (target instanceof IdentifierExpr ie) {
+            IRLocalVariable var = findLocalVar(ie.name(), locals);
+            if (var != null) {
+                // local: [load v, (dup), 1, add, (dup), store v]
+                ops.add(new KofLoadLocal(var.type(), var.index()));
+                if (!prefix) ops.add(new KofDup());
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                ops.add(new KofBinary(op, var.type()));
+                if (prefix) ops.add(new KofDup());
+                ops.add(new KofStoreLocal(var.type(), var.index()));
+                return localIdx;
+            }
+            if (!owner.isEmpty() && semanticAnalyzer != null) {
+                String className = owner.substring(owner.lastIndexOf('/') + 1);
+                SymbolTable.Symbol fieldSym = resolveFieldInHierarchy(className, ie.name());
+                if (fieldSym instanceof SymbolTable.FieldSymbol fs) {
+                    Type ownerType = ownerTypeFromInternal(owner);
+                    localIdx = emitFieldIncrement(ownerType, ie.name(), fs.type(), prefix, op,
+                            ops, localIdx, locals);
+                    return localIdx;
+                }
+            }
+        }
+        if (target instanceof FieldAccessExpr fa) {
+            localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+            Type recvType = inferExprType(fa.receiver(), locals);
+            Type fieldType = Type.UnknownType.UNKNOWN;
+            if (recvType instanceof Type.ClassType ct) {
+                SymbolTable.Symbol fs = resolveFieldInHierarchy(ct.name(), fa.fieldName());
+                if (fs != null) fieldType = fs.type();
+            }
+            localIdx = emitFieldIncrement(recvType, fa.fieldName(), fieldType, prefix, op,
+                    ops, localIdx, locals);
+            return localIdx;
+        }
+        if (target instanceof ArrayAccessExpr aa) {
+            localIdx = emitExpression(aa.receiver(), ops, owner, localIdx, locals);
+            localIdx = emitExpression(aa.index(), ops, owner, localIdx, locals);
+            Type recvType = inferExprType(aa.receiver(), locals);
+            Type elemType = Type.arrayElementType(recvType);
+            ops.add(new KofArrayLoad(elemType));
+            if (!prefix) ops.add(new KofDup());
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+            ops.add(new KofBinary(op, elemType));
+            if (prefix) ops.add(new KofDup());
+            ops.add(new KofArrayStore(elemType));
+            return localIdx;
+        }
+        // non-assignable operand: evaluate as expression (legacy behavior)
+        localIdx = emitExpression(ue.operand(), ops, owner, localIdx, locals);
+        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+        ops.add(new KofBinary(op, operandType));
+        return localIdx;
+    }
+
+    /**
+     * Field increment: the receiver must survive the field read for the store.
+     * Postfix needs a temp for the previous value (JVM putfield consumes the
+     * top two slots as value+receiver).
+     */
+    private int emitFieldIncrement(Type ownerType, String fieldName, Type fieldType,
+                                   boolean prefix, KofBinaryOp op,
+                                   List<KofOperation> ops, int localIdx,
+                                   List<IRLocalVariable> locals) {
+        ops.add(new KofLoadLocal(ownerType, 0));
+        if (!prefix) {
+            ops.add(new KofDup());
+            ops.add(new KofLoadField(ownerType, fieldName, fieldType));
+            // [receiver, value] -> [value, receiver, value]
+            ops.add(new KofDupX1());
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+            ops.add(new KofBinary(op, fieldType));
+            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
+        } else {
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofLoadField(ownerType, fieldName, fieldType));
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+            ops.add(new KofBinary(op, fieldType));
+            ops.add(new KofDup());
+            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
+        }
+        return localIdx;
     }
 
     private boolean isComparisonOp(String op) {

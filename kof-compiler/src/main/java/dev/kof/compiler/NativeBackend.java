@@ -374,6 +374,13 @@ public class NativeBackend implements Backend {
             case KofCall kc -> emitCall(sb, kc);
             case KofNewObject no -> emitNewObject(sb, no);
             case KofDup dup -> sb.append("    movq (%rsp), %rax\n    pushq %rax\n");
+            case KofDupX1 x1 -> sb.append("""
+                    movq (%rsp), %rax
+                    movq 8(%rsp), %rbx
+                    pushq %rax
+                    pushq %rbx
+                    pushq %rax
+                """.stripIndent());
             case KofPop pop -> sb.append("    addq $8, %rsp\n");
             case KofGetStatic gs -> { }
             case KofPutStatic ps -> sb.append("    addq $8, %rsp\n");

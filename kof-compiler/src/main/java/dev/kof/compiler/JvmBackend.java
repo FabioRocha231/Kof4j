@@ -617,6 +617,8 @@ class JvmBackend implements Backend {
             mv.visitTypeInsn(NEW, typeName);
         } else if (op instanceof KofDup) {
             mv.visitInsn(DUP);
+        } else if (op instanceof KofDupX1) {
+            mv.visitInsn(DUP_X1);
         } else if (op instanceof KofPop) {
             mv.visitInsn(POP);
         } else if (op instanceof KofReturn kr) {

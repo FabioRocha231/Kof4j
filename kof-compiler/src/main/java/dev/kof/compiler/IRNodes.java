@@ -133,6 +133,13 @@ record KofReturnVoid() implements KofOperation {
 
 record KofDup() implements KofOperation {
 }
+
+/**
+ * Duplicates the top value below the second slot: [A, B] → [B, A, B].
+ * Used for postfix field increments (the receiver must survive for the store).
+ */
+record KofDupX1() implements KofOperation {
+}
 record KofPop() implements KofOperation {
 }
 

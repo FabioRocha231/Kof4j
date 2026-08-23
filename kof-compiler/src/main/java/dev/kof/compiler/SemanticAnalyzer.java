@@ -142,15 +142,23 @@ class SemanticAnalyzer {
                 classScope.define(fs);
             }
         }
+        boolean hasCtor = false;
         for (AstNode member : cls.members()) {
             if (member instanceof ConstructorDeclarationNode ctor) {
                 defineConstructorSymbol(ctor, cls.name(), classScope);
+                hasCtor = true;
             } else if (member instanceof MethodDeclarationNode method) {
                 defineMethodSymbol(method, cls.name(), classScope);
             }
         }
+        if (!hasCtor) {
+            // implicit default constructor: classes without an explicit
+            // constructor always have one (Kof semantics)
+            classScope.define(new SymbolTable.ConstructorSymbol(cls.name(), List.of(), 1));
+        }
         for (int pass = 0; pass < 4; pass++) {
             boolean changed = false;
+            expressionTypes.clear();
             for (AstNode member : cls.members()) {
                 if (member instanceof ConstructorDeclarationNode ctor) {
                     analyzeConstructorBody(ctor);
@@ -274,6 +282,7 @@ class SemanticAnalyzer {
         }
         for (int pass = 0; pass < 4; pass++) {
             boolean changed = false;
+            expressionTypes.clear();
             for (AstNode member : rec.members()) {
                 if (member instanceof MethodDeclarationNode method) {
                     SymbolTable.MethodSymbol ms = methodSymbols.get(method);
