@@ -38,6 +38,13 @@ fi
 
 # KofJS embeds a JavaScript engine (GraalJS/Truffle) in the Kof process;
 # quiet the JDK warnings it emits when it initializes on stock JDKs.
-exec "$JAVA" --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow \
+# The Unsafe-access option only exists on JDK 24+; the embedded JDK is
+# Temurin 21, so the flag is added only when the runtime supports it.
+UNSAFE_FLAG=""
+JAVA_MAJOR="$("$JAVA" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)"
+if [ -n "$JAVA_MAJOR" ] && [ "$JAVA_MAJOR" -ge 24 ] 2>/dev/null; then
+    UNSAFE_FLAG="--sun-misc-unsafe-memory-access=allow"
+fi
+exec "$JAVA" --enable-native-access=ALL-UNNAMED $UNSAFE_FLAG \
     -Dkof.install.dir="$KOF_HOME" -Dkof.embedded.jdk="$EMBEDDED" \
     -jar "$JAR" "$@"
