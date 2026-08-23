@@ -11,11 +11,12 @@ comandos, tooling e editor support.
 | `kof run <file.kf> [args...]` | Compila e executa (JVM) |
 | `kof serve <file.kf> [--port <port>] [--host <host>]` | Web server HTTP básico |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
+| `kof test <file.kf\|dir> [--target jvm\|native]` | Roda programas; PASS se exit code 0 |
 | `kof info [--json]` | Relatório do ambiente |
 | `kof lsp` | Language Server (stdio, LSP 3.x) |
 | `kof version` | Versão da plataforma |
 
-Planejados: `kof test`, `kof fmt`. Não existe comando `kof doctor` — o
+Planejado: `kof fmt`. Não existe comando `kof doctor` — o
 diagnóstico oficial é `kof info`.
 
 ## Tooling API Level

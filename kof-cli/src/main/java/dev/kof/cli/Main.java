@@ -18,6 +18,7 @@ public final class Main {
             case "run" -> run(args);
             case "serve" -> serve(args);
             case "check" -> check(args);
+            case "test" -> test(args);
             case "info" -> info(args);
             case "lsp" -> lsp();
             case "install" -> install(args);
@@ -218,6 +219,7 @@ public final class Main {
         System.out.println("  run <file.kf> [--target jvm|native|js] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
+        System.out.println("  test <file.kf|dir> [--target jvm|native]   run programs, PASS/FAIL by exit code");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");
@@ -292,6 +294,87 @@ public final class Main {
             System.err.println("lsp: " + e.getMessage());
             System.exit(1);
         }
+    }
+
+    private static void test(String[] args) {
+        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native]"); System.exit(1); return; }
+        Path src = Path.of(args[1]);
+        Target target = Target.JVM;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].equals("--target") && i + 1 < args.length) {
+                target = parseTarget(args[i + 1]);
+                i++;
+            }
+        }
+        if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
+        List<Path> files = Files.isDirectory(src) ? collect(src) : List.of(src);
+        if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
+        CompilerDriver driver = new CompilerDriver();
+        int passed = 0;
+        int failed = 0;
+        for (Path f : files) {
+            Path tmp;
+            try { tmp = Files.createTempDirectory("kof-test-"); }
+            catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
+            CompilationResult result = driver.compile(f, tmp, target);
+            boolean ok = result.success();
+            StringBuilder output = new StringBuilder();
+            if (ok) {
+                for (Diagnostic d : result.diagnostics().getDiagnostics()) output.append(d.format()).append('\n');
+                if (target == Target.JVM) {
+                    String className = findMainClass(tmp);
+                    if (className == null) {
+                        ok = false;
+                        output.append("no main class found\n");
+                    } else {
+                        try {
+                            ProcessBuilder pb = new ProcessBuilder(javaExecutable(), "-cp", tmp.toString(), className);
+                            pb.redirectErrorStream(true);
+                            Process p = pb.start();
+                            output.append(new String(p.getInputStream().readAllBytes()));
+                            int ec = p.waitFor();
+                            ok = ec == 0;
+                            if (!ok) output.append("exit code: ").append(ec).append('\n');
+                        } catch (IOException | InterruptedException e) {
+                            ok = false;
+                            output.append("failed to execute: ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                } else {
+                    Path bin = tmp.resolve("Default/Main");
+                    if (!Files.exists(bin)) {
+                        ok = false;
+                        output.append("no binary produced\n");
+                    } else {
+                        try {
+                            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+                            pb.redirectErrorStream(true);
+                            Process p = pb.start();
+                            output.append(new String(p.getInputStream().readAllBytes()));
+                            int ec = p.waitFor();
+                            ok = ec == 0;
+                            if (!ok) output.append("exit code: ").append(ec).append('\n');
+                        } catch (IOException | InterruptedException e) {
+                            ok = false;
+                            output.append("failed to execute: ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                }
+            } else {
+                for (Diagnostic d : result.diagnostics().getDiagnostics()) output.append(d.format()).append('\n');
+            }
+            cleanup(tmp);
+            if (ok) {
+                passed++;
+                System.out.println("PASS " + f);
+            } else {
+                failed++;
+                System.out.println("FAIL " + f);
+                System.out.print(output);
+            }
+        }
+        System.out.println(passed + " passed, " + failed + " failed");
+        if (failed > 0) System.exit(1);
     }
 
     private static void check(String[] args) {

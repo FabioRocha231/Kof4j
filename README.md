@@ -203,6 +203,7 @@ kof build <dir> [--target jvm|native] [--output <dir>]
 kof run <file.kf> [args...]
 kof serve <file.kf> [--port <port>] [--host <host>]
 kof check <file.kf|dir>
+kof test <file.kf|dir> [--target jvm|native]
 kof info [--json]
 kof lsp
 kof version

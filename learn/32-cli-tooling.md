@@ -11,11 +11,12 @@ A CLI é a ferramenta central da plataforma Kof.
 | `kof run <file.kf>` | Compila e executa |
 | `kof serve <file.kf>` | Web server HTTP básico |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
+| `kof test <file.kf\|dir>` | Roda programas e reporta PASS/FAIL pelo exit code |
 | `kof info [--json]` | Relatório do ambiente |
 | `kof lsp` | Language Server (stdio, LSP 3.x) |
 | `kof version` | Versão da plataforma |
 
-Planejados: `kof test` (test runner), `kof fmt` (formatter).
+Planejado: `kof fmt` (formatter).
 
 ## `kof info`
 
