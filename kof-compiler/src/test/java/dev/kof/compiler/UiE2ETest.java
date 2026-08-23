@@ -375,4 +375,38 @@ class UiE2ETest {
         assertNotNull(html, "window HTML should be captured");
         assertTrue(html.contains("kof-label"), "label rendered");
     }
+
+    @Test
+    void windowBehavior(@TempDir Path tempDir) throws IOException {
+        String program = """
+            main() {
+                var w1 = Window("Primeira")
+                var w2 = Window("Segunda")
+                var l1 = Label("a")
+                var l2 = Label("b")
+                w1.bind(l1)
+                w2.bind(l2)
+                w1.size(640, 480)
+                w1.show()
+                w2.show()
+                w1.close()
+            }
+            """;
+        Path src = tempDir.resolve("wins.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "");
+        runNative(src, tempDir.resolve("native"), "");
+
+        Path srcJs = tempDir.resolve("wins-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        String html = dev.kof.runtime.KofJsRunner.runCaptureHtml(
+                tempDir.resolve("js").resolve("Default.mjs"), new java.io.ByteArrayOutputStream(),
+                new java.io.ByteArrayInputStream(new byte[0]), new java.io.ByteArrayOutputStream());
+        assertNotNull(html, "window HTML should be captured");
+        assertTrue(html.contains("kof-window"), "window containers rendered");
+        assertTrue(html.contains(">a<"), "first window label rendered");
+        assertTrue(html.contains(">b<"), "second window label rendered");
+    }
 }

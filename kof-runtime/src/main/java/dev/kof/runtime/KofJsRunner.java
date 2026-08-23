@@ -122,6 +122,8 @@ public final class KofJsRunner {
                 + "    .kof-column { display: flex; flex-direction: column; gap: 8px; }\n"
                 + "    .kof-row { display: flex; flex-direction: row; gap: 8px; align-items: center; }\n"
                 + "    .kof-view { box-sizing: border-box; }\n"
+                + "    .kof-window { box-sizing: border-box; padding: 16px; border-radius: 8px;\n"
+                + "      border: 1px solid #ccc; display: flex; flex-direction: column; gap: 8px; }\n"
                 + "  </style>\n</head>\n<body>\n  <div id=\"kof-root\"></div>\n"
                 + "  <script type=\"module\" src=\"" + entry + "\"></script>\n</body>\n</html>\n";
         Files.writeString(appDir.resolve("index.html"), page);
@@ -130,7 +132,14 @@ public final class KofJsRunner {
         Path shim = findWebviewShim();
         if (shim != null) {
             try {
-                new ProcessBuilder(shim.toString(), pagePath.toString()).start();
+                // The native webview owns the window: `kof run` stays alive
+                // until the user closes it, like a desktop application.
+                Process webview = new ProcessBuilder(shim.toString(), pagePath.toString()).start();
+                try {
+                    webview.waitFor();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
                 return;
             } catch (IOException e) {
                 System.err.println("kof: native webview failed (" + e.getMessage() + ") — falling back");

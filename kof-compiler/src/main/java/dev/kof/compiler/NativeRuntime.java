@@ -3867,6 +3867,8 @@ final class NativeRuntime {
                 ret
             kof_ui_window_close:
                 ret
+            kof_ui_window_set_size:
+                ret
             kof_ui_window_set_theme:
                 ret
             kof_ui_label_new:

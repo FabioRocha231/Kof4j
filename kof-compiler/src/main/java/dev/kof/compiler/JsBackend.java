@@ -1858,6 +1858,7 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_button_remove") || name.equals("kof_ui_input_set_text")
                 || name.equals("kof_ui_input_text") || name.equals("kof_ui_input_remove")
                 || name.equals("kof_ui_view_remove") || name.equals("kof_ui_window_set_theme")
+                || name.equals("kof_ui_window_set_size")
                 || name.equals("kof_ui_label_set_font_size") || name.equals("kof_ui_label_font_size")
                 || name.equals("kof_ui_label_set_bold") || name.equals("kof_ui_label_bold")
                 || name.equals("kof_ui_label_set_color") || name.equals("kof_ui_label_color")) {
@@ -2159,11 +2160,19 @@ class JsBackend implements Backend {
                 }
                 kofUiInjectTheme();
                 const root = document.getElementById("kof-root");
-                if (root) {
-                    document.title = title;
-                    root.innerHTML = "";
+                if (!root) {
+                    return -1;
                 }
-                return 1;
+                if (typeof window.__kofWindows === "undefined") {
+                    window.__kofWindows = {};
+                }
+                const id = Object.keys(window.__kofWindows).length + 1;
+                const winEl = document.createElement("div");
+                winEl.className = "kof-window";
+                window.__kofWindows[id] = winEl;
+                document.title = title;
+                root.appendChild(winEl);
+                return id;
             }
 
             // Kof UI theme — the same Dracula/VSCode aesthetic in every host
@@ -2199,11 +2208,12 @@ class JsBackend implements Backend {
                 if (typeof document === "undefined") {
                     return;
                 }
-                const root = document.getElementById("kof-root");
+                const winEl = globalThis.window && globalThis.window.__kofWindows
+                        && globalThis.window.__kofWindows[win];
                 const nodes = globalThis.window && globalThis.window.__kofNodes;
                 const node = nodes && nodes[label];
-                if (root && node) {
-                    root.appendChild(node);
+                if (winEl && node) {
+                    winEl.appendChild(node);
                 }
             }
 
@@ -2211,7 +2221,36 @@ class JsBackend implements Backend {
                 kofUiFlush();
             }
 
+            export function kofUiWindowSetSize(window, width, height) {
+                if (typeof document === "undefined") {
+                    return;
+                }
+                const winEl = window.__kofWindows && window.__kofWindows[window];
+                if (winEl) {
+                    winEl.style.width = width + "px";
+                    winEl.style.height = height + "px";
+                }
+                try {
+                    if (typeof window.resizeTo === "function") {
+                        window.resizeTo(width, height);
+                    }
+                } catch (e) {
+                    // resizeTo is blocked on some hosts; the CSS sizing above
+                    // still constrains the window content.
+                }
+            }
+
             export function kofUiWindowClose(window) {
+                if (typeof document === "undefined") {
+                    return;
+                }
+                const winEl = window.__kofWindows && window.__kofWindows[window];
+                if (winEl) {
+                    if (winEl.parentNode) {
+                        winEl.parentNode.removeChild(winEl);
+                    }
+                    delete window.__kofWindows[window];
+                }
             }
 
             export function kofUiWindowSetTheme(window, theme) {
@@ -3240,6 +3279,11 @@ private void writeRuntime(Path outputDir) throws IOException {
                     .kof-column { display: flex; flex-direction: column; gap: 8px; }
                     .kof-row { display: flex; flex-direction: row; gap: 8px; align-items: center; }
                     .kof-view { box-sizing: border-box; }
+                    .kof-window {
+                      box-sizing: border-box; padding: 16px; border-radius: 8px;
+                      border: 1px solid var(--border); background: var(--bg);
+                      display: flex; flex-direction: column; gap: 8px;
+                    }
                     #kof-status {
                       background: var(--panel); border-top: 1px solid var(--border);
                       color: var(--dim); font-size: 11px; padding: 4px 14px;
