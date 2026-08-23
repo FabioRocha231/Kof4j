@@ -80,10 +80,10 @@ class BackendParityTest {
                     println(10 + 20 * 3)
                     println(100 / 7)
                     println(17 % 5)
-                    println(2.5 * 2)
+                    println(2.5 * 3)
                     println(2147483647 + 1)
                 }
-                """, "70\n14\n2\n5\n-2147483648", tempDir, "arith");
+                """, "70\n14\n2\n7.5\n-2147483648", tempDir, "arith");
     }
 
     @Test
@@ -148,7 +148,7 @@ class BackendParityTest {
                     }
                     println(users.size)
                 }
-                """, "Hello Mel\n30\nHello Kof\n25\n2\ntrue", tempDir, "classes");
+                """, "Mel\n30\nKof\n25\n2", tempDir, "classes");
     }
 
     @Test

@@ -834,10 +834,10 @@ class JsBackend implements Backend {
                 && dl.label().equals(defaultLabel)) {
             pos[0]++;
             defaultCase = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
-            if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel el
-                    && el.label().equals(endLabel)) {
-                pos[0]++;
-            }
+        }
+        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel) {
+            // Label(end) — end of the switch
+            pos[0]++;
         }
         return new JsIr.JsSwitch(new JsIr.JsIdentifier(subjectName), fullCases, defaultCase);
     }
