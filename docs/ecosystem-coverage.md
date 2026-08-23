@@ -57,6 +57,8 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
 | `kof.test` | `assert(cond[, msg])`, `kof test` | CompilerDriver/CLI | AssertE2ETest (5) |
 | `kof.ui` | `Color/Theme/Window/Label/Button`, `Palette.*` | KofUi.java | UiE2ETest (6), WindowE2ETest (3) |
+| `kof.config` | `config.get/env/has`, `config.str/int/long/bool(name, fallback)` — arquivo + profiles + env, precedência | KofConfig.java | KofConfigE2ETest (8) |
+| `kof.log` | `log.debug/info/warn/error`, níveis (default INFO), `off`, warn→stderr | KofLog.java | KofLogE2ETest (7) |
 | `kof.cli` | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` | kof-cli | Bench, KofDebug E2E |
 
 ## 2.3 kof.security — inventário (6 namespaces, dispatch compile-time)
@@ -96,14 +98,14 @@ Documentação: `docs/security.md`; testes: `KofSecurityTest` (22).
 | Native | `NativeRuntime.java` (asm x86-64, sem libc) | strings, listas, json, io, sec (parcial), net (símbolos), time, print |
 | JS | `JsBackend` gera `kof-runtime.mjs` + `kof-runtime-io.mjs`; `kof-runtime` module = `KofJsRunner` (GraalJS embarcado) | linguagem, io via `kof_platform`, sec, ui (DOM/webview) |
 
-## 2.6 Testes (29 arquivos, 471 JUnit) — por módulo
+## 2.6 Testes (31 arquivos, 490 JUnit) — por módulo
 
 Security (22) · CompilerDriver (190) · Native E2E (50) · KofJS E2E (35) ·
 JVM E2E (29) · Optimizer (21) · Io (15) · Json (14) · CoreRegression (12) ·
 BackendParity (10) · Exceptions (9) · Web E2E (9) · HttpServer (8) ·
-Idiomatic (7+6) · Ui (6) · Assert (5) · FunctionSyntax (4) · Lambda (4) ·
-Stdlib (4) · Spawn (3) · Window (3) · IRStatistics (2) · DebugInfo (2) ·
-NativeDebug (5).
+**KofConfig (8)** · **KofLog (7)** · Idiomatic (7+6) · Ui (6) · Assert (5) ·
+FunctionSyntax (4) · Lambda (4) · Stdlib (4) · Spawn (3) · Window (3) ·
+IRStatistics (2) · DebugInfo (2) · NativeDebug (5).
 Golden: `tests/golden/` 8 casos × jvm+native (16/16).
 
 ## 2.7 Benchmarks (33, em 16 categorias)
@@ -126,7 +128,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
 | application lifecycle | `main()`/`args` | y | y (args vazios) | y | UiE2ETest | language-state.md |
-| configuration model | — | — | — | — | — | — |
+| configuration model | `config.get/str/int/long/bool/has` (arquivo + env + profiles) | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | stdlib.md |
 | dependency injection | `NA` (sem container; resolução direta) | — | — | — | — | philosophy.md |
 | events | `PLANNED` (event bus) | — | — | — | — | roadmap.md |
 | validation | `PLANNED` (`kof.validation`) | — | — | — | — | stdlib.md |
@@ -134,7 +136,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | caching | `PLANNED` | — | — | — | — | roadmap.md |
 | transactions | `PLANNED` (com kof.database) | — | — | — | — | future/DATABASE_VISION.md |
 | resource management | `PARTIAL` (try/finally real) | y | y | — | ExceptionsE2ETest | language-state.md |
-| profiles/environments | `PLANNED` (kof.config) | — | — | — | — | stdlib.md |
+| profiles/environments | `PARTIAL` (profile file + env; o resto em kof.config) | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | — |
 
 ## 3.2 Web / HTTP / REST
 
@@ -249,7 +251,8 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | metrics (runtime API) | `PARTIAL` (tooling `kof bench/profile`) | y | y | – | Bench | performance.md |
 | health checks / readiness / liveness | `PLANNED` | — | — | — | — | — |
 | tracing / OpenTelemetry | `PLANNED` | — | — | — | — | — |
-| structured logging / correlation IDs | `PLANNED` | — | — | — | — | — |
+| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | – LOG001 | – LOG001 | KofLogE2ETest | — |
+| correlation IDs / request IDs | `PLANNED` | — | — | — | — | — |
 | request IDs | `PLANNED` | — | — | — | — | — |
 | profiling / runtime diagnostics | `PARTIAL` (`kof profile`) | y | y | – | — | performance.md |
 | resource monitoring | `PARTIAL` (memstats nativo, RSS no bench) | – | y | – | Bench | performance.md |
@@ -258,10 +261,10 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| environment variables | `DONE` (`secrets.get`, `KOF_*`) | y | y | y | KofSecurityTest | security.md |
+| environment variables | `DONE` (`secrets.get`, `KOF_*`, `config.env`) | y | y | y | KofSecurityTest, KofConfigE2ETest | security.md |
 | command-line arguments | `DONE` (`main(args)`) | y | y (vazio) | y (vazio) | UiE2ETest | language-state.md |
-| config files / profiles / precedence | `PLANNED` (`kof.config`) | — | — | — | — | stdlib.md |
-| typed configuration | `PLANNED` | — | — | — | — | — |
+| config files / profiles / precedence | `DONE` (JVM): arquivo explícito > env > profile > default | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | stdlib.md |
+| typed configuration | `DONE` (`config.str/int/long/bool`) | y | – | – | KofConfigE2ETest | — |
 | hot reload | `PLANNED`/`NA` | — | — | — | — | — |
 
 ## 3.11 Testing
@@ -317,9 +320,9 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 |---|-----|---------|----------------|
 | G1 | **Database/SQL** inexistente (nem JDBC, nem SQL) | apps reais sem persistência | `kof.database` (SQL-first, prepared statements, transactions, pools, migrations) |
 | G2 | **HTTP client** inexistente | integrações, testes, frontend | `kof.http` client (get/post/put/delete, headers, JSON, timeout) |
-| G3 | **Configuration** inexistente (só env) | apps sem profiles/config file | `kof.config` (env + arquivo + profiles + precedência + typed) |
+| G3 | ~~Configuration~~ — ✅ `kof.config` implementado (JVM; arquivo > env > profile > default, typed `str/int/long/bool`); falta Native/JS (CONFIG001) | — | estender targets (P0/G10) |
 | G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
-| G5 | **Observabilidade runtime** inexistente (só tooling) | produção sem health/metrics/logging | `kof.observability` (health, metrics, logging estruturado, request IDs) |
+| G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM, LOG001 outros); faltam health checks, metrics e request IDs | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
 | G6 | **kof.test estruturado** inexistente | testes como cidadãos de primeira classe | `test "nome" { }` + suites + E2E |
 | G7 | **Diagnósticos de target incompletos no security/web**: `jwt.*`, `auth.*`, `csrf`, `cors`, headers no Native/JS e `kof_web_*` no Native não têm entrada em `supportedOn` (default `true`) → erro de link em vez de SECN00x claro | viola "nunca silencioso" | preencher `KofSecurity.supportedOn`/diagnósticos |
 | G8 | **Scheduling** inexistente (nem `sleep`) | jobs periódicos | `kof.time.sleep`, scheduler |
@@ -410,14 +413,15 @@ Princípios mantidos:
 1. G7 — diagnóstico de target completo no security/web (pequeno, remove
    erros de link silenciosos).
 2. G6 — `kof.test` estruturado (`test "nome" { }` + suites).
-3. G3 — `kof.config` (env + arquivo + profiles + typed).
+3. ~~G3~~ — `kof.config` ✅ (JVM); estender a Native/JS (CONFIG001) com G10.
 4. G2 — `kof.http` client.
 5. G1 — `kof.database` (JDBC idiomático: connect/query/transaction,
    prepared statements, pools, migrations).
 6. G4 — `kof.validation`.
-7. G5 — `kof.observability` (health, metrics, logging estruturado).
+7. G5 — `kof.observability` (health, metrics; o logging básico já existe
+   via `kof.log`).
 8. G8 — `kof.time.sleep` + scheduler básico.
-9. G10 — security no Native (jwt, passwords, sha512, aesgcm).
+9. G10 — security no Native (jwt, passwords, sha512, aesgcm) + config/log.
 10. G9 — rate limiting, sessions, API keys (kof.security web).
 11. G12 — TLS/HTTPS no servidor web.
 
@@ -475,5 +479,8 @@ módulo externo), cloud integrations, provider adapters.
   assinatura flexível ficam para a camada P2 de identity.
 - **`new` aceito por retrocompatibilidade**, não recomendado.
 - **AI**: decisão stdlib vs módulo externo adiada até a P3.
-- **Observabilidade**: tooling (`kof bench/profile`) hoje; API de runtime
-  (metrics/logging estruturado) entra em P0-G5.
+- **Observabilidade**: tooling (`kof bench/profile`) + `kof.log`
+  (níveis, stderr — JVM); health/metrics/request IDs entram em P0-G5.
+- **Configuration**: `kof.config` (JVM) segue a precedência
+  arquivo explícito > env > profile > default; typed via
+  `config.str/int/long/bool`; Native/JS reportam CONFIG001.

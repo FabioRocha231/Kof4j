@@ -155,6 +155,9 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.ui Window + Label (bind) | ✅ | ✅ (JS render) | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
+| kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
+| kof.config (arquivo > env > profile, typed) | ✅ | CONFIG001 | CONFIG001 |
+| kof.log (níveis, off, stderr) | ✅ | LOG001 | LOG001 |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
 (ECMAScript 2022+) executados na engine JS embarcada (GraalJS — sem Node.js
@@ -167,6 +170,14 @@ join implícito; Native reporta `CONC001` (gap documentado). Ver
 
 **Testes**: `assert(cond, "msg")` + `kof test <file.kf|dir>` — PASS/FAIL por
 exit code. Ver [learn/23-testing.md](learn/23-testing.md).
+
+**Depuração**: `kof debug <file.kf>` — servidor DAP sobre stdio com JDWP cru
+(breakpoints por linha Kof, call stack com funções/linhas Kof, continue,
+disconnect). Ver [docs/debugging.md](docs/debugging.md).
+
+**Auditoria do ecossistema**: matriz de cobertura da stdlib (inventário,
+gaps G1-G12, prioridade e estratégia) em
+[docs/ecosystem-coverage.md](docs/ecosystem-coverage.md).
 
 ---
 

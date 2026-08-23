@@ -490,7 +490,8 @@ class SemanticAnalyzer {
                     }
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
-                        && !"json".equals(ie.name()) && !KofWeb.isWebNamespace(ie.name())
+                        && !"json".equals(ie.name()) && !"process".equals(ie.name())
+                        && !KofWeb.isWebNamespace(ie.name())
                         && !KofConfig.isConfigNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())

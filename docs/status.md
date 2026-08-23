@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 471 testes (JVM + Native + KofJS E2E)
+mvn test             → 490 testes (JVM + Native + KofJS E2E)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -242,12 +242,12 @@ main() {
 
 ---
 
-## Testes (471/471 PASS)
+## Testes (490/490 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
 | CompilerDriverTest | 190 | compilação, semântica, fases, isolamento |
-| OptimizerTest | 20 | passes de otimização da IR |
+| OptimizerTest | 21 | passes de otimização da IR |
 | NativeE2ETest | 50 | execução real de binários nativos |
 | KofJsE2ETest | 35 | execução real JS (GraalJS) |
 | JvmE2ETest | 29 | execução real de bytecode JVM |
@@ -258,6 +258,8 @@ main() {
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
+| KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONFIG001 |
+| KofLogE2ETest | 7 | kof.log: níveis, stderr, off, LOG001 |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
@@ -268,7 +270,7 @@ main() {
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **471** | |
+| **Total** | **490** | |
 
 ---
 

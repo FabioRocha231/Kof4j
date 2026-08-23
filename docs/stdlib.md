@@ -58,10 +58,10 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.database` | ⏳ | planejado (SQL-first, sem ORM pesado) |
 | `kof.messaging` | ⏳ | planejado |
 | `kof.validation` | ⏳ | planejado |
-| `kof.logging` | ⏳ | planejado (println hoje) |
+| `kof.logging` | ✅ | `log.debug/info/warn/error`, níveis, off (JVM; LOG001 outros) — KofLogE2ETest (7) |
 | `kof.observability` | ⏳ | planejado |
 | `kof.process` | ⏳ | planejado |
-| `kof.config` | ⏳ | planejado (env hoje via `secrets.get`) |
+| `kof.config` | ✅ | `config.get/env/has`, `config.str/int/long/bool(name, fallback)`; arquivo > env > profile > default (JVM; CONFIG001 outros) — KofConfigE2ETest (8) |
 
 ---
 
@@ -106,7 +106,7 @@ Resumo executivo (0.0.5-alpha):
 1. G7 — diagnóstico de target completo no security/web (erros de link →
    SECN00x claros).
 2. G6 — `kof.test` estruturado (`test "nome" { }` + suites).
-3. G3 — `kof.config` (env + arquivo + profiles + typed).
+3. ~~G3~~ — `kof.config` ✅ (JVM); estender a Native/JS.
 4. G2 — `kof.http` client (get/post, headers, JSON, timeout).
 5. G1 — `kof.database` (JDBC idiomático: connect/query/transaction,
    prepared statements, pools, migrations).

@@ -24,7 +24,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (471/471) |
+| `mvn test` | ✅ PASSA (490/490) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build --target jvm` | ✅ FUNCIONA |
 | `kof build --target native` | ✅ FUNCIONA |
@@ -118,6 +118,39 @@ handle(String method, String path, String body): String {
 
 Handlers top-level (static), Content-Type automático, `--port`/`--host`, graceful shutdown.
 
+### HTTP moderno (`web.app()` — stack web nativa)
+
+```kf
+var app = web.app()
+app.get("/users/:id") {
+    var user = User(param("id"))
+    json.encode(user)
+}
+app.listen(8080)
+```
+
+Rotas com path params (`:id`), query, headers, middleware `app.use { }`,
+Content-Type automático (JSON), 404/500, concorrência com virtual threads.
+`kof serve <file.kf>` detecta `main()` e executa apps `web.app()`.
+9 testes E2E com sockets reais (`KofWebE2ETest`). Ver `docs/stdlib-web.md`.
+
+### kof.config e kof.log
+
+```kf
+config.str("database.url", "jdbc:h2:mem:test")   // arquivo > env > profile > default
+log.info("servindo na porta 8080")               // debug/info/warn/error, níveis
+```
+
+`kof.config` (typed: str/int/long/bool, env/has) e `kof.log` (níveis, off,
+warn→stderr) — JVM; Native/JS reportam CONFIG001/LOG001. Testes:
+`KofConfigE2ETest` (8), `KofLogE2ETest` (7).
+
+### kof.ui (fundação)
+
+`Color` (RGBA 32-bit), `Theme` (light/dark), `Window/Label/Button`,
+`Palette.*` — webview embarcado no JS runner (`--openWindow`) e shell
+nativo `kof-webview` (WebKitGTK).
+
 ---
 
 ## O que está implementado
@@ -193,6 +226,9 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 | `kof serve`, `kof check`, `kof info [--json]` | ✅ |
 | `kof lsp` (LSP mínimo com frontend real) | ✅ |
 | `kof install`, `kof version` | ✅ |
+| `kof bench` (33 benchmarks, mediana+RSS+baseline), `kof profile` | ✅ |
+| `kof inspect` (IR) | ✅ |
+| `kof debug <file.kf>` (DAP + JDWP cru; breakpoints por linha Kof, stack) | ✅ |
 
 ---
 
@@ -222,10 +258,18 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 - v1 implementado (ver seção "Segurança" acima).
 - Pendente: OAuth2/OIDC client, sessions, rate limiting, audit logging,
   JWT/passwords no Native (SECN001 — HMAC asm já existe), sha512 no Native
-  (SECN003), AES-GCM fora do JVM (SECN002).
+  (SECN003), AES-GCM fora do JVM (SECN002), e diagnósticos de target
+  completos para jwt/auth/csrf/cors/headers (gap G7 da auditoria).
+
+### Plataforma (gaps da auditoria — docs/ecosystem-coverage.md §4)
+- Database/SQL (G1), HTTP client (G2), validation (G4), health/metrics
+  (G5), suíte estruturada de testes (G6), scheduling (G8), rate
+  limiting/sessions/API keys (G9), TLS/HTTPS (G12).
+- `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001.
 
 ### Tooling
-- `kof test` (PASS/FAIL por exit code com `assert`)
+- `kof test` (PASS/FAIL por exit code com `assert`; suíte estruturada
+  `test "nome" { }` planejada)
 - REPL
 - `kof fmt` (planejado)
 
@@ -254,7 +298,7 @@ Source (.kf)
 
 | Métrica | Valor |
 |---------|-------|
-| Testes JUnit | 471 (todos passando) |
+| Testes JUnit | 490 (todos passando) |
 | E2E JVM | 29 |
 | E2E Native | 50 |
 | E2E JS (KofJS) | 35 |
