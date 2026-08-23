@@ -54,6 +54,11 @@ public final class KofJsRunner {
      */
     public static int run(Path moduleFile, OutputStream out, InputStream in,
                           OutputStream err, boolean openWindow) throws IOException {
+        return run(moduleFile, out, in, err, openWindow, new String[0]);
+    }
+
+    public static int run(Path moduleFile, OutputStream out, InputStream in,
+                          OutputStream err, boolean openWindow, String[] programArgs) throws IOException {
         try (Context context = Context.newBuilder("js")
                 .allowIO(true)
                 .allowAllAccess(true)
@@ -62,7 +67,7 @@ public final class KofJsRunner {
                 .err(err)
                 .in(in)
                 .build()) {
-            exposePlatform(context, out, in);
+            exposePlatform(context, out, in, programArgs);
             Source source = Source.newBuilder("js", moduleFile.toFile())
                     .mimeType("application/javascript+module")
                     .build();
@@ -193,6 +198,11 @@ public final class KofJsRunner {
      * in Java. The generated JavaScript never reaches for Node/browser APIs.
      */
     private static void exposePlatform(Context context, OutputStream out, InputStream in) {
+        exposePlatform(context, out, in, new String[0]);
+    }
+
+    private static void exposePlatform(Context context, OutputStream out, InputStream in,
+                                       String[] programArgs) {
         Value bindings = context.getBindings("js");
         java.util.Map<String, Object> platform = new java.util.LinkedHashMap<>();
         platform.put("print", (ProxyExecutable) args -> {
@@ -236,6 +246,7 @@ public final class KofJsRunner {
                 return result;
             }
         });
+        platform.put("args", (ProxyExecutable) args -> java.util.Arrays.asList(programArgs));
         platform.put("readLine", (ProxyExecutable) args -> readLine(in));
         platform.put("readFile", (ProxyExecutable) args -> {
             try {

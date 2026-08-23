@@ -470,6 +470,10 @@ private Target target = Target.JVM;
                             "kof_args_list", List.of(new Type.ArrayType(BuiltinTypes.STRING)),
                             BuiltinTypes.LIST, KofCallKind.FUNCTION));
                     body.add(new KofStoreLocal(BuiltinTypes.LIST, 1));
+                } else if (target == Target.JS) {
+                    body.add(new KofCall(BuiltinTypes.LIST, "kof_args", List.of(),
+                            BuiltinTypes.LIST, KofCallKind.FUNCTION));
+                    body.add(new KofStoreLocal(BuiltinTypes.LIST, 1));
                 } else {
                     body.add(new KofCall(BuiltinTypes.LIST, "kof_list_new", List.of(),
                             BuiltinTypes.LIST, KofCallKind.FUNCTION));
@@ -1932,6 +1936,9 @@ private Target target = Target.JVM;
             };
             case IdentifierExpr ie -> {
                 if (loweringMain && "args".equals(ie.name())) {
+                    if (mainArgsListField) {
+                        yield KofProcess.STRING_LIST;
+                    }
                     yield new Type.ArrayType(BuiltinTypes.STRING);
                 }
                 for (int i = locals.size() - 1; i >= 0; i--) {

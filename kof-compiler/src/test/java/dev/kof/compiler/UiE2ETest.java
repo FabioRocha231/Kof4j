@@ -158,4 +158,101 @@ class UiE2ETest {
             throw new IOException("Interrupted", e);
         }
     }
+
+    @Test
+    void buttonOperations(@TempDir Path tempDir) throws IOException {
+        String program = """
+            main() {
+                var b = Button("Salvar")
+                println(b.text)
+                b.text = "Salvando..."
+                println(b.text)
+                b.remove()
+                var c = Button("Ok", () -> println("acabou"))
+                println(c.text)
+            }
+            """;
+        // JVM/Native handles are no-ops: the text getter returns "" there
+        // (rendering is KofJS) — the program must still compile and run.
+        Path src = tempDir.resolve("button.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "");
+        runNative(src, tempDir.resolve("native"), "");
+
+        Path srcJs = tempDir.resolve("button-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int code = dev.kof.runtime.KofJsRunner.run(
+                tempDir.resolve("js").resolve("Default.mjs"), out,
+                new java.io.ByteArrayInputStream(new byte[0]), out);
+        assertEquals(0, code, "JS run should succeed");
+        assertEquals("Salvar\nSalvando...\nOk", out.toString().trim(), "button binds on the JS target");
+    }
+
+    @Test
+    void lambdaCaptures(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "captures", """
+            main() {
+                var x = 21
+                var f = () -> println(x * 2)
+                f()
+                var msg = "captura"
+                var g = () -> println(msg)
+                g()
+            }
+            """, "42\ncaptura");
+
+        Path src = tempDir.resolve("captures-js.kf");
+        Files.writeString(src, """
+            main() {
+                var x = 21
+                var f = () -> println(x * 2)
+                f()
+                var msg = "captura"
+                var g = () -> println(msg)
+                g()
+            }
+            """);
+        CompilationResult js = driver.compile(src, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int code = dev.kof.runtime.KofJsRunner.run(
+                tempDir.resolve("js").resolve("Default.mjs"), out,
+                new java.io.ByteArrayInputStream(new byte[0]), out);
+        assertEquals(0, code, "JS run should succeed");
+        assertEquals("42\ncaptura", out.toString().trim(), "captures on the JS target");
+    }
+
+    @Test
+    void staticFieldStore(@TempDir Path tempDir) throws IOException {
+        String program = """
+            class App {
+                static Int count = 0
+            }
+            main() {
+                App.count = 5
+                println(App.count)
+                App.count = App.count + 1
+                println(App.count)
+            }
+            """;
+        Path src = tempDir.resolve("statics.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "5\n6");
+        // Native: static fields are a known gap (KofGetStatic/KofPutStatic
+        // are no-ops there); only the JVM/JS paths must observe the store.
+
+        Path srcJs = tempDir.resolve("statics-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js2"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int code = dev.kof.runtime.KofJsRunner.run(
+                tempDir.resolve("js2").resolve("Default.mjs"), out,
+                new java.io.ByteArrayInputStream(new byte[0]), out);
+        assertEquals(0, code, "JS run should succeed");
+        assertEquals("5\n6", out.toString().trim(), "static stores on the JS target");
+    }
 }

@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 486 testes (485 PASS + 1 em progresso: default params JS)
+mvn test             → 486 testes (486/486 PASS)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -276,10 +276,7 @@ main() {
 
 ---
 
-## Testes (486 — 485 PASS, 1 em progresso)
-
-> O teste em progresso pertence a uma feature da sessão paralela:
-> `CoreRegressionE2ETest.defaultParameters` (JS target).
+## Testes (486/486 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -380,11 +377,12 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 ## Próximos Passos
 
-- Corrigir os 2 testes em progresso da sessão paralela (default params JS,
-  webview UI)
 - Database + transactions nativos (JDBC por interop) — Fase 5
 - Validation + scheduling + events nativos — Fase 8
+- DI nativa + lifecycle (`application { onStart/onShutdown }`) — Fase 9
 - Aplicação web completa em Kof sem Spring (teste obrigatório) — Fase 12
+- Spring Starter (`kof spring starter`) — Fase 13
+- Structured logging (JSON), correlation ID; métricas/health/tracing — Fase 4
 - Resultado observável de tarefas (`await`), filas (`kof.concurrent.Queue`)
 - Scheduler nativo para `spawn`
 - `kof fmt`, hover/completion no LSP

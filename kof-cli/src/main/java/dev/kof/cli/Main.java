@@ -74,9 +74,13 @@ public final class Main {
             // JavaScript engine — no Node.js or external runtime required.
             // Windows created with kof.ui open in the system webview.
             int exitCode;
+            String[] programArgs = new String[Math.max(0, args.length - argStart)];
+            for (int i = argStart; i < args.length; i++) {
+                programArgs[i - argStart] = args[i];
+            }
             try {
                 exitCode = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry),
-                        System.out, System.in, System.err, true);
+                        System.out, System.in, System.err, true, programArgs);
             } catch (IOException e) {
                 System.err.println("failed to execute: " + e.getMessage());
                 cleanup(tempDir);

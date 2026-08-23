@@ -1778,7 +1778,7 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
-                || name.equals("kof_process_run")
+                || name.equals("kof_process_run") || name.equals("kof_args")
                 || name.equals("kof_box") || name.equals("kof_unbox");
     }
 
@@ -1828,6 +1828,11 @@ class JsBackend implements Backend {
         if (name.equals("kof_box") || name.equals("kof_unbox")) {
             // JS values are already boxed; these are identity.
             stack.add(kc.kind() == KofCallKind.FUNCTION ? args.get(0) : receiver);
+            return;
+        }
+        if (name.equals("kof_args")) {
+            registerIoRuntime("kofArgs");
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofArgs"), List.of()));
             return;
         }
         if (name.equals("kof_process_run")) {
@@ -2847,6 +2852,16 @@ class JsBackend implements Backend {
 
             export function kofPrint(x) {
                 kof_platform.print(String(x));
+            }
+
+            export function kofArgs() {
+                if (kof_platform.args) {
+                    return kof_platform.args();
+                }
+                if (typeof process !== "undefined" && process.argv) {
+                    return process.argv.slice(2);
+                }
+                return [];
             }
 
             export function kofProcessRun(program, args) {
