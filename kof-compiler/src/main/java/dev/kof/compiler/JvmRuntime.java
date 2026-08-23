@@ -799,11 +799,17 @@ static boolean hasRuntimeFn(String methodName) {
                         Process p = new ProcessBuilder(cmd)
                                 .redirectErrorStream(false)
                                 .start();
-                        String out = new String(p.getInputStream().readAllBytes(),
-                                java.nio.charset.StandardCharsets.UTF_8);
-                        String err = new String(p.getErrorStream().readAllBytes(),
-                                java.nio.charset.StandardCharsets.UTF_8);
+                        java.util.concurrent.FutureTask<String> outTask = new java.util.concurrent.FutureTask<>(
+                                () -> new String(p.getInputStream().readAllBytes(),
+                                        java.nio.charset.StandardCharsets.UTF_8));
+                        java.util.concurrent.FutureTask<String> errTask = new java.util.concurrent.FutureTask<>(
+                                () -> new String(p.getErrorStream().readAllBytes(),
+                                        java.nio.charset.StandardCharsets.UTF_8));
+                        Thread.startVirtualThread(outTask);
+                        Thread.startVirtualThread(errTask);
                         int code = p.waitFor();
+                        String out = outTask.get();
+                        String err = errTask.get();
                         return new ProcessResult(out, err, code);
                     } catch (Exception e) {
                         return new ProcessResult("", e.getMessage() == null
