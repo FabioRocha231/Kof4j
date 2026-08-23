@@ -227,8 +227,28 @@ class Lexer {
             case '\'' -> '\'';
             case '"' -> '"';
             case '0' -> '\0';
+            case 'u' -> readUnicodeEscape();
             default -> c;
         };
+    }
+
+    private char readUnicodeEscape() {
+        if (pos + 4 > source.length()) {
+            diagnostics.error(file, line, column, 1, "Incomplete unicode escape (expected \\uXXXX)", "LEX006");
+            return '\0';
+        }
+        String hex = source.substring(pos, pos + 4);
+        int code;
+        try {
+            code = Integer.parseInt(hex, 16);
+        } catch (NumberFormatException e) {
+            diagnostics.error(file, line, column, 4, "Invalid unicode escape: \\u" + hex, "LEX007");
+            pos += 4;
+            return '\0';
+        }
+        pos += 4;
+        column += 4;
+        return (char) code;
     }
 
     private void readNumber() {

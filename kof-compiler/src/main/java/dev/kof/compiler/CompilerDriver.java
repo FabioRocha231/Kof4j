@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class CompilerDriver {
 
@@ -140,7 +141,8 @@ public class CompilerDriver {
         IRMethod invoke = lowerMethod(synthetic, name, false, List.of());
         IRClass cls = new IRClass(name, "java/lang/Object", List.of(),
                 AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(),
-                List.of(invoke, generateDefaultConstructor(name, "java/lang/Object", List.of())), List.of(), null, 200 + lambdaCounter);
+                List.of(invoke, generateDefaultConstructor(name, "java/lang/Object", List.of(),
+                        new java.util.LinkedHashMap<>())), List.of(), null, 200 + lambdaCounter);
         syntheticClasses.add(cls);
         lambdaClassNames.put(le, name);
         return name;
@@ -979,7 +981,9 @@ public class CompilerDriver {
                         if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
                         ops.add(new KofNewObject(cs.type(), argTypes));
                         ops.add(new KofDup());
-                        List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
+                        List<Type> ctorParamTypes = (ctor != null
+                                && ctor.parameterTypes().size() == mc.arguments().size())
+                                ? ctor.parameterTypes() : argTypes;
                         localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                         ops.add(new KofCall(cs.type(), "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                     } else {
@@ -1701,12 +1705,18 @@ public class CompilerDriver {
             localIdx = emitExpression(aa.index(), ops, owner, localIdx, locals);
             Type recvType = inferExprType(aa.receiver(), locals);
             Type elemType = Type.arrayElementType(recvType);
-            ops.add(new KofArrayLoad(elemType));
-            if (!prefix) ops.add(new KofDup());
-            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-            ops.add(new KofBinary(op, elemType));
-            if (prefix) ops.add(new KofDup());
-            ops.add(new KofArrayStore(elemType));
+            {
+                // keep the previous value through a temp for both prefix and postfix
+                int tmp = localIdx++;
+                locals.add(new IRLocalVariable(tmp, "#inc", elemType));
+                ops.add(new KofArrayLoad(elemType));
+                ops.add(new KofDup());
+                ops.add(new KofStoreLocal(elemType, tmp));
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                ops.add(new KofBinary(op, elemType));
+                ops.add(new KofArrayStore(elemType));
+                ops.add(new KofLoadLocal(elemType, tmp));
+            }
             return localIdx;
         }
         // non-assignable operand: evaluate as expression (legacy behavior)
@@ -1726,22 +1736,14 @@ public class CompilerDriver {
                                    List<KofOperation> ops, int localIdx,
                                    List<IRLocalVariable> locals) {
         ops.add(new KofLoadLocal(ownerType, 0));
-        if (!prefix) {
-            ops.add(new KofDup());
-            ops.add(new KofLoadField(ownerType, fieldName, fieldType));
-            // [receiver, value] -> [value, receiver, value]
-            ops.add(new KofDupX1());
-            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-            ops.add(new KofBinary(op, fieldType));
-            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
-        } else {
-            ops.add(new KofLoadLocal(ownerType, 0));
-            ops.add(new KofLoadField(ownerType, fieldName, fieldType));
-            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-            ops.add(new KofBinary(op, fieldType));
-            ops.add(new KofDup());
-            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
-        }
+        ops.add(new KofLoadField(ownerType, fieldName, fieldType));
+        int tmp = localIdx++;
+        locals.add(new IRLocalVariable(tmp, "#inc", fieldType));
+        ops.add(new KofStoreLocal(fieldType, tmp));
+        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+        ops.add(new KofBinary(op, fieldType));
+        ops.add(new KofStoreField(ownerType, fieldName, fieldType));
+        ops.add(new KofLoadLocal(fieldType, tmp));
         return localIdx;
     }
 
@@ -1913,13 +1915,22 @@ public class CompilerDriver {
         int access = computeAccess(cls.modifiers());
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
+        java.util.Map<String, ExpressionNode> fieldInits = new java.util.LinkedHashMap<>();
         for (AstNode member : cls.members()) {
-            if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field, cls.typeParameters()));
-            else if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, false, cls.typeParameters()));
-            else if (member instanceof ConstructorDeclarationNode ctor) methods.add(lowerConstructor(ctor, internalName, superName, cls.typeParameters(), fields));
+            if (member instanceof FieldDeclarationNode field) {
+                IRField irField = lowerField(field, cls.typeParameters());
+                fields.add(irField);
+                if (field.initializer() != null && irField.initialValue() == null) {
+                    fieldInits.put(field.name(), field.initializer());
+                }
+            } else if (member instanceof MethodDeclarationNode method) {
+                methods.add(lowerMethod(method, internalName, false, cls.typeParameters()));
+            } else if (member instanceof ConstructorDeclarationNode ctor) {
+                methods.add(lowerConstructor(ctor, internalName, superName, cls.typeParameters(), fields, fieldInits));
+            }
         }
         if (!methods.stream().anyMatch(m -> m.name().equals("<init>"))) {
-            methods.add(0, generateDefaultConstructor(internalName, superName, fields));
+            methods.add(0, generateDefaultConstructor(internalName, superName, fields, fieldInits));
         }
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
     }
@@ -1948,6 +1959,7 @@ public class CompilerDriver {
             fields.add(new IRField(comp.name(), toType(comp.type()), AccessFlags.PRIVATE | AccessFlags.FINAL, null));
         }
         methods.add(0, generateRecordConstructor(rec, internalName));
+        methods.addAll(generateRecordDefaultOverloads(rec, internalName));
         Type ownerType = ownerTypeFromInternal(internalName);
         for (RecordComponentNode comp : rec.components()) {
             Type compType = toType(comp.type());
@@ -2035,7 +2047,8 @@ public class CompilerDriver {
     }
 
     private IRMethod lowerConstructor(ConstructorDeclarationNode ctor, String owner, String superName,
-                                      List<String> typeParams, List<IRField> fields) {
+                                      List<String> typeParams, List<IRField> fields,
+                                      java.util.Map<String, ExpressionNode> fieldInits) {
         List<Type> paramTypes = ctor.parameters().stream()
                 .map(p -> resolveWithTypeParams(p.type(), typeParams)).toList();
         int access = computeAccess(ctor.modifiers());
@@ -2059,25 +2072,42 @@ public class CompilerDriver {
             localVars.add(new IRLocalVariable(localIdx, param.name(), paramType));
             localIdx += isDoubleWidth(paramType) ? 2 : 1;
         }
+        for (var entry : fieldInits.entrySet()) {
+            Type fieldType = fields.stream().filter(f -> f.name().equals(entry.getKey())).findFirst()
+                    .map(f -> f.type()).orElse(Type.UnknownType.UNKNOWN);
+            ops.add(new KofLoadLocal(ownerType, 0));
+            localIdx = emitExpression(entry.getValue(), ops, owner, localIdx, localVars);
+            ops.add(new KofStoreField(ownerType, entry.getKey(), fieldType));
+        }
         for (StatementNode stmt : ctor.body()) localIdx = emitStatement(stmt, ops, owner, localIdx, localVars, Type.PrimitiveType.VOID);
         ops.add(new KofReturnVoid());
         return new IRMethod("<init>", Type.PrimitiveType.VOID, paramTypes, access, ctor.thrownExceptions(),
                 List.of(new IRBasicBlock(0, ops)), localVars);
     }
 
-    private IRMethod generateDefaultConstructor(String owner, String superName, List<IRField> fields) {
+    private IRMethod generateDefaultConstructor(String owner, String superName, List<IRField> fields,
+                                                 java.util.Map<String, ExpressionNode> fieldInits) {
         Type ownerType = ownerTypeFromInternal(owner);
         Type superType = ownerTypeFromInternal(superName);
         List<KofOperation> ops = new ArrayList<>();
+        List<IRLocalVariable> locals = new ArrayList<>();
+        locals.add(new IRLocalVariable(0, "this", ownerType));
         if (!"java/lang/Object".equals(superName)) {
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
         }
         emitFieldInitializers(ops, ownerType, fields);
+        int localIdx = 1;
+        for (var entry : fieldInits.entrySet()) {
+            Type fieldType = fields.stream().filter(f -> f.name().equals(entry.getKey())).findFirst()
+                    .map(f -> f.type()).orElse(Type.UnknownType.UNKNOWN);
+            ops.add(new KofLoadLocal(ownerType, 0));
+            localIdx = emitExpression(entry.getValue(), ops, owner, localIdx, locals);
+            ops.add(new KofStoreField(ownerType, entry.getKey(), fieldType));
+        }
         ops.add(new KofReturnVoid());
         return new IRMethod("<init>", Type.PrimitiveType.VOID, List.of(), AccessFlags.PUBLIC, List.of(),
-                List.of(new IRBasicBlock(0, ops)),
-                List.of(new IRLocalVariable(0, "this", ownerType)));
+                List.of(new IRBasicBlock(0, ops)), locals);
     }
 
     /**
@@ -2090,8 +2120,19 @@ public class CompilerDriver {
             if (field.initialValue() == null || (field.accessFlags() & AccessFlags.STATIC) != 0) continue;
             ops.add(new KofLoadLocal(ownerType, 0));
             Object v = field.initialValue();
+            String fieldName = field.type() instanceof Type.PrimitiveType pt
+                    ? Type.canonicalPrimitiveName(pt.name()) : "";
             if (v instanceof Integer) {
-                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, (Integer) v));
+                int iv = (Integer) v;
+                if ("long".equals(fieldName)) {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.LONG, (long) iv));
+                } else if ("double".equals(fieldName)) {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.DOUBLE, (double) iv));
+                } else if ("float".equals(fieldName)) {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.FLOAT, (float) iv));
+                } else {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, iv));
+                }
             } else if (v instanceof Long) {
                 ops.add(new KofLoadLiteral(Type.PrimitiveType.LONG, (Long) v));
             } else if (v instanceof String) {
@@ -2134,6 +2175,49 @@ public class CompilerDriver {
         ops.add(new KofReturnVoid());
         return new IRMethod("<init>", Type.PrimitiveType.VOID, compTypes, AccessFlags.PUBLIC, List.of(),
                 List.of(new IRBasicBlock(0, ops)), locals);
+    }
+
+    private List<IRMethod> generateRecordDefaultOverloads(RecordDeclarationNode rec, String owner) {
+        List<IRMethod> overloads = new ArrayList<>();
+        int n = rec.components().size();
+        int firstDefault = n;
+        for (int i = 0; i < n; i++) {
+            if (rec.components().get(i).initializer() != null) {
+                firstDefault = i;
+                break;
+            }
+        }
+        if (firstDefault == n) return overloads;
+        Type ownerType = ownerTypeFromInternal(owner);
+        List<Type> canonicalTypes = rec.components().stream().map(c -> toType(c.type())).toList();
+        for (int drop = 1; drop <= n - firstDefault; drop++) {
+            int paramCount = n - drop;
+            List<Type> paramTypes = new ArrayList<>();
+            List<IRLocalVariable> locals = new ArrayList<>();
+            List<KofOperation> ops = new ArrayList<>();
+            locals.add(new IRLocalVariable(0, "this", ownerType));
+            ops.add(new KofLoadLocal(ownerType, 0));
+            int localIdx = 1;
+            for (int i = 0; i < paramCount; i++) {
+                Type t = toType(rec.components().get(i).type());
+                paramTypes.add(t);
+                locals.add(new IRLocalVariable(localIdx, rec.components().get(i).name(), t));
+                ops.add(new KofLoadLocal(t, localIdx));
+                localIdx += isDoubleWidth(t) ? 2 : 1;
+            }
+            for (int i = paramCount; i < n; i++) {
+                ExpressionNode init = rec.components().get(i).initializer();
+                if (init != null) {
+                    localIdx = emitExpression(init, ops, owner, localIdx, locals);
+                }
+            }
+            ops.add(new KofCall(ownerType, "<init>", canonicalTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+            ops.add(new KofReturnVoid());
+            IRMethod m = new IRMethod("<init>", Type.PrimitiveType.VOID, paramTypes, AccessFlags.PUBLIC,
+                    List.of(), List.of(new IRBasicBlock(0, ops)), locals);
+            overloads.add(m);
+        }
+        return overloads;
     }
 
     private String toInternalName(String packageName, String simpleName) {
