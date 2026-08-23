@@ -145,6 +145,9 @@ class SemanticAnalyzer {
                 SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, flags, cls.name());
                 classSym.members().define(fs);
                 classScope.define(fs);
+                if (field.initializer() != null) {
+                    inferType(field.initializer(), classScope);
+                }
             }
         }
         boolean hasCtor = false;
@@ -269,6 +272,9 @@ class SemanticAnalyzer {
             SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(comp.name(), compType, 0, rec.name());
             classSym.members().define(fs);
             classScope.define(fs);
+            if (comp.initializer() != null) {
+                inferType(comp.initializer(), classScope);
+            }
         }
         SymbolTable.ConstructorSymbol ctorSym = new SymbolTable.ConstructorSymbol(rec.name(), compTypes, 1);
         classSym.members().define(ctorSym);

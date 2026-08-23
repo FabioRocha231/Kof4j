@@ -37,7 +37,8 @@ record RecordDeclarationNode(SourcePosition position, String name, List<String> 
                              List<? extends AstNode> members) implements TypeDeclarationNode {
 }
 
-record RecordComponentNode(SourcePosition position, List<String> modifiers, String type, String name) implements AstNode {
+record RecordComponentNode(SourcePosition position, List<String> modifiers, String type, String name,
+                            ExpressionNode initializer) implements AstNode {
 }
 
 sealed interface MemberNode extends AstNode {

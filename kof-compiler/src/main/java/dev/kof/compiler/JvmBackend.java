@@ -355,9 +355,7 @@ class JvmBackend implements Backend {
         if ("<init>".equals(method.name())) {
             String superName = classSuperName != null ? classSuperName : "java/lang/Object";
             boolean hasSuperCall = ops.stream().anyMatch(op -> op instanceof KofCall kc
-                    && kc.kind() == KofCallKind.CONSTRUCTOR
-                    && kc.ownerType() instanceof Type.ClassType ct
-                    && superName.equals(ct.internalName()));
+                    && kc.kind() == KofCallKind.CONSTRUCTOR);
             if (!hasSuperCall) {
 
                 Type thisType = classTypeFromInternal(className);

@@ -250,6 +250,9 @@ public class NativeBackend implements Backend {
         currentClass = clazz;
 
         String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
+        if ("<init>".equals(method.name())) {
+            mangled += "_" + method.parameterTypes().size();
+        }
         functionMangleMap.put(method.name(), mangled);
         sb.append("\n.globl ").append(mangled).append("\n");
         sb.append(".type ").append(mangled).append(", @function\n");
@@ -856,7 +859,7 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR) {
             if (kc.ownerType() instanceof Type.ClassType ct) {
-                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>");
+                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>") + "_" + kc.parameterTypes().size();
             }
         }
         if (kc.ownerType() instanceof Type.ClassType ct) {

@@ -319,7 +319,12 @@ class Parser {
         List<String> mods = parseModifiers();
         String type = parseTypeRef();
         String name = expectId("Expected component name", "PARSE015");
-        return new RecordComponentNode(pos(), mods, type, name);
+        ExpressionNode init = null;
+        if (check(TokenType.EQUAL)) {
+            advance();
+            init = parseExpression();
+        }
+        return new RecordComponentNode(pos(), mods, type, name, init);
     }
 
     private AstNode parseClassMember() {
