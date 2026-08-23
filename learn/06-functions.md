@@ -2,34 +2,24 @@
 
 > **Status: implementado**
 >
-> O parser já suporta declaração de métodos em classes e records, mas funções de nível superior e closures ainda não foram implementadas.
+> Funções de nível superior, métodos, expression bodies e default parameters funcionam nos três targets (JVM, Native, KofJS).
 
-## Métodos em classes
-
-Métodos são declarações dentro de uma classe ou record:
+## Funções de nível superior
 
 ```kf
-class Calculadora {
-    Int somar(Int a, Int b) {
-        return a + b;
-    }
+Int soma(Int a, Int b) {
+    return a + b
+}
+
+main() {
+    println(soma(2, 3))
 }
 ```
 
-## Expression body (planejado)
-
-Para funções simples, Kof permite uma forma mais concisa:
+## Expression body
 
 ```kf
-Int somar(Int a, Int b) = a + b;
-```
-
-Isso é equivalente a:
-
-```kf
-Int somar(Int a, Int b) {
-    return a + b;
-}
+Bool positivo(Int x) = x > 0
 ```
 
 ## Parâmetros
@@ -41,6 +31,37 @@ void imprimir(String mensagem, Int vezes) {
     }
 }
 ```
+
+## Default parameters
+
+```kf
+greet(String name = "world") {
+    println("hello " + name)
+}
+
+main() {
+    greet("Mel")
+    greet()          // usa o default — "hello world"
+}
+```
+
+`Server(8080)` / `Server()` para classes com componentes default seguem a
+mesma semântica, resolvida em compile-time.
+
+## Return nu
+
+Em funções `void`, `return` pode aparecer sozinho:
+
+```kf
+void maybe(Bool condition) {
+    if (condition) {
+        return
+    }
+    println("not-returned")
+}
+```
+
+`return;` também é aceito por compatibilidade.
 
 ## Retorno
 

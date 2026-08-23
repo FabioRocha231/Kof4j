@@ -212,6 +212,30 @@ Implementation:
 - Executes via `java -cp`
 - Cleans up temp files
 
+## Standard Library (compile-time dispatch)
+
+A Standard Library do Kof é implementada como **tabelas de dispatch
+compile-time** (docs/stdlib.md): cada módulo é um descriptor no compilador
+(`KofIo.java`, `KofWeb.java`, `KofSecurity.java`, `KofUi.java`) que mapeia a
+intenção do programador para funções de runtime `kof_*`:
+
+```text
+Kof source
+  ↓
+SemanticAnalyzer   → tipos das chamadas
+CompilerDriver     → lowering para KofCall(kof_*)
+  ├── JvmRuntime   → KofRuntime.java gerado (javax.crypto, java.nio...)
+  ├── NativeRuntime→ assembly x86-64 (syscalls, sem libc)
+  └── JsBackend    → kof-runtime.mjs (JS puro + kof_platform)
+```
+
+Gaps de target produzem **diagnósticos claros em compile-time** (SECN00x,
+CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
+
+Módulos: `kof.core`, `kof.collections`, `kof.io`, `kof.time`, `kof.json`,
+`kof.http`, `kof.web`, `kof.security`, `kof.concurrent`, `kof.test`,
+`kof.cli`. Estado completo em docs/stdlib.md.
+
 ## Diagnostics
 
 All errors point to the original source location.

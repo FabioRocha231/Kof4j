@@ -9,13 +9,14 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 458 testes (JVM + Native + KofJS E2E)
+mvn test             → 471 testes (JVM + Native + KofJS E2E)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
-kof serve            → PASS (KofHttpServer, thread pool, 404/500, JSON)
+kof serve            → PASS (web.app() nativo + API legada handle())
 kof check            → PASS
 kof test             → PASS (PASS/FAIL por exit code com assert)
 kof bench            → PASS (harness: compile, run, validate, métricas, baseline)
+kof debug            → PASS (DAP MVP no target JVM)
 kof info             → PASS
 kof lsp              → PASS (diagnostics reais do frontend)
 kof install          → PASS
@@ -155,8 +156,13 @@ Bool positivo(Int x) = x > 0         // expression body
 | arrays | ✅ | ✅ | ✅ |
 | `List<T>`, `listOf` | ✅ | ✅ | ✅ |
 | JSON encode/decode (objetos/records no JVM) | ✅ | ✅ | ✅ |
+| JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
+| kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
+| kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
+| kof.ui (Color, Palette, Theme, Window) | ✅ | ✅ (JS render) | ✅ |
+| default parameters em funções | ✅ | ✅ | ✅ |
 | `readLine()` | ✅ | ✅ | ✅ |
 
 ### Concorrência (`spawn`)
@@ -236,7 +242,7 @@ main() {
 
 ---
 
-## Testes (458 testes — 456 PASS, 2 em áreas em progresso)
+## Testes (471/471 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -262,7 +268,7 @@ main() {
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **458** | |
+| **Total** | **471** | |
 
 ---
 
@@ -322,20 +328,27 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 2. `spawn` no Native: CONC001 (gap documentado)
 3. JSON de objetos/records no Native: JSN002 (gap documentado)
 4. JSON Float/Double: JSN001 (gap documentado)
-5. Lambdas sem captura (planned)
-6. Resultado de tarefa (`await`/join explícito): planned
-7. `kof fmt`: planned
-8. Map/Set, Option/null safety, pattern matching: planned
+5. JSON decode de arrays (`Int[]`): JSN003 (gap documentado; `List<T>` e
+   `List<User>` já funcionam)
+6. Lambdas sem captura (planned)
+7. Resultado de tarefa (`await`/join explícito): planned
+8. `kof fmt`: planned
+9. Map/Set, Option/null safety, pattern matching: planned
+10. Web: status codes/headers customizados por handler (planned)
+11. Web: target `js` reporta WEB001; target `native` sem servidor web
 
 ---
 
 ## Próximos Passos
 
-- kof.test como stdlib completa (assert existe; evoluir para suite estruturada)
+- kof.config (configuração nativa: env vars, arquivos, tipagem) — Fase 3
+- logging nativo (`log.info/warn/error/debug`) — Fase 4
+- Database + transactions nativos (JDBC por interop) — Fase 5
+- Aplicação web completa em Kof sem Spring (teste obrigatório) — Fase 12
 - Resultado observável de tarefas (`await`), filas (`kof.concurrent.Queue`)
 - Scheduler nativo para `spawn`
 - `kof fmt`, hover/completion no LSP
-- Roadmap: `docs/roadmap.md`
+- Roadmap: `docs/roadmap.md`; plano de execução: `docs/plan-spring-independence.md`
 
 ---
 

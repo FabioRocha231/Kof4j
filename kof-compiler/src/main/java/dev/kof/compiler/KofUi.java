@@ -21,20 +21,22 @@ final class KofUi {
     static final Type COLOR = new Type.ClassType("kof.ui", "Color", List.of());
     static final Type THEME = new Type.ClassType("kof.ui", "Theme", List.of());
     static final Type LABEL = new Type.ClassType("kof.ui", "Label", List.of());
+    static final Type BUTTON = new Type.ClassType("kof.ui", "Button", List.of());
     static final Type WINDOW = new Type.ClassType("kof.ui", "Window", List.of());
 
     static boolean isColor(Type t) { return COLOR.equals(t); }
     static boolean isTheme(Type t) { return THEME.equals(t); }
     static boolean isLabel(Type t) { return LABEL.equals(t); }
+    static boolean isButton(Type t) { return BUTTON.equals(t); }
     static boolean isWindow(Type t) { return WINDOW.equals(t); }
 
     static boolean isUiType(Type t) {
-        return isColor(t) || isTheme(t) || isLabel(t) || isWindow(t);
+        return isColor(t) || isTheme(t) || isLabel(t) || isButton(t) || isWindow(t);
     }
 
     static boolean isConstructor(String name) {
         return "Color".equals(name) || "Theme".equals(name)
-                || "Label".equals(name) || "Window".equals(name);
+                || "Label".equals(name) || "Button".equals(name) || "Window".equals(name);
     }
 
     static Type constructorType(String name) {
@@ -99,11 +101,11 @@ final class KofUi {
                 default -> null;
             };
         }
-        if (isLabel(receiver)) {
+        if (isButton(receiver)) {
             return switch (name) {
-                case "text" -> argCount == 0 ? new UiCall("kof_ui_label_text", STR, List.of()) : null;
-                case "setText" -> argCount == 1 ? new UiCall("kof_ui_label_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
-                case "remove" -> argCount == 0 ? new UiCall("kof_ui_label_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                case "text" -> argCount == 0 ? new UiCall("kof_ui_button_text", STR, List.of()) : null;
+                case "setText" -> argCount == 1 ? new UiCall("kof_ui_button_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_button_remove", Type.PrimitiveType.VOID, List.of()) : null;
                 default -> null;
             };
         }

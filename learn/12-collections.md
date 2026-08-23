@@ -2,49 +2,48 @@
 
 > **Status: implementado**
 >
-> Kof não reimplementa collections. Kof usa as collections do Java diretamente.
+> `List<T>` é a coleção nativa de Kof; o tipo do elemento é preservado pela
+> pipeline inteira (inferência, for-in, `get`, resolução de métodos).
 
-## Collections do Java
-
-Kof é compatível com `java.util`:
+## List — a forma idiomática
 
 ```kf
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+var tokens = listOf(
+    Token("identifier", "hello"),
+    Token("string", "world")
+)
+
+for (var token in tokens) {
+    println(token.kind())     // o tipo do elemento nunca degrada para Object
+}
+
+var nomes = listOf<String>()            // lista vazia tipada
+nomes.add("Ana")
+nomes.add("Bob")
+println(nomes.get(0))
 ```
 
-## List
+A inferência é mantida em toda a pipeline:
 
 ```kf
-var nomes = new java.util.ArrayList<String>();
-nomes.add("Ana");
-nomes.add("Bob");
-nomes.add("Carlos");
-
-String primeiro = nomes.get(0);  // "Ana"
-Int tamanho = nomes.size();       // 3
+var users: List<User> = listOf()        // anotação explícita
+users.add(User("Mel", 26))
+println(users.get(0).name)
 ```
 
-## Map
+`json.decode<List<User>>(...)` também preserva o tipo dos elementos —
+cada elemento é vinculado ao record, em JVM e KofJS.
+
+## Operações de List
 
 ```kf
-var notas = new java.util.HashMap<String, Double>();
-notas.put("Prova 1", 8.5);
-notas.put("Prova 2", 9.0);
-
-Double nota = notas.get("Prova 1");  // 8.5
-```
-
-## Set
-
-```kf
-var ids = new java.util.HashSet<String>();
-ids.add("001");
-ids.add("002");
-ids.add("001");  // duplicata ignorada
-
-Int tamanho = ids.size();  // 2
+var l = listOf(1, 2, 3, 4)
+println(l.size)
+println(l.contains(3))
+println(l.isEmpty())
+var removido = l.remove(1)
+l.set(0, 100)
+l.clear()
 ```
 
 ## Iterando

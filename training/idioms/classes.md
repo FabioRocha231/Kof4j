@@ -16,7 +16,24 @@ class User {
 
 ## Construtores
 
-O construtor é declarado com a palavra-chave `constructor` (sem `fun`, sem nome da classe).
+### Construtor primário — a forma idiomática
+
+```kof
+class User(String name, Int age) {
+    greeting(): String {
+        return "Hello " + name
+    }
+}
+```
+
+Os parâmetros do construtor primário são campos reais da classe: nenhum
+`this.name = name` é necessário. A construção usa a forma sem `new`:
+
+```kof
+var user = User("Mel", 26)
+```
+
+### Construtor explícito — forma verbosa (retrocompatível)
 
 ```kof
 class User {
@@ -30,7 +47,8 @@ class User {
 }
 ```
 
-Uso: `new User("Mel", 30)`.
+`new User("Mel", 30)` continua válido, mas `User("Mel", 30)` é a forma
+recomendada — o compilador trata ambas como construção de instância.
 
 ## When to use
 

@@ -88,13 +88,37 @@ public final class KofJsRunner {
     }
 
     private static void openInWebview(Path moduleFile, String html) throws IOException {
-        Path page = moduleFile.resolveSibling("kof-ui.html");
-        Files.writeString(page, html);
-        System.err.println("kof: window rendered at " + page.toAbsolutePath());
+        // The webview runs the real application, not a snapshot: the compiled
+        // module and the runtimes are copied next to a fresh index.html, so
+        // DOM events (button clicks) execute inside the WebKit page itself.
+        Path appDir = Files.createTempDirectory("kof-ui-");
+        Files.writeString(appDir.resolve("kof-ui.html"), html);
+        String entry = moduleFile.getFileName().toString();
+        Files.writeString(appDir.resolve(entry), Files.readString(moduleFile));
+        Path runtime = moduleFile.resolveSibling("kof-runtime.mjs");
+        if (Files.exists(runtime)) {
+            Files.copy(runtime, appDir.resolve("kof-runtime.mjs"));
+        }
+        Path ioRuntime = moduleFile.resolveSibling("kof-runtime-io.mjs");
+        if (Files.exists(ioRuntime)) {
+            Files.copy(ioRuntime, appDir.resolve("kof-runtime-io.mjs"));
+        }
+        String page = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n"
+                + "  <title>Kof</title>\n  <style>\n"
+                + "    body { margin: 0; font-family: system-ui, sans-serif; }\n"
+                + "    #kof-root { display: flex; flex-direction: column; gap: 8px;\n"
+                + "                 padding: 16px; min-height: 100vh; box-sizing: border-box; }\n"
+                + "    .kof-label { font-size: 16px; }\n"
+                + "    .kof-button { font-size: 16px; padding: 8px 16px; cursor: pointer; }\n"
+                + "  </style>\n</head>\n<body>\n  <div id=\"kof-root\"></div>\n"
+                + "  <script type=\"module\" src=\"" + entry + "\"></script>\n</body>\n</html>\n";
+        Files.writeString(appDir.resolve("index.html"), page);
+        Path pagePath = appDir.resolve("index.html").toAbsolutePath();
+        System.err.println("kof: window at " + pagePath);
         Path shim = findWebviewShim();
         if (shim != null) {
             try {
-                new ProcessBuilder(shim.toString(), page.toAbsolutePath().toString()).start();
+                new ProcessBuilder(shim.toString(), pagePath.toString()).start();
                 return;
             } catch (IOException e) {
                 System.err.println("kof: native webview failed (" + e.getMessage() + ") — falling back");
@@ -103,7 +127,7 @@ public final class KofJsRunner {
         try {
             if (java.awt.Desktop.isDesktopSupported()
                     && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                java.awt.Desktop.getDesktop().browse(page.toUri());
+                java.awt.Desktop.getDesktop().browse(pagePath.toUri());
                 return;
             }
         } catch (Exception ignored) {
@@ -111,15 +135,14 @@ public final class KofJsRunner {
         try {
             String os = System.getProperty("os.name", "").toLowerCase();
             if (os.contains("win")) {
-                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler",
-                        page.toAbsolutePath().toString()).start();
+                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", pagePath.toString()).start();
             } else if (os.contains("mac")) {
-                new ProcessBuilder("open", page.toAbsolutePath().toString()).start();
+                new ProcessBuilder("open", pagePath.toString()).start();
             } else {
-                new ProcessBuilder("xdg-open", page.toAbsolutePath().toString()).start();
+                new ProcessBuilder("xdg-open", pagePath.toString()).start();
             }
         } catch (IOException ignored) {
-            System.err.println("kof: open " + page.toAbsolutePath() + " to view the window");
+            System.err.println("kof: open " + pagePath + " to view the window");
         }
     }
 
@@ -178,6 +201,36 @@ public final class KofJsRunner {
                 }
             }
             return 0;
+        });
+        platform.put("processRun", (ProxyExecutable) args -> {
+            try {
+                String program = args[0].asString();
+                java.util.List<String> cmd = new java.util.ArrayList<>();
+                cmd.add(program);
+                if (args.length > 1 && !args[1].isNull()) {
+                    long n = args[1].getArraySize();
+                    for (int i = 0; i < n; i++) {
+                        cmd.add(args[1].getArrayElement(i).asString());
+                    }
+                }
+                Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
+                String out = new String(p.getInputStream().readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                String err = new String(p.getErrorStream().readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                int code = p.waitFor();
+                java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+                result.put("stdout", out);
+                result.put("stderr", err);
+                result.put("exitCode", code);
+                return result;
+            } catch (Exception e) {
+                java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+                result.put("stdout", "");
+                result.put("stderr", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                result.put("exitCode", -1);
+                return result;
+            }
         });
         platform.put("readLine", (ProxyExecutable) args -> readLine(in));
         platform.put("readFile", (ProxyExecutable) args -> {

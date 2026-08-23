@@ -14,7 +14,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 * Distribuição oficial (JDK embutido, tooling, editor support)
 * CLI: build, run, serve, check, info, lsp, version
 * kof.io: File, Path, Directory (JVM + Native)
-* 381 testes passando
+* 458 testes (456 PASS)
 
 ## Para quem é
 
@@ -76,6 +76,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 | 33 | [Versionamento e Releases](33-versioning-releases.md) |
 | 34 | [Filesystem (kof.io)](34-file-system.md) |
 | 35 | [kof.ui — Cores, Paletas e Temas](35-kof-ui.md) |
+| 36 | [Segurança (kof.security)](36-security.md) |
 
 ## Ordem recomendada
 
@@ -126,10 +127,11 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 30 | Contribuindo | ✅ |
 | Glossário | Glossário | ✅ |
 | Multiplatform | Native | ✅ |
+| 36 | Segurança (kof.security) | ✅ (JVM/Native/JS; gaps SECN00x) |
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM e Native.
 
-**Testes:** 381/381 passando
+**Testes:** 458 (456 PASS — 2 em áreas em progresso)
 
 **O que funciona hoje (0.0.5-alpha):**
 - Frontend completo (lexer, parser, type system, semântica)

@@ -453,6 +453,18 @@ class Parser {
 
     private FormalParameterNode parseFormalParameter() {
         List<String> mods = parseModifiers();
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            // name: Type — annotation form (idiomatic for main(args: List<String>))
+            String name = advance().value();
+            advance();
+            String type = parseTypeRef();
+            ExpressionNode defaultValue = null;
+            if (check(TokenType.EQUAL)) {
+                advance();
+                defaultValue = parseExpression();
+            }
+            return new FormalParameterNode(pos(), mods, type, name, defaultValue);
+        }
         String type = parseTypeRef();
         String name = expectId("Expected parameter name", "PARSE023");
         ExpressionNode defaultValue = null;
@@ -843,7 +855,16 @@ class Parser {
         while (true) {
             if (check(TokenType.DOT)) {
                 advance();
-                String field = expectId("Expected field name", "PARSE039");
+                String field;
+                if (check(TokenType.IDENTIFIER)) {
+                    field = advance().value();
+                } else if (isTypeKeywordField()) {
+                    // type keywords are valid method names after a dot
+                    // (config.int, user.toString, ...)
+                    field = advance().value();
+                } else {
+                    field = expectId("Expected field name", "PARSE039");
+                }
                 if (check(TokenType.LBRACE)) {
                     // trailing lambda call: receiver.method { ... } — the
                     // block is the final argument of the method call
@@ -1256,6 +1277,13 @@ class Parser {
         if (check(TokenType.IDENTIFIER)) return advance().value();
         diagnostics.error(file, peek().line(), peek().column(), peek().length(), message, code);
         return "error";
+    }
+
+    /** Type keywords are valid as field/method names after a dot (config.int). */
+    private boolean isTypeKeywordField() {
+        return check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE,
+                TokenType.DOUBLE_TYPE, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE,
+                TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE);
     }
 
     private SourcePosition pos() {

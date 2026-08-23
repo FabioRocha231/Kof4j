@@ -29,7 +29,8 @@ training/
 │   ├── arrays.md
 │   ├── strings.md
 │   ├── io.md
-│   └── ui.md
+│   ├── ui.md
+│   └── security.md
 ├── reference/             # Referência técnica
 │   ├── compiler.md
 │   └── targets.md
@@ -60,7 +61,8 @@ training/
 │   ├── hello.kf
 │   ├── classes.kf
 │   ├── inheritance.kf
-│   └── web.kf
+│   ├── web.kf
+│   └── security.kf
 ├── distribution/          # Instalação e distribuição
 │   └── install.md
 ├── tooling/               # CLI, LSP e editor support

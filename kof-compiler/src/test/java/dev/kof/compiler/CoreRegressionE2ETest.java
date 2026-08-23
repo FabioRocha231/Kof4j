@@ -257,6 +257,27 @@ class CoreRegressionE2ETest {
                 """, "Dracula\ntrue\nDracula", tempDir, "b7");
     }
 
+    // B8 — default parameters (compile-time lowering, no runtime machinery)
+    @Test
+    void defaultParameters(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                greet(String name = "world") {
+                    println("hello " + name)
+                }
+
+                Int add(Int a, Int b = 10) {
+                    return a + b
+                }
+
+                main() {
+                    greet("Mel")
+                    greet()
+                    println(add(5))
+                    println(add(5, 7))
+                }
+                """, "hello Mel\nhello world\n15\n12", tempDir, "b8");
+    }
+
     // user classes extendable with explicit constructors still work
     @Test
     void explicitConstructorStillWorks(@TempDir Path tempDir) throws IOException {

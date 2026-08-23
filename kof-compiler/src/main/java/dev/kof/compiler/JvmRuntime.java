@@ -22,13 +22,14 @@ static boolean hasRuntimeFn(String methodName) {
         return methodName.startsWith("kof_json_")
                 || methodName.startsWith("kof_io_")
                 || methodName.startsWith("kof_web_")
-                || methodName.startsWith("kof_ui_")
-                || methodName.startsWith("kof_sec_")
+                || methodName.startsWith("kof_config_")
+                || methodName.startsWith("kof_log_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
                 || methodName.equals("kof_write_file")
-                || methodName.equals("kof_spawn");
+                || methodName.equals("kof_spawn")
+                || methodName.equals("kof_process_run");
     }
 
     static void ensureCompiled(Path outputDir, List<IRClass> classes) throws IOException {
@@ -83,13 +84,17 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_to_absolute"
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/ArrayList;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
-            case "kof_ui_window_new", "kof_ui_label_new" -> "(Ljava/lang/String;)I";
-            case "kof_ui_window_set_title", "kof_ui_label_set_text" -> "(ILjava/lang/String;)V";
+            case "kof_ui_window_new", "kof_ui_label_new", "kof_ui_button_new" -> "(Ljava/lang/String;)I";
+            case "kof_ui_button_new_action" -> "(Ljava/lang/String;Ljava/lang/Object;)I";
+            case "kof_ui_window_set_title", "kof_ui_label_set_text", "kof_ui_button_set_text"
+                    -> "(ILjava/lang/String;)V";
             case "kof_ui_window_bind" -> "(II)V";
-            case "kof_ui_window_title", "kof_ui_label_text" -> "(I)Ljava/lang/String;";
-            case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove" -> "(I)V";
+            case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text" -> "(I)Ljava/lang/String;";
+            case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove"
+                    -> "(I)V";
             case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_web_app_new" -> "()Ljava/lang/String;";
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
@@ -100,6 +105,13 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_param", "kof_web_query", "kof_web_header"
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
+            case "kof_config_get", "kof_config_env" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_config_str" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_config_has" -> "(Ljava/lang/String;)I";
+            case "kof_config_int", "kof_config_bool" -> "(Ljava/lang/String;I)I";
+            case "kof_config_long" -> "(Ljava/lang/String;J)J";
+            case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
+                    -> "(Ljava/lang/String;)V";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -141,11 +153,16 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_read_text", "kof_io_file_name", "kof_io_path_parent", "kof_io_path_file_name",
                     "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_resolve",
                     "kof_io_path_to_absolute" -> "Ljava/lang/String;";
+            case "kof_process_run" -> "Ldev/kof/runtime/KofRuntime$ProcessResult;";
             case "kof_io_read_bytes" -> "[I";
             case "kof_io_file_size" -> "J";
             case "kof_io_dir_list" -> "Ljava/util/ArrayList;";
             case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
                     "kof_web_body", "kof_web_method", "kof_web_path" -> "Ljava/lang/String;";
+            case "kof_config_get", "kof_config_env", "kof_config_str" -> "Ljava/lang/String;";
+            case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
+            case "kof_config_long" -> "J";
+            case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error" -> "V";
             case "kof_web_port" -> "I";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_hmac_sha256", "kof_sec_redact",
@@ -585,6 +602,24 @@ static boolean hasRuntimeFn(String methodName) {
                 public static void kof_ui_label_remove(int label) {
                 }
 
+                public static int kof_ui_button_new(String text) {
+                    return 1;
+                }
+
+                public static int kof_ui_button_new_action(String text, Object action) {
+                    return 1;
+                }
+
+                public static void kof_ui_button_set_text(int button, String text) {
+                }
+
+                public static String kof_ui_button_text(int button) {
+                    return "";
+                }
+
+                public static void kof_ui_button_remove(int button) {
+                }
+
                 public static String kof_ui_color_to_css(int color) {
                     int r = (color >>> 24) & 0xFF;
                     int g = (color >>> 16) & 0xFF;
@@ -654,6 +689,40 @@ static boolean hasRuntimeFn(String methodName) {
                             KOF_ACTIVE_TASKS.decrementAndGet();
                         }
                     });
+                }
+
+                // ── kof.process — multiplatform process abstraction ──
+
+                public static final class ProcessResult {
+                    public final String stdout;
+                    public final String stderr;
+                    public final int exitCode;
+
+                    public ProcessResult(String stdout, String stderr, int exitCode) {
+                        this.stdout = stdout;
+                        this.stderr = stderr;
+                        this.exitCode = exitCode;
+                    }
+                }
+
+                public static ProcessResult kof_process_run(String program, List<String> args) {
+                    try {
+                        List<String> cmd = new ArrayList<>();
+                        cmd.add(program);
+                        cmd.addAll(args);
+                        Process p = new ProcessBuilder(cmd)
+                                .redirectErrorStream(false)
+                                .start();
+                        String out = new String(p.getInputStream().readAllBytes(),
+                                java.nio.charset.StandardCharsets.UTF_8);
+                        String err = new String(p.getErrorStream().readAllBytes(),
+                                java.nio.charset.StandardCharsets.UTF_8);
+                        int code = p.waitFor();
+                        return new ProcessResult(out, err, code);
+                    } catch (Exception e) {
+                        return new ProcessResult("", e.getMessage() == null
+                                ? e.getClass().getSimpleName() : e.getMessage(), -1);
+                    }
                 }
 
                 // ── kof.io — File / Path / Directory ──────────────
@@ -1130,6 +1199,135 @@ static boolean hasRuntimeFn(String methodName) {
                 public static String kof_web_path() {
                     WebRequest req = KOF_WEB_REQUEST.get();
                     return req == null ? null : req.path;
+                }
+
+                // ── kof.config — native configuration ────────────────
+
+                public static String kof_config_env(String name) {
+                    return System.getenv(name);
+                }
+
+                public static String kof_config_get(String key) {
+                    return kof_config_lookup(key);
+                }
+
+                public static String kof_config_str(String key, String def) {
+                    String v = kof_config_lookup(key);
+                    return v != null ? v : def;
+                }
+
+                public static int kof_config_int(String key, int def) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) return def;
+                    try {
+                        return Integer.parseInt(v.trim());
+                    } catch (NumberFormatException e) {
+                        return def;
+                    }
+                }
+
+                public static long kof_config_long(String key, long def) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) return def;
+                    try {
+                        return Long.parseLong(v.trim());
+                    } catch (NumberFormatException e) {
+                        return def;
+                    }
+                }
+
+                public static int kof_config_bool(String key, int def) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) return def;
+                    String t = v.trim().toLowerCase();
+                    if (t.equals("true") || t.equals("1") || t.equals("yes")) return 1;
+                    if (t.equals("false") || t.equals("0") || t.equals("no")) return 0;
+                    return def;
+                }
+
+                public static int kof_config_has(String key) {
+                    return kof_config_lookup(key) != null ? 1 : 0;
+                }
+
+                private static String kof_config_lookup(String key) {
+                    String file = System.getenv("KOF_CONFIG");
+                    if (file != null && !file.isBlank()) {
+                        String v = kof_config_read_key(java.nio.file.Path.of(file), key);
+                        if (v != null) return v;
+                    }
+                    String envName = "KOF_" + key.toUpperCase()
+                            .replace('.', '_').replace('-', '_');
+                    String env = System.getenv(envName);
+                    if (env != null) return env;
+                    String profile = System.getenv("KOF_PROFILE");
+                    String fileName = (profile != null && !profile.isBlank())
+                            ? "kof." + profile + ".config" : "kof.config";
+                    return kof_config_read_key(java.nio.file.Path.of(fileName), key);
+                }
+
+                private static String kof_config_read_key(java.nio.file.Path file, String key) {
+                    if (!java.nio.file.Files.exists(file)) return null;
+                    try {
+                        for (String line : java.nio.file.Files.readAllLines(
+                                file, java.nio.charset.StandardCharsets.UTF_8)) {
+                            String t = line.trim();
+                            if (t.isEmpty() || t.startsWith("#")) continue;
+                            int eq = t.indexOf('=');
+                            if (eq <= 0) continue;
+                            if (t.substring(0, eq).trim().equals(key)) {
+                                return t.substring(eq + 1).trim();
+                            }
+                        }
+                    } catch (java.io.IOException ignored) {
+                    }
+                    return null;
+                }
+
+                // ── kof.log — native logging ─────────────────────────
+
+                private static final int KOF_LOG_LEVEL = kof_log_parse_level(System.getenv("KOF_LOG_LEVEL"));
+
+                private static int kof_log_parse_level(String s) {
+                    if (s == null || s.isBlank()) return 1;
+                    return switch (s.trim().toLowerCase()) {
+                        case "debug" -> 0;
+                        case "info" -> 1;
+                        case "warn", "warning" -> 2;
+                        case "error" -> 3;
+                        case "off" -> 4;
+                        default -> 1;
+                    };
+                }
+
+                private static String kof_log_timestamp() {
+                    return java.time.LocalDateTime.now()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+                }
+
+                public static void kof_log_debug(String msg) {
+                    kof_log(0, "DEBUG", msg);
+                }
+
+                public static void kof_log_info(String msg) {
+                    kof_log(1, "INFO", msg);
+                }
+
+                public static void kof_log_warn(String msg) {
+                    kof_log(2, "WARN", msg);
+                }
+
+                public static void kof_log_error(String msg) {
+                    kof_log(3, "ERROR", msg);
+                }
+
+                private static void kof_log(int level, String label, String msg) {
+                    if (level < KOF_LOG_LEVEL) return;
+                    String line = kof_log_timestamp() + " " + label + " " + (msg == null ? "null" : msg);
+                    if (level >= 2) {
+                        System.err.println(line);
+                    } else {
+                        System.out.println(line);
+                    }
                 }
 
                 // ── kof.security (docs/security.md §5) ──────────────────

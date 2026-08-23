@@ -123,6 +123,11 @@ class SemanticAnalyzer {
         }
     }
 
+    private boolean isLocalName(String name, SymbolTable scope) {
+        if (scope == null) return false;
+        return scope.resolve(name) != null;
+    }
+
     private Type resolveType(String name, SymbolTable scope) {
         SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
         if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
@@ -472,11 +477,11 @@ class SemanticAnalyzer {
         return switch (expr) {
             case LiteralExpr lit -> inferLiteralType(lit);
             case IdentifierExpr ie -> {
+                SymbolTable.Symbol sym = scope.resolve(ie.name());
+                if (sym != null) yield sym.type();
                 if ("args".equals(ie.name()) && "main".equals(currentFunctionName)) {
                     yield new Type.ArrayType(BuiltinTypes.STRING);
                 }
-                SymbolTable.Symbol sym = scope.resolve(ie.name());
-                if (sym != null) yield sym.type();
                 if (currentClassName != null && !currentClassName.isEmpty()) {
                     SymbolTable.Symbol fieldSym = resolveInHierarchy(currentClassName, ie.name());
                     if (fieldSym != null) {
@@ -486,6 +491,8 @@ class SemanticAnalyzer {
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
                         && !"json".equals(ie.name()) && !KofWeb.isWebNamespace(ie.name())
+                        && !KofConfig.isConfigNamespace(ie.name())
+                        && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
@@ -589,6 +596,11 @@ class SemanticAnalyzer {
                     inferType(mc.arguments().get(0), scope);
                     yield KofUi.LABEL;
                 }
+                if (mc.receiver() == null && "Button".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.BUTTON;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) {
@@ -598,6 +610,28 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
+                        if (logCall != null) yield logCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
+                            && !isLocalName(rid.name(), scope)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                        if (procCall != null) yield procCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
+                        if (cfgCall != null) yield cfgCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -669,7 +703,10 @@ class SemanticAnalyzer {
                     for (AstNode d : currentUnit.declarations()) {
                         if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
                             found = true;
-                            if (fn.typeParameters().isEmpty()) {
+                            boolean hasDefaults = fn.parameters().stream()
+                                    .anyMatch(p -> p.defaultExpression() != null);
+                            if (fn.typeParameters().isEmpty() && (!hasDefaults
+                                    || mc.arguments().size() >= fn.parameters().size())) {
                                 List<Type> paramTypes = new ArrayList<>();
                                 for (FormalParameterNode p : fn.parameters()) paramTypes.add(resolveType(p.type(), scope));
                                 checkArgTypes(mc.methodName(), argTypes, paramTypes);
@@ -716,6 +753,9 @@ class SemanticAnalyzer {
                     yield KofUi.COLOR;
                 }
                 Type recvType = inferType(fa.receiver(), scope);
+                if (KofProcess.isResult(recvType) && KofProcess.isField(fa.fieldName())) {
+                    yield KofProcess.fieldType(fa.fieldName());
+                }
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
                 }

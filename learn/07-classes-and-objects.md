@@ -4,39 +4,94 @@
 
 Neste capítulo você vai entender como definir classes, criar objetos, e como a orientação a objetos funciona em Kof.
 
-## Records
+## Construtor primário (a forma idiomática)
 
-O construto mais simples para definir dados:
+A forma recomendada para declarar dados em Kof:
 
 ```kf
-record User(String name, String email)
+class User(String name, String email)
+```
+
+O compilador gera semanticamente:
+
+```text
+field name: String
+field email: String
+constructor(String, String)
+```
+
+Sem exigir `this.name = name`:
+
+```kf
+class User(
+    String name,
+    String email
+) {
+    greeting(): String {
+        return name + " <" + email + ">"
+    }
+}
+
+main() {
+    var user = User("Mel", "mel@kof.dev")
+    println(user.greeting())
+}
+```
+
+Os parâmetros do construtor primário são campos reais da classe: métodos
+acessam `name` e `email` diretamente, e o programa externo acessa `user.name`.
+
+## Construção: `new` é opcional
+
+Kof permite ambas as formas, com a mesma semântica:
+
+```kf
+var user = User("Mel", 26)      // forma idiomática (recomendada)
+var old = new User("Mel", 26)   // forma explícita (retrocompatível)
+```
+
+`new` continua válido para código legado; o compilador trata ambas como
+construção de instância.
+
+## Records
+
+Um `record` é um construto de dados com valor semântico:
+
+```kf
+record Token(String kind, String text)
 ```
 
 Isso gera:
-- classe `User` que estende `java.lang.Record`
-- campos `name` e `email` (privados, finais)
+- classe `Token` que estende `java.lang.Record`
+- campos `kind` e `text` (privados, finais)
 - construtor `(String, String)`
-- métodos `name()` e `email()`
-- método `toString()`
+- métodos `kind()` e `text()`
+- `toString()`, `equals()`, `hashCode()`
+
+Records podem ter métodos:
+
+```kf
+record Token(String kind, String text) {
+    label(): String {
+        return kind + "(" + text + ")"
+    }
+}
+```
 
 ## Classes
 
-Para algo mais complexo:
+Para algo mais complexo, com corpo:
 
 ```kf
 class Calculadora {
-    Int resultado
-
-    Calculadora() {
-        this.resultado = 0
-    }
+    Int resultado = 0
 
     void somar(Int valor) {
-        this.resultado += valor
+        resultado += valor
     }
 
     Int getResultado() {
-        return this.resultado
+        return resultado
     }
 }
 ```
@@ -53,16 +108,35 @@ class Config {
     Int porta
 }
 
-// funciona: new Config()
+var config = Config()          // funciona
+var legacy = new Config()      // também funciona
 ```
 
-### Construtor com parâmetros
+### Construtor primário
 
 ```kf
 class Connection(String host, Int porta) {
-    // campos e lógica de inicialização
+    hostInfo(): String {
+        return host + ":" + porta
+    }
 }
 ```
+
+### Construtor explícito (forma verbosa, ainda válida)
+
+```kf
+class Connection {
+    String host
+    Int porta
+
+    constructor(String host, Int porta) {
+        this.host = host
+        this.porta = porta
+    }
+}
+```
+
+A forma explícita existe para compatibilidade, mas não é necessária.
 
 ## Campos
 
@@ -74,6 +148,9 @@ class User {
 }
 ```
 
+Inicializadores de campo são aplicados em todos os construtores, antes do
+corpo — em JVM, Native e KofJS.
+
 ### Modificadores de acesso
 
 ```kf
@@ -82,11 +159,11 @@ class Conta {
     public String titular
 
     public void depositar(Double valor) {
-        this.saldo += valor
+        saldo += valor
     }
 
     public Double getSaldo() {
-        return this.saldo
+        return saldo
     }
 }
 ```
@@ -111,7 +188,7 @@ class StringUtils {
 class Animal {
     String nome
 
-    Animal(String nome) {
+    constructor(String nome) {
         this.nome = nome
     }
 }
@@ -119,7 +196,7 @@ class Animal {
 class Cachorro extends Animal {
     String raca
 
-    Cachorro(String nome, String raca) {
+    constructor(String nome, String raca) {
         super(nome)
         this.raca = raca
     }
@@ -128,36 +205,24 @@ class Cachorro extends Animal {
 
 ## Status atual
 
-✅ Records funcionam completamente
-✅ Declarações de classe com campos funcionam
-✅ Métodos são gerados (assinaturas)
-⚠️ Corpo dos métodos ainda em desenvolvimento
-⚠️ Construtores personalizados ainda em desenvolvimento
-❌ Herança ainda não funciona
+✅ Construtor primário gera campos + construtor + acesso dentro de métodos
+✅ Records com métodos funcionam
+✅ `Classe(...)` sem `new` e `new Classe(...)` com a mesma semântica
+✅ Inicializadores de campo (JVM, Native, KofJS)
+✅ Herança, virtual dispatch, interfaces
+✅ Classes com construtor explícito
 
 ## Multiplatform
 
-Records funcionam tanto no backend JVM quanto no nativo:
-
-**JVM:** gera uma classe que estende `java.lang.Record`
-**Nativo:** gera uma struct C com os campos
+A mesma fonte funciona em JVM, Native e KofJS:
 
 ```kf
 record Point(Int x, Int y)
 ```
 
-No JVM:
-```java
-// Gerado: classe Point extends Record
-// campos: int x, int y
-// construtor: Point(int x, int y)
-// accessors: int x(), int y()
-```
-
-No nativo:
-```c
-// Gerado: struct Point { int x; int y; }
-```
+**JVM:** classe que estende `java.lang.Record` (campos, accessors, construtor)
+**Nativo:** struct equivalente com fields e métodos
+**KofJS:** classe ES com a mesma semântica observável
 
 ## Exercício 1
 

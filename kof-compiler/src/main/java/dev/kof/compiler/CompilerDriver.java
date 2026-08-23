@@ -24,6 +24,7 @@ private Target target = Target.JVM;
     private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
     private final java.util.Deque<LabelId> continueLabels = new java.util.ArrayDeque<>();
     private boolean loweringMain;
+    private boolean mainArgsListField;
 
     public CompilationResult compile(Path sourceFile, Path outputDir) {
         return compile(sourceFile, outputDir, Target.JVM);
@@ -231,19 +232,38 @@ private Target target = Target.JVM;
         }
         List<Type> paramTypes = func.parameters().stream()
                 .map(p -> resolveWithTypeParams(p.type(), func.typeParameters())).toList();
-        boolean isMain = "main".equals(func.name()) && paramTypes.isEmpty();
+        boolean mainArgsList = "main".equals(func.name()) && func.parameters().size() == 1
+                && "args".equals(func.parameters().get(0).name())
+                && BuiltinTypes.isList(paramTypes.get(0));
+        boolean isMain = "main".equals(func.name())
+                && (paramTypes.isEmpty() || mainArgsList);
         if (isMain) {
             paramTypes = List.of(new Type.ArrayType(BuiltinTypes.STRING));
         }
         boolean prevMain = loweringMain;
         loweringMain = isMain;
+        boolean prevMainArgsList = mainArgsListField;
+        mainArgsListField = mainArgsList;
         int access = AccessFlags.PUBLIC | AccessFlags.STATIC;
         List<IRLocalVariable> locals = new ArrayList<>();
         List<KofOperation> body = new ArrayList<>();
         int localIdx = 0;
         if (isMain) {
-
-
+            if (mainArgsList) {
+                // args: List<String> — convert the injected String[] once
+                // at method entry (JVM); Native/JS start with an empty list.
+                if (target == Target.JVM) {
+                    body.add(new KofLoadLocal(new Type.ArrayType(BuiltinTypes.STRING), 0));
+                    body.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_args_list", List.of(new Type.ArrayType(BuiltinTypes.STRING)),
+                            BuiltinTypes.LIST, KofCallKind.FUNCTION));
+                    body.add(new KofStoreLocal(BuiltinTypes.LIST, 1));
+                } else {
+                    body.add(new KofCall(BuiltinTypes.LIST, "kof_list_new", List.of(),
+                            BuiltinTypes.LIST, KofCallKind.FUNCTION));
+                    body.add(new KofStoreLocal(BuiltinTypes.LIST, 1));
+                }
+            }
             localIdx = 1;
         }
         for (FormalParameterNode p : func.parameters()) {
@@ -262,8 +282,60 @@ private Target target = Target.JVM;
                 ? KofDebugInfo.EMPTY
                 : new KofDebugInfo(new java.util.HashMap<>(currentDebugPositions));
         currentDebugPositions.clear();
+        loweringMain = prevMain;
+        mainArgsListField = prevMainArgsList;
         return new IRMethod(func.name(), returnType, paramTypes, access, func.thrownExceptions(),
                 List.of(new IRBasicBlock(0, body)), locals, debugInfo);
+    }
+
+    /**
+     * Default parameter values: for each trailing default, a wrapper with the
+     * same name and fewer parameters is generated. The wrapper evaluates the
+     * default expressions and delegates to the canonical function — pure
+     * compile-time semantics, no runtime machinery.
+     */
+    private List<IRMethod> lowerFunctionDefaults(FunctionDeclarationNode func) {
+        List<IRMethod> wrappers = new ArrayList<>();
+        List<FormalParameterNode> params = func.parameters();
+        if (params.isEmpty() || params.stream().noneMatch(p -> p.defaultExpression() != null)) {
+            return wrappers;
+        }
+        if ("main".equals(func.name())) return wrappers;
+        int n = params.size();
+        int firstDefault = n;
+        for (int i = 0; i < n; i++) {
+            if (params.get(i).defaultExpression() != null) {
+                firstDefault = i;
+                break;
+            }
+        }
+        if (firstDefault == n) return wrappers;
+        List<Type> canonicalTypes = params.stream()
+                .map(p -> resolveWithTypeParams(p.type(), func.typeParameters())).toList();
+        Type returnType = resolveWithTypeParams(func.returnType(), func.typeParameters());
+        for (int drop = 1; drop <= n - firstDefault; drop++) {
+            int paramCount = n - drop;
+            List<Type> paramTypes = canonicalTypes.subList(0, paramCount);
+            List<IRLocalVariable> locals = new ArrayList<>();
+            List<KofOperation> ops = new ArrayList<>();
+            int localIdx = 0;
+            for (int i = 0; i < paramCount; i++) {
+                locals.add(new IRLocalVariable(localIdx, params.get(i).name(), paramTypes.get(i)));
+                ops.add(new KofLoadLocal(paramTypes.get(i), localIdx));
+                localIdx++;
+            }
+            for (int i = paramCount; i < n; i++) {
+                localIdx = emitExpression(params.get(i).defaultExpression(), ops, "",
+                        localIdx, locals);
+            }
+            ops.add(new KofCall(mainClassType(), func.name(), canonicalTypes,
+                    returnType, KofCallKind.FUNCTION));
+            ops.add(new KofReturn(returnType));
+            wrappers.add(new IRMethod(func.name(), returnType, paramTypes,
+                    AccessFlags.PUBLIC | AccessFlags.STATIC, func.thrownExceptions(),
+                    List.of(new IRBasicBlock(0, ops)), locals));
+        }
+        return wrappers;
     }
 
     private int emitStatement(StatementNode stmt, List<KofOperation> ops, String owner, int localIdx,
@@ -896,6 +968,23 @@ private Target target = Target.JVM;
                             fn, List.of(BuiltinTypes.STRING), Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
+                if (mc.receiver() == null && "Button".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
+                    for (ExpressionNode arg : mc.arguments()) {
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                    }
+                    if (mc.arguments().size() == 2) {
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_button_new_action",
+                                List.of(BuiltinTypes.STRING, Type.UnknownType.UNKNOWN),
+                                Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    } else {
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_button_new", List.of(BuiltinTypes.STRING),
+                                Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = listOfElementType(mc, locals);
                     Type listType = new Type.ClassType("kof", "List", List.of(elemType));
@@ -965,6 +1054,91 @@ private Target target = Target.JVM;
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
+                    if (logCall != null) {
+                        if (!KofLog.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofLog.gapCode() + ")",
+                                        KofLog.gapCode());
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.log", "Log", List.of()),
+                                logCall.function(), logCall.parameterTypes(), logCall.returnType(),
+                                KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
+                        && findLocalVar(rid.name(), locals) == null) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                    if (procCall != null) {
+                        if (target == Target.NATIVE) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        "process.run: not supported on the Native target yet (JVM supports it)",
+                                        "PROC001");
+                            }
+                            yield localIdx;
+                        }
+                        // process.run(program, args...) →
+                        // kof_process_run(program, List<String>)
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        Type listType = KofProcess.STRING_LIST;
+                        ops.add(new KofCall(listType, "kof_list_new", List.of(), listType, KofCallKind.FUNCTION));
+                        for (int i = 1; i < mc.arguments().size(); i++) {
+                            ops.add(new KofDup());
+                            localIdx = emitExpression(mc.arguments().get(i), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(listType, "kof_list_add",
+                                    List.of(BuiltinTypes.STRING), Type.PrimitiveType.VOID,
+                                    KofCallKind.INSTANCE));
+                        }
+                        ops.add(new KofCall(KofProcess.RESULT, "kof_process_run",
+                                List.of(BuiltinTypes.STRING, KofProcess.STRING_LIST),
+                                KofProcess.RESULT, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
+                    if (cfgCall != null) {
+                        if (!KofConfig.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (CONF001)",
+                                        "CONF001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofConfig.CONFIG, cfgCall.function(), cfgCall.parameterTypes(),
+                                cfgCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -993,6 +1167,18 @@ private Target target = Target.JVM;
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        if (target != Target.JVM) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        "web: not available on the " + target
+                                                + " target yet (WEB001)",
+                                        "WEB001");
+                            }
+                            yield localIdx;
+                        }
                         KofWeb.WebCall appCall = KofWeb.appConstructor();
                         ops.add(new KofCall(KofWeb.APP, appCall.function(), appCall.parameterTypes(),
                                 appCall.returnType(), KofCallKind.FUNCTION));
@@ -1037,6 +1223,18 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) {
+                            if (target != Target.JVM) {
+                                if (currentDiagnostics != null) {
+                                    currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                            mc.position() != null ? mc.position().line() : 0,
+                                            mc.position() != null ? mc.position().column() : 0,
+                                            0,
+                                            "web: not available on the " + target
+                                                    + " target yet (WEB001)",
+                                            "WEB001");
+                                }
+                                yield localIdx;
+                            }
                             if (KofWeb.isRouteMethod(mc.methodName())) {
                                 ops.add(new KofLoadLiteral(BuiltinTypes.STRING, mc.methodName().toUpperCase()));
                             }
@@ -1232,8 +1430,15 @@ private Target target = Target.JVM;
                                 for (AstNode d : currentUnit.declarations()) {
                                     if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
                                         returnType = resolveWithTypeParams(fn.returnType(), fn.typeParameters());
-                                        argTypes = fn.parameters().stream()
+                                        List<Type> fnTypes = fn.parameters().stream()
                                                 .map(p -> resolveWithTypeParams(p.type(), fn.typeParameters())).toList();
+                                        boolean hasDefaults = fn.parameters().stream()
+                                                .anyMatch(p -> p.defaultExpression() != null);
+                                        if (hasDefaults && mc.arguments().size() < fnTypes.size()) {
+                                            argTypes = fnTypes.subList(0, mc.arguments().size());
+                                        } else {
+                                            argTypes = fnTypes;
+                                        }
                                         break;
                                     }
                                 }
@@ -1286,6 +1491,14 @@ private Target target = Target.JVM;
                         localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
                         ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
                                 "kof_ui_label_set_text", List.of(Type.PrimitiveType.INT, BuiltinTypes.STRING),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    if (KofUi.isButton(faRecvType) && "text".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_button_set_text", List.of(Type.PrimitiveType.INT, BuiltinTypes.STRING),
                                 Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                         yield localIdx;
                     }
@@ -1369,6 +1582,12 @@ private Target target = Target.JVM;
                     }
                 }
                 Type faType = inferExprType(fa.receiver(), locals);
+                if (KofProcess.isResult(faType) && KofProcess.isField(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadField(KofProcess.RESULT, fa.fieldName(),
+                            KofProcess.fieldType(fa.fieldName())));
+                    yield localIdx;
+                }
                 if (KofUi.isWindow(faType) && "title".equals(fa.fieldName())) {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
@@ -1380,6 +1599,13 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
                             "kof_ui_label_text", List.of(Type.PrimitiveType.INT),
+                            BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (KofUi.isButton(faType) && "text".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_button_text", List.of(Type.PrimitiveType.INT),
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
@@ -1530,6 +1756,10 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && "Label".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     yield KofUi.LABEL;
                 }
+                if (mc.receiver() == null && "Button".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
+                    yield KofUi.BUTTON;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) yield uiCall.returnType();
@@ -1548,6 +1778,28 @@ private Target target = Target.JVM;
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         yield KofWeb.APP;
                     }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
+                    if (logCall != null) yield logCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
+                        && findLocalVar(rid.name(), locals) == null) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                    if (procCall != null) yield procCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
+                    if (cfgCall != null) yield cfgCall.returnType();
                     yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid2 && KofIo.isConstructor(rid2.name())) {
@@ -1679,6 +1931,9 @@ private Target target = Target.JVM;
             }
             case FieldAccessExpr fa -> {
                 Type recvType = inferExprType(fa.receiver(), locals);
+                if (KofProcess.isResult(recvType) && KofProcess.isField(fa.fieldName())) {
+                    yield KofProcess.fieldType(fa.fieldName());
+                }
                 if (KofUi.isWindow(recvType) && "title".equals(fa.fieldName())) {
                     yield BuiltinTypes.STRING;
                 }
@@ -1725,6 +1980,13 @@ private Target target = Target.JVM;
                         returnType = inferExprType(rs.value(), extended);
                         break;
                     }
+                }
+                if (Type.UnknownType.UNKNOWN.equals(returnType)) {
+                    // A lambda whose body has no return statement is void.
+                    // Without this, the synthetic invoke method is lowered with
+                    // an Object return and the backends misparse the bare
+                    // KofReturn (empty value stack).
+                    returnType = Type.PrimitiveType.VOID;
                 }
                 yield new Type.FunctionType(paramTypes, returnType, lambdaClassNames.get(le));
             }
@@ -2129,7 +2391,7 @@ private Target target = Target.JVM;
 
     private int emitUiInstance(Type recvType, MethodCallExpr mc, List<KofOperation> ops,
                                String owner, int localIdx, List<IRLocalVariable> locals) {
-        if (KofUi.isWindow(recvType) || KofUi.isLabel(recvType)) {
+        if (KofUi.isWindow(recvType) || KofUi.isLabel(recvType) || KofUi.isButton(recvType)) {
             KofUi.UiCall uiCall = KofUi.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
             if (uiCall != null) {
                 for (ExpressionNode arg : mc.arguments()) {

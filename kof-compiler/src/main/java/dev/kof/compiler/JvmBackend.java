@@ -391,13 +391,6 @@ class JvmBackend implements Backend {
             mv.visitLabel(debugStart);
         }
         int lastLine = -1;
-        if (debugInfoEnabled && "soma".equals(method.name())) {
-            System.err.println("[jvm] method soma ops:");
-            for (KofOperation op : ops) {
-                SourcePosition p = debugPositions.get(op);
-                System.err.println("[jvm]   " + op.getClass().getSimpleName() + " -> " + (p == null ? "null" : "line " + p.line()));
-            }
-        }
         for (KofOperation op : ops) {
             SourcePosition pos = debugPositions.get(op);
             if (pos != null && pos.line() != lastLine && debugInfoEnabled) {
@@ -447,6 +440,9 @@ class JvmBackend implements Backend {
                 String owner = JvmTypeMapper.toInternalName(
                         lf.ownerType() instanceof Type.ClassType ct ? ct.packageName() : "",
                         lf.ownerType() instanceof Type.ClassType ct ? ct.name() : "?");
+                if (KofProcess.isResult(lf.ownerType())) {
+                    owner = "dev/kof/runtime/KofRuntime$ProcessResult";
+                }
                 mv.visitFieldInsn(GETFIELD, owner, lf.name(), JvmTypeMapper.toDescriptor(lf.fieldType()));
             }
         } else if (op instanceof KofStoreField sf) {

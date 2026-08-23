@@ -24,7 +24,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (381/381) |
+| `mvn test` | ✅ PASSA (471/471) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build --target jvm` | ✅ FUNCIONA |
 | `kof build --target native` | ✅ FUNCIONA |
@@ -66,14 +66,18 @@ Gera `.class` válido (construtor, accessors, toString/equals/hashCode no JVM) e
 ### Classes
 
 ```kf
-class User {
-    String name
-    public constructor(String name) { this.name = name }
-    public getName(): String { return name }
+class User(String name, Int age) {
+    greeting(): String {
+        return "Hello " + name
+    }
 }
 ```
 
-Compila, gera `.class`, executa na JVM e no Native (herança, virtual dispatch, interfaces).
+O construtor primário gera campos, construtor e acesso dentro de métodos —
+sem `this.name = name`. `User(...)` e `new User(...)` são equivalentes
+(`new` é retrocompatível). Inicializadores de campo rodam em todos os
+construtores (JVM, Native, KofJS). Herança, virtual dispatch e interfaces
+funcionam.
 
 ### JSON
 
@@ -141,6 +145,23 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 | Arrays, List\<T\>, generics | ✅ |
 | JSON, strings (API completa), `instanceof`/`as` | ✅ |
 
+### Segurança (kof.security — docs/security.md)
+
+| Feature | Status |
+|---------|--------|
+| `passwords.hash/verify/needsRehash` | ✅ JVM/JS (PBKDF2-HMAC-SHA256 600k); Native SECN001 |
+| `crypto.sha256/sha512/hmacSha256` | ✅ JVM/Native (asm)/JS — valores idênticos |
+| `crypto.aesGcm` | ✅ JVM; outros SECN002 |
+| `crypto.randomHex/randomInt` | ✅ JVM (SecureRandom)/Native (getrandom)/JS |
+| `jwt.create/verify` (HS256, exp/iss/aud) | ✅ JVM/JS; Native pendente |
+| `secrets.get/redact` | ✅ JVM/Native (/proc/self/environ)/JS |
+| `security.constantTimeEquals` | ✅ 3 targets |
+| `security.csrf*/corsAllowed/headers` | ✅ JVM |
+| `auth.*` (contexto web Bearer JWT) | ✅ JVM |
+| Gaps por target | ✅ Diagnostics claros SECN001/002/003 |
+| `KofSecurityTest` | ✅ 22 testes (unit + E2E + adversariais) |
+| `benchmarks/security/` | ✅ password-hash, jwt, hash-speed, aes-gcm |
+
 ### Backend JVM (ASM)
 
 | Feature | Status |
@@ -179,9 +200,8 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 
 ### Language Features
 - Enums, Annotations, Pattern matching
-- Lambdas/closures (parseados, não lowerados)
 - Map, Set
-- Async/await, concorrência
+- Async/await, concorrência (spawn: JVM)
 - Reflection
 
 ### Type System
@@ -190,13 +210,19 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 - Sealed types
 
 ### Backends
-- KofJS — alpha funcional (GraalJS embutido)
+- KofJS — funcional (while(true), try/finally, switch, incrementos, listOf, decode de objetos — com parity JVM/Native/JS nos testes E2E)
 - KofScript — hoje = compilar para JVM e executar (`kof run`)
 
 ### Runtime
 - GC no Native (`kof_free` é no-op)
 - Exceptions recuperáveis no Native (`throw` = `kof_panic`)
 - JSON de objetos no Native (JSN002 — diagnostic claro)
+
+### Security (kof.security — docs/security.md)
+- v1 implementado (ver seção "Segurança" acima).
+- Pendente: OAuth2/OIDC client, sessions, rate limiting, audit logging,
+  JWT/passwords no Native (SECN001 — HMAC asm já existe), sha512 no Native
+  (SECN003), AES-GCM fora do JVM (SECN002).
 
 ### Tooling
 - `kof test` (PASS/FAIL por exit code com `assert`)
@@ -228,7 +254,7 @@ Source (.kf)
 
 | Métrica | Valor |
 |---------|-------|
-| Testes JUnit | 381 (todos passando) |
+| Testes JUnit | 471 (todos passando) |
 | E2E JVM | 29 |
 | E2E Native | 50 |
 | E2E JS (KofJS) | 35 |

@@ -41,6 +41,17 @@ class JsBackend implements Backend {
     private final List<String> ioRuntimeImports = new ArrayList<>();
     private final Set<String> decodeHelpers = new HashSet<>();
     private Map<String, Set<String>> classMethodNames = Map.of();
+    private Map<String, Map<Integer, String>> fnArityNames = Map.of();
+
+    /** JS name for a top-level function call resolved by (name, arity). */
+    private String jsFunctionName(String name, int arity) {
+        Map<Integer, String> byArity = fnArityNames.get(name);
+        if (byArity != null) {
+            String resolved = byArity.get(arity);
+            if (resolved != null) return resolved;
+        }
+        return name;
+    }
 
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
@@ -85,6 +96,28 @@ class JsBackend implements Backend {
             }
         }
         this.classMethodNames = methodNames;
+        // Default-parameter wrappers share the canonical name; JS has no
+        // overloading, so wrappers are mangled by dropped-arity and calls
+        // are routed by (name, arity).
+        this.fnArityNames = new HashMap<>();
+        for (IRClass clazz : module.classes()) {
+            if (skipClass(clazz) || !isMainClass(clazz)) continue;
+            Map<String, Integer> maxArity = new HashMap<>();
+            for (IRMethod method : clazz.methods()) {
+                if ("<init>".equals(method.name())) continue;
+                maxArity.merge(method.name(), method.parameterTypes().size(), Math::max);
+            }
+            for (IRMethod method : clazz.methods()) {
+                if ("<init>".equals(method.name())) continue;
+                int arity = method.parameterTypes().size();
+                int max = maxArity.getOrDefault(method.name(), arity);
+                String jsName = arity == max
+                        ? method.name()
+                        : method.name() + "$d" + (max - arity);
+                fnArityNames.computeIfAbsent(method.name(), k -> new HashMap<>())
+                        .put(arity, jsName);
+            }
+        }
         for (IRClass clazz : module.classes()) {
             if (skipClass(clazz)) continue;
             if (isMainClass(clazz)) {
@@ -265,6 +298,9 @@ class JsBackend implements Backend {
         MethodCtx ctx = new MethodCtx(method, clazz);
         String name = method.name();
         if ("<init>".equals(name)) name = "constructor";
+        if (isTopLevel) {
+            name = jsFunctionName(name, method.parameterTypes().size());
+        }
         return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel);
     }
 
@@ -1044,6 +1080,13 @@ class JsBackend implements Backend {
             }
             if (op instanceof KofReturn kr) {
                 pos[0]++;
+                if (Type.isVoid(kr.returnType())) {
+                    // void method returning a void call's result (e.g. a
+                    // lambda `() -> println(x)`): the JVM emits a plain
+                    // RETURN without consuming the stack; mirror it.
+                    stack.clear();
+                    return finishExpressionStatement(preamble, preambleExprs, new JsIr.JsReturn(null));
+                }
                 return finishExpressionStatement(preamble, preambleExprs, new JsIr.JsReturn(pop(stack)));
             }
             if (op instanceof KofThrow) {
@@ -1424,8 +1467,10 @@ class JsBackend implements Backend {
             return;
         }
         if (kc.kind() == KofCallKind.FUNCTION) {
-            // top-level function call
-            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier(kc.methodName()), args));
+            // top-level function call (arity routes default-parameter wrappers)
+            stack.add(new JsIr.JsCall(
+                    new JsIr.JsIdentifier(jsFunctionName(kc.methodName(), kc.parameterTypes().size())),
+                    args));
             return;
         }
         if (kc.kind() == KofCallKind.STATIC) {
@@ -1730,6 +1775,7 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
+                || name.equals("kof_process_run")
                 || name.equals("kof_box") || name.equals("kof_unbox");
     }
 
@@ -1781,16 +1827,24 @@ class JsBackend implements Backend {
             stack.add(kc.kind() == KofCallKind.FUNCTION ? args.get(0) : receiver);
             return;
         }
+        if (name.equals("kof_process_run")) {
+            registerRuntime("kofProcessRun");
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofProcessRun"), args));
+            return;
+        }
         if (name.equals("kof_ui_color_to_css")) {
             registerRuntime("kofUiColorToCss");
             stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofUiColorToCss"), List.of(args.get(0))));
             return;
         }
         if (name.equals("kof_ui_window_new") || name.equals("kof_ui_label_new")
+                || name.equals("kof_ui_button_new") || name.equals("kof_ui_button_new_action")
                 || name.equals("kof_ui_window_set_title") || name.equals("kof_ui_window_title")
                 || name.equals("kof_ui_window_bind") || name.equals("kof_ui_window_show")
                 || name.equals("kof_ui_window_close") || name.equals("kof_ui_label_set_text")
-                || name.equals("kof_ui_label_text") || name.equals("kof_ui_label_remove")) {
+                || name.equals("kof_ui_label_text") || name.equals("kof_ui_label_remove")
+                || name.equals("kof_ui_button_set_text") || name.equals("kof_ui_button_text")
+                || name.equals("kof_ui_button_remove")) {
             registerRuntime(capitalizeUiFn(name));
             List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
             if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
@@ -2019,6 +2073,7 @@ class JsBackend implements Backend {
                         textContent: "",
                         children: [],
                         parentNode: null,
+                        style: {},
                         appendChild(child) {
                             if (child && child.parentNode) child.parentNode.removeChild(child);
                             child.parentNode = this;
@@ -2030,7 +2085,8 @@ class JsBackend implements Backend {
                             if (i >= 0) { this.children.splice(i, 1); child.parentNode = null; }
                             return child;
                         },
-                        remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+                        remove() { if (this.parentNode) this.parentNode.removeChild(this); },
+                        addEventListener(type, fn) { this._handlers = this._handlers || {}; (this._handlers[type] = this._handlers[type] || []).push(fn); }
                     };
                 }
                 const kofRoot = kofMakeEl("div");
@@ -2056,7 +2112,8 @@ class JsBackend implements Backend {
                 let attrs = "";
                 if (node.id) attrs += ' id="' + kofEscapeHtml(node.id) + '"';
                 if (node.className) attrs += ' class="' + kofEscapeHtml(node.className) + '"';
-                const inner = node.children.map(kofSerialize).join("");
+                const kids = Array.from(node.children || []);
+                const inner = kids.map(kofSerialize).join("");
                 const content = inner.length > 0 ? inner : kofEscapeHtml(node.textContent || "");
                 return "<" + tag + attrs + ">" + content + "</" + tag + ">";
             }
@@ -2079,12 +2136,32 @@ class JsBackend implements Backend {
                 if (typeof document === "undefined") {
                     return -1;
                 }
+                kofUiInjectTheme();
                 const root = document.getElementById("kof-root");
                 if (root) {
                     document.title = title;
                     root.innerHTML = "";
                 }
                 return 1;
+            }
+
+            // Kof UI theme — the same Dracula/VSCode aesthetic in every host
+            // (browser, webview, KofWebHost): one Kof program, one look.
+            function kofUiInjectTheme() {
+                if (typeof document === "undefined") return;
+                if (document.getElementById("kof-theme")) return;
+                const style = document.createElement("style");
+                style.id = "kof-theme";
+                style.textContent = [
+                    ":root { --bg:#282a36; --fg:#f8f8f2; --panel:#21222c; --border:#2e303e;",
+                    "  --hover:#2e303e; --accent:#8be9fd; --dim:#6272a4; --output:#50fa7b; }",
+                    "html, body { margin:0; height:100%; overflow:hidden; }",
+                    "body { background:var(--bg); color:var(--fg); font-family:",
+                    '  "Cascadia Code", "Fira Code", Consolas, Menlo, monospace; }',
+                    ".kof-label { color:var(--output); font-size:13px; line-height:1.5;",
+                    "  white-space:pre-wrap; padding:2px 0; }"
+                ].join("\\n");
+                (document.head || document.documentElement).appendChild(style);
             }
 
             export function kofUiWindowSetTitle(window, title) {
@@ -2151,6 +2228,77 @@ class JsBackend implements Backend {
                         node.parentNode.removeChild(node);
                     }
                     delete window.__kofNodes[label];
+                }
+            }
+
+            function kofUiCreateNode(tag, className) {
+                if (typeof document === "undefined") {
+                    return -1;
+                }
+                const el = document.createElement(tag);
+                el.className = className;
+                if (typeof window.__kofNodes === "undefined") {
+                    window.__kofNodes = {};
+                }
+                const id = Object.keys(window.__kofNodes).length + 1;
+                window.__kofNodes[id] = el;
+                return id;
+            }
+
+            function kofUiSetAction(id, action) {
+                if (!action || typeof document === "undefined") {
+                    return;
+                }
+                window.__kofActions = window.__kofActions || {};
+                window.__kofActions[id] = action;
+                const node = window.__kofNodes[id];
+                if (node && typeof node.addEventListener === "function") {
+                    node.addEventListener("click", function () {
+                        action.invoke();
+                    });
+                }
+            }
+
+            export function kofUiButtonNew(text) {
+                const id = kofUiCreateNode("button", "kof-button");
+                if (id < 0) {
+                    return -1;
+                }
+                window.__kofNodes[id].textContent = text;
+                return id;
+            }
+
+            export function kofUiButtonNewAction(text, action) {
+                const id = kofUiCreateNode("button", "kof-button");
+                if (id < 0) {
+                    return -1;
+                }
+                window.__kofNodes[id].textContent = text;
+                kofUiSetAction(id, action);
+                return id;
+            }
+
+            export function kofUiButtonSetText(button, text) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[button]) {
+                    window.__kofNodes[button].textContent = text;
+                }
+            }
+
+            export function kofUiButtonText(button) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[button]) {
+                    return window.__kofNodes[button].textContent;
+                }
+                return "";
+            }
+
+            export function kofUiButtonRemove(button) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[button]) {
+                    const node = window.__kofNodes[button];
+                    if (node.parentNode) {
+                        node.parentNode.removeChild(node);
+                    }
+                    delete window.__kofNodes[button];
+                    delete window.__kofActions[button];
                 }
             }
 
@@ -2674,9 +2822,32 @@ class JsBackend implements Backend {
             // generated module with its embedded JavaScript engine. The
             // generated .mjs files are standard ES2022+ modules and do not
             // depend on Node.js or any other external runtime.
+            //
+            // In a browser (kof-webview / web deployment) there is no
+            // kof_platform host object: console operations fall back to the
+            // browser console and IO operations report a clear error instead
+            // of a ReferenceError.
+
+            const kof_platform = globalThis.kof_platform || new Proxy({ print(x) { console.log(String(x)); } }, {
+                get(t, prop) {
+                    if (prop in t) return t[prop];
+                    return function () {
+                        throw new Error("kof.io: " + String(prop) + " is not available in the browser");
+                    };
+                }
+            });
 
             export function kofPrint(x) {
                 kof_platform.print(String(x));
+            }
+
+            export function kofProcessRun(program, args) {
+                const result = kof_platform.processRun(program, args);
+                return {
+                    stdout: result.stdout,
+                    stderr: result.stderr,
+                    exitCode: result.exitCode
+                };
             }
 
             export function kofReadLine() {
@@ -2797,25 +2968,63 @@ private void writeRuntime(Path outputDir) throws IOException {
 
     private void writeHtmlEntry(Path outputDir, String moduleName) throws IOException {
         String entry = (moduleName.isEmpty() ? "Default" : moduleName.replace('.', '/')) + ".mjs";
+        String title = moduleName.isEmpty() ? "Kof" : moduleName;
         String html = """
                 <!DOCTYPE html>
                 <html lang="en">
                 <head>
                   <meta charset="utf-8">
-                  <title>Kof</title>
+                  <title>__TITLE__ — Kof</title>
                   <style>
-                    body { margin: 0; font-family: system-ui, sans-serif; }
-                    #kof-root { display: flex; flex-direction: column; gap: 8px;
-                                 padding: 16px; min-height: 100vh; box-sizing: border-box; }
-                    .kof-label { font-size: 16px; }
+                    :root {
+                      --bg: #282a36; --fg: #f8f8f2; --panel: #21222c;
+                      --border: #2e303e; --hover: #2e303e; --accent: #8be9fd;
+                      --output: #50fa7b; --dim: #6272a4;
+                    }
+                    * { box-sizing: border-box; }
+                    html, body { margin: 0; height: 100%; overflow: hidden; }
+                    body {
+                      background: var(--bg); color: var(--fg);
+                      font-family: "Cascadia Code", "Fira Code", Consolas, Menlo, monospace;
+                      display: flex; flex-direction: column;
+                    }
+                    #kof-titlebar {
+                      display: flex; align-items: center; gap: 10px;
+                      background: var(--panel); border-bottom: 1px solid var(--border);
+                      padding: 7px 14px; font-size: 12px; user-select: none;
+                    }
+                    #kof-titlebar .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+                    #kof-titlebar .dot.red { background: #ff5f57; }
+                    #kof-titlebar .dot.yellow { background: #febc2e; }
+                    #kof-titlebar .dot.green { background: #28c840; }
+                    #kof-titlebar .name { color: var(--accent); font-weight: 600; }
+                    #kof-titlebar .kind { color: var(--dim); margin-left: auto; }
+                    #kof-root {
+                      flex: 1; overflow: auto; padding: 14px 16px;
+                      display: flex; flex-direction: column; gap: 2px;
+                      background: var(--bg);
+                    }
+                    .kof-label {
+                      font-size: 13px; line-height: 1.5; color: var(--output);
+                      white-space: pre-wrap; word-break: break-word;
+                    }
+                    #kof-status {
+                      background: var(--panel); border-top: 1px solid var(--border);
+                      color: var(--dim); font-size: 11px; padding: 4px 14px;
+                    }
                   </style>
                 </head>
                 <body>
+                  <div id="kof-titlebar">
+                    <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                    <span class="name">__TITLE__</span><span class="kind">Kof output</span>
+                  </div>
                   <div id="kof-root"></div>
+                  <div id="kof-status">terminated</div>
                   <script type="module" src="__ENTRY__"></script>
                 </body>
                 </html>
-                """.replace("__ENTRY__", entry);
+                """.replace("__TITLE__", title).replace("__ENTRY__", entry);
         Files.writeString(outputDir.resolve("index.html"), html);
     }
 
