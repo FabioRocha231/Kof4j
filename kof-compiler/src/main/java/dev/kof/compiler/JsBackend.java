@@ -1857,7 +1857,10 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_button_set_text") || name.equals("kof_ui_button_text")
                 || name.equals("kof_ui_button_remove") || name.equals("kof_ui_input_set_text")
                 || name.equals("kof_ui_input_text") || name.equals("kof_ui_input_remove")
-                || name.equals("kof_ui_view_remove")) {
+                || name.equals("kof_ui_view_remove") || name.equals("kof_ui_window_set_theme")
+                || name.equals("kof_ui_label_set_font_size") || name.equals("kof_ui_label_font_size")
+                || name.equals("kof_ui_label_set_bold") || name.equals("kof_ui_label_bold")
+                || name.equals("kof_ui_label_set_color") || name.equals("kof_ui_label_color")) {
             registerRuntime(capitalizeUiFn(name));
             List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
             if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
@@ -2211,6 +2214,21 @@ class JsBackend implements Backend {
             export function kofUiWindowClose(window) {
             }
 
+            export function kofUiWindowSetTheme(window, theme) {
+                if (typeof document === "undefined") {
+                    return;
+                }
+                const root = document.getElementById("kof-root");
+                if (!root) {
+                    return;
+                }
+                const colors = theme
+                        ? { background: 0x121212FF, text: 0xFFFFFFFF }
+                        : { background: 0xFFFFFFFF, text: 0x000000FF };
+                root.style.backgroundColor = kofUiColorToCss(colors.background);
+                root.style.color = kofUiColorToCss(colors.text);
+            }
+
             export function kofUiLabelNew(text) {
                 if (typeof document === "undefined") {
                     return -1;
@@ -2237,6 +2255,54 @@ class JsBackend implements Backend {
                     return window.__kofNodes[label].textContent;
                 }
                 return "";
+            }
+
+            export function kofUiLabelSetFontSize(label, size) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    window.__kofNodes[label].style.fontSize = size + "px";
+                }
+            }
+
+            export function kofUiLabelFontSize(label) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    const fs = window.__kofNodes[label].style.fontSize;
+                    if (typeof fs === "string" && fs.endsWith("px")) {
+                        const v = parseInt(fs, 10);
+                        if (!isNaN(v)) return v;
+                    }
+                }
+                return 0;
+            }
+
+            export function kofUiLabelSetBold(label, bold) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    window.__kofNodes[label].style.fontWeight = bold ? "bold" : "normal";
+                }
+            }
+
+            export function kofUiLabelBold(label) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    return window.__kofNodes[label].style.fontWeight === "bold" ? 1 : 0;
+                }
+                return 0;
+            }
+
+            export function kofUiLabelSetColor(label, color) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    window.__kofNodes[label].style.color = kofUiColorToCss(color);
+                }
+            }
+
+            export function kofUiLabelColor(label) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    const css = window.__kofNodes[label].style.color;
+                    const m = typeof css === "string" ? css.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/) : null;
+                    if (m) {
+                        return ((parseInt(m[1], 10) << 24) | (parseInt(m[2], 10) << 16)
+                                | (parseInt(m[3], 10) << 8) | 0xFF) >>> 0;
+                    }
+                }
+                return 0;
             }
 
             export function kofUiLabelRemove(label) {

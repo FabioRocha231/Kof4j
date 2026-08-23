@@ -3867,6 +3867,8 @@ final class NativeRuntime {
                 ret
             kof_ui_window_close:
                 ret
+            kof_ui_window_set_theme:
+                ret
             kof_ui_label_new:
                 movl $1, %eax
                 ret
@@ -3876,6 +3878,21 @@ final class NativeRuntime {
                 leaq .Lui_empty(%rip), %rdi
                 xorq %rsi, %rsi
                 jmp kof_io_make_string
+            kof_ui_label_set_font_size:
+                ret
+            kof_ui_label_font_size:
+                xorl %eax, %eax
+                ret
+            kof_ui_label_set_bold:
+                ret
+            kof_ui_label_bold:
+                xorl %eax, %eax
+                ret
+            kof_ui_label_set_color:
+                ret
+            kof_ui_label_color:
+                xorl %eax, %eax
+                ret
             kof_ui_label_remove:
                 ret
             kof_ui_button_new:

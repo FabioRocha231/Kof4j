@@ -83,6 +83,7 @@ class JvmBackend implements Backend {
         if (boxed != null) {
             String desc = JvmTypeMapper.toDescriptor(type);
             if ("char".equals(typeName(type)) || "Char".equals(typeName(type))) desc = "I";
+            if (KofUi.isUiType(type)) desc = "I";
             mv.visitMethodInsn(INVOKESTATIC, boxed, "valueOf", "(" + desc + ")L" + boxed + ";", false);
         }
     }

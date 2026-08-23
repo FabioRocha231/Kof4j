@@ -100,6 +100,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_ui_column_new", "kof_ui_row_new" -> "(Ljava/util/ArrayList;)I";
             case "kof_ui_view_new" -> "(I)I";
             case "kof_ui_style_new" -> "(IIII)I";
+            case "kof_ui_window_set_theme", "kof_ui_label_set_font_size", "kof_ui_label_set_bold",
+                    "kof_ui_label_set_color" -> "(II)V";
+            case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "(I)I";
             case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
                     -> "(I)Ljava/lang/String;";
             case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
@@ -598,6 +601,9 @@ static boolean hasRuntimeFn(String methodName) {
                 public static void kof_ui_window_close(int window) {
                 }
 
+                public static void kof_ui_window_set_theme(int window, int theme) {
+                }
+
                 public static int kof_ui_label_new(String text) {
                     return 1;
                 }
@@ -607,6 +613,27 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static String kof_ui_label_text(int label) {
                     return "";
+                }
+
+                public static void kof_ui_label_set_font_size(int label, int size) {
+                }
+
+                public static int kof_ui_label_font_size(int label) {
+                    return 0;
+                }
+
+                public static void kof_ui_label_set_bold(int label, int bold) {
+                }
+
+                public static int kof_ui_label_bold(int label) {
+                    return 0;
+                }
+
+                public static void kof_ui_label_set_color(int label, int color) {
+                }
+
+                public static int kof_ui_label_color(int label) {
+                    return 0;
                 }
 
                 public static void kof_ui_label_remove(int label) {

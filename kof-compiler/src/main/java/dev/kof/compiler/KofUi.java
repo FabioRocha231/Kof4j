@@ -98,6 +98,12 @@ final class KofUi {
             return switch (name) {
                 case "text" -> argCount == 0 ? new UiCall("kof_ui_label_text", STR, List.of()) : null;
                 case "setText" -> argCount == 1 ? new UiCall("kof_ui_label_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "fontSize" -> argCount == 0 ? new UiCall("kof_ui_label_font_size", INT, List.of()) : null;
+                case "setFontSize" -> argCount == 1 ? new UiCall("kof_ui_label_set_font_size", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "bold" -> argCount == 0 ? new UiCall("kof_ui_label_bold", BOOL, List.of()) : null;
+                case "setBold" -> argCount == 1 ? new UiCall("kof_ui_label_set_bold", Type.PrimitiveType.VOID, List.of(BOOL)) : null;
+                case "color" -> argCount == 0 ? new UiCall("kof_ui_label_color", COLOR, List.of()) : null;
+                case "setColor" -> argCount == 1 ? new UiCall("kof_ui_label_set_color", Type.PrimitiveType.VOID, List.of(COLOR)) : null;
                 case "remove" -> argCount == 0 ? new UiCall("kof_ui_label_remove", Type.PrimitiveType.VOID, List.of()) : null;
                 default -> null;
             };

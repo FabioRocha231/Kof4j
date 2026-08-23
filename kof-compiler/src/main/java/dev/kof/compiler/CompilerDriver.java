@@ -1773,6 +1773,38 @@ private Target target = Target.JVM;
                                 Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                         yield localIdx;
                     }
+                    if (KofUi.isLabel(faRecvType) && "fontSize".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_label_set_font_size", List.of(Type.PrimitiveType.INT, Type.PrimitiveType.INT),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    if (KofUi.isLabel(faRecvType) && "bold".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_label_set_bold", List.of(Type.PrimitiveType.INT, Type.PrimitiveType.BOOL),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    if (KofUi.isLabel(faRecvType) && "color".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_label_set_color", List.of(Type.PrimitiveType.INT, Type.PrimitiveType.INT),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    if (KofUi.isWindow(faRecvType) && "theme".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_window_set_theme", List.of(Type.PrimitiveType.INT, Type.PrimitiveType.INT),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     if (KofUi.isButton(faRecvType) && "text".equals(fa.fieldName())) {
                         localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                         localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
@@ -1887,6 +1919,27 @@ private Target target = Target.JVM;
                     ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
                             "kof_ui_label_text", List.of(Type.PrimitiveType.INT),
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (KofUi.isLabel(faType) && "fontSize".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_label_font_size", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (KofUi.isLabel(faType) && "bold".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_label_bold", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (KofUi.isLabel(faType) && "color".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_label_color", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (KofUi.isButton(faType) && "text".equals(fa.fieldName())) {

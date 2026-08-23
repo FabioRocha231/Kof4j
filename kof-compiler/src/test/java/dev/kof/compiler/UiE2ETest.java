@@ -318,4 +318,61 @@ class UiE2ETest {
         assertTrue(html.contains("kof-row"), "row div rendered");
         assertTrue(html.contains("kof-view"), "view div rendered");
     }
+
+    @Test
+    void labelStyling(@TempDir Path tempDir) throws IOException {
+        String program = """
+            main() {
+                var l = Label("titulo")
+                l.fontSize = 24
+                l.bold = true
+                l.color = Palette.red
+                println(l.fontSize)
+                println(l.bold)
+                println(l.color.toCss())
+            }
+            """;
+        Path src = tempDir.resolve("style.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "0\n0\nrgb(0, 0, 0)");
+        runNative(src, tempDir.resolve("native"), "0\n0\nrgb(0, 0, 0)");
+
+        Path srcJs = tempDir.resolve("style-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int code = dev.kof.runtime.KofJsRunner.run(
+                tempDir.resolve("js").resolve("Default.mjs"), out,
+                new java.io.ByteArrayInputStream(new byte[0]), out);
+        assertEquals(0, code, "JS run should succeed");
+        assertEquals("24\n1\nrgb(255, 0, 0)", out.toString().trim(), "label style binds on the JS target");
+    }
+
+    @Test
+    void windowTheme(@TempDir Path tempDir) throws IOException {
+        String program = """
+            main() {
+                var w = Window("Tema")
+                var label = Label("escuro")
+                w.bind(label)
+                w.theme = Theme.dark()
+                w.show()
+            }
+            """;
+        Path src = tempDir.resolve("theme.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "");
+        runNative(src, tempDir.resolve("native"), "");
+
+        Path srcJs = tempDir.resolve("theme-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        String html = dev.kof.runtime.KofJsRunner.runCaptureHtml(
+                tempDir.resolve("js").resolve("Default.mjs"), new java.io.ByteArrayOutputStream(),
+                new java.io.ByteArrayInputStream(new byte[0]), new java.io.ByteArrayOutputStream());
+        assertNotNull(html, "window HTML should be captured");
+        assertTrue(html.contains("kof-label"), "label rendered");
+    }
 }
