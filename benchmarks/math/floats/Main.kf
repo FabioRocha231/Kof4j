@@ -1,0 +1,11 @@
+main() {
+    var f = 1.0
+    var acc = 0
+    for (var i = 0; i < 5000000; i++) {
+        f = f * 1.5
+        if (f > 1.0) {
+            acc = acc + 1
+        }
+    }
+    println(acc)
+}

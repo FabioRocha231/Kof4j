@@ -149,8 +149,8 @@ public final class Optimizer {
 
     /**
      * Identity elements for int/long arithmetic: x+0, x-0, x*1, x/1, x|0,
-     * x^0, x<<0 are all equal to x (no exceptions possible for these ops),
-     * and x%1 is always 0.
+     * x^0, x<<0 are all equal to x (no exceptions possible for these ops).
+     * The result replaces the literal slot, keeping stack depth unchanged.
      */
     private static KofLoadLiteral foldIdentity(KofLoadLiteral lb, KofBinary kb) {
         if (!(kb.operandType() instanceof Type.PrimitiveType pt)) return null;
@@ -162,13 +162,9 @@ public final class Optimizer {
         switch (kb.op()) {
             case ADD, SUB, OR, XOR, SHL -> { if (isZero) return FOLD_REMOVE; }
             case MUL, DIV -> { if (isOne) return FOLD_REMOVE; }
-            case MOD -> {
-                if (isOne) {
-                    return name.equals("long")
-                            ? KofLoadLiteral.ofLong(0L)
-                            : KofLoadLiteral.ofInt(0);
-                }
-            }
+            // x % 1 is NOT folded here: replacing [x, 1, MOD] with a literal
+            // 0 would leave x's value on the stack (stack-depth change);
+            // the two-literal case is handled by foldBinary.
             default -> { }
         }
         return null;

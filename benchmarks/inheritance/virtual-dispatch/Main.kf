@@ -1,0 +1,20 @@
+class Animal {
+    kind(): Int = 0
+}
+
+class Dog extends Animal {
+    kind(): Int = 1
+}
+
+class Cat extends Animal {
+    kind(): Int = 2
+}
+
+main() {
+    var acc = 0
+    Animal a = new Dog()
+    for (var i = 0; i < 5000000; i++) {
+        acc = acc + a.kind()
+    }
+    println(acc)
+}

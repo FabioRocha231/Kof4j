@@ -1,0 +1,32 @@
+search(Int[] a, Int n, Int key): Int {
+    var lo = 0
+    var hi = n - 1
+    while (lo <= hi) {
+        var mid = (lo + hi) / 2
+        if (a[mid] == key) {
+            return mid
+        }
+        if (a[mid] < key) {
+            lo = mid + 1
+        } else {
+            hi = mid - 1
+        }
+    }
+    return -1
+}
+
+main() {
+    var n = 100000
+    var a = new Int[n]
+    for (var i = 0; i < n; i++) {
+        a[i] = i * 2
+    }
+    var hits = 0
+    for (var i = 0; i < 1000000; i++) {
+        var key = (i * 7) % (n * 2)
+        if (search(a, n, key) >= 0) {
+            hits = hits + 1
+        }
+    }
+    println(hits)
+}

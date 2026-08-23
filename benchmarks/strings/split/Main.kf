@@ -1,0 +1,8 @@
+main() {
+    var total = 0
+    for (var i = 0; i < 50000; i++) {
+        var parts = "a,b,c,d".split(",")
+        total = total + parts.length
+    }
+    println(total)
+}

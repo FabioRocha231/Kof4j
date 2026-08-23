@@ -1,0 +1,13 @@
+main() {
+    var path = "bench-io-data.txt"
+    var ok = 0
+    for (var i = 0; i < 100; i++) {
+        var rc = writeFile(path, "kof io")
+        ok = ok + rc
+        var content = readFile(path)
+        if (content == "kof io") {
+            ok = ok + 1
+        }
+    }
+    println(ok)
+}

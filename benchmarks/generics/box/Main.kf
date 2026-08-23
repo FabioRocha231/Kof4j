@@ -1,0 +1,24 @@
+class Box<T> {
+    T value
+
+    set(T v) {
+        value = v
+    }
+
+    get(): T {
+        return value
+    }
+}
+
+main() {
+    var b = new Box<Int>()
+    b.set(0)
+    for (var i = 0; i < 2000000; i++) {
+        b.set(i)
+        var v = b.get()
+        if (v > 1000000) {
+            b.set(v - 1)
+        }
+    }
+    println(b.get())
+}

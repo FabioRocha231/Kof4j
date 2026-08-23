@@ -19,6 +19,7 @@ public final class Main {
             case "serve" -> serve(args);
             case "check" -> check(args);
             case "test" -> test(args);
+            case "bench" -> System.exit(Bench.run(args));
             case "info" -> info(args);
             case "lsp" -> lsp();
             case "install" -> install(args);
@@ -33,6 +34,7 @@ public final class Main {
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
 
         Target target = Target.JVM;
+        boolean release = false;
         int argStart = 2;
         for (int i = 2; i < args.length; i++) {
             if (args[i].startsWith("--target=")) {
@@ -42,6 +44,8 @@ public final class Main {
                 target = parseTarget(args[i + 1]);
                 argStart = i + 2;
                 i++;
+            } else if (args[i].equals("--release")) {
+                release = true;
             }
         }
 
@@ -50,6 +54,7 @@ public final class Main {
         catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
 
         CompilerDriver driver = new CompilerDriver();
+        if (release) driver.setDebugInfoEnabled(false);
         CompilationResult result = driver.compile(file, tempDir, target);
         for (Diagnostic d : result.diagnostics().getDiagnostics()) System.err.println(d.format());
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
@@ -127,11 +132,12 @@ public final class Main {
         }
     }
 
-    private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native] [--output <dir>]"); return; }
+private static void build(String[] args) {
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]"); return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         Path out = Path.of("build/classes");
+        boolean release = false;
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             if (arg.startsWith("--target=")) {
@@ -144,9 +150,12 @@ public final class Main {
             } else if (arg.equals("--output") && i + 1 < args.length) {
                 out = Path.of(args[i + 1]);
                 i++;
+            } else if (arg.equals("--release")) {
+                release = true;
             }
         }
         CompilerDriver driver = new CompilerDriver();
+        if (release) driver.setDebugInfoEnabled(false);
         List<Path> files = collect(src);
         if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
         boolean ok = true;
@@ -215,11 +224,15 @@ public final class Main {
 
     private static void printUsage() {
         System.out.println("usage: kof <command>");
-        System.out.println("  build <dir> [--target jvm|native|js] [--output <dir>]");
-        System.out.println("  run <file.kf> [--target jvm|native|js] [args...]");
+        System.out.println("  build <dir> [--target jvm|native|js] [--output <dir>] [--release]");
+        System.out.println("  run <file.kf> [--target jvm|native|js] [--release] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
         System.out.println("  test <file.kf|dir> [--target jvm|native]   run programs, PASS/FAIL by exit code");
+        System.out.println("  bench [paths...] [--target jvm|native|js] [--iterations N] [--warmup N] [--baseline <file>]");
+        System.out.println("                          [--update-baseline <file>] [--threshold <ratio>] [--json] [--quick]");
+        System.out.println("                          [--fail-on-regression]");
+        System.out.println("                          compile, run, validate output, collect metrics, compare baseline");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");

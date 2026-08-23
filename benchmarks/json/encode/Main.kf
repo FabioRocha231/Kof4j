@@ -1,0 +1,9 @@
+main() {
+    var l = listOf(1, 2, 3)
+    var total = 0
+    for (var i = 0; i < 20000; i++) {
+        var s = json.encode(l)
+        total = total + s.length
+    }
+    println(total)
+}

@@ -1,0 +1,10 @@
+record Point(Int x, Int y)
+
+main() {
+    var acc = 0
+    for (var i = 0; i < 500000; i++) {
+        var p = Point(i, i + 1)
+        acc = acc + p.x() + p.y()
+    }
+    println(acc)
+}

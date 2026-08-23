@@ -1,0 +1,13 @@
+task() {
+    var acc = 0
+    for (var i = 0; i < 1000; i++) {
+        acc = acc + i
+    }
+}
+
+main() {
+    for (var i = 0; i < 1000; i++) {
+        spawn task()
+    }
+    println("spawned")
+}

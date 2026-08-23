@@ -126,7 +126,13 @@ class JvmBackend implements Backend {
 
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
+        emit(module, outputDir, true);
+    }
+
+    @Override
+    public void emit(IRModule module, Path outputDir, boolean debugInfo) throws IOException {
         this.sourceName = module.sourceName();
+        this.debugInfoEnabled = debugInfo;
         for (IRClass clazz : module.classes()) {
             emitClass(clazz, outputDir);
         }
@@ -135,6 +141,7 @@ class JvmBackend implements Backend {
         }
     }
 
+    private boolean debugInfoEnabled = true;
     private boolean usesJson = false;
     private String sourceName;
 
@@ -146,7 +153,7 @@ class JvmBackend implements Backend {
         String superName = clazz.superName() != null ? clazz.superName() : "java/lang/Object";
         cw.visit(V21, clazz.accessFlags(), clazz.name(), clazz.signature(),
                 superName, clazz.interfaces().toArray(new String[0]));
-        if (sourceName != null) {
+        if (sourceName != null && debugInfoEnabled) {
             cw.visitSource(sourceName, null);
         }
 
@@ -381,7 +388,7 @@ class JvmBackend implements Backend {
         int lastLine = -1;
         for (KofOperation op : ops) {
             SourcePosition pos = debugPositions.get(op);
-            if (pos != null && pos.line() != lastLine) {
+            if (pos != null && pos.line() != lastLine && debugInfoEnabled) {
                 Label lineLabel = new Label();
                 mv.visitLabel(lineLabel);
                 mv.visitLineNumber(pos.line(), lineLabel);
@@ -526,14 +533,37 @@ class JvmBackend implements Backend {
         } else if (op instanceof KofJump kj) {
             mv.visitJumpInsn(GOTO, resolveLabel(kj.target()));
         } else if (op instanceof KofConditionalJump kc) {
-            int opcode = switch (kc.comparison()) {
-                case EQ -> IF_ICMPEQ;
-                case NE -> IF_ICMPNE;
-                case LT -> IF_ICMPLT;
-                case LE -> IF_ICMPLE;
-                case GT -> IF_ICMPGT;
-                case GE -> IF_ICMPGE;
-            };
+            boolean isLong = isPrimitiveOf(kc.operandType(), "long");
+            boolean isFloat = isPrimitiveOf(kc.operandType(), "float");
+            boolean isDouble = isPrimitiveOf(kc.operandType(), "double");
+            if (isLong) {
+                mv.visitInsn(LCMP);
+            } else if (isFloat) {
+                mv.visitInsn(FCMPL);
+            } else if (isDouble) {
+                mv.visitInsn(DCMPL);
+            }
+            int opcode;
+            if (isLong || isFloat || isDouble) {
+                // LCMP/FCMPL/DCMPL leave a single int; use 1-operand jumps.
+                opcode = switch (kc.comparison()) {
+                    case EQ -> IFEQ;
+                    case NE -> IFNE;
+                    case LT -> IFLT;
+                    case LE -> IFLE;
+                    case GT -> IFGT;
+                    case GE -> IFGE;
+                };
+            } else {
+                opcode = switch (kc.comparison()) {
+                    case EQ -> IF_ICMPEQ;
+                    case NE -> IF_ICMPNE;
+                    case LT -> IF_ICMPLT;
+                    case LE -> IF_ICMPLE;
+                    case GT -> IF_ICMPGT;
+                    case GE -> IF_ICMPGE;
+                };
+            }
             mv.visitJumpInsn(opcode, resolveLabel(kc.trueLabel()));
             mv.visitJumpInsn(GOTO, resolveLabel(kc.falseLabel()));
         } else if (op instanceof KofCall kc && ("kof_box".equals(kc.methodName()) || "kof_unbox".equals(kc.methodName()))) {

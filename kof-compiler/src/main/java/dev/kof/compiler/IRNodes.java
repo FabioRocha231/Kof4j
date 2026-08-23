@@ -125,7 +125,10 @@ record KofLabel(LabelId label) implements KofOperation {
 }
 record KofJump(LabelId target) implements KofOperation {
 }
-record KofConditionalJump(KofComparison comparison, LabelId trueLabel, LabelId falseLabel) implements KofOperation {
+record KofConditionalJump(KofComparison comparison, Type operandType, LabelId trueLabel, LabelId falseLabel) implements KofOperation {
+    KofConditionalJump(KofComparison comparison, LabelId trueLabel, LabelId falseLabel) {
+        this(comparison, Type.PrimitiveType.INT, trueLabel, falseLabel);
+    }
 }
 
 

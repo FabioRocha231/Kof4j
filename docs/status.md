@@ -1,6 +1,6 @@
 # Status do Projeto Kof
 
-**Última atualização:** 22 de agosto de 2026
+**Última atualização:** 23 de agosto de 2026
 **Versão:** 0.0.5-alpha
 
 ---
@@ -9,12 +9,13 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 394 testes (JVM + Native + KofJS E2E)
-kof build            → PASS (--target jvm|native|js)
-kof run              → PASS (jvm|native|js)
+mvn test             → 416 testes (JVM + Native + KofJS E2E)
+kof build            → PASS (--target jvm|native|js) [--release]
+kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (KofHttpServer, thread pool, 404/500, JSON)
 kof check            → PASS
 kof test             → PASS (PASS/FAIL por exit code com assert)
+kof bench            → PASS (harness: compile, run, validate, métricas, baseline)
 kof info             → PASS
 kof lsp              → PASS (diagnostics reais do frontend)
 kof install          → PASS
@@ -22,6 +23,44 @@ tests/run-golden.sh  → 16/16 (8 casos × jvm+native)
 tests/run-integration.sh → 9/9 (CLI + serve + kof test)
 scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
 ```
+
+---
+
+## Performance & Benchmarks (docs/performance.md)
+
+- **Otimizador de IR** (`Optimizer.java`, sempre ativo): constant folding,
+  branch simplification (condições constantes → jumps diretos), dead stack
+  effects (push+pop, dup+pop, load/store round trips), unreachable code
+  elimination (CFG reachability com regiões try/catch preservadas),
+  jump-to-next elimination, identidades aritméticas (x+0, x*1, x/1, ...).
+  Debug positions preservadas (ops sobreviventes).
+- **Perfis debug/release**: `kof build|run --release` remove metadata de
+  debug (SourceFile/LineNumberTable no JVM, source map no JS).
+- **`kof bench`**: `kof bench [paths...] [--target jvm|native|js]
+  [--iterations N] [--quick] [--baseline <file>] [--update-baseline <file>]
+  [--threshold <ratio>] [--json] [--fail-on-regression]`.
+  Compila → executa → valida stdout contra `expected.txt` → mede tempo
+  (mediana) e RSS (Linux, `/usr/bin/time -v`) → compara baseline →
+  sinaliza `PERFORMANCE REGRESSION`.
+- **Estrutura `benchmarks/`**: 33 benchmarks em 16 categorias (micro,
+  algorithms, collections, strings, math, objects, inheritance, interfaces,
+  generics, json, io, concurrency, startup, memory, stress, applications).
+- **Baselines**: `benchmarks/baselines/<target>-<version>.json` (33 jvm,
+  29 native, 32 js).
+- **CI**: `.github/workflows/benchmark.yml` — roda jvm+native com
+  `--fail-on-regression --threshold 1.20`.
+- `scripts/run-benchmarks.sh` — suite completa + atualização de baselines.
+- Regra de features novas: docs/performance.md §40-§41 (Definition of Done
+  inclui benchmark, stress, memory, resource e debug metadata).
+
+### Correções de backend descobertas pelos benchmarks
+
+| Bug | Correção |
+|-----|----------|
+| Chamadas via interface com retorno primitivo geravam descritor `Object` (`()Ljava/lang/Object` + `iadd` = bytecode inválido) | `analyzeInterface` agora define os symbols em `members()` (eram invisíveis ao `resolveInHierarchy`) |
+| `l.get(i)`/`l.remove(i)`/`l.size`/`l.contains(...)` como statement não emitiam `KofPop` → stack desbalanceado em merge points (Frame.merge crash / VerifyError) | `hasReturnValue` cobre métodos de List que deixam valor |
+| `if (long > long)` / `if (float > f)` / `if (double > d)` geravam `IF_ICMP` sobre não-ints (stack underflow) | `KofConditionalJump` ganhou `operandType`; JVM emite `LCMP`/`FCMPL`/`DCMPL` + jumps de 1 operando |
+| JS: call com efeito descartada em statement com Pop (ex.: `users.remove(0)` silenciosamente não executava) | handler de `KofPop` no JsBackend preserva `JsCall`/`JsSequence` como statement |
 
 ---
 
@@ -140,11 +179,12 @@ main() {
 
 ---
 
-## Testes (381/381 PASS)
+## Testes (416/416 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
 | CompilerDriverTest | 190 | compilação, semântica, fases, isolamento |
+| OptimizerTest | 20 | passes de otimização da IR |
 | NativeE2ETest | 50 | execução real de binários nativos |
 | KofJsE2ETest | 35 | execução real JS (GraalJS) |
 | JvmE2ETest | 29 | execução real de bytecode JVM |
@@ -160,8 +200,9 @@ main() {
 | SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
-| NativeDebugTest | 1 | harness de debug |
-| **Total** | **394** | |
+| NativeDebugTest* | 5 | harnesses de debug |
+| DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
+| **Total** | **416** | |
 
 ---
 

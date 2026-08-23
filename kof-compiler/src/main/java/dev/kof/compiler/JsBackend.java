@@ -930,10 +930,17 @@ class JsBackend implements Backend {
             }
             if (op instanceof KofPop) {
                 pos[0]++;
+                JsIr.JsExpression dropped = null;
                 if (!stack.isEmpty()) {
-                    pop(stack);
+                    dropped = pop(stack);
                 }
                 stack.clear();
+                if (dropped instanceof JsIr.JsCall || dropped instanceof JsIr.JsSequence) {
+                    // The popped value is a side-effecting call (e.g. a list
+                    // operation used as a statement); it must survive.
+                    return finishExpressionStatement(preamble, preambleExprs,
+                            new JsIr.JsExprStmt(dropped));
+                }
                 return finishExpressionStatement(preamble, preambleExprs, null);
             }
             if (op instanceof KofReturn kr) {

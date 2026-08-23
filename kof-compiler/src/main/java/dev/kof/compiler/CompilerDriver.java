@@ -12,9 +12,10 @@ public class CompilerDriver {
     private IRModule currentModule;
     private CompilationUnitNode currentUnit;
     private SemanticAnalyzer semanticAnalyzer;
-    private Target target = Target.JVM;
-    private boolean optimizeEnabled = false;
+private Target target = Target.JVM;
+    private boolean optimizeEnabled = true;
     private boolean debugInfoEnabled = true;
+    private java.util.function.BiConsumer<IRModule, IRModule> irObserver;
     private DiagnosticCollector currentDiagnostics;
     private String currentSourceName;
     private final java.util.IdentityHashMap<KofOperation, SourcePosition> currentDebugPositions =
@@ -35,6 +36,15 @@ public class CompilerDriver {
     /** Enable or disable debug metadata emission (line tables, source names). */
     public CompilerDriver setDebugInfoEnabled(boolean enabled) {
         this.debugInfoEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Observes the IR before and after optimization (identical modules when
+     * optimization is disabled). Used by tooling (kof inspect).
+     */
+    public CompilerDriver setIRObserver(java.util.function.BiConsumer<IRModule, IRModule> observer) {
+        this.irObserver = observer;
         return this;
     }
 
@@ -271,7 +281,7 @@ public class CompilerDriver {
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
                     localIdx = emitExpression(es.expression(), ops, owner, localIdx, locals);
-                    if (hasReturnValue(es.expression())) ops.add(new KofPop());
+                    if (hasReturnValue(es.expression(), locals)) ops.add(new KofPop());
                 }
                 yield localIdx;
             }
@@ -301,7 +311,7 @@ public class CompilerDriver {
                 if (ifStmt.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), thenLabel, elseLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), thenLabel, elseLabel));
                 } else {
                     localIdx = emitExpression(ifStmt.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
@@ -325,7 +335,7 @@ public class CompilerDriver {
                 if (ws.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), bodyLabel, endLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), bodyLabel, endLabel));
                 } else {
                     localIdx = emitExpression(ws.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
@@ -353,7 +363,7 @@ public class CompilerDriver {
                 if (dws.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), startLabel, endLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), startLabel, endLabel));
                 } else {
                     localIdx = emitExpression(dws.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
@@ -373,7 +383,7 @@ public class CompilerDriver {
                     if (fs.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                         localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                         localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                        ops.add(new KofConditionalJump(mapComparison(bin.operator()), bodyLabel, endLabel));
+                        ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), bodyLabel, endLabel));
                     } else {
                         localIdx = emitExpression(fs.condition(), ops, owner, localIdx, locals);
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
@@ -406,7 +416,7 @@ public class CompilerDriver {
                         }
                     } else {
                         localIdx = emitExpression(fs.update(), ops, owner, localIdx, locals);
-                        if (hasReturnValue(fs.update())) ops.add(new KofPop());
+                        if (hasReturnValue(fs.update(), locals)) ops.add(new KofPop());
                     }
                 }
                 ops.add(new KofJump(startLabel));
@@ -1232,7 +1242,7 @@ public class CompilerDriver {
                 if (ie.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
-                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), thenLabel, elseLabel));
+                    ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), thenLabel, elseLabel));
                 } else {
                     localIdx = emitExpression(ie.condition(), ops, owner, localIdx, locals);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
@@ -1967,6 +1977,20 @@ public class CompilerDriver {
         return true;
     }
 
+    /**
+     * Operand type of a comparison shortcut: the common numeric type of the
+     * two operands (int, long, float or double). The IR carries it so the
+     * JVM backend can emit the correct compare instruction.
+     */
+    private Type comparisonOperandType(BinaryExpr bin, List<IRLocalVariable> locals) {
+        Type left = inferExprType(bin.left(), locals);
+        Type right = inferExprType(bin.right(), locals);
+        if (isNumeric(left) && isNumeric(right)) {
+            return commonNumericType(left, right);
+        }
+        return Type.PrimitiveType.INT;
+    }
+
     private KofComparison mapComparison(String op) {
         return switch (op) {
             case ">" -> KofComparison.GT;
@@ -1991,13 +2015,23 @@ public class CompilerDriver {
         };
     }
 
-    private boolean hasReturnValue(ExpressionNode expr) {
+    private boolean hasReturnValue(ExpressionNode expr, List<IRLocalVariable> locals) {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
             if (mc.receiver() != null && KofIo.instanceMethod(Type.UnknownType.UNKNOWN,
                     mc.methodName(), mc.arguments().size()) != null) {
                 return true;
+            }
+            // List methods that leave a value on the stack (get, remove,
+            // size, contains, isEmpty) must be popped at statement level;
+            // add/set/clear are already popped by the JVM backend.
+            if (mc.receiver() != null && BuiltinTypes.isList(inferExprType(mc.receiver(), locals))) {
+                return switch (mc.methodName()) {
+                    case "get", "remove", "size", "length", "count",
+                            "contains", "isEmpty" -> true;
+                    default -> false;
+                };
             }
             if (mc.receiver() != null) {
                 List<Type> webArgTypes = new ArrayList<>();
@@ -2019,7 +2053,7 @@ public class CompilerDriver {
                     return !(resolvedType instanceof Type.UnknownType);
                 }
             }
-            Type t = inferExprType(mc, List.of());
+            Type t = inferExprType(mc, locals);
             if (t instanceof Type.UnknownType || Type.isVoid(t)) return false;
             return true;
         }

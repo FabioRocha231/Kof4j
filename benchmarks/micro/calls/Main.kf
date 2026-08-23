@@ -1,0 +1,11 @@
+add(Int a, Int b): Int {
+    return a + b
+}
+
+main() {
+    var sum = 0
+    for (var i = 0; i < 5000000; i++) {
+        sum = add(sum, 1)
+    }
+    println(sum)
+}

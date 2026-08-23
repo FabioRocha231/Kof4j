@@ -323,8 +323,12 @@ class SemanticAnalyzer {
                 Type returnType = resolveType(method.returnType(), classScope);
                 List<Type> paramTypes = new ArrayList<>();
                 for (FormalParameterNode p : method.parameters()) paramTypes.add(Type.of(p.type()));
-                classScope.define(new SymbolTable.MethodSymbol(method.name(), iface.name(),
-                        returnType, paramTypes, 0, SymbolTable.DispatchKind.INSTANCE));
+                SymbolTable.MethodSymbol ms = new SymbolTable.MethodSymbol(method.name(), iface.name(),
+                        returnType, paramTypes, 0, SymbolTable.DispatchKind.INSTANCE);
+                classScope.define(ms);
+                // Interface methods must be resolvable from outside the
+                // interface's own scope (resolveInHierarchy uses members()).
+                classSym.members().define(ms);
             }
         }
         currentScope = prevScope;

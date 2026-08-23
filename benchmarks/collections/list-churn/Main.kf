@@ -1,0 +1,14 @@
+main() {
+    var l = new List<Int>()
+    var acc = 0
+    for (var i = 0; i < 100000; i++) {
+        l.add(i)
+        if (l.contains(i)) {
+            acc = acc + 1
+        }
+        if (i % 2 == 0) {
+            l.remove(0)
+        }
+    }
+    println(acc + l.size)
+}
