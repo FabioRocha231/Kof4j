@@ -9,15 +9,41 @@
 
 ```
 mvn clean package → PASSA
-mvn test → 292/292 PASSAM (JUnit, inclui execução real JVM + Native)
+mvn test → 357/357 PASSAM fora do KofJS (9 falhas em KofJsE2ETest —
+          backend JS em desenvolvimento por outro agente; depende do
+          GraalJS embutido)
 kof run → FUNCIONA
 kof build → FUNCIONA (--target jvm|native)
 kof serve → FUNCIONA (handlers top-level static, JSON, routing por ==)
 kof check → FUNCIONA
+kof test → FUNCIONA (PASS/FAIL por exit code, JVM + Native)
 kof info → FUNCIONA
 kof lsp → FUNCIONA (diagnostics via frontend real)
 scripts/package.sh → gera pacote oficial + SHA256SUMS
 ```
+
+---
+
+## kof.io — Filesystem API (implementado)
+
+`File`, `Path` e `Directory` — uma API única para JVM e Native:
+
+- Path: `resolve`, `parent`, `fileName`, `extension`, `normalize`,
+  `isAbsolute`, `toAbsolute`.
+- File: `exists`, `isFile`, `isDirectory`, `readText`, `writeText`,
+  `appendText`, `readBytes`, `writeBytes`, `appendBytes`, `size`,
+  `delete`, `name`, `path` (+ formas estáticas `File.exists(p)` etc.).
+- Directory: `exists`, `create`, `createDirectories`, `list` (ordenado),
+  `delete`.
+- Texto: UTF-8 sempre. Bytes: `Int[]` (0-255).
+- Erros: Bool/`null`/`-1` no JVM; Native sem exceptions recuperáveis
+  (`readText` de arquivo inexistente encerra com erro — use `exists()`).
+- Native: syscalls POSIX (Linux x86-64); JVM: `java.nio.file`.
+- `IoE2ETest` 15/15 JVM+Native; multiplataforma no CI
+  (ubuntu/windows/macos; native roda apenas no Linux).
+- `for (var x in list)` — iteração sobre List/array.
+
+Referência: `docs/stdlib/IO.md`, `learn/34-file-system.md`.
 
 ---
 
