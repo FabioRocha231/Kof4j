@@ -42,8 +42,12 @@ class Parser {
         String returnType = "void";
         String name;
         if ((check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType())
-                && !checkNext(TokenType.LPAREN) && !checkNext(TokenType.LESS)) {
+                && !checkNext(TokenType.LPAREN)
+                && (isGenericReturnTypeAhead() || !checkNext(TokenType.LESS))) {
             returnType = advance().value();
+            if (check(TokenType.LESS)) {
+                returnType = returnType + consumeGenericTypeArgs();
+            }
             name = expectId("Expected function name", "PARSE010");
         } else {
             name = expectId("Expected function name", "PARSE010");
@@ -73,6 +77,48 @@ class Parser {
             expectSemicolon();
         }
         return new FunctionDeclarationNode(p, mods, returnType, name, params, thrown, typeParams, body);
+    }
+
+    /**
+     * True when the current token is a generic return type: IDENTIFIER '<'
+     * type args '>' IDENTIFIER '(' — e.g. "List<Int> ints(".
+     */
+    private boolean isGenericReturnTypeAhead() {
+        if (!checkNext(TokenType.LESS)) return false;
+        int depth = 0;
+        for (int i = 1; i + 1 < tokens.size() - pos; i++) {
+            TokenType t = tokens.get(pos + i).type();
+            if (t == TokenType.LESS) depth++;
+            else if (t == TokenType.GREATER) {
+                depth--;
+                if (depth == 0) {
+                    return tokens.get(pos + i + 1).type() == TokenType.IDENTIFIER
+                            && tokens.get(pos + i + 2).type() == TokenType.LPAREN;
+                }
+            } else if (t == TokenType.EOF) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Consumes the generic type arguments starting at the current LESS token
+     * and returns their source text, e.g. "<Int, String>".
+     */
+    private String consumeGenericTypeArgs() {
+        StringBuilder sb = new StringBuilder();
+        int depth = 0;
+        while (!atEnd()) {
+            Token t = advance();
+            sb.append(t.value());
+            if (t.type() == TokenType.LESS) depth++;
+            else if (t.type() == TokenType.GREATER) {
+                depth--;
+                if (depth == 0) break;
+            }
+        }
+        return sb.toString();
     }
 
     private List<String> parseTypeParameters() {

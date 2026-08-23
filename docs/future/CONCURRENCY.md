@@ -1,11 +1,44 @@
-# CONCURRENCY.md — Modelo de Concorrência Kof (design)
+# CONCURRENCY.md — Modelo de Concorrência Kof
 
-**Status:** Design — NÃO implementado
+**Status:** Parcialmente implementado (JVM) — Native pendente
 **Data:** 22 de agosto de 2026
 
 ---
 
-## 1. Princípio
+## 0. Implementado (0.0.5-alpha)
+
+### `spawn` — statement
+
+```kof
+spawn processarFila()      // chamada de função como tarefa
+spawn {                    // bloco inline (lambda sem capturas)
+    println("background")
+}
+```
+
+Semântica implementada:
+
+- a tarefa roda concorrentemente (JVM: virtual threads);
+- o programa **espera as tarefas antes de sair** (join implícito via contador
+  + shutdown hook no runtime JVM);
+- o valor de retorno da função é descartado (fire-and-forget);
+- exceções na tarefa são impressas em stderr (não derrubam o programa);
+- **Native**: diagnostic `CONC001` ("spawn: not supported on the Native
+  target yet") — gap documentado, não mascarado;
+- isolamento por valor: a tarefa recebe os argumentos; sem estado
+  compartilhado primitivo na linguagem.
+
+### Não exposto
+
+Nenhuma API de plataforma (Thread/Runnable/Executor) é visível na linguagem.
+`Thread.startVirtualThread` é detalhe interno do runtime JVM.
+
+### Próximas iterações (planned)
+
+- resultado observável de tarefa (`await`/join explícito);
+- filas produtor/consumidor (`kof.concurrent.Queue`);
+- scheduler nativo (threads no target Native);
+- erros propagáveis entre tarefas.
 
 Concorrência é uma capacidade da **linguagem/stdlib**, não uma coleção de
 APIs da plataforma.
@@ -77,28 +110,21 @@ Troca de valores entre tarefas através de:
 
 ---
 
-## 3. Sintaxe (ainda não escolhida)
+## 3. Sintaxe (escolhida: `spawn`)
 
-O design NÃO fixa sintaxe. Candidatos conceituais:
-
-```kof
-async {
-    ...
-}
-```
+**Escolhida e implementada (JVM):**
 
 ```kof
 spawn task()
+spawn { ... }
 ```
 
-```kof
-var resultado = await tarefa()
-```
+Rejeitadas por enquanto: `async { }` (confunde com async/await de outras
+linguagens), `await` (resultado de tarefa ainda não implementado).
 
-Decisões pendentes:
+Decisões pendentes para as próximas iterações:
 
-- `async` como função vs bloco;
-- `await` implícito vs explícito;
+- resultado observável de tarefa (`await`/join explícito);
 - como expressar filas/pub-sub;
 - modelo de erro (exceção atravessa a tarefa?).
 

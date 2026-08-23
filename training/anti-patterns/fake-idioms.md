@@ -23,7 +23,9 @@ porque existem em outras linguagens. Código assim **não compila** ou
 | `throw "msg"` / `try/catch/finally` | Implemented |
 | `Map` / `Set` | Planned |
 | `Option<T>` / null safety | Planned |
-| `async` / `await` / concorrência | Planned |
+| `async` / `await` / resultado de tarefa | Planned |
+| `spawn` (tarefas concorrentes) | Implemented (JVM; Native CONC001) |
+| `Thread` / `Executor` (APIs de plataforma) | Unavailable — nunca use |
 | Pattern matching | Planned |
 | `users.map(...)` / funções higher-order | Planned |
 | Primary constructor `class X(...)` | Unavailable |
