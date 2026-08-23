@@ -27,7 +27,8 @@ training/
 │   ├── classes.md
 │   ├── exceptions.md
 │   ├── arrays.md
-│   └── strings.md
+│   ├── strings.md
+│   └── io.md
 ├── reference/             # Referência técnica
 │   ├── compiler.md
 │   └── targets.md

@@ -13,7 +13,8 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 * Runtime nativo x86-64
 * Distribuição oficial (JDK embutido, tooling, editor support)
 * CLI: build, run, serve, check, info, lsp, version
-* 292+ testes passando
+* kof.io: File, Path, Directory (JVM + Native)
+* 363+ testes passando
 
 ## Para quem é
 
@@ -73,6 +74,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 | 31 | [Distribuição](31-distribution.md) |
 | 32 | [CLI e Tooling](32-cli-tooling.md) |
 | 33 | [Versionamento e Releases](33-versioning-releases.md) |
+| 34 | [Filesystem (kof.io)](34-file-system.md) |
 
 ## Ordem recomendada
 

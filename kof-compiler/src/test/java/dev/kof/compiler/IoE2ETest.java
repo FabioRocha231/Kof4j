@@ -8,11 +8,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 
 class IoE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();
+
+    private static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
 
     private String runJvm(Path source, Path outDir, String expected) throws IOException {
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
@@ -32,6 +37,7 @@ class IoE2ETest {
     }
 
     private String runNative(Path source, Path outDir, String expected) throws IOException {
+        assumeTrue(isLinux(), "Native target runs on Linux");
         CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
         Path binFile = outDir.resolve("Default/Main");

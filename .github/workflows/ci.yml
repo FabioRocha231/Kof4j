@@ -43,3 +43,24 @@ jobs:
 
       - name: Package check
         run: mvn clean package -DskipTests
+
+  multiplatform:
+    name: kof.io multiplatform (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: kof.io E2E over the real filesystem
+        shell: bash
+        run: mvn test -pl kof-compiler -am -Dtest=IoE2ETest -Dsurefire.failIfNoSpecifiedTests=false

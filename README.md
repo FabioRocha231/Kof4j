@@ -146,6 +146,33 @@ O compilador já possui uma fundação funcional.
 | field assignment | ✅ | ✅ |
 | JSON encode/decode | ✅ | ✅ |
 | List\<T\> | ✅ | ✅ |
+| kof.io (File, Path, Directory) | ✅ | ✅ |
+
+---
+
+# kof.io — Filesystem
+
+Arquivos, diretórios e caminhos com uma API única em todos os targets:
+
+```kof
+var path = Path("data/users.txt")
+path.parent().createDirectories()
+path.writeText("Mel\nKof\n")
+println(path.readText())
+println(path.size())
+```
+
+```kof
+var dir = Directory("data")
+dir.createDirectories()
+for (var entry in dir.list()) {
+    println(entry.name)
+}
+```
+
+Texto sempre UTF-8; bytes como `Int[]`; erros consistentes (Bool/`null`).
+Ver: [learn/34-file-system.md](learn/34-file-system.md) e
+[docs/stdlib/IO.md](docs/stdlib/IO.md).
 
 ---
 

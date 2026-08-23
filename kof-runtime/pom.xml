@@ -12,4 +12,26 @@
 
     <artifactId>kof-runtime</artifactId>
     <name>Kof Runtime</name>
+
+    <dependencies>
+<!--
+          KofJsRunner: embedded JavaScript engine (GraalJS) used to execute
+          the JavaScript emitted by the KofJS backend. The KofJS target does
+          not depend on Node.js or any external JavaScript runtime: kof run
+          with target js executes the generated ESM module inside the Kof
+          process itself. The generated .mjs files remain standard ES2022+
+          modules and can also run on any other engine (browser, Node, ...).
+        -->
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>polyglot</artifactId>
+            <version>${graaljs.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.js</groupId>
+            <artifactId>js</artifactId>
+            <version>${graaljs.version}</version>
+            <type>pom</type>
+        </dependency>
+    </dependencies>
 </project>
