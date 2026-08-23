@@ -136,7 +136,8 @@ class SemanticAnalyzer {
         for (AstNode member : cls.members()) {
             if (member instanceof FieldDeclarationNode field) {
                 Type fieldType = resolveType(field.type(), classScope);
-                SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, 0, cls.name());
+                int flags = field.modifiers().contains("static") ? AccessFlags.STATIC : 0;
+                SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, flags, cls.name());
                 classSym.members().define(fs);
                 classScope.define(fs);
             }

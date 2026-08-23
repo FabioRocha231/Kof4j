@@ -590,7 +590,7 @@ public class CompilerDriver {
         return switch (expr) {
             case LiteralExpr lit -> {
                 switch (lit.kind()) {
-                    case ConcreteLiteralKind.INT -> ops.add(KofLoadLiteral.ofInt(Integer.parseInt(lit.value())));
+                    case ConcreteLiteralKind.INT -> ops.add(KofLoadLiteral.ofInt(parseIntLiteral(lit.value())));
                     case ConcreteLiteralKind.LONG -> ops.add(KofLoadLiteral.ofLong(Long.parseLong(stripSuffix(lit.value()))));
                     case ConcreteLiteralKind.FLOAT -> ops.add(KofLoadLiteral.ofFloat(Float.parseFloat(stripSuffix(lit.value()))));
                     case ConcreteLiteralKind.DOUBLE -> ops.add(KofLoadLiteral.ofDouble(Double.parseDouble(stripSuffix(lit.value()))));
@@ -1101,6 +1101,15 @@ public class CompilerDriver {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     yield localIdx;
                 }
+                // static field access: Class.field — no receiver on the stack
+                if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
+                    SymbolTable.Symbol staticSym = resolveFieldInHierarchy(ct.name(), fa.fieldName());
+                    if (staticSym instanceof SymbolTable.FieldSymbol fs
+                            && (fs.accessFlags() & AccessFlags.STATIC) != 0) {
+                        ops.add(new KofGetStatic(recvType, fa.fieldName(), fs.type()));
+                        yield localIdx;
+                    }
+                }
                 localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                 if (recvType instanceof Type.ArrayType && "length".equals(fa.fieldName())) {
                     ops.add(new KofArrayLength());
@@ -1177,6 +1186,8 @@ public class CompilerDriver {
                 if (semanticAnalyzer != null) {
                     SymbolTable.Symbol sym = resolveFromSemantic(ie.name());
                     if (sym != null) yield sym.type();
+                    SymbolTable.ClassSymbol cls = semanticAnalyzer.getClass(ie.name());
+                    if (cls != null) yield cls.type();
                 }
                 yield Type.UnknownType.UNKNOWN;
             }
@@ -1848,7 +1859,7 @@ public class CompilerDriver {
         Object initVal = null;
         if (field.initializer() instanceof LiteralExpr lit) {
             initVal = switch (lit.kind()) {
-                case ConcreteLiteralKind.INT -> Integer.parseInt(lit.value());
+                case ConcreteLiteralKind.INT -> parseIntLiteral(lit.value());
                 case ConcreteLiteralKind.LONG -> Long.parseLong(stripSuffix(lit.value()));
                 case ConcreteLiteralKind.FLOAT -> Float.parseFloat(stripSuffix(lit.value()));
                 case ConcreteLiteralKind.DOUBLE -> Double.parseDouble(stripSuffix(lit.value()));
@@ -1991,6 +2002,19 @@ public class CompilerDriver {
 
     private boolean isAbstractMethod(MethodDeclarationNode method) {
         return method.body() == null || method.body().isEmpty();
+    }
+
+    /**
+     * Parses an integer literal, including hexadecimal (0xFF...). ARGB color
+     * values may exceed Integer.MAX_VALUE; they wrap to the signed 32-bit
+     * representation, which the Kof color semantics use (shifts + mask).
+     */
+    private int parseIntLiteral(String value) {
+        if (value.startsWith("0x") || value.startsWith("0X")) {
+            // no suffix stripping: hex digits may end in a..f
+            return (int) Long.parseLong(value.substring(2), 16);
+        }
+        return Integer.parseInt(stripSuffix(value));
     }
 
     private String stripSuffix(String value) {

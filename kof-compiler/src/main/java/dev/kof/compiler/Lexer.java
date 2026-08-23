@@ -238,6 +238,20 @@ class Lexer {
         boolean isLong = false;
         boolean isFloat = false;
         boolean isDouble = false;
+        boolean isHex = false;
+        // hexadecimal literal: 0x...
+        if (pos + 1 < source.length() && source.charAt(pos) == '0'
+                && (source.charAt(pos + 1) == 'x' || source.charAt(pos + 1) == 'X')) {
+            isHex = true;
+            advance();
+            advance();
+            while (pos < source.length() && isHexDigit(source.charAt(pos))) {
+                advance();
+            }
+            String hexValue = source.substring(startOffset, pos);
+            addToken(TokenType.INT_LITERAL, hexValue, startLine, startCol, startOffset, pos - startOffset);
+            return;
+        }
         while (pos < source.length() && Character.isDigit(source.charAt(pos))) {
             advance();
         }
@@ -285,7 +299,19 @@ class Lexer {
         addToken(type, value, startLine, startCol, startOffset, pos - startOffset);
     }
 
+    private boolean isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
     private boolean isIntegerLiteral(String value) {
+        if (value.startsWith("0x") || value.startsWith("0X")) {
+            try {
+                Long.parseLong(value.substring(2), 16);
+                return true;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
         try {
             Integer.parseInt(value);
             return true;
