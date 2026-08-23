@@ -217,11 +217,7 @@ final class JsEmitter {
         if (e instanceof JsIr.JsNull) return "null";
         if (e instanceof JsIr.JsIdentifier i) return i.name();
         if (e instanceof JsIr.JsThis) return "this";
-        if (e instanceof JsIr.JsBinary b) {
-            if (b.left() == null) throw new IllegalStateException("JsBinary null left: op=" + b.operator() + " right=" + b.right());
-            if (b.right() == null) throw new IllegalStateException("JsBinary null right: op=" + b.operator() + " left=" + b.left());
-            return "(" + expr(b.left()) + " " + b.operator() + " " + expr(b.right()) + ")";
-        }
+        if (e instanceof JsIr.JsBinary b) return "(" + expr(b.left()) + " " + b.operator() + " " + expr(b.right()) + ")";
         if (e instanceof JsIr.JsUnary u) return "(" + u.operator() + expr(u.operand()) + ")";
         if (e instanceof JsIr.JsCall c) {
             StringBuilder args = new StringBuilder();
@@ -239,10 +235,7 @@ final class JsEmitter {
             }
             return "new " + expr(n.callee()) + "(" + args + ")";
         }
-        if (e instanceof JsIr.JsMember m) {
-            if (m.target() == null) throw new IllegalStateException("JsMember null target: ." + m.name());
-            return expr(m.target()) + "." + m.name();
-        }
+        if (e instanceof JsIr.JsMember m) return expr(m.target()) + "." + m.name();
         if (e instanceof JsIr.JsIndex i) return expr(i.target()) + "[" + expr(i.index()) + "]";
         if (e instanceof JsIr.JsConditional c) {
             return "(" + expr(c.condition()) + " ? " + expr(c.thenExpr()) + " : " + expr(c.elseExpr()) + ")";
@@ -270,7 +263,6 @@ final class JsEmitter {
         }
         if (e instanceof JsIr.JsInstanceOf io) return "(" + expr(io.operand()) + " instanceof " + io.typeName() + ")";
         if (e instanceof JsIr.JsAssignExpr ae) return "(" + ae.target() + " = " + expr(ae.value()) + ")";
-        if (e == null) throw new IllegalStateException("unknown JS expression: null (parent chain)");
         throw new IllegalStateException("unknown JS expression: " + e);
     }
 

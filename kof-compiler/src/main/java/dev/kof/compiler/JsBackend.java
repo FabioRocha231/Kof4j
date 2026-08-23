@@ -254,7 +254,6 @@ class JsBackend implements Backend {
     }
 
     private List<JsIr.JsStatement> parseMethodBody(MethodCtx ctx) {
-        currentCtxOps = ctx.ops;
         int[] pos = {0};
         List<JsIr.JsStatement> body = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
         if (pos[0] < ctx.ops.size()) {
@@ -1029,7 +1028,9 @@ class JsBackend implements Backend {
             // the type checker at compile time.
         } else if (op instanceof KofInstanceOf io) {
             JsIr.JsExpression operand = pop(stack);
-            stack.add(new JsIr.JsInstanceOf(operand, jsClassName(ownerInternalName(io.type()))));
+            stack.add(new JsIr.JsConditional(
+                    new JsIr.JsInstanceOf(operand, jsClassName(ownerInternalName(io.type()))),
+                    new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
         } else if (op instanceof KofConditionalJump cj) {
             // if-expression: (cond ? then : else)
             JsIr.JsExpression right = pop(stack);
@@ -1115,6 +1116,12 @@ class JsBackend implements Backend {
         if ("valueOf".equals(kc.methodName()) && kc.kind() == KofCallKind.STATIC) {
             if (BuiltinTypes.isString(kc.ownerType())) {
                 stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("String"), List.of(args.get(0))));
+            } else if (!kc.parameterTypes().isEmpty()
+                    && kc.parameterTypes().get(0) instanceof Type.PrimitiveType pt
+                    && "bool".equals(Type.canonicalPrimitiveName(pt.name()))) {
+                // Boolean.valueOf(Z) — format 0/1 as true/false
+                stack.add(new JsIr.JsConditional(args.get(0),
+                        new JsIr.JsIdentifier("true"), new JsIr.JsIdentifier("false")));
             } else {
                 // boxed valueOf — JS values are already boxed; identity
                 stack.add(args.get(0));
@@ -1339,7 +1346,9 @@ class JsBackend implements Backend {
                                 JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
         switch (kc.methodName()) {
             case "kof_string_concat" -> stack.add(new JsIr.JsBinary(args.get(0), "+", args.get(1)));
-            case "kof_string_equals" -> stack.add(new JsIr.JsBinary(args.get(0), "===", args.get(1)));
+            case "kof_string_equals" -> stack.add(new JsIr.JsConditional(
+                    new JsIr.JsBinary(args.get(0), "===", args.get(1)),
+                    new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
             case "valueOf" -> stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("String"), List.of(args.get(0))));
             case "charAt" -> stack.add(new JsIr.JsCall(
                     new JsIr.JsMember(receiver, "charCodeAt"), List.of(args.get(0))));
@@ -1457,8 +1466,6 @@ class JsBackend implements Backend {
     private void registerIoRuntime(String fn) {
         if (!ioRuntimeImports.contains(fn)) ioRuntimeImports.add(fn);
     }
-
-    private List<KofOperation> currentCtxOps = List.of();
 
     private JsIr.JsExpression pop(List<Object> stack) {
         Object top = popRaw(stack);
@@ -1635,11 +1642,11 @@ class JsBackend implements Backend {
             }
 
             export function kofListContains(list, value) {
-                return list.includes(value);
+                return list.includes(value) ? 1 : 0;
             }
 
             export function kofListIsEmpty(list) {
-                return list.length === 0;
+                return list.length === 0 ? 1 : 0;
             }
 
             export function kofListRemove(list, index) {
