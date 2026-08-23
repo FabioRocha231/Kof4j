@@ -813,6 +813,7 @@ class Parser {
             SourcePosition p = pos();
             advance();
             ExpressionNode operand = parseUnary();
+            System.err.println("DBG-PARSE ++ prefix operand=" + operand.getClass().getSimpleName());
             return new UnaryExpr(p, "++", operand, true);
         }
         if (check(TokenType.MINUS_MINUS)) {
@@ -839,6 +840,9 @@ class Parser {
                 expr = new ArrayAccessExpr(p, expr, index);
             } else if (check(TokenType.LPAREN)) {
                 List<ExpressionNode> args = parseArguments();
+                if (check(TokenType.LBRACE)) {
+                    args.add(new LambdaExpr(pos(), List.of(), parseBlock()));
+                }
                 if (expr instanceof IdentifierExpr ie) {
                     expr = new MethodCallExpr(pos(), null, ie.name(), List.of(), args);
                 } else if (expr instanceof FieldAccessExpr fa) {
@@ -850,6 +854,9 @@ class Parser {
                     && looksLikeGenericCall()) {
                 List<String> typeArgs = parseCallTypeArguments();
                 List<ExpressionNode> args = parseArguments();
+                if (check(TokenType.LBRACE)) {
+                    args.add(new LambdaExpr(pos(), List.of(), parseBlock()));
+                }
                 if (expr instanceof IdentifierExpr ie3) {
                     expr = new MethodCallExpr(pos(), null, ie3.name(), typeArgs, args);
                 } else if (expr instanceof FieldAccessExpr fa2) {

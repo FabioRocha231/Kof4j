@@ -475,7 +475,8 @@ class SemanticAnalyzer {
                     }
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
-                        && !"json".equals(ie.name()) && !knownClasses.containsKey(ie.name())) {
+                        && !"json".equals(ie.name()) && !KofWeb.isWebNamespace(ie.name())
+                        && !knownClasses.containsKey(ie.name())) {
                     diagnostics.error("", 0, 0, 0,
                             "Undefined variable or type: '" + ie.name() + "'", "SEM011");
                 }
@@ -520,6 +521,11 @@ class SemanticAnalyzer {
                 if (mc.receiver() == null && "readLine".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                     yield BuiltinTypes.STRING;
                 }
+                if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())
+                        && KofWeb.contextCall(mc.methodName(), mc.arguments().size()) != null) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield BuiltinTypes.STRING;
+                }
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     inferType(mc.arguments().get(0), scope);
                     yield BuiltinTypes.STRING;
@@ -534,6 +540,17 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())
+                            && "app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        yield KofWeb.APP;
+                    }
+                    if (KofWeb.isAppType(recvType)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), argTypes);
+                        if (webCall != null) yield webCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (recvType instanceof Type.FunctionType ft) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -578,7 +595,8 @@ class SemanticAnalyzer {
                         && !"now".equals(mc.methodName()) && !"readLine".equals(mc.methodName())
                         && !"readFile".equals(mc.methodName()) && !"writeFile".equals(mc.methodName())
                         && !"super".equals(mc.methodName())
-                        && !KofIo.isConstructor(mc.methodName())) {
+                        && !KofIo.isConstructor(mc.methodName())
+                        && !KofWeb.isContextFunction(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                     boolean found = false;
