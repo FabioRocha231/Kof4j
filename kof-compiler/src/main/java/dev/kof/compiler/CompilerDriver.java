@@ -961,11 +961,17 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) {
+                            if (KofWeb.isRouteMethod(mc.methodName())) {
+                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING, mc.methodName().toUpperCase()));
+                            }
                             for (ExpressionNode arg : mc.arguments()) {
                                 localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                             }
                             List<Type> webParams = new ArrayList<>();
                             webParams.add(BuiltinTypes.STRING);
+                            if (KofWeb.isRouteMethod(mc.methodName())) {
+                                webParams.add(BuiltinTypes.STRING);
+                            }
                             webParams.addAll(webCall.parameterTypes());
                             ops.add(new KofCall(KofWeb.APP, webCall.function(), webParams,
                                     webCall.returnType(), KofCallKind.FUNCTION));

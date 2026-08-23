@@ -34,8 +34,26 @@ final class JdwpClient {
     }
 
     void connect() throws IOException {
-        socket = new Socket(host, port);
-        socket.setSoTimeout(20000);
+        IOException last = null;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            try {
+                socket = new Socket(host, port);
+                socket.setSoTimeout(20000);
+                last = null;
+                break;
+            } catch (IOException e) {
+                last = e;
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        if (last != null) {
+            throw last;
+        }
         in = new DataInputStream(socket.getInputStream());
         out = new DataOutputStream(socket.getOutputStream());
         out.write("JDWP-Handshake".getBytes(StandardCharsets.US_ASCII));

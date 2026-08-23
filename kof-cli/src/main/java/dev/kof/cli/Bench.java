@@ -309,6 +309,7 @@ public final class Bench {
 
             List<Long> times = new ArrayList<>();
             long rssKb = 0;
+            long cpuMicros = 0;
             boolean validated = true;
             for (int i = 0; i < iterations; i++) {
                 RunResult rr = runOnce(target, outDir, spec, verbose);
@@ -318,6 +319,7 @@ public final class Bench {
                 }
                 times.add(rr.wallNanos);
                 rssKb = Math.max(rssKb, rr.rssKb);
+                cpuMicros += rr.userMicros + rr.systemMicros;
                 if (!rr.output.equals(expected)) {
                     validated = false;
                     System.err.println("kof bench: " + spec.name + ": output mismatch"
@@ -330,6 +332,7 @@ public final class Bench {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("ms", median(times));
             if (rssKb > 0) row.put("rss_kb", rssKb);
+            if (cpuMicros > 0) row.put("cpu_ms", cpuMicros / 1_000);
             row.put("compile_ms", compileMs);
             row.put("validated", validated);
             if (!validated) row.put("status", "FAILED");
@@ -346,11 +349,19 @@ public final class Bench {
         final long wallNanos;
         final long rssKb;
         final String output;
+        final long userMicros;
+        final long systemMicros;
 
         RunResult(long wallNanos, long rssKb, String output) {
+            this(wallNanos, rssKb, output, 0, 0);
+        }
+
+        RunResult(long wallNanos, long rssKb, String output, long userMicros, long systemMicros) {
             this.wallNanos = wallNanos;
             this.rssKb = rssKb;
             this.output = output;
+            this.userMicros = userMicros;
+            this.systemMicros = systemMicros;
         }
     }
 
@@ -359,6 +370,8 @@ public final class Bench {
         long start = System.nanoTime();
         String output;
         long rssKb = 0;
+        long userMicros = 0;
+        long systemMicros = 0;
         if (target == Target.JS) {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             Path entry = findJsEntry(outDir);
@@ -394,6 +407,8 @@ public final class Bench {
             String text = new String(buf, StandardCharsets.UTF_8);
             if (canMeasureRss) {
                 rssKb = parseRss(text);
+                userMicros = parseTimeSeconds(text, "User time");
+                systemMicros = parseTimeSeconds(text, "System time");
                 output = stripTimeOutput(text);
             } else {
                 output = text;
@@ -405,7 +420,23 @@ public final class Bench {
             }
         }
         long wallNanos = System.nanoTime() - start;
-        return new RunResult(wallNanos, rssKb, normalize(output));
+        return new RunResult(wallNanos, rssKb, normalize(output), userMicros, systemMicros);
+    }
+
+    private static long parseTimeSeconds(String timeOutput, String prefix) {
+        for (String line : timeOutput.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith(prefix)) {
+                String[] parts = trimmed.split(":");
+                if (parts.length == 2) {
+                    try {
+                        return Math.round(Double.parseDouble(parts[1].trim().split(" ")[0]) * 1_000_000);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return 0;
     }
 
     private static List<String> commandFor(Target target, Path outDir) {
@@ -552,22 +583,24 @@ public final class Bench {
 
     private static void printTable(Target target, List<Map<String, Object>> rows) {
         System.out.println();
-        System.out.printf("%-34s %8s %10s %9s %s%n", "benchmark", "ms", "rss_kb", "ratio", "status");
-        System.out.println("---------------------------------------------------------------");
+        System.out.printf("%-34s %8s %10s %8s %9s %s%n", "benchmark", "ms", "rss_kb", "cpu_ms", "ratio", "status");
+        System.out.println("--------------------------------------------------------------------");
         for (Map<String, Object> row : rows) {
             String name = (String) row.get("name");
             Object ms = row.get("ms");
             Object rss = row.get("rss_kb");
+            Object cpu = row.get("cpu_ms");
             Object ratio = row.get("ratio");
             String status = row.get("status") != null ? (String) row.get("status") : "ok";
             if (row.get("regression") == Boolean.TRUE) status = "REGRESSION";
-            System.out.printf("%-34s %8d %10s %9s %s%n",
+            System.out.printf("%-34s %8d %10s %8s %9s %s%n",
                     name, ms instanceof Number n ? n.longValue() : 0,
                     rss instanceof Number n ? n.longValue() : "-",
+                    cpu instanceof Number n ? n.longValue() : "-",
                     ratio instanceof Number n ? String.format("%.2f", n.doubleValue()) : "-",
                     status);
         }
-        System.out.println("---------------------------------------------------------------");
+        System.out.println("--------------------------------------------------------------------");
         System.out.println("target: " + target.name().toLowerCase() + " | version: " + KofVersion.version());
     }
 

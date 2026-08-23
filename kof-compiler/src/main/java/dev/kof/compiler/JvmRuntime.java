@@ -22,6 +22,7 @@ static boolean hasRuntimeFn(String methodName) {
         return methodName.startsWith("kof_json_")
                 || methodName.startsWith("kof_io_")
                 || methodName.startsWith("kof_web_")
+                || methodName.startsWith("kof_ui_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
