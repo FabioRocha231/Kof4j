@@ -10,27 +10,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * KofHttpServer — the HTTP engine behind `kof serve` and the future kof.http
- * standard library module.
- *
- * Deliberately framework-free: a raw HTTP/1.1 server (ServerSocket) with:
- * request parsing (method, path, query string, headers, body via
- * Content-Length), typed handler dispatch, automatic Content-Type detection
- * (application/json when the body starts with { or [), 404 for null results,
- * 500 for handler errors, graceful shutdown, and a thread pool for
- * concurrent connections.
- *
- * The language contract stays the same on every target:
- *   handler(method, path, body, query, headers) → String (null = 404)
- */
+
 public final class KofHttpServer {
 
     public interface Handler {
-        /**
-         * Returns the response body, or null to signal 404 Not Found.
-         * The headers argument is the raw header block (one "Key: Value" per line).
-         */
+
         String handle(String method, String path, String body, String query, String headers);
     }
 
@@ -51,7 +35,7 @@ public final class KofHttpServer {
         this.pool = Executors.newFixedThreadPool(threads);
     }
 
-    /** Starts listening and serves forever (until close). Blocking. */
+
     public void serve(String host, int port) throws IOException {
         serverSocket = new ServerSocket(port, 64, InetAddress.getByName(host));
         running = true;
@@ -67,13 +51,13 @@ public final class KofHttpServer {
         }
     }
 
-    /** Binds the socket and returns the actual port (useful for port 0 in tests). */
+
     public int bind(String host, int port) throws IOException {
         serverSocket = new ServerSocket(port, 64, InetAddress.getByName(host));
         return serverSocket.getLocalPort();
     }
 
-    /** Accept loop that serves until close(); non-blocking caller. */
+
     public void acceptLoop() {
         running = true;
         while (running) {

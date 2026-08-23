@@ -2,19 +2,12 @@ package dev.kof.compiler;
 
 import java.util.List;
 
-/**
- * NativeRuntime — generates x86-64 assembly for Kof runtime functions.
- *
- * These functions are the native implementation of the Kof Runtime ABI.
- * They are emitted into the .text section of every native binary.
- */
+
 final class NativeRuntime {
 
     private NativeRuntime() {}
 
-    /**
-     * Returns assembly for all required runtime functions.
-     */
+
     static String generateRuntimeAssembly() {
         StringBuilder sb = new StringBuilder();
         emitPrint(sb);
@@ -66,11 +59,7 @@ final class NativeRuntime {
         return sb.toString();
     }
 
-    /**
-     * Generates method table entries for a class.
-     * Each entry is: .quad method_address
-     * methods is a list of mangled method names in order.
-     */
+
     static void generateMethodTable(StringBuilder sb, String className, List<String> methodNames) {
         sb.append(".balign 8\n");
         sb.append(".globl ").append(className).append("_vtable\n");
@@ -82,11 +71,7 @@ final class NativeRuntime {
         sb.append("    .quad 0\n");
     }
 
-    /**
-     * kof_init_object(obj_ptr, type_id, vtable_ptr)
-     * Initializes the object header.
-     * %rdi = obj_ptr, %esi = type_id, %rdx = vtable_ptr
-     */
+
     static void emitInitObject(StringBuilder sb) {
         sb.append("""
             .globl kof_init_object
@@ -99,9 +84,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_print(ptr) — prints a null-terminated string to stdout.
-     */
+
     private static void emitPrint(StringBuilder sb) {
         sb.append("""
             .globl kof_print
@@ -125,9 +108,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_println(ptr) — prints a null-terminated string followed by newline.
-     */
+
     private static void emitPrintln(StringBuilder sb) {
         sb.append("""
             .globl kof_println
@@ -142,11 +123,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_int_to_string(value) — converts an int to a KofString.
-     * %rdi = int value
-     * returns %rax = KofString*
-     */
+
     private static void emitIntToString(StringBuilder sb) {
         sb.append("""
             .globl kof_int_to_string
@@ -212,11 +189,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_long_to_string(value) — converts a 64-bit long to a KofString.
-     * %rdi = long value
-     * returns %rax = KofString*
-     */
+
     private static void emitLongToString(StringBuilder sb) {
         sb.append("""
             .globl kof_long_to_string
@@ -282,11 +255,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_bool_to_string(value) — converts a bool to a KofString ("true"/"false").
-     * %rdi = int value (0/1)
-     * returns %rax = KofString*
-     */
+
     private static void emitBoolToString(StringBuilder sb) {
         sb.append("""
             .globl kof_bool_to_string
@@ -305,9 +274,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_print_int(value) — prints an integer as decimal to stdout.
-     */
+
     private static void emitPrintInt(StringBuilder sb) {
         sb.append("""
             .globl kof_print_int
@@ -370,18 +337,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_alloc(size) — allocates size bytes on the heap.
-     * Returns pointer in %rax. Uses mmap for simplicity.
-     *
-     * Allocation model: every block is prefixed by a 16-byte header
-     * holding the total mapped size (header + payload, 16-byte aligned).
-     * kof_free uses this header to munmap the exact block; counters feed
-     * kof_memstats. The payload is 16-byte aligned.
-     *
-     * This is the foundation for the future allocator evolution:
-     * arenas, reference tracking, generational GC.
-     */
+
     private static void emitAlloc(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -420,11 +376,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_free(ptr) — releases a block previously returned by kof_alloc.
-     * Reads the block size from the allocation header and munmaps it.
-     * Freeing null is a safe no-op.
-     */
+
     private static void emitFree(StringBuilder sb) {
         sb.append("""
             .globl kof_free
@@ -443,11 +395,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_memstats() — prints memory allocation statistics.
-     * Reports real counters maintained by kof_alloc/kof_free:
-     * allocations, frees and live bytes.
-     */
+
     static void emitMemstats(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -495,9 +443,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_panic(message) — prints error message and exits.
-     */
+
     private static void emitPanic(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -536,9 +482,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_null_error() — prints null reference error and exits.
-     */
+
     private static void emitNullError(StringBuilder sb) {
         sb.append(".Lstr_null_err: .asciz \"Runtime error: null pointer access\"\n");
         sb.append("""
@@ -550,10 +494,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_bounds_error(index, length) — prints array bounds error and exits.
-     * %rdi = index, %rsi = length
-     */
+
     private static void emitBoundsError(StringBuilder sb) {
         sb.append(".Lstr_bounds_err: .asciz \"Runtime error: array index out of bounds\"\n");
         sb.append("""
@@ -565,26 +506,13 @@ final class NativeRuntime {
             """);
     }
 
-    // ── KofString Runtime Functions ────────────────────────────────
 
-    /**
-     * KofString layout (x86-64):
-     *   offset 0:  type_id   (4 bytes, always 1 for String)
-     *   offset 4:  flags     (4 bytes)
-     *   offset 8:  method_table_ptr (8 bytes, NULL for strings)
-     *   offset 16: length    (4 bytes, byte count)
-     *   offset 20: padding   (4 bytes, alignment)
-     *   offset 24: UTF-8 data + null terminator
-     */
+
+
     static final int KOF_STRING_TYPE_ID = 1;
     static final int KOF_STRING_HEADER_SIZE = 24;
 
-    /**
-     * kof_string_from_literal(data_ptr, byte_length) → str_ptr
-     * Creates a KofString from a static literal.
-     * %rdi = pointer to UTF-8 data, %esi = byte length
-     * Returns pointer to new KofString in %rax.
-     */
+
     private static void emitStringFromLiteral(StringBuilder sb) {
         sb.append("""
             .globl kof_string_from_literal
@@ -617,10 +545,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_memcpy(dest, src, n) — copies n bytes from src to dest.
-     * %rdi = dest, %rsi = src, %edx = n
-     */
+
     static void emitMemcpy(StringBuilder sb) {
         sb.append("""
             .globl kof_memcpy
@@ -639,12 +564,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_length(str_ptr) → int
-     * Returns the byte length of a KofString.
-     * %rdi = pointer to KofString
-     * Returns length in %eax.
-     */
+
     private static void emitStringLength(StringBuilder sb) {
         sb.append("""
             .globl kof_string_length
@@ -655,12 +575,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_concat(str1, str2) → str3
-     * Concatenates two KofStrings into a new KofString.
-     * %rdi = str1, %rsi = str2
-     * Returns pointer to new KofString in %rax.
-     */
+
     private static void emitStringConcat(StringBuilder sb) {
         sb.append("""
             .globl kof_string_concat
@@ -704,11 +619,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_print_string(str_ptr) — prints a KofString to stdout.
-     * Uses stored length (no strlen scan).
-     * %rdi = pointer to KofString
-     */
+
     private static void emitPrintString(StringBuilder sb) {
         sb.append("""
             .globl kof_print_string
@@ -724,10 +635,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_println_string(str_ptr) — prints a KofString + newline.
-     * %rdi = pointer to KofString
-     */
+
     private static void emitPrintlnString(StringBuilder sb) {
         sb.append("""
             .globl kof_println_string
@@ -744,21 +652,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * KofList layout:
-     *   offset 0:  type_id (4)
-     *   offset 4:  flags (4)
-     *   offset 8:  method_table_ptr (8)
-     *   offset 16: length (4)
-     *   offset 20: capacity (4)
-     *   offset 24: data pointer (8) — array of 8-byte elements
-     *
-     * kof_list_new() → new empty list (capacity 2)
-     * kof_list_add(list, value) → grow if needed, append
-     * kof_list_get(list, index) → element (bounds checked)
-     * kof_list_set(list, index, value) → overwrite element
-     * kof_list_size(list) → length
-     */
+
     private static void emitListFunctions(StringBuilder sb) {
         sb.append("""
             .globl kof_list_new
@@ -988,15 +882,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * JSON support.
-     * JSON builder layout (32 bytes):
-     *   +0  type_id (+4 flags, +8 vtable)
-     *   +16 length (bytes)
-     *   +20 capacity (bytes)
-     *   +24 data ptr
-     * List encode tags: 0=int, 1=string, 2=bool, 3=object
-     */
+
     private static void emitJsonFunctions(StringBuilder sb) {
         sb.append("""
             .globl kof_json_builder_new
@@ -1707,10 +1593,7 @@ final class NativeRuntime {
         sb.append(".Lkof_json_true: .asciz \"true\"\n");
     }
 
-    /**
-     * kof_string_equals(str1, str2) → bool
-     * Content equality of two KofStrings.
-     */
+
     private static void emitStringEquals(StringBuilder sb) {
         sb.append("""
             .globl kof_string_equals
@@ -1748,12 +1631,9 @@ final class NativeRuntime {
             """);
     }
 
-    // ── Additional String Runtime Functions ──────────────────────
 
-    /**
-     * kof_string_char_at(str, index) → byte value
-     * Returns the byte at the given index.
-     */
+
+
     private static void emitStringCharAt(StringBuilder sb) {
         sb.append("""
             .globl kof_string_char_at
@@ -1773,9 +1653,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_substring(str, start, end) → new_str_ptr
-     */
+
     private static void emitStringSubstring(StringBuilder sb) {
         sb.append("""
             .globl kof_string_substring
@@ -1834,9 +1712,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_contains(str, sub) → bool
-     */
+
     private static void emitStringContains(StringBuilder sb) {
         sb.append("""
             .globl kof_string_contains
@@ -1889,9 +1765,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_starts_with(str, prefix) → bool
-     */
+
     private static void emitStringStartsWith(StringBuilder sb) {
         sb.append("""
             .globl kof_string_starts_with
@@ -1930,9 +1804,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_ends_with(str, suffix) → bool
-     */
+
     private static void emitStringEndsWith(StringBuilder sb) {
         sb.append("""
             .globl kof_string_ends_with
@@ -1979,9 +1851,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_index_of(str, needle) → int (byte index or -1)
-     */
+
     private static void emitStringIndexOf(StringBuilder sb) {
         sb.append("""
             .globl kof_string_index_of
@@ -2042,9 +1912,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_trim(str) → new KofString without leading/trailing whitespace
-     */
+
     private static void emitStringTrim(StringBuilder sb) {
         sb.append("""
             .globl kof_string_trim
@@ -2118,9 +1986,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_to_upper(str) and kof_string_to_lower(str) — ASCII case conversion
-     */
+
     private static void emitStringCase(StringBuilder sb) {
         sb.append("""
             .globl kof_string_to_upper
@@ -2200,10 +2066,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_replace(str, from, to) → new KofString with all occurrences of
-     * the single-byte char 'from' replaced by 'to' (JVM replace(char,char) semantics).
-     */
+
     private static void emitStringReplace(StringBuilder sb) {
         sb.append("""
             .globl kof_string_replace
@@ -2250,9 +2113,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_equals_ignore_case(a, b) → bool (ASCII case-insensitive)
-     */
+
     private static void emitStringEqualsIgnoreCase(StringBuilder sb) {
         sb.append("""
             .globl kof_string_equals_ignore_case
@@ -2313,10 +2174,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_split(str, sep) → KofArray of KofString
-     * Splits on the single-byte separator (JVM split(String) for one-char seps).
-     */
+
     private static void emitStringSplit(StringBuilder sb) {
         sb.append("""
             .globl kof_string_split
@@ -2419,26 +2277,13 @@ final class NativeRuntime {
             """);
     }
 
-    // ── KofArray Runtime Functions ─────────────────────────────────
 
-    /**
-     * KofArray layout (x86-64):
-     *   offset 0:  type_id   (4 bytes, always 2 for Array)
-     *   offset 4:  flags     (4 bytes)
-     *   offset 8:  method_table_ptr (8 bytes, NULL for arrays)
-     *   offset 16: length    (4 bytes, number of elements)
-     *   offset 20: elem_size (4 bytes, size of each element)
-     *   offset 24: elements  (length * elem_size bytes)
-     */
+
+
     static final int KOF_ARRAY_TYPE_ID = 2;
     static final int KOF_ARRAY_HEADER_SIZE = 24;
 
-    /**
-     * kof_array_alloc(length, element_size) → array_ptr
-     * Allocates a new array on the heap.
-     * %rdi = length (number of elements), %rsi = element_size (bytes per element)
-     * Returns pointer to new KofArray in %rax.
-     */
+
     private static void emitArrayAlloc(StringBuilder sb) {
         sb.append("""
             .globl kof_array_alloc
@@ -2466,12 +2311,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_array_length(array_ptr) → int
-     * Returns the length of a KofArray.
-     * %rdi = pointer to KofArray
-     * Returns length in %eax.
-     */
+
     private static void emitArrayLength(StringBuilder sb) {
         sb.append("""
             .globl kof_array_length
@@ -2482,13 +2322,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_array_get(array_ptr, index) → element_value
-     * Gets an element from a KofArray.
-     * %rdi = pointer to KofArray, %rsi = index
-     * Returns element value in %rax (for primitives) or pointer (for references).
-     * Performs bounds checking.
-     */
+
     private static void emitArrayGet(StringBuilder sb) {
         sb.append("""
             .globl kof_array_get
@@ -2539,12 +2373,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_array_set(array_ptr, index, value)
-     * Sets an element in a KofArray.
-     * %rdi = pointer to KofArray, %rsi = index, %rdx = value
-     * Performs bounds checking.
-     */
+
     private static void emitArraySet(StringBuilder sb) {
         sb.append("""
             .globl kof_array_set
@@ -2598,13 +2427,9 @@ final class NativeRuntime {
             """);
     }
 
-    // ── Network Runtime Functions ──────────────────────────────────
 
-    /**
-     * kof_net_socket(domain, type, protocol) → fd
-     * Creates a socket. %rdi=domain, %rsi=type, %rdx=protocol
-     * Returns file descriptor in %rax, or -1 on error.
-     */
+
+
     private static void emitIoTimeFunctions(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -3919,11 +3744,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_bind(fd, port, addr) → status
-     * Binds socket. %rdi=fd, %esi=port, %rdx=addr_ptr
-     * Returns 0 on success, -1 on error.
-     */
+
     private static void emitNetBind(StringBuilder sb) {
         sb.append("""
             .globl kof_net_bind
@@ -3959,10 +3780,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_listen(fd, backlog) → status
-     * Listens on socket. %rdi=fd, %esi=backlog
-     */
+
     private static void emitNetListen(StringBuilder sb) {
         sb.append("""
             .globl kof_net_listen
@@ -3974,11 +3792,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_accept(fd) → client_fd
-     * Accepts a connection. %rdi=fd
-     * Returns client fd in %rax.
-     */
+
     private static void emitNetAccept(StringBuilder sb) {
         sb.append("""
             .globl kof_net_accept
@@ -3996,10 +3810,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_read(fd, buf, len) → bytes_read
-     * Reads from socket. %rdi=fd, %rsi=buf, %rdx=len
-     */
+
     private static void emitNetRead(StringBuilder sb) {
         sb.append("""
             .globl kof_net_read
@@ -4011,10 +3822,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_write(fd, buf, len) → bytes_written
-     * Writes to socket. %rdi=fd, %rsi=buf, %rdx=len
-     */
+
     private static void emitNetWrite(StringBuilder sb) {
         sb.append("""
             .globl kof_net_write
@@ -4026,10 +3834,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_close(fd) → status
-     * Closes socket. %rdi=fd
-     */
+
     private static void emitNetClose(StringBuilder sb) {
         sb.append("""
             .globl kof_net_close
@@ -4041,12 +3846,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_instanceof(obj_ptr, target_type_id) → bool
-     * Walks the class hierarchy using kof_super_table.
-     * %rdi = obj_ptr, %esi = target_type_id
-     * Returns 1 if object's type is target or a subtype, 0 otherwise.
-     */
+
 
     private static void emitInstanceof(StringBuilder sb) {
         sb.append("""

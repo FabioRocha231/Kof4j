@@ -15,10 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * kof serve engine tests: KofHttpServer + ReflectiveHandler end-to-end
- * (real sockets, real compiled Kof handler classes, in-process).
- */
+
 class KofHttpServerTest {
 
     private final CompilerDriver driver = new CompilerDriver();
@@ -67,7 +64,7 @@ class KofHttpServerTest {
     }
 
     private int serverPort(KofHttpServer s) throws IOException {
-        // KofHttpServer does not expose the port; use reflection for tests
+
         try {
             var field = KofHttpServer.class.getDeclaredField("serverSocket");
             field.setAccessible(true);
@@ -195,7 +192,7 @@ class KofHttpServerTest {
                     return path
                 }
                 """, tempDir, "");
-        // 404 vs 500: no error path here; just verify method-specific handlers work
+
         int port = serverPort(s);
         String r = request(port, "GET /x HTTP/1.1\r\nHost: x\r\n\r\n");
         assertTrue(r.startsWith("HTTP/1.1 200 OK"), r);

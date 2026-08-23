@@ -5,19 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 
-/**
- * ClassLayout — centralized field layout calculation for objects.
- *
- * This replaces the ad-hoc computeFieldOffset in NativeBackend.
- * Both JVM and Native backends can use this for consistent field layout.
- *
- * The layout is:
- *   [header: 8 bytes] [field_0] [field_1] ... [field_n] [padding to 16-byte alignment]
- *
- * Header contains:
- *   - type_id (4 bytes)
- *   - flags (4 bytes)
- */
+
 public class ClassLayout {
 
     public static final int HEADER_SIZE = 16;
@@ -38,9 +26,7 @@ public class ClassLayout {
     public List<FieldLayout> fields() { return fields; }
     public int totalSize() { return totalSize; }
 
-    /**
-     * Returns the offset of a field by name, or -1 if not found.
-     */
+
     public int fieldOffset(String name) {
         for (FieldLayout f : fields) {
             if (f.name().equals(name)) return f.offset();
@@ -48,9 +34,7 @@ public class ClassLayout {
         return -1;
     }
 
-    /**
-     * Returns the size of a field by name, or -1 if not found.
-     */
+
     public int fieldSize(String name) {
         for (FieldLayout f : fields) {
             if (f.name().equals(name)) return f.size();
@@ -58,9 +42,7 @@ public class ClassLayout {
         return -1;
     }
 
-    /**
-     * Builds a ClassLayout from an IRClass.
-     */
+
     public static ClassLayout build(IRClass clazz) {
         List<FieldLayout> fields = new ArrayList<>();
         int offset = HEADER_SIZE;
@@ -73,11 +55,7 @@ public class ClassLayout {
         return new ClassLayout(clazz.name(), fields, totalSize);
     }
 
-    /**
-     * Builds a ClassLayout with inheritance support.
-     * Walks the superclass chain to include inherited fields.
-     * superclassResolver maps superName to IRClass (null if not found).
-     */
+
     public static ClassLayout buildWithSuper(IRClass clazz, Function<String, IRClass> superclassResolver) {
         List<FieldLayout> allFields = new ArrayList<>();
         int offset = HEADER_SIZE;
@@ -111,9 +89,7 @@ public class ClassLayout {
         return new ClassLayout(clazz.name(), allFields, totalSize);
     }
 
-    /**
-     * Builds a ClassLayout from a list of IRFields with a given class name.
-     */
+
     public static ClassLayout build(String className, List<IRField> fieldList) {
         List<FieldLayout> fields = new ArrayList<>();
         int offset = HEADER_SIZE;
@@ -126,9 +102,7 @@ public class ClassLayout {
         return new ClassLayout(className, fields, totalSize);
     }
 
-    /**
-     * Aligns value up to the next multiple of alignment.
-     */
+
     public static int align(int value, int alignment) {
         return (value + alignment - 1) & ~(alignment - 1);
     }

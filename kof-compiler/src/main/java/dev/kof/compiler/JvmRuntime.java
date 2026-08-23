@@ -13,18 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * JvmRuntime — emits the dev/kof/runtime/KofRuntime helper class for the JVM backend.
- *
- * The JVM target has no native JSON functions (unlike the assembly runtime), so the
- * backend compiles a small, self-contained Java class once per build and writes it
- * next to the user classes. It is compiled with the JDK's own compiler (ToolProvider),
- * which is always available because the CLI and the compiler run on a full JDK.
- *
- * Object encode/decode (classes and records declared in the Kof program) is done via
- * reflection: class fields are public by default in Kof, and record components are
- * mapped through their accessors/canonical constructor.
- */
+
 final class JvmRuntime {
 
     private JvmRuntime() {}

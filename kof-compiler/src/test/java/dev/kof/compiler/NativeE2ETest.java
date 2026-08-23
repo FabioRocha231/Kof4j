@@ -20,7 +20,7 @@ class NativeE2ETest {
         Path outDir = tempDir.resolve("out");
         CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
         assertTrue(result.success(), "Compilation should succeed");
-        // Check that the binary exists
+
         Path binFile = outDir.resolve("Default/Main");
         assertTrue(Files.exists(binFile), "Binary should exist");
     }
@@ -121,9 +121,9 @@ class NativeE2ETest {
         assertTrue(result.success(), "Compilation should succeed");
     }
 
-    // ── Real Execution Tests ──────────────────────────────────────
-    // These tests compile → assemble → link → RUN the native binary
-    // and assert on stdout + exit code.
+
+
+
 
     private String runNative(Path source, Path outDir, String expected) throws IOException {
         CompilationResult result = driver.compile(source, outDir, Target.NATIVE);

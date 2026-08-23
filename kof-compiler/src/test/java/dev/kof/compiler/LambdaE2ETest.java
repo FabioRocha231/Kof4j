@@ -9,12 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Lambda and if-expression end-to-end tests (JVM + Native parity).
- *
- * Lambdas compile to synthetic classes (Lambda0, Lambda1, ...) with an
- * invoke method; the call f(x) dispatches virtually. No captures yet.
- */
+
 class LambdaE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();

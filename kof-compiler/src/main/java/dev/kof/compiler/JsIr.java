@@ -141,6 +141,12 @@ final class JsIr {
     record JsArray(JsExpression size, String fill) implements JsExpression {
     }
 
+    record JsObjectLiteral(List<JsObjectEntry> entries) implements JsExpression {
+    }
+
+    record JsObjectEntry(String key, JsExpression value) {
+    }
+
     record JsInstanceOf(JsExpression operand, String typeName) implements JsExpression {
     }
 

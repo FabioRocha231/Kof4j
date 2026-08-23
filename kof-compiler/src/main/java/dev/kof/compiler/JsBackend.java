@@ -39,6 +39,7 @@ class JsBackend implements Backend {
 
     private final List<String> runtimeImports = new ArrayList<>();
     private final List<String> nodeRuntimeImports = new ArrayList<>();
+    private final Set<String> decodeHelpers = new HashSet<>();
     private Map<String, Set<String>> classMethodNames = Map.of();
 
     @Override
@@ -88,6 +89,12 @@ class JsBackend implements Backend {
             if (skipClass(clazz) || isMainClass(clazz)) continue;
             classes.add(lowerClass(clazz));
         }
+        for (IRClass clazz : module.classes()) {
+            if (skipClass(clazz) || isMainClass(clazz)) continue;
+            if (decodeHelpers.contains(jsClassName(clazz.name()))) {
+                functions.add(lowerDecodeHelper(clazz));
+            }
+        }
         List<JsIr.JsStatement> moduleStatements = new ArrayList<>();
         for (JsIr.JsFunction fn : functions) {
             if ("main".equals(fn.name())) {
@@ -122,10 +129,12 @@ class JsBackend implements Backend {
                 && !"java/lang/Record".equals(clazz.superName())) {
             jsSuper = jsClassName(clazz.superName());
         }
+        boolean isRecord = "java/lang/Record".equals(clazz.superName());
         List<JsIr.JsField> fields = new ArrayList<>();
         for (IRField field : clazz.fields()) {
             boolean isStatic = (field.accessFlags() & AccessFlags.STATIC) != 0;
-            fields.add(new JsIr.JsField(sanitizeName(field.name()),
+            String fieldName = isRecord ? "_" + sanitizeName(field.name()) : sanitizeName(field.name());
+            fields.add(new JsIr.JsField(fieldName,
                     field.initialValue() != null ? literalText(field.initialValue()) : null, isStatic));
         }
         List<JsIr.JsFunction> methods = new ArrayList<>();
@@ -137,10 +146,23 @@ class JsBackend implements Backend {
                 methods.add(lowerFunction(method, clazz, isStatic));
             }
         }
-        if ("java/lang/Record".equals(clazz.superName())) {
+        if (isRecord) {
             methods.add(lowerRecordToString(clazz));
+            methods.add(lowerRecordToJson(clazz));
         }
         return new JsIr.JsClass(jsName, jsSuper, fields, methods);
+    }
+
+    /**
+     * Records: the component fields are private in Kof/JVM; in JS the accessor
+     * method shares the component name, so the backing field gets a "_" prefix
+     * (this.name as a property would shadow the name() accessor).
+     */
+    private String jsFieldName(IRClass clazz, String name) {
+        if ("java/lang/Record".equals(clazz.superName())) {
+            return "_" + sanitizeName(name);
+        }
+        return sanitizeName(name);
     }
 
     /**
@@ -155,7 +177,8 @@ class JsBackend implements Backend {
         for (int i = 0; i < clazz.fields().size(); i++) {
             if (i > 0) parts.add(new JsIr.JsString(", "));
             parts.add(new JsIr.JsString(clazz.fields().get(i).name() + "="));
-            parts.add(new JsIr.JsMember(new JsIr.JsThis(), sanitizeName(clazz.fields().get(i).name())));
+            parts.add(new JsIr.JsMember(new JsIr.JsThis(),
+                    "_" + sanitizeName(clazz.fields().get(i).name())));
         }
         parts.add(new JsIr.JsString("]"));
         JsIr.JsExpression joined = parts.get(0);
@@ -164,6 +187,51 @@ class JsBackend implements Backend {
         }
         return new JsIr.JsFunction("toString", List.of(),
                 List.of(new JsIr.JsReturn(joined)), false, false, false);
+    }
+
+    /**
+     * Records serialize as { "f1": ..., "f2": ... } to mirror the JVM backend's
+     * reflection-based JSON encoding (JSON.stringify honors toJSON()).
+     */
+    private JsIr.JsFunction lowerRecordToJson(IRClass clazz) {
+        List<JsIr.JsObjectEntry> entries = new ArrayList<>();
+        for (IRField field : clazz.fields()) {
+            entries.add(new JsIr.JsObjectEntry(field.name(),
+                    new JsIr.JsMember(new JsIr.JsThis(), "_" + sanitizeName(field.name()))));
+        }
+        return new JsIr.JsFunction("toJSON", List.of(),
+                List.of(new JsIr.JsReturn(new JsIr.JsObjectLiteral(entries))), false, false, false);
+    }
+
+    /**
+     * json.decode&lt;Class&gt; binds the parsed object to the Kof class:
+     * records use their canonical constructor; classes get a default instance
+     * with fields assigned by name (mirroring the JVM reflection binding).
+     */
+    private JsIr.JsFunction lowerDecodeHelper(IRClass clazz) {
+        String jsName = jsClassName(clazz.name());
+        boolean isRecord = "java/lang/Record".equals(clazz.superName());
+        JsIr.JsExpression parsed = new JsIr.JsCall(
+                new JsIr.JsIdentifier("JSON.parse"), List.of(new JsIr.JsIdentifier("json")));
+        List<JsIr.JsStatement> body = new ArrayList<>();
+        body.add(new JsIr.JsVarDecl("p", parsed, true));
+        List<JsIr.JsExpression> ctorArgs = new ArrayList<>();
+        for (IRField field : clazz.fields()) {
+            ctorArgs.add(new JsIr.JsMember(new JsIr.JsIdentifier("p"), sanitizeName(field.name())));
+        }
+        JsIr.JsExpression instance = new JsIr.JsNew(new JsIr.JsIdentifier(jsName), ctorArgs);
+        if (isRecord) {
+            body.add(new JsIr.JsVarDecl("o", instance, true));
+        } else {
+            body.add(new JsIr.JsVarDecl("o", new JsIr.JsNew(new JsIr.JsIdentifier(jsName), List.of()), true));
+            for (IRField field : clazz.fields()) {
+                body.add(new JsIr.JsExprStmt(new JsIr.JsBinary(
+                        new JsIr.JsMember(new JsIr.JsIdentifier("o"), sanitizeName(field.name())), "=",
+                        new JsIr.JsMember(new JsIr.JsIdentifier("p"), sanitizeName(field.name())))));
+            }
+        }
+        body.add(new JsIr.JsReturn(new JsIr.JsIdentifier("o")));
+        return new JsIr.JsFunction("__kof_decode_" + jsName, List.of("json"), body, false, false, true);
     }
 
     private JsIr.JsFunction lowerConstructor(IRClass clazz, IRMethod method) {
@@ -186,6 +254,7 @@ class JsBackend implements Backend {
     }
 
     private List<JsIr.JsStatement> parseMethodBody(MethodCtx ctx) {
+        currentCtxOps = ctx.ops;
         int[] pos = {0};
         List<JsIr.JsStatement> body = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
         if (pos[0] < ctx.ops.size()) {
@@ -230,6 +299,7 @@ class JsBackend implements Backend {
         final String kofClassName;
         final String methodName;
         final int paramCount;
+        final boolean recordClass;
         int tempCounter = 0;
 
         MethodCtx(IRMethod method, IRClass clazz) {
@@ -240,6 +310,7 @@ class JsBackend implements Backend {
             this.kofClassName = clazz == null ? null : clazz.name();
             this.methodName = method.name();
             this.paramCount = method.parameterTypes().size();
+            this.recordClass = clazz != null && "java/lang/Record".equals(clazz.superName());
             for (IRLocalVariable lv : method.localVariables()) {
                 rawLocalNames.put(lv.index(), lv.name());
                 if (instanceMethod && lv.index() == 0) {
@@ -260,7 +331,9 @@ class JsBackend implements Backend {
         }
 
         String freshTemp() {
-            return uniqueName("__kof_t" + (tempCounter++));
+            String name = uniqueName("__kof_t" + (tempCounter++));
+            tempDecls.add(name);
+            return name;
         }
 
         LoopCtx currentLoop() {
@@ -739,7 +812,8 @@ class JsBackend implements Backend {
                 JsIr.JsExpression value = pop(stack);
                 JsIr.JsExpression receiver = pop(stack);
                 return new JsIr.JsExprStmt(new JsIr.JsBinary(
-                        new JsIr.JsMember(receiver, sanitizeName(sf.name())), "=", value));
+                        new JsIr.JsMember(receiver,
+                                ctx.recordClass ? "_" + sanitizeName(sf.name()) : sanitizeName(sf.name())), "=", value));
             }
             if (op instanceof KofPutStatic ps) {
                 pos[0]++;
@@ -861,7 +935,7 @@ class JsBackend implements Backend {
             stack.add(new JsIr.JsIdentifier(localName(ctx, ll.index())));
         } else if (op instanceof KofLoadField lf) {
             JsIr.JsExpression receiver = pop(stack);
-            stack.add(new JsIr.JsMember(receiver, sanitizeName(lf.name())));
+            stack.add(new JsIr.JsMember(receiver, ctx.recordClass ? "_" + sanitizeName(lf.name()) : sanitizeName(lf.name())));
         } else if (op instanceof KofGetStatic gs) {
             if ("java.lang".equals(classPackage(gs.ownerType())) && "System".equals(className(gs.ownerType()))
                     && "out".equals(gs.name())) {
@@ -1047,13 +1121,13 @@ class JsBackend implements Backend {
             args.add(pop(stack));
         }
         java.util.Collections.reverse(args);
-        Object top = pop(stack);
+        Object top = popRaw(stack);
         if (top instanceof NewPending np) {
             stack.add(new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), args));
             return;
         }
         if (top instanceof DupMarker) {
-            Object newObj = pop(stack);
+            Object newObj = popRaw(stack);
             if (newObj instanceof NewPending np) {
                 stack.add(new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), args));
                 return;
@@ -1268,6 +1342,13 @@ class JsBackend implements Backend {
                     ? args.get(0) : receiver;
             if (name.contains("encode")) {
                 stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("JSON.stringify"), List.of(value)));
+            } else if (name.startsWith("kof_json_decode_")
+                    && classMethodNames.containsKey(ownerInternalName(kc.ownerType()))) {
+                // decode<Class> — bind the parsed object to the Kof class
+                String jsName = jsClassName(ownerInternalName(kc.ownerType()));
+                decodeHelpers.add(jsName);
+                stack.add(new JsIr.JsCall(
+                        new JsIr.JsIdentifier("__kof_decode_" + jsName), List.of(value)));
             } else {
                 stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("JSON.parse"), List.of(value)));
             }
@@ -1326,15 +1407,25 @@ class JsBackend implements Backend {
         if (!nodeRuntimeImports.contains(fn)) nodeRuntimeImports.add(fn);
     }
 
+    private List<KofOperation> currentCtxOps = List.of();
+
     private JsIr.JsExpression pop(List<Object> stack) {
-        if (stack.isEmpty()) {
-            throw new IllegalStateException("KofJS: expression stack underflow");
-        }
-        Object top = stack.remove(stack.size() - 1);
+        Object top = popRaw(stack);
         if (top instanceof NewPending np) {
             return new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), List.of());
         }
+        if (top instanceof DupMarker) {
+            throw new IllegalStateException("KofJS: DupMarker popped as expression; stack=" + stack
+                    + "\nops=" + currentCtxOps);
+        }
         return (JsIr.JsExpression) top;
+    }
+
+    private Object popRaw(List<Object> stack) {
+        if (stack.isEmpty()) {
+            throw new IllegalStateException("KofJS: expression stack underflow");
+        }
+        return stack.remove(stack.size() - 1);
     }
 
     private boolean isPureDuplicate(JsIr.JsExpression expr) {
@@ -1424,7 +1515,7 @@ class JsBackend implements Backend {
                     ? literalExpr(new KofLoadLiteral(field.type(), field.initialValue()))
                     : defaultForType(field.type());
             defaults.add(new JsIr.JsExprStmt(new JsIr.JsBinary(
-                    new JsIr.JsMember(new JsIr.JsThis(), sanitizeName(field.name())), "=", value)));
+                    new JsIr.JsMember(new JsIr.JsThis(), jsFieldName(clazz, field.name())), "=", value)));
         }
         if (defaults.isEmpty()) return;
         int insertAt = 0;

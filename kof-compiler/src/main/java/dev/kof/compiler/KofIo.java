@@ -2,17 +2,7 @@ package dev.kof.compiler;
 
 import java.util.List;
 
-/**
- * KofIo — builtin registry for the kof.io standard library.
- *
- * File, Path and Directory are kof.io values whose runtime representation is
- * the path string itself. Every operation lowers to a kof_io_* runtime call
- * (JVM: dev.kof.runtime.KofRuntime helpers over java.nio.file; Native:
- * assembly implementations over the OS filesystem).
- *
- * This is the single dispatch table for kof.io — the compiler, the LSP and
- * the type checker all derive their behavior from it.
- */
+
 final class KofIo {
 
     private KofIo() {}
@@ -42,7 +32,7 @@ final class KofIo {
         };
     }
 
-    /** A resolved kof.io builtin call. */
+
     record IoCall(String function, Type returnType, List<Type> parameterTypes) {}
 
     private static final Type STR = BuiltinTypes.STRING;
@@ -52,11 +42,7 @@ final class KofIo {
     private static final Type INT_ARRAY = new Type.ArrayType(INT);
     private static final Type STRING_LIST = new Type.ClassType("kof", "List", List.of(STR));
 
-    /**
-     * Instance method dispatch. File, Path and Directory share the same
-     * runtime representation (a path string), so every operation is valid
-     * on any of the three types. The type only guides the API surface.
-     */
+
     static IoCall instanceMethod(Type receiver, String name, int argCount) {
         return switch (name) {
             case "exists" -> argCount == 0 ? new IoCall("kof_io_file_exists", BOOL, List.of()) : null;
@@ -85,7 +71,7 @@ final class KofIo {
         };
     }
 
-    /** Static dispatch: File.exists(p), Path.normalize(p), Directory.list(p), ... */
+
     static IoCall staticMethod(String className, String name, int argCount) {
         if ("File".equals(className)) {
             return switch (name) {
@@ -129,7 +115,7 @@ final class KofIo {
         return null;
     }
 
-    /** "path()" returns the receiver itself — no runtime call needed. */
+
     static boolean isIdentityMethod(String name) {
         return "path".equals(name);
     }

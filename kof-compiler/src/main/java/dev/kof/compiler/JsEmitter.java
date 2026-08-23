@@ -153,7 +153,13 @@ final class JsEmitter {
                     update.append(vd.name()).append(" = ").append(expr(vd.initializer()));
                 }
             }
-            line("for (" + init + (f.condition() == null ? "" : " " + expr(f.condition())) + "; " + update + ") {");
+            StringBuilder head = new StringBuilder("for (");
+            head.append(init.isEmpty() ? ";" : init);
+            if (f.condition() != null) {
+                head.append(" ").append(expr(f.condition()));
+            }
+            head.append("; ").append(update).append(") {");
+            line(head.toString());
             indent++;
             for (JsIr.JsStatement s : f.body()) emitStatement(s);
             indent--;
@@ -246,6 +252,14 @@ final class JsEmitter {
         }
         if (e instanceof JsIr.JsArray a) {
             return "new Array(" + expr(a.size()) + ").fill(" + a.fill() + ")";
+        }
+        if (e instanceof JsIr.JsObjectLiteral o) {
+            StringBuilder parts = new StringBuilder();
+            for (JsIr.JsObjectEntry entry : o.entries()) {
+                if (!parts.isEmpty()) parts.append(", ");
+                parts.append(stringLiteral(entry.key())).append(": ").append(expr(entry.value()));
+            }
+            return "{" + parts + "}";
         }
         if (e instanceof JsIr.JsInstanceOf io) return "(" + expr(io.operand()) + " instanceof " + io.typeName() + ")";
         if (e instanceof JsIr.JsAssignExpr ae) return "(" + ae.target() + " = " + expr(ae.value()) + ")";

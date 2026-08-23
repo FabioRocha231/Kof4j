@@ -9,14 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * kof.io end-to-end tests: File, Path and Directory over the real filesystem.
- *
- * Every test runs the compiled program twice — JVM and Native — each against
- * its own base directory under the test's @TempDir (no /tmp or C:\
- * assumptions, CI-safe on Linux/macOS/Windows). JVM and Native must observe
- * the same semantics.
- */
+
 class IoE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();
@@ -57,10 +50,7 @@ class IoE2ETest {
         }
     }
 
-    /**
-     * Compiles the same body twice — JVM and Native — with %s replaced by a
-     * distinct base directory per backend, so the two runs never share state.
-     */
+
     private void both(Path tempDir, String name, String body, String expected) throws IOException {
         String baseJvm = q(tempDir.resolve("jvm").toString());
         Files.createDirectories(tempDir.resolve("jvm"));

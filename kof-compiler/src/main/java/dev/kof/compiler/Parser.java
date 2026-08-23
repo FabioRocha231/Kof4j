@@ -168,7 +168,7 @@ class Parser {
         return mods;
     }
 
-    private ClassDeclarationNode parseClassDeclaration(List<String> mods) {
+    private AstNode parseClassDeclaration(List<String> mods) {
         advance();
         String name = expectId("Expected class name", "PARSE008");
         currentClassName = name;
@@ -179,6 +179,10 @@ class Parser {
             superClass = parseTypeRef();
         }
         List<String> ifaces = parseImplementedInterfaces();
+
+        if (check(TokenType.LPAREN)) {
+            return parseRecordBody(name, mods, superClass, ifaces, typeParams);
+        }
         List<AstNode> members = new ArrayList<>();
         if (check(TokenType.LBRACE)) {
             advance();
@@ -216,6 +220,18 @@ class Parser {
     private RecordDeclarationNode parseRecordDeclaration(List<String> mods) {
         advance();
         String name = expectId("Expected record name", "PARSE012");
+        List<String> typeParams = parseTypeParameters();
+        String superClass = null;
+        if (check(TokenType.EXTENDS)) {
+            advance();
+            superClass = parseTypeRef();
+        }
+        List<String> ifaces = parseImplementedInterfaces();
+        return parseRecordBody(name, mods, superClass, ifaces, typeParams);
+    }
+
+    private RecordDeclarationNode parseRecordBody(String name, List<String> mods, String superClass,
+                                                  List<String> ifaces, List<String> typeParams) {
         List<RecordComponentNode> components = new ArrayList<>();
         if (check(TokenType.LPAREN)) {
             advance();
@@ -228,12 +244,6 @@ class Parser {
             }
             expect(TokenType.RPAREN, "Expected ')' after record components", "PARSE013");
         }
-        String superClass = null;
-        if (check(TokenType.EXTENDS)) {
-            advance();
-            superClass = parseTypeRef();
-        }
-        List<String> ifaces = parseImplementedInterfaces();
         List<AstNode> members = new ArrayList<>();
         if (check(TokenType.LBRACE)) {
             advance();
@@ -955,13 +965,7 @@ class Parser {
         return "Object";
     }
 
-    /**
-     * Disambiguation: a '<' after an identifier may be a less-than comparison or
-     * the start of call type arguments (e.g. listOf<Int>(...)). We only treat it
-     * as generic call when the token stream between '<' and the matching '>'
-     * consists solely of type-like tokens (identifiers, primitives, '.', ',')
-     * and the '>' is immediately followed by '('.
-     */
+
     private boolean looksLikeGenericCall() {
         if (!check(TokenType.LESS)) return false;
         int i = pos + 1;

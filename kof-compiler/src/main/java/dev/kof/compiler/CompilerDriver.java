@@ -177,8 +177,8 @@ public class CompilerDriver {
         List<KofOperation> body = new ArrayList<>();
         int localIdx = 0;
         if (isMain) {
-            // JVM main(String[]) reserves slot 0 for the injected args parameter;
-            // native ignores it. Keep the IR consistent for both backends.
+
+
             localIdx = 1;
         }
         for (FormalParameterNode p : func.parameters()) {
@@ -579,7 +579,7 @@ public class CompilerDriver {
             }
             case BinaryExpr bin -> {
                 if ("instanceof".equals(bin.operator()) || "as".equals(bin.operator())) {
-                    // The right operand is a TYPE NAME, not an expression value.
+
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     Type targetType = Type.UnknownType.UNKNOWN;
                     if (bin.right() instanceof IdentifierExpr ie) {
@@ -824,7 +824,7 @@ public class CompilerDriver {
                                 default -> elemType;
                             };
                             if ("kof_list_contains".equals(listFn)) {
-                                // Native runtime needs a type tag to compare strings by content.
+
                                 int tag = BuiltinTypes.isString(elemType) ? 1 : 0;
                                 ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
                                 argTypes = new ArrayList<>(argTypes);
@@ -1356,11 +1356,7 @@ public class CompilerDriver {
         return type instanceof Type.PrimitiveType pt && !"void".equals(pt.name());
     }
 
-    /**
-     * Erasure boxing for the JVM backend: when a generic (type-erased) formal
-     * parameter is Object but the argument is a primitive, box it. The native
-     * backend treats kof_box/kof_unbox as no-ops (values are already 64-bit slots).
-     */
+
     private boolean needsErasureBoxing() {
         return target == Target.JVM;
     }
@@ -1895,8 +1891,8 @@ public class CompilerDriver {
         Type superType = new Type.ClassType("java.lang", "Record", List.of());
         locals.add(new IRLocalVariable(0, "this", ownerType));
         if (isJvmTarget()) {
-            // JVM requires constructors to call super() first; the native backend
-            // has no Record class (records are plain objects there).
+
+
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
         }

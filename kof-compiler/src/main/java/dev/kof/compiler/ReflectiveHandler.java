@@ -3,21 +3,7 @@ package dev.kof.compiler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
-/**
- * ReflectiveHandler — adapts a compiled Kof top-level function class to the
- * KofHttpServer.Handler contract.
- *
- * Kof compiles top-level functions to STATIC methods on Default.Main — no
- * instance, no constructor, no state. The handler is resolved by trying, in
- * order:
- *   1. handle(method, path, body, query, headers)   (5 Strings)
- *   2. handle(method, path, body, query)            (4 Strings)
- *   3. handle(method, path, body)                   (3 Strings)
- *   4. handle()                                     (no args)
- *   5. get() / post() / put() / delete() / patch()  (HTTP-method handlers)
- *
- * A null result means 404. If no handler exists at all, the server returns 404.
- */
+
 public final class ReflectiveHandler implements KofHttpServer.Handler {
 
     private final Method handle5;

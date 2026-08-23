@@ -14,12 +14,7 @@ import java.util.stream.Collectors;
 
 import static org.objectweb.asm.Opcodes.*;
 
-/**
- * JVM Backend — transforms Kof IR into JVM bytecode via ASM.
- *
- * This class is the ONLY place that should know about ASM, JVM descriptors,
- * and JVM opcodes. The core IR does NOT depend on any of these.
- */
+
 class JvmBackend implements Backend {
 
     private final Map<LabelId, Label> labelMap = new HashMap<>();
@@ -178,7 +173,7 @@ class JvmBackend implements Backend {
         String cn = clazz.name();
         String simpleName = cn.contains("/") ? cn.substring(cn.lastIndexOf('/') + 1) : cn;
 
-        // toString: "Simple[x=1, y=2]"
+
         MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "toString", "()Ljava/lang/String;", null, null);
         mv.visitCode();
         mv.visitTypeInsn(NEW, "java/lang/StringBuilder");
@@ -205,7 +200,7 @@ class JvmBackend implements Backend {
         mv.visitMaxs(0, 0);
         mv.visitEnd();
 
-        // equals
+
         mv = cw.visitMethod(ACC_PUBLIC, "equals", "(Ljava/lang/Object;)Z", null, null);
         mv.visitCode();
         mv.visitVarInsn(ALOAD, 0);
@@ -235,7 +230,7 @@ class JvmBackend implements Backend {
         mv.visitMaxs(0, 0);
         mv.visitEnd();
 
-        // hashCode
+
         mv = cw.visitMethod(ACC_PUBLIC, "hashCode", "()I", null, null);
         mv.visitCode();
         mv.visitInsn(ICONST_1);
@@ -364,7 +359,7 @@ class JvmBackend implements Backend {
                     && kc.ownerType() instanceof Type.ClassType ct
                     && superName.equals(ct.internalName()));
             if (!hasSuperCall) {
-                // JVM requires constructors to invoke super() or this() first.
+
                 Type thisType = classTypeFromInternal(className);
                 ops.add(0, new KofCall(classTypeFromInternal(superName),
                         "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));

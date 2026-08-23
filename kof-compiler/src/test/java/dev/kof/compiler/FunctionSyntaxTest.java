@@ -9,17 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Function declaration syntax tests (no `fun` keyword).
- *
- * Kof declares functions without `fun`:
- *   main() { ... }                          // entry point, void implicit
- *   String saudacao() { ... }               // return type before the name
- *   saudacao(): String { ... }              // return type after parameters
- *   void fazIsso() { ... }                  // explicit void
- *   Bool positivo(Int x) = x > 0            // expression body
- *   int dobro(int x) { ... }                // primitive types in any case
- */
+
 class FunctionSyntaxTest {
 
     private final CompilerDriver driver = new CompilerDriver();

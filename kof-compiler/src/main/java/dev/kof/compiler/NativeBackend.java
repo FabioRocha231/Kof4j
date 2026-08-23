@@ -8,10 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Native Backend — transforms Kof IR into x86-64 Linux ELF assembly.
- * Uses System V AMD64 ABI calling convention.
- */
+
 public class NativeBackend implements Backend {
 
     private final Map<LabelId, String> labelMap = new HashMap<>();
@@ -538,7 +535,7 @@ public class NativeBackend implements Backend {
             sb.append("    sete %al\n");
             sb.append("    movzbl %al, %eax\n");
         }
-        // Widening conversions (I2L, I2F, ...) are no-ops: native values are 64-bit slots.
+
         sb.append("    pushq %rax\n");
     }
 
@@ -560,7 +557,7 @@ public class NativeBackend implements Backend {
 
     private void emitCall(StringBuilder sb, KofCall kc) {
         if ("kof_box".equals(kc.methodName()) || "kof_unbox".equals(kc.methodName())) {
-            // Erasure box/unbox are JVM-only concerns; native values are 64-bit slots.
+
             return;
         }
         if (kc.kind() == KofCallKind.INSTANCE && "println".equals(kc.methodName())) {

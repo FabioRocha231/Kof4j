@@ -5,19 +5,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Json — minimal JSON reader/writer used by the LSP server.
- *
- * Deliberately dependency-free: the Kof tooling must not pull a JSON library
- * into the distribution for one protocol. Handles the subset needed by
- * Language Server Protocol messages (objects, arrays, strings, numbers,
- * booleans, null).
- */
+
 final class Json {
 
     private Json() {}
 
-    // ── Parse ────────────────────────────────────────────────────
+
 
     static Object parse(String text) {
         Parser p = new Parser(text);
@@ -65,7 +58,7 @@ final class Json {
 
         private Map<String, Object> parseObject() {
             Map<String, Object> map = new LinkedHashMap<>();
-            i++; // {
+            i++;
             skipWs();
             if (!atEnd() && s.charAt(i) == '}') { i++; return map; }
             while (true) {
@@ -85,7 +78,7 @@ final class Json {
 
         private List<Object> parseArray() {
             List<Object> list = new ArrayList<>();
-            i++; // [
+            i++;
             skipWs();
             if (!atEnd() && s.charAt(i) == ']') { i++; return list; }
             while (true) {
@@ -144,7 +137,7 @@ final class Json {
         }
     }
 
-    // ── Write ────────────────────────────────────────────────────
+
 
     static String stringify(Object value) {
         StringBuilder sb = new StringBuilder();
