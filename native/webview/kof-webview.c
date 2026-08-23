@@ -46,6 +46,8 @@ extern void g_free(gpointer mem);
 
 extern gpointer webkit_web_view_new(void);
 extern void webkit_web_view_load_uri(gpointer view, const char *uri);
+extern gpointer webkit_web_view_get_settings(gpointer view);
+extern void webkit_settings_set_allow_file_access_from_file_urls(gpointer settings, int allowed);
 
 #define GTK_WINDOW_TOPLEVEL 0
 
@@ -72,6 +74,14 @@ int main(int argc, char **argv) {
 
     gpointer view = webkit_web_view_new();
     gtk_container_add(window, view);
+
+    // ES modules over file:// are blocked by the engine's CORS rules by
+    // default; the KofJS app (index.html + *.mjs) must be allowed to import
+    // its runtime modules from the same directory.
+    gpointer settings = webkit_web_view_get_settings(view);
+    if (settings != NULL) {
+        webkit_settings_set_allow_file_access_from_file_urls(settings, 1);
+    }
 
     gpointer error = NULL;
     char *uri = g_filename_to_uri(file, NULL, &error);

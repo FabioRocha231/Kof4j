@@ -214,14 +214,14 @@ public final class KofJsRunner {
                     }
                 }
                 Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
-                String out = new String(p.getInputStream().readAllBytes(),
+                String outText = new String(p.getInputStream().readAllBytes(),
                         java.nio.charset.StandardCharsets.UTF_8);
-                String err = new String(p.getErrorStream().readAllBytes(),
+                String errText = new String(p.getErrorStream().readAllBytes(),
                         java.nio.charset.StandardCharsets.UTF_8);
                 int code = p.waitFor();
                 java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-                result.put("stdout", out);
-                result.put("stderr", err);
+                result.put("stdout", outText);
+                result.put("stderr", errText);
                 result.put("exitCode", code);
                 return result;
             } catch (Exception e) {
