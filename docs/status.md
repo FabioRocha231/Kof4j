@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 416 testes (JVM + Native + KofJS E2E)
+mvn test             → 458 testes (JVM + Native + KofJS E2E)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (KofHttpServer, thread pool, 404/500, JSON)
@@ -236,7 +236,7 @@ main() {
 
 ---
 
-## Testes (425/425 PASS)
+## Testes (458 testes — 456 PASS, 2 em áreas em progresso)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -251,6 +251,7 @@ main() {
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
+| KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
@@ -258,9 +259,10 @@ main() {
 | SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
+| IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **425** | |
+| **Total** | **458** | |
 
 ---
 
@@ -297,10 +299,17 @@ Princípio: o programador depura **código Kof**, nunca o artefato do backend.
 |------|--------|
 | 1 — DebugInfo na IR (source location por op) | ✅ |
 | 2 — JVM: SourceFile + LineNumberTable + LocalVariableTable | ✅ |
-| 3 — `kof-debug` (DAP: launch, breakpoints, stack, stepping) | planejado |
+| 3 — `kof-debug` MVP (DAP over stdio + JDWP cru): launch, breakpoints por linha Kof, `stopped`, stack trace com funções/linhas Kof, continue, disconnect | ✅ |
 | 4 — Kof Editor (breakpoints, toolbar, variables) | planejado |
 | 5 — Native (DWARF) | planejado |
 | 6 — JS (source maps) | planejado |
+| 7 — Avançado: locals por frame, stepping, exception breakpoints, avaliação | planejado |
+
+`kof debug app.kf` já abre uma sessão DAP funcional no target JVM:
+a sessão compila com metadata de debug, lança o JVM com JDWP e responde a
+`initialize` / `launch` / `setBreakpoints` / `configurationDone` /
+`continue` / `threads` / `stackTrace` / `disconnect` — o breakpoint
+para na linha Kof e o call stack mostra funções e linhas Kof.
 
 Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 `debugging-jvm.md`, `debugging-native.md`, `debugging-js.md`.

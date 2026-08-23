@@ -1,6 +1,6 @@
 # DEBUGGING_JVM.md — Debug no target JVM
 
-**Status:** Fase 2 planejada (LineNumberTable em implementação)
+**Status:** Implementado (Fases 1-3 do debugger: metadata + JDWP via `kof-debug`)
 **Data:** 23 de agosto de 2026
 
 ---
@@ -21,14 +21,14 @@ kof-debug (DAP)
 Editor
 ```
 
-## 2. Metadata gerada
+## 2. Metadata gerada (em modo debug)
 
-- `SourceFile` — o arquivo .kf;
-- `LineNumberTable` — mapeia bytecode → linha Kof (a Fase 1 fornece a
-  posição de cada op da IR; o JvmBackend emite `visitLineNumber`);
-- `LocalVariableTable` / `LocalVariableTypeTable` — nomes e tipos Kof
-  (com assinaturas genéricas);
-- métodos e classes com informação de origem.
+- `SourceFile` — o arquivo .kf (via `IRModule.sourceName`);
+- `LineNumberTable` — mapeia bytecode → linha Kof: cada op da IR carrega
+  a posição (KofDebugInfo); o JvmBackend emite `visitLineNumber` quando a
+  linha muda;
+- `LocalVariableTable` — nomes Kof dos locals, span do método;
+- habilitada por `debugInfoEnabled` (default true).
 
 ## 3. Mapeamento
 
@@ -42,6 +42,13 @@ A tradução acontece no backend; o usuário nunca vê o bytecode.
 
 ## 4. JDWP
 
-O programa é lançado com `-agentlib:jdwp=transport=dt_socket,...` e o
-adaptador conversa com o JDWP para: breakpoints, stepping, stack frames,
-locals, exceções.
+O programa é lançado com
+`-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=<porta>`
+e o adaptador conversa com o JDWP via wire protocol cru
+(`JdwpClient`, sem `jdk.jdi`): breakpoints por linha Kof (via
+LineNumberTable), stack frames, continue, dispose.
+
+Particularidades do JDK 25: ver `debug-adapter.md` §3.2.
+
+O usuário vê apenas a abstração Kof — bytecode, offsets e line tables
+são internos.

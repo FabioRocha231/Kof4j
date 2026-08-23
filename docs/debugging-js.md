@@ -1,6 +1,6 @@
 # DEBUGGING_JS.md — Debug no target KofJS
 
-**Status:** Planejado — não implementado
+**Status:** Planejado — source maps futuros
 **Data:** 23 de agosto de 2026
 
 ---

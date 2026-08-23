@@ -1,6 +1,6 @@
 # DEBUGGER_ARCHITECTURE.md — Arquitetura do Kof Debugger
 
-**Status:** Plano + Fase 1 em implementação (source mapping na IR)
+**Status:** Fases 1-3 implementadas (DebugInfo na IR, metadata JVM, `kof-debug` MVP)
 **Data:** 23 de agosto de 2026
 
 ---
@@ -53,18 +53,19 @@ IR instruction
  └── scope = method
 ```
 
-O modelo interno (backend-agnóstico):
+O modelo interno (backend-agnóstico), implementado:
 
 ```text
-KofDebugInfo
- ├── SourceFile[]
- ├── Function[]
- ├── Variable[]
- ├── Scope[]
- ├── Type[]
- ├── SourceLocation[]
- └── InstructionMapping[]
+KofDebugInfo(positions)
+ └── Map<KofOperation, SourcePosition>   (identidade da op → arquivo/linha/coluna)
+
+IRMethod  →  carrega KofDebugInfo
+IRModule  →  carrega o nome do arquivo fonte (SourceFile)
 ```
+
+A posição é registrada **no frontend** enquanto o corpo é rebaixado
+(statement → range de ops), nunca sintetizada no backend — o backend
+apenas traduz.
 
 Não criar metadata específica para JVM — a informação de origem existe
 **antes** do backend.
@@ -89,14 +90,19 @@ Não criar metadata específica para JVM — a informação de origem existe
 ## 6. Fases
 
 ```text
-Fase 1  DebugInfo na IR (source location por op, function/variable/scope)
-Fase 2  JVM: LineNumberTable + LocalVariableTable (via ASM)
-Fase 3  kof-debug: Debug Adapter DAP (launch, attach, breakpoints, stack)
+Fase 1  DebugInfo na IR (source location por op)                  ✅
+Fase 2  JVM: SourceFile + LineNumberTable + LocalVariableTable    ✅
+Fase 3  kof-debug MVP: DAP over stdio + JDWP cru                  ✅
+        (launch, breakpoints por linha Kof, stopped, stack trace
+         com funções/linhas Kof, continue, disconnect)
 Fase 4  Kof Editor: breakpoints, toolbar, call stack, variables, stepping
 Fase 5  Native: DWARF
 Fase 6  JS: source maps + Node Inspector
-Fase 7  Avançado: conditional/exception breakpoints, avaliação, async
+Fase 7  Avançado: locals por frame, stepping, conditional/exception
+        breakpoints, avaliação, async
 ```
+
+Detalhes de implementação do `kof-debug` (Fase 3): ver `debug-adapter.md`.
 
 ## 7. Documentação relacionada
 
