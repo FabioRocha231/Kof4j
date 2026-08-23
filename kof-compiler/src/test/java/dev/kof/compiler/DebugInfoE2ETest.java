@@ -46,6 +46,10 @@ class DebugInfoE2ETest {
                 "class file must carry a LineNumberTable");
         assertTrue(javap.contains("line 2:") || javap.contains("line 3:"),
                 "line numbers must reference Kof source lines");
+        assertTrue(javap.contains("LocalVariableTable"),
+                "class file must carry a LocalVariableTable");
+        assertTrue(javap.contains("soma") || javap.contains("total") || javap.contains("args"),
+                "local variables must keep Kof names");
     }
 
     @Test

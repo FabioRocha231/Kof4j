@@ -385,6 +385,11 @@ class JvmBackend implements Backend {
         }
         java.util.Map<KofOperation, SourcePosition> debugPositions =
                 method.debugInfo() != null ? method.debugInfo().positions() : java.util.Map.of();
+        Label debugStart = null;
+        if (debugInfoEnabled) {
+            debugStart = new Label();
+            mv.visitLabel(debugStart);
+        }
         int lastLine = -1;
         for (KofOperation op : ops) {
             SourcePosition pos = debugPositions.get(op);
@@ -395,6 +400,14 @@ class JvmBackend implements Backend {
                 lastLine = pos.line();
             }
             emitOperation(mv, className, op);
+        }
+        if (debugInfoEnabled && debugStart != null) {
+            Label debugEnd = new Label();
+            mv.visitLabel(debugEnd);
+            for (IRLocalVariable local : method.localVariables()) {
+                mv.visitLocalVariable(local.name(), JvmTypeMapper.toDescriptor(local.type()), null,
+                        debugStart, debugEnd, local.index());
+            }
         }
 
         for (TryCatchEntry entry : tryCatches) {
