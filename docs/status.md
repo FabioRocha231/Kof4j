@@ -322,6 +322,8 @@ app interativo no webview nativo (`bin/kof-webview`, WebKitGTK embutido).
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
+| UiE2ETest | 14 | kof.ui: cores, temas, widgets, layout, estilo, janelas (JVM/Native/JS) |
+| WindowE2ETest | 3 | janela + label + bind (HTML via KofJS) |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
 | SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
@@ -329,7 +331,7 @@ app interativo no webview nativo (`bin/kof-webview`, WebKitGTK embutido).
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **491** | |
+| **Total** | **508** | |
 
 ---
 
