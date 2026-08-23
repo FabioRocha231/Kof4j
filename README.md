@@ -158,8 +158,10 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 | kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
-| kof.config (arquivo > env > profile, typed) | ✅ | CONFIG001 | CONFIG001 |
-| kof.log (níveis, off, stderr) | ✅ | LOG001 | LOG001 |
+| kof.config (arquivo > env > profile, typed) | ✅ | CONF001 | CONF001 |
+| kof.log (níveis, off, JSON estruturado, requestId) | ✅ | LOG001 | LOG001 |
+| kof.db (JDBC, query tipada, `transaction {}`) | ✅ | DB001 | DB001 |
+| JSON Float/Double + arrays (`json.decode<Int[]>`) | ✅ | — | — |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
 (ECMAScript 2022+) executados na engine JS embarcada (GraalJS — sem Node.js
