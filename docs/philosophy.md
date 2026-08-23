@@ -1,6 +1,6 @@
 # Filosofia do Kof
 
-**Última atualização:** 21 de agosto de 2026
+**Última atualização:** 23 de agosto de 2026
 
 ---
 
@@ -10,6 +10,87 @@
 > A linguagem e o runtime cuidam da complexidade.
 
 Kof não existe para ser "mais um Java". Kof existe para resolver problemas que Java não resolve bem — ou que resolve apenas com frameworks complexos.
+
+---
+
+## O "Paradigma" da Intenção
+
+> **Aviso honesto:** não é um paradigma de verdade. Não existe em catálogo de
+> paradigmas, não tem definição formal e ninguém publicou um paper sobre ele.
+> É a **orientação a objetos levada ao extremo**: o código expressa *o que*
+> quer acontecer, e a plataforma (linguagem + compilador + runtime + stdlib)
+> decide *como* — por target, por plataforma, por convenção.
+
+### A cadeia da intenção
+
+```text
+intenção → Kof → compilador → backend
+```
+
+O programador escreve a intenção em Kof. O compilador traduz para a IR única.
+O backend (JVM, Native, KofJS) decide os mecanismos. Nada de mecanismo vaza
+para cima da linha da intenção.
+
+### O que a intenção parece na prática
+
+| Intenção | Código Kof | O que a plataforma decide |
+|----------|-----------|---------------------------|
+| "roda isso em paralelo" | `spawn processar()` | JVM: virtual threads; Native: gap diagnosticado (CONC001) |
+| "responda /users/:id" | `app.get("/users/:id") { ... }` | servidor HTTP próprio, sem servlet container |
+| "deserialize isto" | `json.decode<User>(body)` | engine JSON + binding por tipo |
+| "mostre uma janela com um botão que soma" | `Window`, `Button("+1", () -> ...)` | KofJS renderiza no webview nativo; JVM/Native são no-ops |
+| "esta cor é vermelha" | `Color(255, 0, 0)` | Int de 32 bits; canais por bitwise no compilador |
+| "isto é um teste" | `assert(2 + 2 == 4)` | exit code, `kof test`, harness |
+| "leia este arquivo" | `File("x.txt")` | IO do backend (JVM/Native/JS) |
+
+Em nenhum desses casos o programador escreve `Thread`, `HttpServer`,
+`JsonParser`, `WebView`, `0xAARRGGBB` ou `FileInputStream`.
+
+### Por que é o extremo da OO — não um paradigma novo
+
+A orientação a objetos já diz: objetos respondem a mensagens; o *como* é do
+objeto. A intenção radicaliza esse contrato em três saltos:
+
+1. **Do objeto para a linguagem** — não é só o objeto que esconde o como; a
+   *linguagem* esconde infraestrutura inteira (concorrência, HTTP, IO, UI).
+2. **Do runtime para o compilador** — parte do "como" é decidida em
+   compile-time (canais de cor por bitwise, packing de handles, lambdas com
+   capturas como campos+construtor sintéticos).
+3. **Do código para a plataforma** — o que não é intenção do programa não
+   existe no código. Se é essencial para qualquer programa, pertence à
+   stdlib; se é essencial para a linguagem, pertence ao compilador.
+
+### A linha entre intenção e mecanismo
+
+A regra prática: **se um programador precisa conhecer o mecanismo para
+escrever a intenção, o design falhou.** Exemplos de vazamento que Kof rejeita:
+
+- `new Thread(...).start()` → rejeitado; escreva `spawn`.
+- Anotações + container para HTTP → rejeitado; escreva `app.get(...)`.
+- WebView/JavaFX no código de UI → rejeitado; escreva `Window(...)`.
+- Conversão manual de cores → rejeitada; escreva `Palette.red`.
+
+### Limites honestos da intenção
+
+A intenção é única, mas o backend nem sempre consegue realizá-la — e isso é
+**diagnosticado em compile-time, com código de gap**, não silenciosamente:
+
+- `spawn` no Native → `CONC001`
+- JSON de objetos no Native → `JSN002`
+- estaticidade no Native → no-op documentado
+- `kof.ui` no JVM/Native → handles no-ops (a renderização é KofJS)
+
+O contrato: a intenção compila em todos os alvos; o alvo que não consegue
+executá-la diz isso na hora, com código e documentação.
+
+### Consequências práticas
+
+- **Anti-padrão:** escrever Java dentro de Kof (`training/anti-patterns/
+  java-like-code.md`) — é vazar mecanismo na intenção.
+- **Idioma:** representar o domínio, não a implementação acidental
+  (`training/idioms/architecture.md`).
+- **Multi-target:** o mesmo código é a mesma intenção; mudar de target não
+  muda o código (apenas a realização).
 
 ---
 

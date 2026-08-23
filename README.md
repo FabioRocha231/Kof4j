@@ -381,6 +381,30 @@ Source (.kf)
 7. Sem mágica desnecessária
 8. Ferramentas importam
 
+## O "paradigma" da intenção
+
+Kof é **orientada à intenção** — o que não é um paradigma formal, e sim a
+orientação a objetos levada ao extremo: o código expressa *o que* quer, e a
+plataforma (linguagem + compilador + runtime + stdlib) decide *como*, por
+target e por convenção.
+
+```text
+intenção → Kof → compilador → backend
+```
+
+Você escreve `spawn tarefa()` (não `Thread`), `app.get("/users/:id")` (não
+servlet container), `Window`/`Button("+1", () -> ...)` (não WebView/JavaFX),
+`json.decode<User>(body)` (não parser manual), `Palette.red` (não
+`0xFF0000FF`). Se é essencial para qualquer programa, pertence à plataforma.
+
+Quando um target não consegue realizar a intenção, ele diz isso em
+compile-time com um código de gap (`CONC001`, `JSN002`, ...) — nunca
+silenciosamente.
+
+Detalhes: [docs/philosophy.md](docs/philosophy.md) · idiomas:
+[training/idioms/](training/idioms/) · anti-padrões:
+[training/anti-patterns/](training/anti-patterns/).
+
 ---
 
 # O que Kof NÃO é

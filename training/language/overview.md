@@ -1,12 +1,21 @@
 # Kof Overview
 
-Kof is a compiled, statically-typed, object-oriented programming language targeting JVM and Native (x86-64).
+Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86-64) and KofJS (ES Modules).
 
 ## Key Characteristics
 
-- **Compiled** — the compiler emits JVM bytecode (via ASM) or a native ELF binary; there is no interpreter
+- **Compiled** — the compiler emits JVM bytecode (via ASM), a native ELF binary, or ES Modules; there is no interpreter
 - **Statically typed** — type errors caught at compile time
-- **Multi-target** — same code runs on JVM and Native
+- **Multi-target** — same code runs on JVM, Native and KofJS (webview/browser)
+- **Intent-oriented** — not a formal paradigm, but object orientation taken to
+  its extreme: code expresses *what* should happen; the platform (language +
+  compiler + runtime + stdlib) decides *how*, per target. The chain is
+  `intent → Kof → compiler → backend`. Mechanisms never leak into user code:
+  `spawn f()` (not Thread), `app.get(...)` (not a servlet container),
+  `Window`/`Button("+1", () -> ...)` (not WebView), `json.decode<User>(body)`
+  (not a manual parser), `Palette.red` (not hex). Gaps are reported at
+  compile time with codes (`CONC001`, `JSN002`) — never silently.
+  See `docs/philosophy.md`.
 - **Minimal boilerplate** — intent over ceremony
 - **Memory managed** — no manual allocation/deallocation in user code
 - **No `fun` keyword** — functions are declared by name (`main()`, `String f()`, `f(): String`)

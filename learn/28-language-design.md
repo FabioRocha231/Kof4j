@@ -10,6 +10,26 @@ A pergunta central de Kof é:
 
 Se estamos apenas escondendo complexidade, a feature precisa ser reconsiderada.
 
+## O paradigma da intenção
+
+> Não é um paradigma formal — é a orientação a objetos levada ao extremo.
+
+A cadeia: **intenção → Kof → compilador → backend**. O programador escreve
+*o que* quer; o compilador e o runtime decidem *como*, por target e por
+convenção. O mecanismo nunca sobe para o código do usuário:
+
+| Intenção | Você escreve | O mecanismo fica com |
+|----------|--------------|----------------------|
+| paralelismo | `spawn tarefa()` | virtual threads (JVM) |
+| HTTP | `app.get("/users/:id") { ... }` | servidor próprio, sem container |
+| UI | `Window(...)`, `Button("+1", () -> ...)` | KofJS + webview nativo |
+| JSON | `json.decode<User>(body)` | engine + binding por tipo |
+| cor | `Palette.red` | Int 32-bit, canais por bitwise |
+
+A intenção compila em todos os alvos; o alvo que não consegue realizá-la
+reporta em compile-time com código de gap (`CONC001`, `JSN002`) — nunca
+silenciosamente. Detalhes em `docs/philosophy.md`.
+
 ## A visão multiplatform
 
 Kof não é apenas uma linguagem para a JVM. É uma linguagem que pode compilar para diferentes targets:
@@ -21,13 +41,13 @@ Kof não é apenas uma linguagem para a JVM. É uma linguagem que pode compilar 
                           │
                        Kof IR
                           │
-          ┌───────────────┼────────────────┐
-          │               │                │
-       Kof4J          KofNative        KofScript
-          │               │                │
-          ▼               ▼                ▼
-        JVM          Native Binary      Runtime
-       .class        Executável        Interativo
+          ┌───────────────┼───────────────┐
+          │               │               │
+       Kof4J          KofNative        KofJS
+          │               │               │
+          ▼               ▼               ▼
+        JVM          Native Binary   ES Modules
+       .class        Executável      (webview/browser)
 ```
 
 **A linguagem não muda. O target muda.**
@@ -35,7 +55,7 @@ Kof não é apenas uma linguagem para a JVM. É uma linguagem que pode compilar 
 Isso é uma decisão de design fundamental. A mesma fonte Kof pode gerar:
 - Bytecode JVM para aplicações que precisam do ecossistema Java
 - Executáveis nativos para ferramentas CLI e sistemas
-- Código para o navegador via KofJS (futuro)
+- ES Modules para o navegador/webview via KofJS (ver [capítulo 37](37-kofjs.md))
 
 ## Decisões de design
 
