@@ -27,6 +27,9 @@ final class JdwpClient {
     private DataOutputStream out;
     private int idSeq = 1;
     private int refSize = 8;
+    private final Object lock = new Object();
+    private final java.util.Map<Integer, Packet> replies = new java.util.HashMap<>();
+    private boolean eventLoopStarted = false;
 
     JdwpClient(String host, int port) {
         this.host = host;
@@ -56,6 +59,7 @@ final class JdwpClient {
         }
         in = new DataInputStream(socket.getInputStream());
         out = new DataOutputStream(socket.getOutputStream());
+        System.err.println("[jdwp] connected, handshaking...");
         out.write("JDWP-Handshake".getBytes(StandardCharsets.US_ASCII));
         out.flush();
         byte[] reply = new byte[14];
@@ -63,7 +67,15 @@ final class JdwpClient {
         if (!"JDWP-Handshake".equals(new String(reply, StandardCharsets.US_ASCII))) {
             throw new IOException("JDWP handshake failed");
         }
-        Packet ids = sendCommand(1, 7, new Packet()); // VM.IDSizes
+        System.err.println("[jdwp] handshake ok");
+        int idsId = sendRaw(1, 7, new Packet());
+        Packet ids = null;
+        while (ids == null) {
+            Packet pkt = readPacketLocked();
+            if (pkt.id == idsId && !pkt.eventData) {
+                ids = pkt;
+            }
+        }
         ids.readInt(); // fieldIDSize
         ids.readInt(); // methodIDSize
         ids.readInt(); // objectIDSize
@@ -91,12 +103,14 @@ final class JdwpClient {
     long setClassPrepareRequest(String className, EventHandler handler) throws IOException {
         Packet req = new Packet();
         req.writeByte(4);   // event kind: ClassPrepare
-        req.writeByte(0);   // suspend policy: NONE
+        req.writeByte(2);   // suspend policy: ALL
         req.writeInt(1);    // modifier count
         req.writeByte(1);   // ClassMatch
         req.writeString(className);
-        Packet reply = sendCommand(15, 1, req);
+        sendRaw(15, 1, req);
+        Packet reply = readPacketLocked();
         long requestId = reply.readInt();
+        eventLoopStarted = true;
         Thread loop = new Thread(() -> eventLoop(handler), "jdwp-events");
         loop.setDaemon(true);
         loop.start();
@@ -117,7 +131,7 @@ final class JdwpClient {
         long codeIndex = lines[0];
         Packet req = new Packet();
         req.writeByte(2);   // event kind: Breakpoint
-        req.writeByte(0);   // suspend policy: NONE
+        req.writeByte(2);   // suspend policy: ALL
         req.writeInt(1);    // modifier count
         req.writeByte(3);   // LocationOnly
         req.writeReference(typeId);
@@ -280,24 +294,43 @@ final class JdwpClient {
     private void eventLoop(EventHandler handler) {
         try {
             while (true) {
-                Packet evt = readPacket();
-                int kind = evt.readByte();
-                evt.readInt(); // requestId
-                long threadId = evt.readReference();
-                long typeId = 0;
-                if (kind == 4) { // ClassPrepare: tag, typeID, signature, status
-                    evt.readByte();
-                    typeId = evt.readReference();
-                } else if (kind == 2) { // Breakpoint: location (tag + type/method/codeIndex)
-                    int tag = evt.readByte();
-                    if (tag == 1) {
-                        evt.readReference();
+                Packet evt = readPacketLocked();
+                if (evt.id >= 0 && !evt.eventData) {
+                    synchronized (lock) {
+                        replies.put(evt.id, evt);
+                        lock.notifyAll();
                     }
-                    typeId = evt.readReference();
+                    continue;
                 }
-                handler.onEvent(kind, threadId, typeId);
+                evt.readByte(); // suspendPolicy
+                int eventCount = evt.readInt();
+                for (int e = 0; e < eventCount; e++) {
+                    int kind = evt.readByte();
+                    evt.readInt(); // requestId
+                    if (kind == 4) { // ClassPrepare: threadID, tag, typeID, signature, status
+                        long threadId = evt.readReference();
+                        evt.readByte();
+                        long typeId = evt.readReference();
+                        handler.onEvent(kind, threadId, typeId);
+                    } else if (kind == 2) { // Breakpoint: threadID, location(tag, [obj], type, method, codeIndex)
+                        long threadId = evt.readReference();
+                        int tag = evt.readByte();
+                        if (tag == 1) {
+                            evt.readReference();
+                        }
+                        long typeId = evt.readReference();
+                        evt.readReference(); // method
+                        evt.readLong();      // codeIndex
+                        handler.onEvent(kind, threadId, typeId);
+                    } else if (kind == 0) { // VMStart: threadID
+                        handler.onEvent(kind, evt.readReference(), 0);
+                    }
+                }
             }
         } catch (IOException e) {
+            handler.onDisconnect();
+        } catch (Exception e) {
+            e.printStackTrace();
             handler.onDisconnect();
         }
     }
@@ -310,42 +343,63 @@ final class JdwpClient {
     }
 
     private Packet sendCommand(int cmdSet, int cmd, Packet data) throws IOException {
-        byte[] payload = data.toByteArray();
-        int length = 11 + payload.length;
-        out.writeInt(length);
-        out.writeInt(idSeq);
-        out.writeByte(0); // flags: none
-        out.writeByte(cmdSet);
-        out.writeByte(cmd);
-        out.write(payload);
-        out.flush();
-        int myId = idSeq++;
-        while (true) {
-            Packet reply = readPacket();
-            if (reply.id == myId) {
-                if (reply.errorCode != 0) {
-                    throw new IOException("JDWP error " + reply.errorCode);
+        int myId = sendRaw(cmdSet, cmd, data);
+        synchronized (lock) {
+            long deadline = System.currentTimeMillis() + 15000;
+            while (!replies.containsKey(myId)) {
+                long wait = deadline - System.currentTimeMillis();
+                if (wait <= 0) {
+                    throw new IOException("JDWP timeout waiting for reply " + myId);
                 }
-                return reply;
+                try {
+                    lock.wait(wait);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted", e);
+                }
             }
+            Packet reply = replies.remove(myId);
+            if (reply.errorCode != 0) {
+                throw new IOException("JDWP error " + reply.errorCode);
+            }
+            return reply;
         }
     }
 
-    private Packet readPacket() throws IOException {
+    private int sendRaw(int cmdSet, int cmd, Packet data) throws IOException {
+        synchronized (lock) {
+            byte[] payload = data.toByteArray();
+            int length = 11 + payload.length;
+            out.writeInt(length);
+            out.writeInt(idSeq);
+            out.writeByte(0); // flags: none
+            out.writeByte(cmdSet);
+            out.writeByte(cmd);
+            out.write(payload);
+            out.flush();
+            return idSeq++;
+        }
+    }
+
+    private Packet readPacketLocked() throws IOException {
         int length = in.readInt();
         int id = in.readInt();
         int flags = in.readByte();
-        if (flags == 0x80) { // reply
+        if ((flags & 0xFF) == 0x80) { // reply
             int error = in.readShort();
             byte[] payload = new byte[length - 11];
             in.readFully(payload);
-            return new Packet(id, error, payload);
+            Packet rp = new Packet(id, error, payload);
+            rp.eventData = false;
+            return rp;
         }
         in.readByte(); // cmdSet
         in.readByte(); // cmd
         byte[] payload = new byte[length - 11];
         in.readFully(payload);
-        return new Packet(id, 0, payload);
+        Packet ep = new Packet(id, 0, payload);
+        ep.eventData = true;
+        return ep;
     }
 
     private static final class Packet {
@@ -364,6 +418,8 @@ final class JdwpClient {
             this.data = data;
             this.pos = 0;
         }
+
+        boolean eventData;
 
         byte[] toByteArray() {
             byte[] arr = new byte[bytes.size()];

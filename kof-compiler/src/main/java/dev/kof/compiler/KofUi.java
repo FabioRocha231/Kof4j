@@ -29,7 +29,7 @@ final class KofUi {
     }
 
     static boolean isConstructor(String name) {
-        return "Color".equals(name);
+        return "Color".equals(name) || "Theme".equals(name);
     }
 
     static Type constructorType(String name) {
@@ -96,19 +96,19 @@ final class KofUi {
     static Integer paletteColor(String name) {
         return switch (name) {
             case "red" -> 0xFF0000FF;
-            case "green" -> 0xFF00FF00;
-            case "blue" -> 0xFFFF0000;
-            case "yellow" -> 0xFF00FFFF;
-            case "cyan" -> 0xFFFFFF00;
-            case "magenta" -> 0xFFFF00FF;
-            case "black" -> 0xFF000000;
+            case "green" -> 0x00FF00FF;
+            case "blue" -> 0x0000FFFF;
+            case "yellow" -> 0xFFFF00FF;
+            case "cyan" -> 0x00FFFFFF;
+            case "magenta" -> 0xFF00FFFF;
+            case "black" -> 0x000000FF;
             case "white" -> 0xFFFFFFFF;
-            case "gray", "grey" -> 0xFF808080;
+            case "gray", "grey" -> 0x808080FF;
             case "transparent" -> 0x00000000;
-            case "orange" -> 0xFF0080FF;
-            case "purple" -> 0xFF800080;
-            case "pink" -> 0xFFFFC0CB;
-            case "brown" -> 0xFF2A2AA5;
+            case "orange" -> 0xFF8000FF;
+            case "purple" -> 0x800080FF;
+            case "pink" -> 0xFFC0CBFF;
+            case "brown" -> 0xA52A2AFF;
             default -> null;
         };
     }
@@ -117,22 +117,22 @@ final class KofUi {
     static Integer themeColor(String role, int tag) {
         if (tag == 1) {
             return switch (role) {
-                case "background" -> 0xFF121212;
-                case "surface" -> 0xFF1E1E1E;
-                case "primary" -> 0xFF86FCBB;
-                case "secondary" -> 0xFFC6D603;
+                case "background" -> 0x121212FF;
+                case "surface" -> 0x1E1E1EFF;
+                case "primary" -> 0xBB86FCFF;
+                case "secondary" -> 0x03DAC6FF;
                 case "text" -> 0xFFFFFFFF;
-                case "error" -> 0xFF7966CF;
+                case "error" -> 0xCF6679FF;
                 default -> null;
             };
         }
         return switch (role) {
             case "background" -> 0xFFFFFFFF;
-            case "surface" -> 0xFFF2F2F2;
-            case "primary" -> 0xFFEE6200;
-            case "secondary" -> 0xFFC6D603;
-            case "text" -> 0xFF000000;
-            case "error" -> 0xFF20B000;
+            case "surface" -> 0xF2F2F2FF;
+            case "primary" -> 0x6200EEFF;
+            case "secondary" -> 0x03DAC6FF;
+            case "text" -> 0x000000FF;
+            case "error" -> 0xB00020FF;
             default -> null;
         };
     }

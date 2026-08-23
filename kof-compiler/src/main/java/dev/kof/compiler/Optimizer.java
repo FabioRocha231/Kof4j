@@ -469,18 +469,28 @@ public final class Optimizer {
                 KofOperation prev = out2.get(out2.size() - 1);
                 if (prev instanceof KofStoreLocal sl && sl.index() == ll.index()
                         && sl.type().equals(ll.type())) {
-                    // store(slot); load(slot) is a stack no-op: the store pops
-                    // the value, the load pushes it back. Removing only the
-                    // load would leave the store without a value — remove both.
-                    out2.remove(out2.size() - 1);
-                    positions.remove(prev);
-                    positions.remove(op);
-                    continue;
+                    // store(slot); load(slot): the value survives on the stack
+                    // as dup; store(slot). This is NOT a no-op — the store must
+                    // keep initializing the slot for any later load of it.
+                    // Only single-slot types can use dup (long/double need
+                    // dup2, which is not part of the IR).
+                    if (!isWide(sl.type())) {
+                        positions.remove(prev);
+                        positions.remove(op);
+                        out2.set(out2.size() - 1, new KofDup());
+                        out2.add(prev);
+                        continue;
+                    }
                 }
             }
             out2.add(op);
         }
         return out2;
+    }
+
+    private static boolean isWide(Type type) {
+        return type instanceof Type.PrimitiveType pt
+                && ("long".equals(pt.name()) || "double".equals(pt.name()));
     }
 
     // ── Unreachable code elimination ──────────────────────────────────

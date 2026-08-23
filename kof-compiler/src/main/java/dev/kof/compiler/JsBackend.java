@@ -1794,7 +1794,7 @@ class JsBackend implements Backend {
                 if (a === 255) {
                     return "rgb(" + r + ", " + g + ", " + b + ")";
                 }
-                return "rgba(" + r + ", " + g + ", " + b + ", " + (a / 255) + ")";
+                return "rgba(" + r + ", " + g + ", " + b + ", " + a + ")";
             }
 
             export function kofListNew() {

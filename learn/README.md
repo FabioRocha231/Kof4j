@@ -75,6 +75,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 | 32 | [CLI e Tooling](32-cli-tooling.md) |
 | 33 | [Versionamento e Releases](33-versioning-releases.md) |
 | 34 | [Filesystem (kof.io)](34-file-system.md) |
+| 35 | [kof.ui — Cores, Paletas e Temas](35-kof-ui.md) |
 
 ## Ordem recomendada
 

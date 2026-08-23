@@ -915,6 +915,32 @@ private Target target = Target.JVM;
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
+                    if (secCall != null) {
+                        if (!KofSecurity.supportedOn(secCall.function(), target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofSecurity.gapCode(secCall.function()) + ")",
+                                        KofSecurity.gapCode(secCall.function()));
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.security", "Security", List.of()),
+                                secCall.function(), secCall.parameterTypes(), secCall.returnType(),
+                                KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         KofWeb.WebCall appCall = KofWeb.appConstructor();
@@ -1428,6 +1454,17 @@ private Target target = Target.JVM;
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                        KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
+                        if (secCall != null) yield secCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (KofUi.isUiType(recvType)) {
+                        KofUi.UiCall uiCall = KofUi.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
+                        if (uiCall != null) yield uiCall.returnType();
+                    }
                     if (KofWeb.isAppType(recvType)) {
                         List<Type> webArgTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
@@ -2043,11 +2080,10 @@ private Target target = Target.JVM;
                     ops.add(new KofStoreLocal(Type.PrimitiveType.INT, tagTmp));
                     ops.add(new KofLoadLocal(Type.PrimitiveType.INT, tagTmp));
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                    ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
                     LabelId darkLabel = LabelId.create();
                     LabelId lightLabel = LabelId.create();
                     LabelId endLabel = LabelId.create();
-                    ops.add(new KofConditionalJump(KofComparison.NE, darkLabel, lightLabel));
+                    ops.add(new KofConditionalJump(KofComparison.NE, lightLabel, darkLabel));
                     ops.add(new KofLabel(lightLabel));
                     Integer light = KofUi.themeColor(mc.methodName(), 0);
                     ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, light));

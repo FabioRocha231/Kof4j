@@ -1,0 +1,161 @@
+package dev.kof.compiler;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+/**
+ * kof.ui foundation end-to-end: Color (32-bit RGBA), Palette and Theme.
+ * JVM and Native must observe identical semantics.
+ */
+class UiE2ETest {
+
+    private final CompilerDriver driver = new CompilerDriver();
+
+    private static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
+
+    private String runJvm(Path source, Path outDir, String expected) throws IOException {
+        CompilationResult result = driver.compile(source, outDir, Target.JVM);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running JVM class", e);
+        }
+    }
+
+    private String runNative(Path source, Path outDir, String expected) throws IOException {
+        assumeTrue(isLinux(), "Native target runs on Linux");
+        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        Path binFile = outDir.resolve("Default/Main");
+        assertTrue(Files.exists(binFile), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
+    private void both(Path tempDir, String name, String program, String expected) throws IOException {
+        Path source = tempDir.resolve(name + ".kf");
+        Files.writeString(source, program);
+        runJvm(source, tempDir.resolve("jvm"), expected);
+        runNative(source, tempDir.resolve("native"), expected);
+    }
+
+    @Test
+    void colorChannels(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "channels", """
+            main() {
+                var c = Color(255, 0, 0)
+                println(c.red())
+                println(c.green())
+                println(c.blue())
+                println(c.alpha())
+                println(c.isOpaque())
+            }
+            """, "255\n0\n0\n255\ntrue");
+    }
+
+    @Test
+    void colorCss(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "css", """
+            main() {
+                println(Color(255, 0, 0).toCss())
+                println(Color.rgba(10, 20, 30, 128).toCss())
+                println(Color.rgba(10, 20, 30, 255).toCss())
+            }
+            """, "rgb(255, 0, 0)\nrgba(10, 20, 30, 128)\nrgb(10, 20, 30)");
+    }
+
+    @Test
+    void palette(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "palette", """
+            main() {
+                println(Palette.red.toCss())
+                println(Palette.green.toCss())
+                println(Palette.blue.toCss())
+                println(Palette.black.toCss())
+                println(Palette.white.toCss())
+                println(Palette.transparent.alpha())
+            }
+            """, "rgb(255, 0, 0)\nrgb(0, 255, 0)\nrgb(0, 0, 255)\nrgb(0, 0, 0)\nrgb(255, 255, 255)\n0");
+    }
+
+    @Test
+    void withAlpha(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "alpha", """
+            main() {
+                var c = Color(255, 0, 0).withAlpha(64)
+                println(c.red())
+                println(c.alpha())
+                println(c.isOpaque())
+            }
+            """, "255\n64\nfalse");
+    }
+
+    @Test
+    void themes(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "themes", """
+            main() {
+                var dark = Theme.dark()
+                println(dark.isDark())
+                println(dark.background().toCss())
+                println(dark.text().toCss())
+                var light = Theme.light()
+                println(light.isDark())
+                println(light.background().toCss())
+                println(light.text().toCss())
+            }
+            """, "true\nrgb(18, 18, 18)\nrgb(255, 255, 255)\nfalse\nrgb(255, 255, 255)\nrgb(0, 0, 0)");
+    }
+
+    @Test
+    void argsAvailableInMain(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("args.kf");
+        Files.writeString(source, """
+            main() {
+                println(args.length)
+                if (args.length > 0) {
+                    println(args[0])
+                }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-cp", tempDir.resolve("out").toString(),
+                    "Default.Main", "hello", "world");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            assertEquals(0, p.waitFor(), "Exit code should be 0");
+            assertEquals("2\nhello", output, "args should reach main");
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
+    }
+}

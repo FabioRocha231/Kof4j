@@ -893,6 +893,7 @@ class JvmBackend implements Backend {
     }
 
     private int loadVarOpcode(Type type) {
+        if (KofUi.isUiType(type)) return ILOAD;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
                 case "int", "Int", "boolean", "bool", "Bool", "byte", "Byte", "short", "Short", "char", "Char" -> ILOAD;
@@ -906,6 +907,7 @@ class JvmBackend implements Backend {
     }
 
     private int storeVarOpcode(Type type) {
+        if (KofUi.isUiType(type)) return ISTORE;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
                 case "int", "Int", "boolean", "bool", "Bool", "byte", "Byte", "short", "Short", "char", "Char" -> ISTORE;

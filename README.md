@@ -150,7 +150,8 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | arrays | ✅ | ✅ | ✅ |
 | List\<T\>, listOf | ✅ | ✅ | ✅ |
 | JSON encode/decode (objetos no JVM) | ✅ | ✅ | ✅ |
-| kof.io (File, Path, Directory) | ✅ | ✅ | ✅ |
+| kof.io (File, Path, Directory) | ✅ | ✅ |
+| kof.ui (Color, Palette, Theme) | ✅ | ✅ | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
@@ -164,6 +165,22 @@ join implícito; Native reporta `CONC001` (gap documentado). Ver
 
 **Testes**: `assert(cond, "msg")` + `kof test <file.kf|dir>` — PASS/FAIL por
 exit code. Ver [learn/23-testing.md](learn/23-testing.md).
+
+---
+
+# kof.ui — Cores, Paletas, Temas
+
+A fundação da UI do Kof: `Color` (RGBA 32-bit), `Palette` (cores nomeadas)
+e `Theme` (light/dark com cores semânticas) — mesma semântica em JVM,
+Native e JS. A renderização (widgets → DOM) será KofJS.
+
+```kof
+var dark = Theme.dark()
+println(dark.background().toCss())   // rgb(18, 18, 18)
+println(Palette.green.toCss())       // rgb(0, 255, 0)
+```
+
+Ver: [learn/35-kof-ui.md](learn/35-kof-ui.md).
 
 ---
 

@@ -23,6 +23,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_io_")
                 || methodName.startsWith("kof_web_")
                 || methodName.startsWith("kof_ui_")
+                || methodName.startsWith("kof_sec_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
@@ -503,7 +504,7 @@ static boolean hasRuntimeFn(String methodName) {
                     if (a == 255) {
                         return "rgb(" + r + ", " + g + ", " + b + ")";
                     }
-                    return "rgba(" + r + ", " + g + ", " + b + ", " + (a / 255.0) + ")";
+                    return "rgba(" + r + ", " + g + ", " + b + ", " + a + ")";
                 }
 
                 // ── kof.time ───────────────────────────────────────

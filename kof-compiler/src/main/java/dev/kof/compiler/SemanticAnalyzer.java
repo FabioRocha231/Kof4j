@@ -486,6 +486,7 @@ class SemanticAnalyzer {
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
                         && !"json".equals(ie.name()) && !KofWeb.isWebNamespace(ie.name())
+                        && !KofSecurity.isSecurityNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
                         && !knownClasses.containsKey(ie.name())) {
@@ -564,6 +565,13 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
+                        if (secCall != null) yield secCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())
                             && "app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         yield KofWeb.APP;
@@ -712,6 +720,7 @@ class SemanticAnalyzer {
                     lambdaScope.define(new SymbolTable.ParameterSymbol(p.name(), paramType, idx));
                     idx++;
                 }
+                analyzeBody(le.body(), lambdaScope, Type.UnknownType.UNKNOWN);
                 Type returnType = Type.UnknownType.UNKNOWN;
                 for (StatementNode s : le.body()) {
                     if (s instanceof ReturnStmt rs && rs.value() != null) {

@@ -237,7 +237,7 @@ final class KofDebug {
                 try {
                     byte[] buf = new byte[1024];
                     while (jvmProcess.getInputStream().read(buf) != -1) {
-                        // swallow debuggee stdout (println goes to the console)
+                        System.err.print(new String(buf, 0, buf.length).trim());
                     }
                 } catch (IOException ignored) {
                 }
@@ -248,6 +248,7 @@ final class KofDebug {
             jdwp = new JdwpClient("127.0.0.1", port);
             jdwp.connect();
             jdwp.setClassPrepareRequest("Default.Main", (kind, threadId, typeId) -> {
+                System.err.println("[kof-debug] event kind=" + kind + " thread=" + threadId + " type=" + typeId);
                 try {
                     if (kind == 4) {
                         for (Integer line : pendingBreakpoints) {
