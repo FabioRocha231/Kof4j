@@ -20,6 +20,9 @@ public final class Main {
             case "check" -> check(args);
             case "test" -> test(args);
             case "bench" -> System.exit(Bench.run(args));
+            case "profile" -> System.exit(Profile.run(args));
+            case "inspect" -> System.exit(Inspect.run(args));
+            case "debug" -> System.exit(KofDebug.run(args));
             case "info" -> info(args);
             case "lsp" -> lsp();
             case "install" -> install(args);
@@ -233,6 +236,8 @@ private static void build(String[] args) {
         System.out.println("                          [--update-baseline <file>] [--threshold <ratio>] [--json] [--quick]");
         System.out.println("                          [--fail-on-regression]");
         System.out.println("                          compile, run, validate output, collect metrics, compare baseline");
+        System.out.println("  profile <file.kf> [--target jvm|native|js] [args...]   run + execution metrics (CPU, RSS, GC)");
+        System.out.println("  inspect <file.kf> [--json]   IR statistics: ops before/after optimization");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");

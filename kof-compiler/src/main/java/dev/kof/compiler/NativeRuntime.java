@@ -48,6 +48,7 @@ final class NativeRuntime {
         emitMemstats(sb);
         emitIoTimeFunctions(sb);
         emitIoFileFunctions(sb);
+        emitUiColorFunctions(sb);
         emitNetSocket(sb);
         emitNetBind(sb);
         emitNetListen(sb);
@@ -3723,6 +3724,116 @@ final class NativeRuntime {
             .Lio_list_err:
                 xorl %eax, %eax
                 addq $32768, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            """);
+    }
+
+    private static void emitUiColorFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lui_rgb: .asciz "rgb("
+            .Lui_rgba: .asciz "rgba("
+            .Lui_comma: .asciz ", "
+            .Lui_close_str: .asciz ")"
+            .section .text
+
+            kof_ui_color_to_css:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movl %edi, %ebx
+                movl %ebx, %r12d
+                andl $255, %r12d
+                xorl %r14d, %r14d
+                cmpl $255, %r12d
+                je .Lui_rgb_prefix
+                leaq .Lui_rgba(%rip), %rdi
+                movq $5, %rsi
+                call kof_string_from_literal
+                movq %rax, %r15
+                movq $1, %r14
+                jmp .Lui_red
+            .Lui_rgb_prefix:
+                leaq .Lui_rgb(%rip), %rdi
+                movq $4, %rsi
+                call kof_string_from_literal
+                movq %rax, %r15
+            .Lui_red:
+                movl %ebx, %r12d
+                shrl $24, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                leaq .Lui_comma(%rip), %rdi
+                movq $2, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movl %ebx, %r12d
+                shrl $16, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                leaq .Lui_comma(%rip), %rdi
+                movq $2, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movl %ebx, %r12d
+                shrl $8, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                testq %r14, %r14
+                je .Lui_close
+                leaq .Lui_comma(%rip), %rdi
+                movq $2, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movl %ebx, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+            .Lui_close:
+                leaq .Lui_close_str(%rip), %rdi
+                movq $1, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movq %r15, %rax
                 popq %r15
                 popq %r14
                 popq %r13

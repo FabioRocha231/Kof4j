@@ -1549,6 +1549,7 @@ class JsBackend implements Backend {
     private boolean isRuntimeOp(KofCall kc) {
         String name = kc.methodName();
         return name.startsWith("kof_json_") || name.startsWith("kof_io_")
+                || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
                 || name.equals("kof_box") || name.equals("kof_unbox");
@@ -1579,6 +1580,11 @@ class JsBackend implements Backend {
         if (name.equals("kof_box") || name.equals("kof_unbox")) {
             // JS values are already boxed; these are identity.
             stack.add(kc.kind() == KofCallKind.FUNCTION ? args.get(0) : receiver);
+            return;
+        }
+        if (name.equals("kof_ui_color_to_css")) {
+            registerRuntime("kofUiColorToCss");
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofUiColorToCss"), List.of(args.get(0))));
             return;
         }
         if (name.equals("kof_now")) {
@@ -1778,6 +1784,17 @@ class JsBackend implements Backend {
 
             export function kofPrintln(x) {
                 console.log(x);
+            }
+
+            export function kofUiColorToCss(color) {
+                const r = (color >>> 24) & 0xFF;
+                const g = (color >>> 16) & 0xFF;
+                const b = (color >>> 8) & 0xFF;
+                const a = color & 0xFF;
+                if (a === 255) {
+                    return "rgb(" + r + ", " + g + ", " + b + ")";
+                }
+                return "rgba(" + r + ", " + g + ", " + b + ", " + (a / 255) + ")";
             }
 
             export function kofListNew() {

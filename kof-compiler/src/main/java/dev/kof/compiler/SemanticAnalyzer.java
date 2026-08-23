@@ -16,6 +16,7 @@ class SemanticAnalyzer {
     private final Map<MethodCallExpr, SymbolTable.MethodSymbol> resolvedMethods = new IdentityHashMap<>();
     private final Map<NewExpr, SymbolTable.ConstructorSymbol> resolvedConstructors = new IdentityHashMap<>();
     private String currentClassName;
+    private String currentFunctionName;
     private String currentPackage;
     private DiagnosticCollector diagnostics;
 
@@ -336,6 +337,8 @@ class SemanticAnalyzer {
     }
 
     private void analyzeFunction(FunctionDeclarationNode func) {
+        String prevFunction = currentFunctionName;
+        currentFunctionName = func.name();
         SymbolTable funcScope = currentScope.enterScope();
         for (String tp : func.typeParameters()) {
             funcScope.define(new SymbolTable.TypeParameterSymbol(tp));
@@ -469,6 +472,9 @@ class SemanticAnalyzer {
         return switch (expr) {
             case LiteralExpr lit -> inferLiteralType(lit);
             case IdentifierExpr ie -> {
+                if ("args".equals(ie.name()) && "main".equals(currentFunctionName)) {
+                    yield new Type.ArrayType(BuiltinTypes.STRING);
+                }
                 SymbolTable.Symbol sym = scope.resolve(ie.name());
                 if (sym != null) yield sym.type();
                 if (currentClassName != null && !currentClassName.isEmpty()) {
@@ -480,6 +486,8 @@ class SemanticAnalyzer {
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
                         && !"json".equals(ie.name()) && !KofWeb.isWebNamespace(ie.name())
+                        && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
+                        && !"Theme".equals(ie.name())
                         && !knownClasses.containsKey(ie.name())) {
                     diagnostics.error("", 0, 0, 0,
                             "Undefined variable or type: '" + ie.name() + "'", "SEM011");
@@ -541,6 +549,18 @@ class SemanticAnalyzer {
                 if (mc.receiver() == null && KofIo.isConstructor(mc.methodName()) && mc.arguments().size() == 1) {
                     inferType(mc.arguments().get(0), scope);
                     yield KofIo.constructorType(mc.methodName());
+                }
+                if (mc.receiver() == null && "Color".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 3)) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.COLOR;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
+                    KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
+                    if (uiCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        yield uiCall.returnType();
+                    }
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
@@ -649,6 +669,10 @@ class SemanticAnalyzer {
                 yield Type.UnknownType.UNKNOWN;
             }
             case FieldAccessExpr fa -> {
+                if (fa.receiver() instanceof IdentifierExpr pId && KofUi.isPalette(pId.name())
+                        && KofUi.paletteColor(fa.fieldName()) != null) {
+                    yield KofUi.COLOR;
+                }
                 Type recvType = inferType(fa.receiver(), scope);
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;

@@ -78,6 +78,7 @@ static boolean hasRuntimeFn(String methodName) {
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
+            case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
             case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_web_app_new" -> "()Ljava/lang/String;";
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
@@ -492,6 +493,17 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
             %s
+
+                public static String kof_ui_color_to_css(int color) {
+                    int r = (color >>> 24) & 0xFF;
+                    int g = (color >>> 16) & 0xFF;
+                    int b = (color >>> 8) & 0xFF;
+                    int a = color & 0xFF;
+                    if (a == 255) {
+                        return "rgb(" + r + ", " + g + ", " + b + ")";
+                    }
+                    return "rgba(" + r + ", " + g + ", " + b + ", " + (a / 255.0) + ")";
+                }
 
                 // ── kof.time ───────────────────────────────────────
 

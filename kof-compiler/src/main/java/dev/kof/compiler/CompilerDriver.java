@@ -16,12 +16,14 @@ private Target target = Target.JVM;
     private boolean optimizeEnabled = true;
     private boolean debugInfoEnabled = true;
     private java.util.function.BiConsumer<IRModule, IRModule> irObserver;
+    private IRObserver irStatsObserver;
     private DiagnosticCollector currentDiagnostics;
     private String currentSourceName;
     private final java.util.IdentityHashMap<KofOperation, SourcePosition> currentDebugPositions =
             new java.util.IdentityHashMap<>();
     private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
     private final java.util.Deque<LabelId> continueLabels = new java.util.ArrayDeque<>();
+    private boolean loweringMain;
 
     public CompilationResult compile(Path sourceFile, Path outputDir) {
         return compile(sourceFile, outputDir, Target.JVM);
@@ -45,6 +47,12 @@ private Target target = Target.JVM;
      */
     public CompilerDriver setIRObserver(java.util.function.BiConsumer<IRModule, IRModule> observer) {
         this.irObserver = observer;
+        return this;
+    }
+
+    /** Observes IR statistics (public API for tooling; no IR types exposed). */
+    public CompilerDriver setIRObserver(IRObserver observer) {
+        this.irStatsObserver = observer;
         return this;
     }
 
@@ -79,9 +87,16 @@ private Target target = Target.JVM;
                 return new CompilationResult(false, diagnostics, outputDir);
             }
             currentModule = irModule;
+            IRModule unoptimized = irModule;
             if (optimizeEnabled) {
                 irModule = Optimizer.optimize(irModule);
                 currentModule = irModule;
+            }
+            if (irObserver != null) {
+                irObserver.accept(unoptimized, irModule);
+            }
+            if (irStatsObserver != null) {
+                irStatsObserver.observed(IRStatistics.of(unoptimized, irModule));
             }
             Files.createDirectories(outputDir);
             Backend backend = selectBackend(target);
@@ -217,6 +232,8 @@ private Target target = Target.JVM;
         if (isMain) {
             paramTypes = List.of(new Type.ArrayType(BuiltinTypes.STRING));
         }
+        boolean prevMain = loweringMain;
+        loweringMain = isMain;
         int access = AccessFlags.PUBLIC | AccessFlags.STATIC;
         List<IRLocalVariable> locals = new ArrayList<>();
         List<KofOperation> body = new ArrayList<>();
@@ -663,6 +680,15 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case IdentifierExpr ie -> {
+                if (loweringMain && "args".equals(ie.name())) {
+                    if (target == Target.JVM) {
+                        ops.add(new KofLoadLocal(new Type.ArrayType(BuiltinTypes.STRING), 0));
+                    } else {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                        ops.add(new KofNewArray(BuiltinTypes.STRING));
+                    }
+                    yield localIdx;
+                }
                 for (int i = locals.size() - 1; i >= 0; i--) {
                     if (locals.get(i).name().equals(ie.name())) {
                         ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
@@ -826,6 +852,14 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     yield localIdx;
                 }
+                if (mc.receiver() == null && "Color".equals(mc.methodName()) && mc.arguments().size() == 3) {
+                    localIdx = emitPackedColor(mc.arguments(), ops, owner, localIdx, locals);
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Color".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    yield localIdx;
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = listOfElementType(mc, locals);
                     Type listType = new Type.ClassType("kof", "List", List.of(elemType));
@@ -898,9 +932,30 @@ private Target target = Target.JVM;
                                 ioCall.function(), ioCall.parameterTypes(), ioCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid2 && KofUi.isPalette(rid2.name())) {
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
+                    KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
+                    if (uiCall != null && "kof_ui_color_rgba".equals(uiCall.function())) {
+                        localIdx = emitPackedColor(mc.arguments(), ops, owner, localIdx, locals);
+                        yield localIdx;
+                    }
+                    if (uiCall != null && "kof_ui_theme_light".equals(uiCall.function())) {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                        yield localIdx;
+                    }
+                    if (uiCall != null && "kof_ui_theme_dark".equals(uiCall.function())) {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                        yield localIdx;
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofUi.isUiType(recvType)) {
+                        localIdx = emitUiInstance(recvType, mc, ops, owner, localIdx, locals);
+                        yield localIdx;
+                    }
                     if (KofWeb.isAppType(recvType)) {
                         List<Type> webArgTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
@@ -1196,6 +1251,13 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case FieldAccessExpr fa -> {
+                if (fa.receiver() instanceof IdentifierExpr pId && KofUi.isPalette(pId.name())) {
+                    Integer color = KofUi.paletteColor(fa.fieldName());
+                    if (color != null) {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, color));
+                        yield localIdx;
+                    }
+                }
                 Type recvType = inferExprType(fa.receiver(), locals);
                 if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
@@ -1285,6 +1347,9 @@ private Target target = Target.JVM;
                 case ConcreteLiteralKind.NULL -> Type.UnknownType.UNKNOWN;
             };
             case IdentifierExpr ie -> {
+                if (loweringMain && "args".equals(ie.name())) {
+                    yield new Type.ArrayType(BuiltinTypes.STRING);
+                }
                 for (int i = locals.size() - 1; i >= 0; i--) {
                     if (locals.get(i).name().equals(ie.name())) yield locals.get(i).type();
                 }
@@ -1326,6 +1391,14 @@ private Target target = Target.JVM;
                 }
                 if (mc.receiver() == null && KofIo.isConstructor(mc.methodName()) && mc.arguments().size() == 1) {
                     yield KofIo.constructorType(mc.methodName());
+                }
+                if (mc.receiver() == null && "Color".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 3)) {
+                    yield KofUi.COLOR;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
+                    KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
+                    if (uiCall != null) yield uiCall.returnType();
                 }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     yield new Type.ClassType("kof", "List", List.of(listOfElementType(mc, locals)));
@@ -1457,6 +1530,10 @@ private Target target = Target.JVM;
             }
             case FieldAccessExpr fa -> {
                 Type recvType = inferExprType(fa.receiver(), locals);
+                if (fa.receiver() instanceof IdentifierExpr pId && KofUi.isPalette(pId.name())
+                        && KofUi.paletteColor(fa.fieldName()) != null) {
+                    yield KofUi.COLOR;
+                }
                 if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
                     yield Type.PrimitiveType.INT;
                 }
@@ -1864,6 +1941,127 @@ private Target target = Target.JVM;
         ops.add(new KofLoadLocal(fieldType, newTmp));
         ops.add(new KofStoreField(ownerType, fieldName, fieldType));
         ops.add(new KofLoadLocal(fieldType, prefix ? newTmp : valTmp));
+        return localIdx;
+    }
+
+    private int emitPackedColor(List<ExpressionNode> args, List<KofOperation> ops,
+                               String owner, int localIdx, List<IRLocalVariable> locals) {
+        for (int i = 0; i < args.size(); i++) {
+            localIdx = emitExpression(args.get(i), ops, owner, localIdx, locals);
+            if (i == 0) {
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 24));
+                ops.add(new KofBinary(KofBinaryOp.SHL, Type.PrimitiveType.INT));
+            } else if (i == 1) {
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 16));
+                ops.add(new KofBinary(KofBinaryOp.SHL, Type.PrimitiveType.INT));
+            } else if (i == 2) {
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 8));
+                ops.add(new KofBinary(KofBinaryOp.SHL, Type.PrimitiveType.INT));
+            }
+            if (i < 3 && i > 0) {
+                ops.add(new KofBinary(KofBinaryOp.OR, Type.PrimitiveType.INT));
+            }
+            if (i == 3) {
+                ops.add(new KofBinary(KofBinaryOp.OR, Type.PrimitiveType.INT));
+            }
+        }
+        if (args.size() == 3) {
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+            ops.add(new KofBinary(KofBinaryOp.OR, Type.PrimitiveType.INT));
+        }
+        return localIdx;
+    }
+
+    private int emitUiInstance(Type recvType, MethodCallExpr mc, List<KofOperation> ops,
+                               String owner, int localIdx, List<IRLocalVariable> locals) {
+        if (KofUi.isColor(recvType)) {
+            switch (mc.methodName()) {
+                case "red" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 24));
+                    ops.add(new KofBinary(KofBinaryOp.USHR, Type.PrimitiveType.INT));
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+                    ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                case "green" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 16));
+                    ops.add(new KofBinary(KofBinaryOp.USHR, Type.PrimitiveType.INT));
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+                    ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                case "blue" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 8));
+                    ops.add(new KofBinary(KofBinaryOp.USHR, Type.PrimitiveType.INT));
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+                    ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                case "alpha" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+                    ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                case "isOpaque" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+                    ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.INT));
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFF));
+                    ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                case "withAlpha" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0xFFFFFF00));
+                    ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.INT));
+                    for (ExpressionNode arg : mc.arguments()) {
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                    }
+                    ops.add(new KofBinary(KofBinaryOp.OR, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                case "toCss" -> {
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_color_to_css", List.of(Type.PrimitiveType.INT),
+                            BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    return localIdx;
+                }
+                default -> {
+                    return localIdx;
+                }
+            }
+        }
+        if (KofUi.isTheme(recvType)) {
+            switch (mc.methodName()) {
+                case "background", "surface", "primary", "secondary", "text", "error" -> {
+                    int tagTmp = localIdx++;
+                    locals.add(new IRLocalVariable(tagTmp, "#theme", Type.PrimitiveType.INT));
+                    ops.add(new KofStoreLocal(Type.PrimitiveType.INT, tagTmp));
+                    ops.add(new KofLoadLocal(Type.PrimitiveType.INT, tagTmp));
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                    ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
+                    LabelId darkLabel = LabelId.create();
+                    LabelId lightLabel = LabelId.create();
+                    LabelId endLabel = LabelId.create();
+                    ops.add(new KofConditionalJump(KofComparison.NE, darkLabel, lightLabel));
+                    ops.add(new KofLabel(lightLabel));
+                    Integer light = KofUi.themeColor(mc.methodName(), 0);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, light));
+                    ops.add(new KofJump(endLabel));
+                    ops.add(new KofLabel(darkLabel));
+                    Integer dark = KofUi.themeColor(mc.methodName(), 1);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, dark));
+                    ops.add(new KofLabel(endLabel));
+                    return localIdx;
+                }
+                case "isDark" -> {
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                    ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
+                    return localIdx;
+                }
+                default -> {
+                    return localIdx;
+                }
+            }
+        }
         return localIdx;
     }
 
