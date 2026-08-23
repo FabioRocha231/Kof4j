@@ -51,7 +51,7 @@ diagnóstico oficial é `kof info`.
 
 Informa: versão do Kof, versão do compiler, versão do runtime, versão da
 stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
-JVM, targets disponíveis (jvm, native) e localização da instalação.
+JVM, targets disponíveis (jvm, native, js) e localização da instalação.
 Legível por humanos; `--json` para formato estruturado.
 
 ## Regras importantes

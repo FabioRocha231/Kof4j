@@ -287,27 +287,30 @@ Fields:
 
 ---
 
-## O que NÃO existe
+## O que NÃO existe (planejado)
 
 - Map, Set
-- Async/await
-- Concorrência
-- Reflection
-- Annotations
-- Macros
-- Módulos/pacotes reais (package/import existem, mas o ecossistema é inicial)
-- Standard library completa
+- `await`/resultado de tarefa, filas (`kof.concurrent.Queue`)
+- `spawn` no Native (CONC001)
+- JSON objetos/records no Native (JSN002)
+- Reflection, Annotations, Macros
+- Captura em lambdas
 - Database
-- Test runner nativo (`kof test` planejado)
 - REPL
 - Formatter (`kof fmt` planejado)
 
-## O que existe desde 0.0.4
+## O que existe desde 0.0.5
 
 - Generics (com erasure)
-- List\<T\> (JVM + Native)
-- JSON encode/decode (JVM + Native; objetos/records no JVM)
-- HTTP básico (`kof serve`)
+- `List<T>` (JVM + Native + JS), `listOf`, for-in
+- Lambdas `(x: Int) -> expr` + if-expr
+- JSON encode/decode (JVM + Native + JS; objetos/records no JVM/JS)
+- Exceptions reais (JVM table + Native unwinding)
+- `assert` + `kof test` (PASS/FAIL por exit code)
+- `spawn` (concorrência — JVM, virtual threads)
+- kof.io (File/Path/Directory, readFile/writeFile), kof.time (`now()`)
+- HTTP (`kof serve` — KofHttpServer com thread pool)
+- KofJS (target `js` — GraalJS embutido)
 - Language Server (`kof lsp` — frontend real do compilador)
-- Type-check via CLI (`kof check`)
+- `kof check`, `kof info`, `kof install`
 - Distribuição oficial com JDK embutido, versionamento e releases automáticas

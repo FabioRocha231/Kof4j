@@ -63,7 +63,7 @@ JVM: Eclipse Adoptium 25.0.4 (embedded)
 Compiler: 0.0.4
 Runtime: 0.0.4
 Stdlib: 0.0.4
-Targets: jvm, native
+Targets: jvm, native, js
 Install: /opt/kof
 ```
 

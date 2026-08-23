@@ -152,7 +152,7 @@ O código Kof não muda entre targets.
 Código como:
 
 ```kof
-async fun loadUser(id: UUID): User {
+loadUser(id: UUID): User {
     return database.users.find(id)
 }
 ```

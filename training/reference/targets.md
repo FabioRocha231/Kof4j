@@ -60,3 +60,18 @@ kof run --target=native
 | `kof_net_read(fd, buf, len)` | Read from socket |
 | `kof_net_write(fd, buf, len)` | Write to socket |
 | `kof_net_close(fd)` | Close socket |
+
+## KofJS (target `js`)
+
+Alpha desde 0.0.5: o mesmo frontend + Kof IR geram ES Modules (ECMAScript
+2022+) executados pela engine GraalJS embarcada (KofJsRunner) — sem Node.js.
+
+```bash
+kof build app.kf --target js --output out/
+kof run app.kf --target js
+```
+
+Cobertura: classes, records, herança, interfaces (estruturais), lambdas,
+if-expr, switch, loops (incl. for-in), List, JSON, kof.io, try/catch/finally.
+
+Não suporta: `spawn` (planned). Ver `docs/targets/KOFJS.md`.

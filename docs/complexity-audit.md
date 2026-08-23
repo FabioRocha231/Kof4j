@@ -31,7 +31,7 @@ Não queremos acumular features até virar outro Java.
 | ClassLayout.java | 138 | Layout de memória |
 | Outros | ~500 | Utilidades |
 
-**Total:** ~4.800 linhas de código do compilador
+**Total:** ~13.000 linhas de código do compilador
 
 ### O que é necessariamente complexo
 
@@ -95,7 +95,7 @@ Não queremos acumular features até virar outro Java.
 
 ## Conclusão
 
-O Kof atual tem ~4.800 linhas de compilador. Isso é comparável a:
+O Kof atual tem ~13.000 linhas de compilador. Isso é comparável a:
 - Lua: ~20.000 linhas
 - Zig: ~150.000 linhas
 - Go: ~1.500.000 linhas
