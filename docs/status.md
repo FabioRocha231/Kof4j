@@ -274,6 +274,31 @@ main() {
 - `kof test <file.kf|dir> [--target jvm|native]` reporta PASS/FAIL.
 - Ver: `learn/23-testing.md`.
 
+### kof.ui (plataforma de UI)
+
+Renderização é **KofJS** (JVM/Native = no-ops): `kof run --target=js` abre o
+app interativo no webview nativo (`bin/kof-webview`, WebKitGTK embutido).
+
+- **Cores/temas**: `Color` (0xRRGGBBAA, canais por bits no compilador),
+  `Palette.*`, `Theme.light()/dark()` (semânticas background/surface/primary/
+  secondary/text/error).
+- **Widgets**: `Window` (bind de título, `bind`, `show`/`close`, `size`,
+  `theme`), `Label` (`text`/`fontSize`/`bold`/`color`), `Button` (`text`,
+  ação por lambda com capturas), `Input` (`text`), containers `Column`/`Row`
+  (listas de handles), `Style(bg, fg, padding, radius)` + `View` (`bind`).
+- **Eventos**: `Button("Ok", () -> ...)` — lambda com capturas (foto
+  somente-leitura; estado mutável via campos estáticos de classe). Cliques
+  executam dentro da página WebKit (DOM real).
+- **Janelas**: múltiplas por página; `w.close()` remove só a própria;
+  **fechar a janela encerra o programa** (runner aguarda o webview).
+- **Shim DOM browser-safe**: `kofSerialize`/`Array.from`, `document.head`,
+  `kof_platform` com fallback de console no browser.
+- **Webview**: `kof-webview.c` sem headers (link direto nas `.so.0`),
+  `webkit_settings_set_allow_file_access_from_file_urls` para módulos ES
+  sobre `file://`; CI compila via `scripts/build-webview.sh`.
+- Testes: `UiE2ETest` (14), `WindowE2ETest` (3) — JVM/Native/JS.
+- Docs: `learn/35-kof-ui.md`.
+
 ---
 
 ## Testes (491/491 PASS)
