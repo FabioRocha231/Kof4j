@@ -262,3 +262,27 @@ foram resolvidos e devem ser esperados em sessões futuras:
 Resultado: a Fase 1 foi validada em um clone isolado com repositório local
 Maven dedicado, e o estado final da árvore de trabalho contém o trabalho das
 duas frentes (web nativa + debugger/UI/security da sessão paralela).
+
+### Segunda rodada (23/08/2026, Fases 3 e 4)
+
+Conflitos adicionais encontrados e corrigidos durante a implementação de
+`kof.config` e `kof.log`:
+
+- **`hasRuntimeFn` perdeu `kof_ui_`/`kof_sec_`**: o commit da sessão paralela
+  que introduziu config/log removeu as duas entradas → `NoClassDefFoundError
+  kof/security/Security` e `kof/ui/Ui` em TODOS os programas JVM de
+  security/UI (13 + 3 testes quebrados). Restauradas.
+- **`collectCaptures` com `Set.of()` imutável**: a coleção de capturas de
+  lambdas (feature nova da sessão paralela) passava `Set.of()` como conjunto
+  de sombreamento e depois o mutava → `UnsupportedOperationException` em
+  qualquer lambda com `var` interno (quebrou a stack web e o
+  `json.decode<User>(body())` nos handlers). Corrigido para
+  `new HashSet<>()`.
+- **Descriptor de `kof_config_has`**: agrupada com funções de dois
+  parâmetros → bytecode inválido (`(String;I)I`). Separada.
+- **Keywords como nomes de método**: `config.int(...)` falhava no parser
+  porque `int` é keyword. `parsePostfix` agora aceita keywords de tipo após
+  `.` (ex.: `config.int`, `config.bool`, `config.long`).
+
+Estado final desta rodada: 486 testes, 485 PASS, 1 em progresso na sessão
+paralela (`defaultParameters` no target JS).

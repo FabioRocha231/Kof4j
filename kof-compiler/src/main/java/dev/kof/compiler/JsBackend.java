@@ -1080,10 +1080,14 @@ class JsBackend implements Backend {
             }
             if (op instanceof KofReturn kr) {
                 pos[0]++;
+                if (Type.isVoid(kr.returnType()) && !stack.isEmpty()) {
+                    // A void call's result is still a side-effecting
+                    // expression (default-parameter wrapper returning a
+                    // void function call): return it so it executes.
+                    return finishExpressionStatement(preamble, preambleExprs,
+                            new JsIr.JsReturn(pop(stack)));
+                }
                 if (Type.isVoid(kr.returnType())) {
-                    // void method returning a void call's result (e.g. a
-                    // lambda `() -> println(x)`): the JVM emits a plain
-                    // RETURN without consuming the stack; mirror it.
                     stack.clear();
                     return finishExpressionStatement(preamble, preambleExprs, new JsIr.JsReturn(null));
                 }

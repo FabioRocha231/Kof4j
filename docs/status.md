@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 486 testes (484 PASS + 2 em progresso: default params JS e webview UI)
+mvn test             → 486 testes (485 PASS + 1 em progresso: default params JS)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -276,11 +276,10 @@ main() {
 
 ---
 
-## Testes (486 — 484 PASS, 2 em progresso)
+## Testes (486 — 485 PASS, 1 em progresso)
 
-> Os 2 testes em progresso pertencem a features da sessão paralela:
-> `CoreRegressionE2ETest.defaultParameters` (JS target) e
-> `WindowE2ETest.windowRendersBoundLabel` (webview UI).
+> O teste em progresso pertence a uma feature da sessão paralela:
+> `CoreRegressionE2ETest.defaultParameters` (JS target).
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|

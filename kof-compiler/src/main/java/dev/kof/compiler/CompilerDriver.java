@@ -964,7 +964,11 @@ private Target target = Target.JVM;
             }
             case IdentifierExpr ie -> {
                 if (loweringMain && "args".equals(ie.name())) {
-                    if (target == Target.JVM) {
+                    if (mainArgsListField) {
+                        // args: List<String> — the converted list lives in
+                        // slot 1 (set by the main prologue)
+                        ops.add(new KofLoadLocal(KofProcess.STRING_LIST, 1));
+                    } else if (target == Target.JVM) {
                         ops.add(new KofLoadLocal(new Type.ArrayType(BuiltinTypes.STRING), 0));
                     } else {
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));

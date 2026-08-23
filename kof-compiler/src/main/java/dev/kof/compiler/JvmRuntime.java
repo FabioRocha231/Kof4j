@@ -31,7 +31,8 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_read_file")
                 || methodName.equals("kof_write_file")
                 || methodName.equals("kof_spawn")
-                || methodName.equals("kof_process_run");
+                || methodName.equals("kof_process_run")
+                || methodName.equals("kof_args_list");
     }
 
     static void ensureCompiled(Path outputDir, List<IRClass> classes) throws IOException {
@@ -87,6 +88,7 @@ static boolean hasRuntimeFn(String methodName) {
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/List;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_args_list" -> "([Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
             case "kof_ui_window_new", "kof_ui_label_new", "kof_ui_button_new" -> "(Ljava/lang/String;)I";
@@ -156,6 +158,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_resolve",
                     "kof_io_path_to_absolute" -> "Ljava/lang/String;";
             case "kof_process_run" -> "Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_args_list" -> "Ljava/util/ArrayList;";
             case "kof_io_read_bytes" -> "[I";
             case "kof_io_file_size" -> "J";
             case "kof_io_dir_list" -> "Ljava/util/ArrayList;";
@@ -691,6 +694,12 @@ static boolean hasRuntimeFn(String methodName) {
                             KOF_ACTIVE_TASKS.decrementAndGet();
                         }
                     });
+                }
+
+                public static ArrayList<String> kof_args_list(String[] args) {
+                    ArrayList<String> list = new ArrayList<>(args.length);
+                    for (String a : args) list.add(a);
+                    return list;
                 }
 
                 // ── kof.process — multiplatform process abstraction ──
