@@ -3977,6 +3977,508 @@ final class NativeRuntime {
             """);
     }
 
+    /**
+     * kof.db no target Native — link direto da client library (libsqlite3)
+     * no passo do ld (padrão kof-webview: sem JDBC driver, sem headers).
+     *
+     * A convenção segue o System V usado pelo NativeBackend: args em
+     * rdi/rsi/rdx/rcx/r8/r9, retorno em rax. O handle de conexão é um
+     * KofString "db<N>" indexando o registry abaixo. Binds chegam crus
+     * (kof_box é no-op no native): valores &lt; 0x1000000 são Ints, senão
+     * ponteiros de KofString — heurística documentada (um bind Int maior
+     * que 16MB seria interpretado como String).
+     */
+    static void emitDbSqlite(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Ldb_null: .asciz "null"
+            .section .bss
+            .Ldb_slots: .zero 512
+            .Ldb_count: .quad 0
+            .section .text
+
+            # resolve "db<N>" → sqlite3* em rax (leaf: clobbera rsi/rdx/rax/rcx)
+            kof_db_resolve:
+                leaq 26(%rdi), %rsi
+                xorl %ecx, %ecx
+            .Ldb_res_parse:
+                movzbl (%rsi), %edx
+                testb %dl, %dl
+                je .Ldb_res_done
+                subl $'0', %edx
+                imull $10, %ecx, %ecx
+                addl %edx, %ecx
+                incq %rsi
+                jmp .Ldb_res_parse
+            .Ldb_res_done:
+                decl %ecx
+                movq .Ldb_slots(,%rcx,8), %rax
+                ret
+
+            # kof_db_connect(url: KofString) → handle KofString ("db<N>")
+            .globl kof_db_connect
+            .type kof_db_connect, @function
+            kof_db_connect:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                cmpb $'s', 24(%rbx)
+                jne .Ldb_connect_bad
+                cmpb $'q', 25(%rbx)
+                jne .Ldb_connect_bad
+                cmpb $'l', 26(%rbx)
+                jne .Ldb_connect_bad
+                cmpb $'i', 27(%rbx)
+                jne .Ldb_connect_bad
+                cmpb $'t', 28(%rbx)
+                jne .Ldb_connect_bad
+                cmpb $'e', 29(%rbx)
+                jne .Ldb_connect_bad
+                cmpb $':', 30(%rbx)
+                jne .Ldb_connect_bad
+                leaq 31(%rbx), %rdi
+                subq $32, %rsp
+                movq %rsp, %rsi
+                call sqlite3_open
+                testl %eax, %eax
+                jne .Ldb_connect_fail
+                movq (%rsp), %r12
+                addq $32, %rsp
+                movq .Ldb_count(%rip), %r13
+                cmpq $63, %r13
+                jge .Ldb_connect_bad
+                movq %r12, .Ldb_slots(,%r13,8)
+                incq %r13
+                movq %r13, .Ldb_count(%rip)
+                # handle = "db" + decimal(r13) em buffer de 32 bytes
+                leaq -96(%rsp), %r14
+                movq %r13, %rax
+                leaq 31(%r14), %rcx
+                movb $0, (%rcx)
+                decq %rcx
+                movq $10, %rbx
+            .Ldb_itoa:
+                xorl %edx, %edx
+                divq %rbx
+                addb $'0', %dl
+                movb %dl, (%rcx)
+                testq %rax, %rax
+                je .Ldb_itoa_done
+                decq %rcx
+                jmp .Ldb_itoa
+            .Ldb_itoa_done:
+                decq %rcx
+                movb $'b', (%rcx)
+                decq %rcx
+                movb $'d', (%rcx)
+                movq %rcx, %rdi
+                leaq 32(%r14), %rdx
+                subq %rcx, %rdx
+                decq %rdx
+                movq %rdx, %rsi
+                call kof_io_make_string
+                addq $96, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ldb_connect_fail:
+                addq $32, %rsp
+            .Ldb_connect_bad:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # kof_db_connect2(url, user, pass) — SQLite ignora credenciais
+            .globl kof_db_connect2
+            .type kof_db_connect2, @function
+            kof_db_connect2:
+                jmp kof_db_connect
+
+            # kof_db_close(id: KofString)
+            .globl kof_db_close
+            .type kof_db_close, @function
+            kof_db_close:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                call kof_db_resolve
+                testq %rax, %rax
+                je .Ldb_close_ret
+                movq %rax, %rdi
+                call sqlite3_close
+            .Ldb_close_ret:
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # kof_db_execute(id, sql) → sqlite3_exec
+            .globl kof_db_execute
+            .type kof_db_execute, @function
+            kof_db_execute:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                movq %rsi, %rbx
+                call kof_db_resolve
+                testq %rax, %rax
+                je .Ldb_exec0_bad
+                movq %rax, %r12
+                movq %r12, %rdi
+                leaq 24(%rbx), %rsi
+                xorl %edx, %edx
+                xorl %ecx, %ecx
+                xorl %r8d, %r8d
+                call sqlite3_exec
+                movl %eax, %eax
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ldb_exec0_bad:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # bind helper: rdi=stmt, esi=index, rdx=valor cru (Int ou KofString*)
+            kof_db_bind:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                cmpq $0x1000000, %rdx
+                jae .Ldb_bind_str
+                pushq %rbx
+                movl %edx, %ebx
+                subq $8, %rsp
+                call sqlite3_bind_int
+                addq $8, %rsp
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ldb_bind_str:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdx, %rbx
+                movl %esi, %r12d
+                movq %rdi, %r13
+                movq %r13, %rdi
+                movl %r12d, %esi
+                leaq 24(%rbx), %rdx
+                movq $-1, %rcx
+                movq $-1, %r8
+                subq $8, %rsp
+                call sqlite3_bind_text
+                addq $8, %rsp
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # Execute/query com binds: layout de pilha uniforme —
+            #   6 pushes (48 bytes: rbx,r12,r13,r14,r15,rbp)
+            #   +16 para &stmt (sempre), +8 extra para b4 (n>=4)
+            #   rbx=id→, rbp=db, r12=sql, r13..r15=b1..b3, 16(%rsp)=b4
+            .macro KOF_DB_EXEC_N n
+            .globl kof_db_execute\\n
+            .type kof_db_execute\\n, @function
+            kof_db_execute\\n:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $56, %rsp
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                .if \\n >= 1
+                movq %rdx, %r13
+                .endif
+                .if \\n >= 2
+                movq %rcx, %r14
+                .endif
+                .if \\n >= 3
+                movq %r8, %r15
+                .endif
+                .if \\n >= 4
+                movq %r9, 16(%rsp)
+                .endif
+                call kof_db_resolve
+                movq %rax, 32(%rsp)
+                testq %rax, %rax
+                je .Ldb_exec_bad\\n
+                leaq 24(%r12), %rsi
+                movq 32(%rsp), %rdi
+                movq $-1, %rdx
+                movq %rsp, %rcx
+                xorl %r8d, %r8d
+                call sqlite3_prepare_v2
+                movq (%rsp), %r12
+                .if \\n >= 1
+                movq %r12, %rdi
+                movl $1, %esi
+                movq %r13, %rdx
+                call kof_db_bind
+                .endif
+                .if \\n >= 2
+                movq %r12, %rdi
+                movl $2, %esi
+                movq %r14, %rdx
+                call kof_db_bind
+                .endif
+                .if \\n >= 3
+                movq %r12, %rdi
+                movl $3, %esi
+                movq %r15, %rdx
+                call kof_db_bind
+                .endif
+                .if \\n >= 4
+                movq %r12, %rdi
+                movl $4, %esi
+                movq 16(%rsp), %rdx
+                call kof_db_bind
+                .endif
+                movq %r12, %rdi
+                call sqlite3_step
+                movq %r12, %rdi
+                call sqlite3_finalize
+                movq 32(%rsp), %rdi
+                call sqlite3_changes
+                addq $56, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ldb_exec_bad\\n:
+                addq $56, %rsp
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .endm
+
+            KOF_DB_EXEC_N 1
+            KOF_DB_EXEC_N 2
+            KOF_DB_EXEC_N 3
+            KOF_DB_EXEC_N 4
+
+            .macro KOF_DB_QUERY_N n
+            .globl kof_db_query\\n
+            .type kof_db_query\\n, @function
+            kof_db_query\\n:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $56, %rsp
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                .if \\n >= 1
+                movq %rdx, %r13
+                .endif
+                .if \\n >= 2
+                movq %rcx, %r14
+                .endif
+                .if \\n >= 3
+                movq %r8, %r15
+                .endif
+                .if \\n >= 4
+                movq %r9, 16(%rsp)
+                .endif
+                call kof_db_resolve
+                movq %rax, 32(%rsp)
+                testq %rax, %rax
+                je .Ldb_query_bad\\n
+                leaq 24(%r12), %rsi
+                movq 32(%rsp), %rdi
+                movq $-1, %rdx
+                movq %rsp, %rcx
+                xorl %r8d, %r8d
+                call sqlite3_prepare_v2
+                movq (%rsp), %r12
+                .if \\n >= 1
+                movq %r12, %rdi
+                movl $1, %esi
+                movq %r13, %rdx
+                call kof_db_bind
+                .endif
+                .if \\n >= 2
+                movq %r12, %rdi
+                movl $2, %esi
+                movq %r14, %rdx
+                call kof_db_bind
+                .endif
+                .if \\n >= 3
+                movq %r12, %rdi
+                movl $3, %esi
+                movq %r15, %rdx
+                call kof_db_bind
+                .endif
+                .if \\n >= 4
+                movq %r12, %rdi
+                movl $4, %esi
+                movq 16(%rsp), %rdx
+                call kof_db_bind
+                .endif
+                call kof_list_new
+                movq %rax, %r14
+            .Ldb_query_row\\n:
+                movq %r12, %rdi
+                call sqlite3_step
+                cmpl $100, %eax
+                jne .Ldb_query_done\\n
+                call kof_json_builder_new
+                movq %rax, %r15
+                movq %r15, %rdi
+                movl $'{', %esi
+                call kof_json_builder_char
+                xorl %ebx, %ebx
+            .Ldb_query_col\\n:
+                movq %r12, %rdi
+                call sqlite3_column_count
+                cmpl %eax, %ebx
+                jge .Ldb_query_end\\n
+                testl %ebx, %ebx
+                jz .Ldb_query_comma\\n
+                movq %r15, %rdi
+                movl $44, %esi
+                call kof_json_builder_char
+            .Ldb_query_comma\\n:
+                movq %r12, %rdi
+                movl %ebx, %esi
+                call sqlite3_column_name
+                movq %rax, 24(%rsp)
+                movq 24(%rsp), %rdi
+                call kof_io_strlen
+                movq 24(%rsp), %rdi
+                movq %rax, %rsi
+                call kof_io_make_string
+                movq %rax, %rdi
+                call kof_json_encode_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_json_builder_str
+                movq %r15, %rdi
+                movl $58, %esi
+                call kof_json_builder_char
+                movq %r12, %rdi
+                movl %ebx, %esi
+                call sqlite3_column_type
+                cmpl $1, %eax
+                je .Ldb_query_int\\n
+                cmpl $3, %eax
+                je .Ldb_query_text\\n
+                leaq .Ldb_null(%rip), %rdi
+                xorl %esi, %esi
+                call kof_io_make_string
+                jmp .Ldb_query_val\\n
+            .Ldb_query_int\\n:
+                movq %r12, %rdi
+                movl %ebx, %esi
+                call sqlite3_column_int
+                movl %eax, %edi
+                call kof_json_encode_int
+                jmp .Ldb_query_val\\n
+            .Ldb_query_text\\n:
+                movq %r12, %rdi
+                movl %ebx, %esi
+                call sqlite3_column_text
+                movq %rax, 24(%rsp)
+                movq 24(%rsp), %rdi
+                call kof_io_strlen
+                movq 24(%rsp), %rdi
+                movq %rax, %rsi
+                call kof_io_make_string
+                movq %rax, %rdi
+                call kof_json_encode_string
+            .Ldb_query_val\\n:
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_json_builder_str
+                incl %ebx
+                jmp .Ldb_query_col\\n
+            .Ldb_query_end\\n:
+                movq %r15, %rdi
+                movl $'}', %esi
+                call kof_json_builder_char
+                movq %r15, %rdi
+                call kof_json_builder_result
+                movq %r14, %rdi
+                movq %rax, %rsi
+                call kof_list_add
+                jmp .Ldb_query_row\\n
+            .Ldb_query_done\\n:
+                movq %r12, %rdi
+                call sqlite3_finalize
+                movq %r14, %rax
+                addq $56, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ldb_query_bad\\n:
+                addq $56, %rsp
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .endm
+
+            KOF_DB_QUERY_N 0
+            KOF_DB_QUERY_N 1
+            KOF_DB_QUERY_N 2
+            KOF_DB_QUERY_N 3
+            KOF_DB_QUERY_N 4
+            """);
+    }
+
     private static void emitUiWindowFunctions(StringBuilder sb) {
         sb.append("""
             .section .data

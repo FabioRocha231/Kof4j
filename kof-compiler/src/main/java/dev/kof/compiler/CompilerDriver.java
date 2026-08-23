@@ -1379,10 +1379,15 @@ private Target target = Target.JVM;
                         }
                         List<Type> params = new ArrayList<>(dbCall.parameterTypes());
                         Type retType = dbCall.returnType();
-                        if (typed) {
+                        if (KofDb.isQuery(mc.methodName())) {
+                            // o className (ou null) é sempre empurrado; o
+                            // param precisa estar na lista para o native
+                            // popar na ordem certa
                             params.add(BuiltinTypes.STRING);
-                            retType = new Type.ClassType("kof", "List",
-                                    List.of(toType(mc.typeArguments().get(0))));
+                            if (typed) {
+                                retType = new Type.ClassType("kof", "List",
+                                        List.of(toType(mc.typeArguments().get(0))));
+                            }
                         }
                         ops.add(new KofCall(new Type.ClassType("kof.db", "Db", List.of()),
                                 dbCall.function(), params, retType, KofCallKind.FUNCTION));

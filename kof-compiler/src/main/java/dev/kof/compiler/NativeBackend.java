@@ -17,6 +17,7 @@ public class NativeBackend implements Backend {
     private int stringCounter = 0;
     private Type lastPushedType = Type.UnknownType.UNKNOWN;
     private IRClass currentClass = null;
+    private boolean usesDb = false;
     private final Map<String, String> functionMangleMap = new HashMap<>();
     private final Map<String, ClassLayout> layoutCache = new HashMap<>();
     private Map<String, IRClass> allClassesMap = new HashMap<>();
@@ -84,6 +85,22 @@ public class NativeBackend implements Backend {
         sb.append("\n.section .text\n");
         sb.append(NativeRuntime.generateRuntimeAssembly());
         NativeRuntime.emitInitObject(sb);
+        // kof.db on the native target: link the DB client library directly
+        // (no JDBC driver) — the same direct-.so pattern as kof-webview.
+        for (IRClass clazz : module.classes()) {
+            for (IRMethod method : clazz.methods()) {
+                for (IRBasicBlock block : method.basicBlocks()) {
+                    for (KofOperation op : block.operations()) {
+                        if (op instanceof KofCall kc && kc.methodName().startsWith("kof_db_")) {
+                            usesDb = true;
+                        }
+                    }
+                }
+            }
+        }
+        if (usesDb) {
+            NativeRuntime.emitDbSqlite(sb);
+        }
         IRClass mainClass = null;
         for (IRClass clazz : module.classes()) {
             currentClass = clazz;
@@ -920,7 +937,20 @@ public class NativeBackend implements Backend {
             System.err.println("NativeBackend: as failed: " + e.getMessage());
             throw e;
         }
-        runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+        if (usesDb) {
+            // kof.db nativo: o ELF ganha linker dinâmico e linka a client
+            // lib direto — sem JDBC driver, sem headers (padrão kof-webview).
+            String os = System.getProperty("os.name", "").toLowerCase();
+            if (os.contains("linux")) {
+                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString(),
+                        "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2",
+                        "-lc", "-l:libsqlite3.so.0"}, "ld");
+            } else {
+                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+            }
+        } else {
+            runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+        }
         Files.deleteIfExists(objFile);
         Files.deleteIfExists(asmFile);
         binFile.toFile().setExecutable(true);
