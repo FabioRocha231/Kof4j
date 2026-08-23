@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 381/381 PASSAM (JVM + Native + KofJS E2E)
+mvn test             → 394 testes (JVM + Native + KofJS E2E)
 kof build            → PASS (--target jvm|native|js)
 kof run              → PASS (jvm|native|js)
 kof serve            → PASS (KofHttpServer, thread pool, 404/500, JSON)
@@ -158,8 +158,35 @@ main() {
 | LambdaE2ETest | 4 | lambdas + if-expr |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
 | SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
+| IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
+| IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
 | NativeDebugTest | 1 | harness de debug |
-| **Total** | **381** | |
+| **Total** | **394** | |
+
+---
+
+## Consolidação idiomática (guidelines 0.0.5)
+
+Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
+plataforma vazando para a linguagem.
+
+| Guideline | Estado |
+|-----------|--------|
+| `User(...)` sem `new` (retrocompatível) | ✅ |
+| Primary constructor `class User(String name)` | ✅ |
+| `this` não obrigatório | ✅ |
+| Field initializers aplicados no construtor | ✅ (0.0.5) |
+| Resolução de métodos independente da ordem textual | ✅ |
+| Escapes `\n` `\t` `\r` `\uXXXX` | ✅ (0.0.5) |
+| `listOf<T>()` vazio preserva o tipo | ✅ (0.0.5) |
+| `List<User>` + for-in tipado | ✅ |
+| `++`/`--` em campos | ✅ |
+| `return` nu em void | ✅ |
+| args CLI (`main(args)`) | planejado |
+| módulos multi-arquivo | planejado |
+| `Process` API | planejado |
+
+Ver as guidelines completas no todo da sessão.
 
 ---
 
