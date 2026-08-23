@@ -36,6 +36,7 @@ extern void gtk_main_quit(void);
 extern gpointer gtk_window_new(int type);
 extern void gtk_window_set_title(gpointer window, const char *title);
 extern void gtk_window_set_default_size(gpointer window, int width, int height);
+extern void gtk_window_set_icon_from_file(gpointer window, const char *file, gpointer err);
 extern void gtk_container_add(gpointer container, gpointer widget);
 extern void gtk_widget_show_all(gpointer widget);
 extern gulong g_signal_connect_data(gpointer instance, const char *detailed_signal,
@@ -70,6 +71,9 @@ int main(int argc, char **argv) {
     gpointer window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(window, title);
     gtk_window_set_default_size(window, 900, 600);
+    if (argc > 3 && strlen(argv[3]) > 0) {
+        gtk_window_set_icon_from_file(window, argv[3], NULL);
+    }
     g_signal_connect_data(window, "destroy", (GCallback) on_destroy, NULL, NULL, 0);
 
     gpointer view = webkit_web_view_new();

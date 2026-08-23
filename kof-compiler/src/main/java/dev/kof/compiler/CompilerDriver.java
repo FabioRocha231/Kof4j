@@ -2334,6 +2334,15 @@ if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.nam
                 if (KofUi.isLabel(recvType) && "text".equals(fa.fieldName())) {
                     yield BuiltinTypes.STRING;
                 }
+                if (KofUi.isLabel(recvType) && "fontSize".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
+                }
+                if (KofUi.isLabel(recvType) && "bold".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.BOOL;
+                }
+                if (KofUi.isLabel(recvType) && "color".equals(fa.fieldName())) {
+                    yield KofUi.COLOR;
+                }
                 if (fa.receiver() instanceof IdentifierExpr pId && KofUi.isPalette(pId.name())
                         && KofUi.paletteColor(fa.fieldName()) != null) {
                     yield KofUi.COLOR;

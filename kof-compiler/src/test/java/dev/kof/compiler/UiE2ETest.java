@@ -334,8 +334,8 @@ class UiE2ETest {
             """;
         Path src = tempDir.resolve("style.kf");
         Files.writeString(src, program);
-        runJvm(src, tempDir.resolve("jvm"), "0\n0\nrgb(0, 0, 0)");
-        runNative(src, tempDir.resolve("native"), "0\n0\nrgb(0, 0, 0)");
+        runJvm(src, tempDir.resolve("jvm"), "0\nfalse\nrgba(0, 0, 0, 0)");
+        runNative(src, tempDir.resolve("native"), "0\nfalse\nrgba(0, 0, 0, 0)");
 
         Path srcJs = tempDir.resolve("style-js.kf");
         Files.writeString(srcJs, program);

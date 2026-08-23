@@ -176,7 +176,10 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
             case "kof_config_long" -> "J";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error" -> "V";
-            case "kof_web_port" -> "I";
+             case "kof_web_port" -> "I";
+             case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "I";
+             case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
+                     "kof_ui_window_set_theme" -> "V";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_hmac_sha256", "kof_sec_redact",
                     "kof_sec_secret_get", "kof_sec_secret_get_default", "kof_sec_password_hash",
