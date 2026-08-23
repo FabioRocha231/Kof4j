@@ -28,7 +28,7 @@ porque existem em outras linguagens. Código assim **não compila** ou
 | `Thread` / `Executor` (APIs de plataforma) | Unavailable — nunca use |
 | Pattern matching | Planned |
 | `users.map(...)` / funções higher-order | Planned |
-| Primary constructor `class X(...)` | Unavailable |
+| Primary constructor `class X(...)` | Implemented (record-style desde 0.0.5) |
 | Array literals `{1, 2, 3}` | Unavailable |
 | `instanceof` com binding | Unavailable |
 | `for user in users` (sem var) | Unavailable |
