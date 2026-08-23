@@ -1,0 +1,11 @@
+main() {
+    var total = 0
+    for (var i = 0; i < 20000; i++) {
+        var digest = crypto.sha256("mensagem-" + i)
+        var mac = crypto.hmacSha256("key-" + i, digest)
+        if (mac.length == 64) {
+            total = total + 1
+        }
+    }
+    println(total)
+}

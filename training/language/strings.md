@@ -59,10 +59,14 @@ println(a == b)  // true (byte-level comparison)
 
 Strings are immutable. Operations like `concat` create new strings.
 
-## UTF-8
+## Encoding and length — per target
 
-Strings use UTF-8 encoding. Length returns byte count, not character count.
+- **Native**: strings are UTF-8; `length` returns the **byte count**.
+- **JVM**: strings are UTF-16 (`java.lang.String`); `length` returns code units.
 
 ```kof
-println("Olá".length)  // 4 (UTF-8 bytes)
+println("Olá".length)  // Native: 4 (UTF-8 bytes); JVM: 3 (UTF-16 units)
 ```
+
+Do not assume a specific character count when the string contains non-ASCII
+characters and the target matters.

@@ -1,0 +1,8 @@
+main() {
+    var total = 0
+    for (var i = 0; i < 10000; i++) {
+        var l = json.decode<List<Int>>("[1, 2, 3]")
+        total = total + l.get(0) + l.get(1) + l.get(2)
+    }
+    println(total)
+}

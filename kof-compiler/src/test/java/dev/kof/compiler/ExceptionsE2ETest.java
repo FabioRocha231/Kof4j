@@ -9,16 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Exception handling end-to-end tests (JVM execution).
- *
- * The JVM backend implements real try/catch/finally with an exception table;
- * throw of a String is wrapped in a RuntimeException at the JVM level and
- * unwrapped back to String in catch handlers.
- *
- * Native target: throw terminates the process (kof_panic); try/catch/finally
- * compile, but exceptions are not recoverable (documented limitation).
- */
+
 class ExceptionsE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();

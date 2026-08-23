@@ -1,21 +1,13 @@
 package dev.kof.compiler;
 
-/**
- * FieldLayout — represents the layout of a single field within an object.
- *
- * Calculated by ClassLayout at compile time.
- * Used by backends to generate field access code.
- */
+
 public record FieldLayout(
         String name,
         Type type,
         int offset,
         int size
 ) {
-    /**
-     * Returns the size of a type in bytes for object layout.
-     * All fields are padded to 8 bytes for alignment.
-     */
+
     public static int sizeOf(Type type) {
         return switch (type) {
             case Type.PrimitiveType pt -> switch (pt.name()) {
@@ -32,9 +24,7 @@ public record FieldLayout(
         };
     }
 
-    /**
-     * Returns the natural size of a type (before padding).
-     */
+
     public static int naturalSize(Type type) {
         return switch (type) {
             case Type.PrimitiveType pt -> switch (pt.name()) {

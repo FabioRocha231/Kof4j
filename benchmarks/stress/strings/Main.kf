@@ -1,0 +1,11 @@
+main() {
+    var acc = 0
+    for (var i = 0; i < 100000; i++) {
+        var s = "kof" + i + "stress"
+        var t = s.substring(0, 3) + s.substring(3)
+        if (t.startsWith("kof") && t.contains("stress")) {
+            acc = acc + 1
+        }
+    }
+    println(acc)
+}

@@ -9,13 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * JSON end-to-end tests: encode/decode parity between JVM and Native.
- *
- * Covers: int, long, bool, String (with escapes), List<Int>, List<String>,
- * int arrays, object encode/decode (JVM only), record encode/decode (JVM only),
- * and the diagnostic guards for unsupported combinations.
- */
+
 class JsonE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();
@@ -56,7 +50,7 @@ class JsonE2ETest {
         }
     }
 
-    // ── JVM ───────────────────────────────────────────────────────
+
 
     @Test
     void jvmEncodePrimitives(@TempDir Path tempDir) throws IOException {
@@ -155,7 +149,7 @@ class JsonE2ETest {
         runJvm(source, tempDir.resolve("out"), "{\"x\":3,\"y\":4}\n10\n20");
     }
 
-    // ── Native ────────────────────────────────────────────────────
+
 
     @Test
     void nativeEncodePrimitives(@TempDir Path tempDir) throws IOException {
@@ -229,7 +223,7 @@ class JsonE2ETest {
         runNative(source, tempDir.resolve("out"), "9000000000\n9000000000\n4");
     }
 
-    // ── Diagnostics ───────────────────────────────────────────────
+
 
     @Test
     void floatNotSupported(@TempDir Path tempDir) throws IOException {

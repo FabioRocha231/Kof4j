@@ -1,0 +1,10 @@
+record Point(Int x, Int y)
+
+main() {
+    var sum = 0
+    for (var i = 0; i < 500000; i++) {
+        var p = Point(i, i + 1)
+        sum = sum + p.x()
+    }
+    println(sum)
+}

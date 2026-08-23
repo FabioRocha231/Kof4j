@@ -2,16 +2,14 @@ package dev.kof.compiler;
 
 import java.util.List;
 
-/**
- * Kof IR — Backend-agnostic intermediate representation.
- *
- * This IR represents Kof language semantics, NOT any specific VM or backend.
- * JVM descriptors, ASM labels, and JVM opcodes do NOT belong here.
- */
 
-// ── Module / Class / Method / Field ───────────────────────────────
 
-record IRModule(String name, List<IRClass> classes, List<String> imports) {
+
+
+record IRModule(String name, List<IRClass> classes, List<String> imports, String sourceName) {
+    IRModule(String name, List<IRClass> classes, List<String> imports) {
+        this(name, classes, imports, null);
+    }
 }
 
 record IRClass(String name, String superName, List<String> interfaces,
@@ -24,16 +22,32 @@ record IRField(String name, Type type, int accessFlags, Object initialValue) {
 
 record IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
                 List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
-                List<IRLocalVariable> localVariables) {
+                List<IRLocalVariable> localVariables, KofDebugInfo debugInfo) {
+    IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
+             List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
+             List<IRLocalVariable> localVariables) {
+        this(name, returnType, parameterTypes, accessFlags, thrownExceptions,
+                basicBlocks, localVariables, KofDebugInfo.EMPTY);
+    }
 }
 
 record IRBasicBlock(int index, List<KofOperation> operations) {
 }
 
+/**
+ * KofDebugInfo — backend-agnostic debug metadata.
+ * Maps each IR operation to its source position so backends can emit
+ * line tables / source maps that keep the Kof identity. The position is
+ * registered before the backend, never synthesized there.
+ */
+record KofDebugInfo(java.util.Map<KofOperation, SourcePosition> positions) {
+    static final KofDebugInfo EMPTY = new KofDebugInfo(java.util.Map.of());
+}
+
 record IRLocalVariable(int index, String name, Type type) {
 }
 
-// ── Labels ────────────────────────────────────────────────────────
+
 
 record LabelId(int id) {
     private static int counter = 0;
@@ -41,7 +55,7 @@ record LabelId(int id) {
     static void reset() { counter = 0; }
 }
 
-// ── Literals ──────────────────────────────────────────────────────
+
 
 sealed interface KofOperation {
 }
@@ -70,28 +84,28 @@ record KofLoadLiteral(Type type, Object value) implements KofOperation {
     }
 }
 
-// ── Variables ─────────────────────────────────────────────────────
+
 
 record KofLoadLocal(Type type, int index) implements KofOperation {
 }
 record KofStoreLocal(Type type, int index) implements KofOperation {
 }
 
-// ── Fields ────────────────────────────────────────────────────────
+
 
 record KofLoadField(Type ownerType, String name, Type fieldType) implements KofOperation {
 }
 record KofStoreField(Type ownerType, String name, Type fieldType) implements KofOperation {
 }
 
-// ── Static Fields ─────────────────────────────────────────────────
+
 
 record KofGetStatic(Type ownerType, String name, Type fieldType) implements KofOperation {
 }
 record KofPutStatic(Type ownerType, String name, Type fieldType) implements KofOperation {
 }
 
-// ── Arithmetic ────────────────────────────────────────────────────
+
 
 enum KofBinaryOp { ADD, SUB, MUL, DIV, MOD, EQ, NE, LT, LE, GT, GE, AND, OR, XOR, SHL, SHR, USHR }
 enum KofUnaryOp { NEG, NOT, I2L, I2F, I2D, L2F, L2D, F2D }
@@ -101,20 +115,23 @@ record KofBinary(KofBinaryOp op, Type operandType) implements KofOperation {
 record KofUnary(KofUnaryOp op, Type operandType) implements KofOperation {
 }
 
-// ── Comparisons ───────────────────────────────────────────────────
+
 
 enum KofComparison { EQ, NE, LT, LE, GT, GE }
 
-// ── Control Flow ──────────────────────────────────────────────────
+
 
 record KofLabel(LabelId label) implements KofOperation {
 }
 record KofJump(LabelId target) implements KofOperation {
 }
-record KofConditionalJump(KofComparison comparison, LabelId trueLabel, LabelId falseLabel) implements KofOperation {
+record KofConditionalJump(KofComparison comparison, Type operandType, LabelId trueLabel, LabelId falseLabel) implements KofOperation {
+    KofConditionalJump(KofComparison comparison, LabelId trueLabel, LabelId falseLabel) {
+        this(comparison, Type.PrimitiveType.INT, trueLabel, falseLabel);
+    }
 }
 
-// ── Calls ─────────────────────────────────────────────────────────
+
 
 enum KofCallKind { INSTANCE, STATIC, CONSTRUCTOR, FUNCTION, INTERFACE }
 
@@ -122,33 +139,47 @@ record KofCall(Type ownerType, String methodName, List<Type> parameterTypes,
                Type returnType, KofCallKind kind) implements KofOperation {
 }
 
-// ── Object Creation ───────────────────────────────────────────────
+
 
 record KofNewObject(Type type, List<Type> argumentTypes) implements KofOperation {
 }
 
-// ── Return ────────────────────────────────────────────────────────
+
 
 record KofReturn(Type returnType) implements KofOperation {
 }
 record KofReturnVoid() implements KofOperation {
 }
 
-// ── Stack (low-level, needed by some backends) ────────────────────
+
 
 record KofDup() implements KofOperation {
+}
+
+/**
+ * Duplicates the top value below the second slot: [A, B] → [B, A, B].
+ * Used for postfix field increments (the receiver must survive for the store).
+ */
+record KofDupX1() implements KofOperation {
+}
+
+/**
+ * Duplicates the top value two slots below: [A, B, C] → [C, A, B, C].
+ * Used for prefix array increments (the value survives the array store).
+ */
+record KofDupX2() implements KofOperation {
 }
 record KofPop() implements KofOperation {
 }
 
-// ── Type Operations ───────────────────────────────────────────────
+
 
 record KofCheckCast(Type type) implements KofOperation {
 }
 record KofInstanceOf(Type type) implements KofOperation {
 }
 
-// ── Arrays ────────────────────────────────────────────────────────
+
 
 record KofArrayLoad(Type elementType) implements KofOperation {
 }
@@ -159,35 +190,20 @@ record KofNewArray(Type elementType) implements KofOperation {
 record KofArrayLength() implements KofOperation {
 }
 
-// ── Exception ─────────────────────────────────────────────────────
+
 
 record KofThrow() implements KofOperation {
 }
 
-/**
- * Marks the start of a protected region. All exception handlers declared
- * with KofCatchStart until the end label are attached to [startLabel, endLabel].
- *
- * handlerLabel/exceptionType/excLocalIndex describe the primary handler
- * (first catch, or the finally catch-all when only finally is present) —
- * used by backends that need the handler address before the catch clauses
- * are emitted (native exception frames).
- */
+
 record KofTryStart(LabelId startLabel, LabelId endLabel, LabelId handlerLabel,
                    String exceptionType, int excLocalIndex) implements KofOperation {
 }
 
-/**
- * Marks the end of the currently open protected region; pops it so nested
- * try statements attach their handlers to the correct region.
- */
+
 record KofTryEnd() implements KofOperation {
 }
 
-/**
- * Declares an exception handler: the JVM transfers control to handlerLabel
- * with the thrown object on the stack; the exception is then stored in
- * localIndex so the catch body can reference it.
- */
+
 record KofCatchStart(LabelId handlerLabel, String exceptionType, int localIndex) implements KofOperation {
 }

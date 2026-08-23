@@ -16,19 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * LspServer — a minimal Language Server Protocol implementation on stdio.
- *
- * The editor-facing diagnostics come from the SAME frontend the compiler
- * uses (Lexer -> Parser -> SemanticAnalyzer -> CompilerDriver). There is no
- * parallel parser: what the editor sees is exactly what the compiler would
- * reject or accept.
- *
- * Supported: initialize, initialized, shutdown, exit,
- * textDocument/didOpen, textDocument/didChange (full sync),
- * textDocument/publishDiagnostics. Enough to give Kof syntax-aware error
- * reporting in any LSP-capable editor.
- */
+
 final class LspServer {
 
     private final InputStream in;
@@ -80,13 +68,13 @@ final class LspServer {
         Map<String, Object> params = m.get("params") instanceof Map<?, ?> p
                 ? (Map<String, Object>) p : Map.of();
 
-        if (method == null) return; // response — not expected from client
+        if (method == null) return; 
 
         switch (method) {
             case "initialize" -> {
                 Map<String, Object> capabilities = new LinkedHashMap<>();
                 Map<String, Object> sync = new LinkedHashMap<>();
-                sync.put("change", 1L); // FULL
+                sync.put("change", 1L); 
                 sync.put("openClose", Boolean.TRUE);
                 capabilities.put("textDocumentSync", sync);
                 capabilities.put("positionEncoding", "utf-16");
@@ -95,13 +83,29 @@ final class LspServer {
                 result.put("serverInfo", Map.of("name", "kof-lsp", "version", dev.kof.compiler.KofVersion.version()));
                 respond(id, result);
             }
-            case "initialized" -> { /* no-op */ }
+            case "initialized" -> {  }
             case "shutdown" -> respond(id, null);
             case "exit" -> running = false;
             case "textDocument/didOpen" -> publishDiagnostics(params);
             case "textDocument/didChange" -> publishDiagnostics(params);
-            default -> { /* unknown method — ignore */ }
+            case "textDocument/didClose" -> clearDiagnostics(params);
+            default -> {  }
         }
+    }
+
+    /** didClose — clears diagnostics for the closed document. */
+    private void clearDiagnostics(Map<String, Object> params) {
+        Map<String, Object> textDoc = params.get("textDocument") instanceof Map<?, ?> td
+                ? (Map<String, Object>) td : Map.of();
+        String uri = textDoc.get("uri") == null ? "" : textDoc.get("uri").toString();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("uri", uri);
+        result.put("diagnostics", List.of());
+        Map<String, Object> notification = new LinkedHashMap<>();
+        notification.put("jsonrpc", "2.0");
+        notification.put("method", "textDocument/publishDiagnostics");
+        notification.put("params", result);
+        writeMessage(Json.stringify(notification));
     }
 
     private void respond(Object id, Object result) {
@@ -143,10 +147,8 @@ final class LspServer {
             tmpDir = Files.createTempDirectory("kof-lsp-");
             String name = "LspMain.kf";
             String path = uri.startsWith("file:") ? uri.substring("file:".length()) : uri;
-            if (!path.isEmpty() && !path.endsWith(".kf")) {
-                int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-                if (slash >= 0) path = path.substring(slash + 1);
-            }
+            int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+            if (slash >= 0) path = path.substring(slash + 1);
             if (path.endsWith(".kf")) name = path;
             file = tmpDir.resolve(name);
             Files.writeString(file, text);

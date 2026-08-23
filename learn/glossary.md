@@ -44,6 +44,25 @@
 
 **Generic** — mecanismo de parametrização de tipos. Exemplo: `class Caixa<T>`.
 
+**GraalJS** — engine JavaScript embarcada que o Kof usa para executar o target
+KofJS (`kof run --target=js`) sem depender de Node.js.
+
+## K
+
+**Kof IR** — representação intermediária única da Kof: o mesmo frontend gera a
+IR e os três backends (JVM, Native, KofJS) a consomem.
+
+**KofJS** — target `js` da Kof: gera ES Modules (ECMAScript 2022+) a partir da
+Kof IR. Ver `learn/37-kofjs.md`.
+
+**kof.ui** — plataforma de UI: `Color`, `Theme`, `Palette`, `Window`, `Label`,
+`Button`, `Input`, `Column`/`Row`, `View`+`Style`. Renderização é KofJS
+(webview nativo `kof-webview` com WebKitGTK ou browser); nos alvos JVM/Native
+os handles são no-ops. Ver `learn/35-kof-ui.md`.
+
+**kof-webview** — shell nativo (WebKitGTK embutido, Linux) que abre a
+aplicação KofJS interativa; `kof run --target=js` aguarda a janela fechar.
+
 ## I
 
 **IIFE (Imediatamente Invoked Function Expression)** — função executada imediatamente após ser definida.

@@ -1,0 +1,127 @@
+{
+  "language": "kof",
+  "version": "0.0.5-alpha",
+  "description": "Pares BAD/GOOD/WHY para treinamento de modelos. Cada entrada representa um erro de estilo, não necessariamente um erro de sintaxe.",
+  "entries": [
+    {
+      "id": "kof-001",
+      "category": "collections",
+      "problem": "armazenar uma sequência de objetos",
+      "bad": "class Node { Node next; Int value } class Registry { Node root; Int count }",
+      "good": "class Registry { List<LanguageEntry> entries; constructor() { entries = listOf() } }",
+      "reason": "O domínio é uma sequência. Node/next/count é implementação acidental; List<T> é a abstração da linguagem.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-002",
+      "category": "classes",
+      "problem": "representar um objeto de dados imutável",
+      "bad": "class User { String name; Int age; public getName(): String { return name } public getAge(): Int { return age } }",
+      "good": "record User(String name, Int age)",
+      "reason": "Record gera construtor, accessors e (no JVM) toString/equals/hashCode. A classe com getters é cerimônia sem semântica.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-003",
+      "category": "strings",
+      "problem": "comparar strings por conteúdo",
+      "bad": "if (nome.equals(\"Mel\")) { }",
+      "good": "if (nome == \"Mel\") { }",
+      "reason": "Em Kof, == em strings compara conteúdo. O .equals() de Java existe porque Java não sobrecarrega ==.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-004",
+      "category": "errors",
+      "problem": "sinalizar 'não encontrado'",
+      "bad": "String find(String key) { ...; return \"\" }",
+      "good": "String find(String key) { ...; throw \"not found: \" + key }",
+      "reason": "Sentinela \"\" espalha a convenção pelos consumidores e colide com valores legítimos. Exceção carrega a informação do erro.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-005",
+      "category": "functions",
+      "problem": "agrupar funções utilitárias",
+      "bad": "class StringUtils { static String capitalizar(String s) { ... } }",
+      "good": "String capitalizar(String s) { ... }",
+      "reason": "Kof tem funções top-level. A utility class de Java existe porque Java não tem funções fora de classes.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-006",
+      "category": "control-flow",
+      "problem": "valor condicional",
+      "bad": "var status = \"\"; if (ativo) { status = \"online\" } else { status = \"offline\" }",
+      "good": "var status = if (ativo) \"online\" else \"offline\"",
+      "reason": "If-expr expressa intenção e elimina mutação intermediária.",
+      "status": "implemented",
+      "introduced": "0.0.5-alpha"
+    },
+    {
+      "id": "kof-007",
+      "category": "architecture",
+      "problem": "camadas de cerimônia",
+      "bad": "class UserController { UserService service; constructor() { service = new UserService() } } class UserService { UserRepository repo; ... }",
+      "good": "String listarUsers() { return \"users\" }",
+      "reason": "Controller/Service/Repository existe em Java por convenções de framework. Sem o framework, as camadas não resolvem problema real.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-008",
+      "category": "state",
+      "problem": "tamanho de coleção",
+      "bad": "class Cart { List<Int> items; Int count; add(Int id) { items.add(id); count = items.size } }",
+      "good": "class Cart { List<Int> items; add(Int id) { items.add(id) } Int size() { return items.size } }",
+      "reason": "count é uma projeção de items.size. Estado duplicado precisa de sincronização manual e diverge.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-009",
+      "category": "lambdas",
+      "problem": "função anônima simples",
+      "bad": "function dobro(Int x): Int { return x * 2 } (sem função anônima)",
+      "good": "var f = (x: Int) -> x * 2; println(f(21))",
+      "reason": "Lambda é a forma de função anônima. Captura de escopo não existe ainda (planned).",
+      "status": "implemented",
+      "introduced": "0.0.5-alpha"
+    },
+    {
+      "id": "kof-010",
+      "category": "io",
+      "problem": "ler conteúdo de arquivo",
+      "bad": "var f = File(\"config.json\") (construção correta) — sem alternativa bad",
+      "good": "var conteudo = readFile(\"config.json\")",
+      "reason": "readFile é função top-level da stdlib kof.io. File(\"x\").readText() também existe.",
+      "status": "implemented",
+      "introduced": "0.0.5-alpha"
+    },
+    {
+      "id": "kof-011",
+      "category": "fake-idioms",
+      "problem": "mapear coleção",
+      "bad": "var nomes = users.map(u -> u.name)",
+      "good": "var nomes = listOf(); for (var u in users) { nomes.add(u.name) }",
+      "reason": "map/higher-order functions são planned, não existem. for-in + List é a forma atual.",
+      "status": "planned",
+      "introduced": "planned"
+    },
+    {
+      "id": "kof-012",
+      "category": "json",
+      "problem": "serializar objeto",
+      "bad": "ObjectMapper() (Java)",
+      "good": "var j = json.encode(user)",
+      "reason": "JSON é integrado à linguagem. Objetos/records no JVM; primitivos/lists em ambos os targets.",
+      "status": "implemented",
+      "introduced": "0.0.4-alpha"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+String saudacao(String nome) {
+    return "ola " + nome
+}
+Int soma(Int a, Int b) = a + b
+main() {
+    println(saudacao("kof"))
+    println(soma(20, 22))
+    var f = (x: Int) -> x * 2
+    println(f(21))
+}

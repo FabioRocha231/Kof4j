@@ -2,19 +2,12 @@ package dev.kof.compiler;
 
 import java.util.List;
 
-/**
- * NativeRuntime — generates x86-64 assembly for Kof runtime functions.
- *
- * These functions are the native implementation of the Kof Runtime ABI.
- * They are emitted into the .text section of every native binary.
- */
+
 final class NativeRuntime {
 
     private NativeRuntime() {}
 
-    /**
-     * Returns assembly for all required runtime functions.
-     */
+
     static String generateRuntimeAssembly() {
         StringBuilder sb = new StringBuilder();
         emitPrint(sb);
@@ -54,6 +47,9 @@ final class NativeRuntime {
         emitArraySet(sb);
         emitMemstats(sb);
         emitIoTimeFunctions(sb);
+        emitIoFileFunctions(sb);
+        emitUiColorFunctions(sb);
+        emitUiWindowFunctions(sb);
         emitNetSocket(sb);
         emitNetBind(sb);
         emitNetListen(sb);
@@ -62,14 +58,11 @@ final class NativeRuntime {
         emitNetWrite(sb);
         emitNetClose(sb);
         emitInstanceof(sb);
+        emitSecurityFunctions(sb);
         return sb.toString();
     }
 
-    /**
-     * Generates method table entries for a class.
-     * Each entry is: .quad method_address
-     * methods is a list of mangled method names in order.
-     */
+
     static void generateMethodTable(StringBuilder sb, String className, List<String> methodNames) {
         sb.append(".balign 8\n");
         sb.append(".globl ").append(className).append("_vtable\n");
@@ -81,11 +74,7 @@ final class NativeRuntime {
         sb.append("    .quad 0\n");
     }
 
-    /**
-     * kof_init_object(obj_ptr, type_id, vtable_ptr)
-     * Initializes the object header.
-     * %rdi = obj_ptr, %esi = type_id, %rdx = vtable_ptr
-     */
+
     static void emitInitObject(StringBuilder sb) {
         sb.append("""
             .globl kof_init_object
@@ -98,9 +87,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_print(ptr) — prints a null-terminated string to stdout.
-     */
+
     private static void emitPrint(StringBuilder sb) {
         sb.append("""
             .globl kof_print
@@ -124,9 +111,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_println(ptr) — prints a null-terminated string followed by newline.
-     */
+
     private static void emitPrintln(StringBuilder sb) {
         sb.append("""
             .globl kof_println
@@ -141,11 +126,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_int_to_string(value) — converts an int to a KofString.
-     * %rdi = int value
-     * returns %rax = KofString*
-     */
+
     private static void emitIntToString(StringBuilder sb) {
         sb.append("""
             .globl kof_int_to_string
@@ -211,11 +192,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_long_to_string(value) — converts a 64-bit long to a KofString.
-     * %rdi = long value
-     * returns %rax = KofString*
-     */
+
     private static void emitLongToString(StringBuilder sb) {
         sb.append("""
             .globl kof_long_to_string
@@ -281,11 +258,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_bool_to_string(value) — converts a bool to a KofString ("true"/"false").
-     * %rdi = int value (0/1)
-     * returns %rax = KofString*
-     */
+
     private static void emitBoolToString(StringBuilder sb) {
         sb.append("""
             .globl kof_bool_to_string
@@ -304,9 +277,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_print_int(value) — prints an integer as decimal to stdout.
-     */
+
     private static void emitPrintInt(StringBuilder sb) {
         sb.append("""
             .globl kof_print_int
@@ -369,18 +340,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_alloc(size) — allocates size bytes on the heap.
-     * Returns pointer in %rax. Uses mmap for simplicity.
-     *
-     * Allocation model: every block is prefixed by a 16-byte header
-     * holding the total mapped size (header + payload, 16-byte aligned).
-     * kof_free uses this header to munmap the exact block; counters feed
-     * kof_memstats. The payload is 16-byte aligned.
-     *
-     * This is the foundation for the future allocator evolution:
-     * arenas, reference tracking, generational GC.
-     */
+
     private static void emitAlloc(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -419,11 +379,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_free(ptr) — releases a block previously returned by kof_alloc.
-     * Reads the block size from the allocation header and munmaps it.
-     * Freeing null is a safe no-op.
-     */
+
     private static void emitFree(StringBuilder sb) {
         sb.append("""
             .globl kof_free
@@ -442,11 +398,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_memstats() — prints memory allocation statistics.
-     * Reports real counters maintained by kof_alloc/kof_free:
-     * allocations, frees and live bytes.
-     */
+
     static void emitMemstats(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -494,9 +446,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_panic(message) — prints error message and exits.
-     */
+
     private static void emitPanic(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -535,9 +485,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_null_error() — prints null reference error and exits.
-     */
+
     private static void emitNullError(StringBuilder sb) {
         sb.append(".Lstr_null_err: .asciz \"Runtime error: null pointer access\"\n");
         sb.append("""
@@ -549,10 +497,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_bounds_error(index, length) — prints array bounds error and exits.
-     * %rdi = index, %rsi = length
-     */
+
     private static void emitBoundsError(StringBuilder sb) {
         sb.append(".Lstr_bounds_err: .asciz \"Runtime error: array index out of bounds\"\n");
         sb.append("""
@@ -564,26 +509,13 @@ final class NativeRuntime {
             """);
     }
 
-    // ── KofString Runtime Functions ────────────────────────────────
 
-    /**
-     * KofString layout (x86-64):
-     *   offset 0:  type_id   (4 bytes, always 1 for String)
-     *   offset 4:  flags     (4 bytes)
-     *   offset 8:  method_table_ptr (8 bytes, NULL for strings)
-     *   offset 16: length    (4 bytes, byte count)
-     *   offset 20: padding   (4 bytes, alignment)
-     *   offset 24: UTF-8 data + null terminator
-     */
+
+
     static final int KOF_STRING_TYPE_ID = 1;
     static final int KOF_STRING_HEADER_SIZE = 24;
 
-    /**
-     * kof_string_from_literal(data_ptr, byte_length) → str_ptr
-     * Creates a KofString from a static literal.
-     * %rdi = pointer to UTF-8 data, %esi = byte length
-     * Returns pointer to new KofString in %rax.
-     */
+
     private static void emitStringFromLiteral(StringBuilder sb) {
         sb.append("""
             .globl kof_string_from_literal
@@ -616,10 +548,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_memcpy(dest, src, n) — copies n bytes from src to dest.
-     * %rdi = dest, %rsi = src, %edx = n
-     */
+
     static void emitMemcpy(StringBuilder sb) {
         sb.append("""
             .globl kof_memcpy
@@ -638,12 +567,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_length(str_ptr) → int
-     * Returns the byte length of a KofString.
-     * %rdi = pointer to KofString
-     * Returns length in %eax.
-     */
+
     private static void emitStringLength(StringBuilder sb) {
         sb.append("""
             .globl kof_string_length
@@ -654,12 +578,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_concat(str1, str2) → str3
-     * Concatenates two KofStrings into a new KofString.
-     * %rdi = str1, %rsi = str2
-     * Returns pointer to new KofString in %rax.
-     */
+
     private static void emitStringConcat(StringBuilder sb) {
         sb.append("""
             .globl kof_string_concat
@@ -703,11 +622,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_print_string(str_ptr) — prints a KofString to stdout.
-     * Uses stored length (no strlen scan).
-     * %rdi = pointer to KofString
-     */
+
     private static void emitPrintString(StringBuilder sb) {
         sb.append("""
             .globl kof_print_string
@@ -723,10 +638,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_println_string(str_ptr) — prints a KofString + newline.
-     * %rdi = pointer to KofString
-     */
+
     private static void emitPrintlnString(StringBuilder sb) {
         sb.append("""
             .globl kof_println_string
@@ -743,21 +655,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * KofList layout:
-     *   offset 0:  type_id (4)
-     *   offset 4:  flags (4)
-     *   offset 8:  method_table_ptr (8)
-     *   offset 16: length (4)
-     *   offset 20: capacity (4)
-     *   offset 24: data pointer (8) — array of 8-byte elements
-     *
-     * kof_list_new() → new empty list (capacity 2)
-     * kof_list_add(list, value) → grow if needed, append
-     * kof_list_get(list, index) → element (bounds checked)
-     * kof_list_set(list, index, value) → overwrite element
-     * kof_list_size(list) → length
-     */
+
     private static void emitListFunctions(StringBuilder sb) {
         sb.append("""
             .globl kof_list_new
@@ -987,15 +885,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * JSON support.
-     * JSON builder layout (32 bytes):
-     *   +0  type_id (+4 flags, +8 vtable)
-     *   +16 length (bytes)
-     *   +20 capacity (bytes)
-     *   +24 data ptr
-     * List encode tags: 0=int, 1=string, 2=bool, 3=object
-     */
+
     private static void emitJsonFunctions(StringBuilder sb) {
         sb.append("""
             .globl kof_json_builder_new
@@ -1706,10 +1596,7 @@ final class NativeRuntime {
         sb.append(".Lkof_json_true: .asciz \"true\"\n");
     }
 
-    /**
-     * kof_string_equals(str1, str2) → bool
-     * Content equality of two KofStrings.
-     */
+
     private static void emitStringEquals(StringBuilder sb) {
         sb.append("""
             .globl kof_string_equals
@@ -1747,12 +1634,9 @@ final class NativeRuntime {
             """);
     }
 
-    // ── Additional String Runtime Functions ──────────────────────
 
-    /**
-     * kof_string_char_at(str, index) → byte value
-     * Returns the byte at the given index.
-     */
+
+
     private static void emitStringCharAt(StringBuilder sb) {
         sb.append("""
             .globl kof_string_char_at
@@ -1772,9 +1656,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_substring(str, start, end) → new_str_ptr
-     */
+
     private static void emitStringSubstring(StringBuilder sb) {
         sb.append("""
             .globl kof_string_substring
@@ -1789,6 +1671,10 @@ final class NativeRuntime {
                 movl %esi, %r12d
                 movl %edx, %r13d
                 movl 16(%rbx), %ecx
+                cmpl $0, %r13d
+                jne .Lkof_substr_end_ok
+                movl %ecx, %r13d
+            .Lkof_substr_end_ok:
                 cmpl %ecx, %r13d
                 jg .Lkof_substr_bounds
                 testl %r12d, %r12d
@@ -1829,9 +1715,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_contains(str, sub) → bool
-     */
+
     private static void emitStringContains(StringBuilder sb) {
         sb.append("""
             .globl kof_string_contains
@@ -1884,9 +1768,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_starts_with(str, prefix) → bool
-     */
+
     private static void emitStringStartsWith(StringBuilder sb) {
         sb.append("""
             .globl kof_string_starts_with
@@ -1925,9 +1807,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_ends_with(str, suffix) → bool
-     */
+
     private static void emitStringEndsWith(StringBuilder sb) {
         sb.append("""
             .globl kof_string_ends_with
@@ -1974,9 +1854,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_index_of(str, needle) → int (byte index or -1)
-     */
+
     private static void emitStringIndexOf(StringBuilder sb) {
         sb.append("""
             .globl kof_string_index_of
@@ -2037,9 +1915,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_trim(str) → new KofString without leading/trailing whitespace
-     */
+
     private static void emitStringTrim(StringBuilder sb) {
         sb.append("""
             .globl kof_string_trim
@@ -2113,9 +1989,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_to_upper(str) and kof_string_to_lower(str) — ASCII case conversion
-     */
+
     private static void emitStringCase(StringBuilder sb) {
         sb.append("""
             .globl kof_string_to_upper
@@ -2195,10 +2069,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_replace(str, from, to) → new KofString with all occurrences of
-     * the single-byte char 'from' replaced by 'to' (JVM replace(char,char) semantics).
-     */
+
     private static void emitStringReplace(StringBuilder sb) {
         sb.append("""
             .globl kof_string_replace
@@ -2245,9 +2116,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_equals_ignore_case(a, b) → bool (ASCII case-insensitive)
-     */
+
     private static void emitStringEqualsIgnoreCase(StringBuilder sb) {
         sb.append("""
             .globl kof_string_equals_ignore_case
@@ -2308,10 +2177,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_string_split(str, sep) → KofArray of KofString
-     * Splits on the single-byte separator (JVM split(String) for one-char seps).
-     */
+
     private static void emitStringSplit(StringBuilder sb) {
         sb.append("""
             .globl kof_string_split
@@ -2414,26 +2280,13 @@ final class NativeRuntime {
             """);
     }
 
-    // ── KofArray Runtime Functions ─────────────────────────────────
 
-    /**
-     * KofArray layout (x86-64):
-     *   offset 0:  type_id   (4 bytes, always 2 for Array)
-     *   offset 4:  flags     (4 bytes)
-     *   offset 8:  method_table_ptr (8 bytes, NULL for arrays)
-     *   offset 16: length    (4 bytes, number of elements)
-     *   offset 20: elem_size (4 bytes, size of each element)
-     *   offset 24: elements  (length * elem_size bytes)
-     */
+
+
     static final int KOF_ARRAY_TYPE_ID = 2;
     static final int KOF_ARRAY_HEADER_SIZE = 24;
 
-    /**
-     * kof_array_alloc(length, element_size) → array_ptr
-     * Allocates a new array on the heap.
-     * %rdi = length (number of elements), %rsi = element_size (bytes per element)
-     * Returns pointer to new KofArray in %rax.
-     */
+
     private static void emitArrayAlloc(StringBuilder sb) {
         sb.append("""
             .globl kof_array_alloc
@@ -2461,12 +2314,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_array_length(array_ptr) → int
-     * Returns the length of a KofArray.
-     * %rdi = pointer to KofArray
-     * Returns length in %eax.
-     */
+
     private static void emitArrayLength(StringBuilder sb) {
         sb.append("""
             .globl kof_array_length
@@ -2477,13 +2325,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_array_get(array_ptr, index) → element_value
-     * Gets an element from a KofArray.
-     * %rdi = pointer to KofArray, %rsi = index
-     * Returns element value in %rax (for primitives) or pointer (for references).
-     * Performs bounds checking.
-     */
+
     private static void emitArrayGet(StringBuilder sb) {
         sb.append("""
             .globl kof_array_get
@@ -2534,12 +2376,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_array_set(array_ptr, index, value)
-     * Sets an element in a KofArray.
-     * %rdi = pointer to KofArray, %rsi = index, %rdx = value
-     * Performs bounds checking.
-     */
+
     private static void emitArraySet(StringBuilder sb) {
         sb.append("""
             .globl kof_array_set
@@ -2593,13 +2430,9 @@ final class NativeRuntime {
             """);
     }
 
-    // ── Network Runtime Functions ──────────────────────────────────
 
-    /**
-     * kof_net_socket(domain, type, protocol) → fd
-     * Creates a socket. %rdi=domain, %rsi=type, %rdx=protocol
-     * Returns file descriptor in %rax, or -1 on error.
-     */
+
+
     private static void emitIoTimeFunctions(StringBuilder sb) {
         sb.append("""
             .section .data
@@ -2755,6 +2588,1359 @@ final class NativeRuntime {
             """);
     }
 
+    private static void emitIoFileFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lio_slash: .asciz "/"
+            .Lio_dot: .asciz "."
+            .Lio_dotdot: .asciz ".."
+            .Lio_read_err: .asciz "Runtime error: cannot read file"
+            .section .text
+
+            // kof_io_make_string(data_ptr, len) → new KofString
+            .globl kof_io_make_string
+            .type kof_io_make_string, @function
+            kof_io_make_string:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                leal 25(%r12), %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl %r12d, 16(%r13)
+                movl $0, 20(%r13)
+                movq %r13, %rdi
+                addq $24, %rdi
+                movq %rbx, %rsi
+                movq %r12, %rdx
+                call kof_memcpy
+                movb $0, 24(%r13,%r12)
+                movq %r13, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            // kof_io_strlen(rdi) → byte length of a NUL-terminated string
+            .globl kof_io_strlen
+            .type kof_io_strlen, @function
+            kof_io_strlen:
+                xorq %rax, %rax
+            .Lio_strlen_loop:
+                cmpb $0, (%rdi,%rax)
+                je .Lio_strlen_done
+                incq %rax
+                jmp .Lio_strlen_loop
+            .Lio_strlen_done:
+                ret
+
+            // kof_io_last_slash(str) → index of last '/' or -1
+            .globl kof_io_last_slash
+            .type kof_io_last_slash, @function
+            kof_io_last_slash:
+                movl 16(%rdi), %eax
+                decl %eax
+            .Lio_last_slash_loop:
+                cmpl $0, %eax
+                jl .Lio_last_slash_done
+                leaq 24(%rdi), %rcx
+                cmpb $47, (%rcx,%rax)
+                je .Lio_last_slash_done
+                decl %eax
+                jmp .Lio_last_slash_loop
+            .Lio_last_slash_done:
+                ret
+
+            // kof_io_strip_trailing(str) → effective length (trailing '/' removed, root kept)
+            .globl kof_io_strip_trailing
+            .type kof_io_strip_trailing, @function
+            kof_io_strip_trailing:
+                movl 16(%rdi), %eax
+            .Lio_strip_loop:
+                cmpl $1, %eax
+                jle .Lio_strip_done
+                leaq 24(%rdi), %rcx
+                cmpb $47, -1(%rcx,%rax)
+                jne .Lio_strip_done
+                decl %eax
+                jmp .Lio_strip_loop
+            .Lio_strip_done:
+                ret
+
+            // kof_io_stat_mode(str) → st_mode or -1
+            .globl kof_io_stat_mode
+            .type kof_io_stat_mode, @function
+            kof_io_stat_mode:
+                pushq %rbx
+                subq $144, %rsp
+                movq %rdi, %rbx
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq %rsp, %rdx
+                xorq %r10, %r10
+                movq $262, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_stat_err
+                movl 24(%rsp), %eax
+                addq $144, %rsp
+                popq %rbx
+                ret
+            .Lio_stat_err:
+                movq $-1, %rax
+                addq $144, %rsp
+                popq %rbx
+                ret
+
+            // ── Path ──────────────────────────────────────────────
+
+            .globl kof_io_file_name
+            .type kof_io_file_name, @function
+            kof_io_file_name:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                call kof_io_strip_trailing
+                movl %eax, %r13d
+                movl %eax, %r12d
+                decl %r12d
+            .Lio_name_find:
+                cmpl $0, %r12d
+                jl .Lio_name_no_slash
+                leaq 24(%rbx), %rcx
+                cmpb $47, (%rcx,%r12)
+                je .Lio_name_found
+                decl %r12d
+                jmp .Lio_name_find
+            .Lio_name_found:
+                leal 1(%r12), %eax
+                movl %r13d, %ecx
+                subl %eax, %ecx
+                jg .Lio_name_sub
+                movq %rbx, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_name_sub:
+                leaq 24(%rbx), %rdi
+                addq %r12, %rdi
+                incq %rdi
+                movslq %ecx, %rsi
+                call kof_io_make_string
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_name_no_slash:
+                movslq %r13d, %rsi
+                leaq 24(%rbx), %rdi
+                call kof_io_make_string
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_path_file_name
+            .type kof_io_path_file_name, @function
+            kof_io_path_file_name:
+                jmp kof_io_file_name
+
+            .globl kof_io_path_parent
+            .type kof_io_path_parent, @function
+            kof_io_path_parent:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                call kof_io_strip_trailing
+                movl %eax, %r13d
+                movl %eax, %r12d
+                decl %r12d
+            .Lio_parent_find:
+                cmpl $0, %r12d
+                jl .Lio_parent_none
+                leaq 24(%rbx), %rcx
+                cmpb $47, (%rcx,%r12)
+                je .Lio_parent_found
+                decl %r12d
+                jmp .Lio_parent_find
+            .Lio_parent_found:
+                testl %r12d, %r12d
+                jne .Lio_parent_prefix
+                leaq .Lio_slash(%rip), %rdi
+                movq $1, %rsi
+                call kof_io_make_string
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_parent_prefix:
+                leaq 24(%rbx), %rdi
+                movslq %r12d, %rsi
+                call kof_io_make_string
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_parent_none:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_path_extension
+            .type kof_io_path_extension, @function
+            kof_io_path_extension:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                call kof_io_strip_trailing
+                movl %eax, %r13d
+                movl %eax, %r14d
+                decl %r14d
+            .Lio_ext_find_slash:
+                cmpl $0, %r14d
+                jl .Lio_ext_dot_from
+                leaq 24(%rbx), %rcx
+                cmpb $47, (%rcx,%r14)
+                je .Lio_ext_dot_from
+                decl %r14d
+                jmp .Lio_ext_find_slash
+            .Lio_ext_dot_from:
+                movl %r13d, %r12d
+                decl %r12d
+            .Lio_ext_find_dot:
+                cmpl %r14d, %r12d
+                jle .Lio_ext_empty
+                leaq 24(%rbx), %rcx
+                cmpb $46, (%rcx,%r12)
+                je .Lio_ext_found
+                decl %r12d
+                jmp .Lio_ext_find_dot
+            .Lio_ext_found:
+                movl %r13d, %ecx
+                subl %r12d, %ecx
+                decl %ecx
+                jg .Lio_ext_sub
+            .Lio_ext_empty:
+                xorl %esi, %esi
+                leaq .Lio_dot(%rip), %rdi
+                call kof_io_make_string
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_ext_sub:
+                leaq 24(%rbx), %rdi
+                addq %r12, %rdi
+                incq %rdi
+                movslq %ecx, %rsi
+                call kof_io_make_string
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_path_resolve
+            .type kof_io_path_resolve, @function
+            kof_io_path_resolve:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                cmpb $47, 24(%r12)
+                je .Lio_resolve_b
+                cmpl $0, 16(%rbx)
+                je .Lio_resolve_b
+                movl 16(%rbx), %eax
+                leaq 24(%rbx), %rcx
+                cmpb $47, -1(%rcx,%rax)
+                je .Lio_resolve_concat
+                leaq .Lio_slash(%rip), %rdi
+                movq $1, %rsi
+                call kof_string_from_literal
+                movq %rax, %r13
+                movq %rbx, %rdi
+                movq %r13, %rsi
+                call kof_string_concat
+                movq %rax, %r14
+                movq %r14, %rdi
+                movq %r12, %rsi
+                call kof_string_concat
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_resolve_concat:
+                movq %rbx, %rdi
+                movq %r12, %rsi
+                call kof_string_concat
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_resolve_b:
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_path_is_absolute
+            .type kof_io_path_is_absolute, @function
+            kof_io_path_is_absolute:
+                cmpl $0, 16(%rdi)
+                jle .Lio_abs_no
+                cmpb $47, 24(%rdi)
+                jne .Lio_abs_no
+                movq $1, %rax
+                ret
+            .Lio_abs_no:
+                xorl %eax, %eax
+                ret
+
+            .globl kof_io_path_to_absolute
+            .type kof_io_path_to_absolute, @function
+            kof_io_path_to_absolute:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                cmpb $47, 24(%rbx)
+                je .Lio_toabs_ret
+                subq $4096, %rsp
+                movq %rsp, %rdi
+                movq $4096, %rsi
+                movq $79, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_toabs_err
+                movq %rsp, %rdi
+                call kof_io_strlen
+                movq %rax, %rsi
+                movq %rsp, %rdi
+                call kof_io_make_string
+                movq %rax, %rdi
+                movq %rbx, %rsi
+                call kof_io_path_resolve
+                movq %rax, %r12
+                addq $4096, %rsp
+                movq %r12, %rax
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_toabs_err:
+                addq $4096, %rsp
+            .Lio_toabs_ret:
+                movq %rbx, %rax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_path_normalize
+            .type kof_io_path_normalize, @function
+            kof_io_path_normalize:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $576, %rsp
+                movq %rdi, %rbx
+                movq $0, 512(%rsp)
+                cmpl $0, 16(%rbx)
+                je .Lio_norm_scan
+                cmpb $47, 24(%rbx)
+                jne .Lio_norm_scan
+                movq $1, 512(%rsp)
+            .Lio_norm_scan:
+                xorl %r12d, %r12d
+                xorl %r13d, %r13d
+                xorl %r14d, %r14d
+            .Lio_norm_collect:
+                movl 16(%rbx), %ecx
+                cmpl %ecx, %r13d
+                jge .Lio_norm_final
+                leaq 24(%rbx), %rax
+                cmpb $47, (%rax,%r13)
+                jne .Lio_norm_advance
+                movl %r13d, %r9d
+                subl %r14d, %r9d
+                jz .Lio_norm_seg_done
+                cmpl $1, %r9d
+                jne .Lio_norm_check_dotdot
+                leaq 24(%rbx), %rax
+                cmpb $46, (%rax,%r14)
+                je .Lio_norm_seg_done
+            .Lio_norm_check_dotdot:
+                cmpl $2, %r9d
+                jne .Lio_norm_push
+                leaq 24(%rbx), %rax
+                cmpb $46, (%rax,%r14)
+                jne .Lio_norm_push
+                cmpb $46, 1(%rax,%r14)
+                jne .Lio_norm_push
+                testl %r12d, %r12d
+                jle .Lio_norm_dotdot_empty
+                decl %r12d
+                jmp .Lio_norm_seg_done
+            .Lio_norm_dotdot_empty:
+                cmpq $0, 512(%rsp)
+                jne .Lio_norm_seg_done
+                movl %r14d, (%rsp,%r12,8)
+                movl %r9d, 4(%rsp,%r12,8)
+                incl %r12d
+                jmp .Lio_norm_seg_done
+            .Lio_norm_push:
+                movl %r14d, (%rsp,%r12,8)
+                movl %r9d, 4(%rsp,%r12,8)
+                incl %r12d
+            .Lio_norm_seg_done:
+                incl %r13d
+                movl %r13d, %r14d
+                jmp .Lio_norm_collect
+            .Lio_norm_advance:
+                incl %r13d
+                jmp .Lio_norm_collect
+            .Lio_norm_final:
+                movl %r13d, %r9d
+                subl %r14d, %r9d
+                jz .Lio_norm_build
+                cmpl $1, %r9d
+                jne .Lio_norm_final_dotdot
+                leaq 24(%rbx), %rax
+                cmpb $46, (%rax,%r14)
+                je .Lio_norm_build
+            .Lio_norm_final_dotdot:
+                cmpl $2, %r9d
+                jne .Lio_norm_final_push
+                leaq 24(%rbx), %rax
+                cmpb $46, (%rax,%r14)
+                jne .Lio_norm_final_push
+                cmpb $46, 1(%rax,%r14)
+                jne .Lio_norm_final_push
+                testl %r12d, %r12d
+                jle .Lio_norm_final_dotdot_empty
+                decl %r12d
+                jmp .Lio_norm_build
+            .Lio_norm_final_dotdot_empty:
+                cmpq $0, 512(%rsp)
+                jne .Lio_norm_build
+                movl %r14d, (%rsp,%r12,8)
+                movl %r9d, 4(%rsp,%r12,8)
+                incl %r12d
+                jmp .Lio_norm_build
+            .Lio_norm_final_push:
+                movl %r14d, (%rsp,%r12,8)
+                movl %r9d, 4(%rsp,%r12,8)
+                incl %r12d
+            .Lio_norm_build:
+                xorl %ecx, %ecx
+                cmpq $0, 512(%rsp)
+                je .Lio_norm_total_segs
+                incl %ecx
+            .Lio_norm_total_segs:
+                testl %r12d, %r12d
+                jle .Lio_norm_total_done
+                xorl %r9d, %r9d
+            .Lio_norm_total_loop:
+                cmpl %r12d, %r9d
+                jge .Lio_norm_total_done
+                movl 4(%rsp,%r9,8), %eax
+                addl %eax, %ecx
+                testl %r9d, %r9d
+                je .Lio_norm_total_next
+                incl %ecx
+            .Lio_norm_total_next:
+                incl %r9d
+                jmp .Lio_norm_total_loop
+            .Lio_norm_total_done:
+                cmpq $0, 512(%rsp)
+                jne .Lio_norm_alloc
+                testl %r12d, %r12d
+                jg .Lio_norm_alloc
+                movl $1, %ecx
+                movq $-1, 520(%rsp)
+                jmp .Lio_norm_alloc2
+            .Lio_norm_alloc:
+                movq $0, 520(%rsp)
+            .Lio_norm_alloc2:
+                movslq %ecx, %rdi
+                call kof_alloc
+                movq %rax, %r15
+                xorl %r9d, %r9d
+                cmpq $0, 512(%rsp)
+                je .Lio_norm_build_rel
+                movb $47, (%r15)
+                incl %r9d
+            .Lio_norm_build_rel:
+                cmpq $-1, 520(%rsp)
+                jne .Lio_norm_copy_segs
+                movb $46, (%r15)
+                incl %r9d
+                jmp .Lio_norm_done
+            .Lio_norm_copy_segs:
+                xorl %r10d, %r10d
+            .Lio_norm_seg_loop:
+                cmpl %r12d, %r10d
+                jge .Lio_norm_done
+                testl %r10d, %r10d
+                je .Lio_norm_seg_no_sep
+                movb $47, (%r15,%r9)
+                incl %r9d
+            .Lio_norm_seg_no_sep:
+                movl (%rsp,%r10,8), %r11d
+                movl 4(%rsp,%r10,8), %eax
+                movl %eax, %ecx
+            .Lio_norm_seg_inner:
+                testl %ecx, %ecx
+                jle .Lio_norm_seg_next
+                leaq 24(%rbx), %rdi
+                movb (%rdi,%r11), %dl
+                movb %dl, (%r15,%r9)
+                incl %r9d
+                incq %r11
+                decl %ecx
+                jmp .Lio_norm_seg_inner
+            .Lio_norm_seg_next:
+                incl %r10d
+                jmp .Lio_norm_seg_loop
+            .Lio_norm_done:
+                movq %r15, %rdi
+                movslq %r9d, %rsi
+                call kof_io_make_string
+                addq $576, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            // ── File ─────────────────────────────────────────────
+
+            .globl kof_io_file_exists
+            .type kof_io_file_exists, @function
+            kof_io_file_exists:
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_io_stat_mode
+                testq %rax, %rax
+                js .Lio_exists_no
+                movq $1, %rax
+                popq %rbx
+                ret
+            .Lio_exists_no:
+                xorl %eax, %eax
+                popq %rbx
+                ret
+
+            .globl kof_io_file_is_file
+            .type kof_io_file_is_file, @function
+            kof_io_file_is_file:
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_io_stat_mode
+                testq %rax, %rax
+                js .Lio_is_file_no
+                andq $61440, %rax
+                cmpq $32768, %rax
+                jne .Lio_is_file_no
+                movq $1, %rax
+                popq %rbx
+                ret
+            .Lio_is_file_no:
+                xorl %eax, %eax
+                popq %rbx
+                ret
+
+            .globl kof_io_file_is_dir
+            .type kof_io_file_is_dir, @function
+            kof_io_file_is_dir:
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_io_stat_mode
+                testq %rax, %rax
+                js .Lio_is_dir_no
+                andq $61440, %rax
+                cmpq $16384, %rax
+                jne .Lio_is_dir_no
+                movq $1, %rax
+                popq %rbx
+                ret
+            .Lio_is_dir_no:
+                xorl %eax, %eax
+                popq %rbx
+                ret
+
+            .globl kof_io_read_text
+            .type kof_io_read_text, @function
+            kof_io_read_text:
+                jmp kof_read_file
+
+            .globl kof_io_write_text
+            .type kof_io_write_text, @function
+            kof_io_write_text:
+                call kof_write_file
+                testq %rax, %rax
+                je .Lio_ok1
+                xorl %eax, %eax
+                ret
+            .Lio_ok1:
+                movq $1, %rax
+                ret
+
+            .globl kof_io_append_text
+            .type kof_io_append_text, @function
+            kof_io_append_text:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq $1089, %rdx
+                movq $420, %r10
+                movq $257, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_append_fail
+                movq %rax, %rdi
+                leaq 24(%r12), %rsi
+                movl 16(%r12), %edx
+                movq $1, %rax
+                syscall
+                movq %rdi, %rdi
+                movq $3, %rax
+                syscall
+                movq $1, %rax
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_append_fail:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_delete
+            .type kof_io_delete, @function
+            kof_io_delete:
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_io_stat_mode
+                testq %rax, %rax
+                js .Lio_del_fail
+                andq $61440, %rax
+                cmpq $16384, %rax
+                je .Lio_del_rmdir
+                leaq 24(%rbx), %rdi
+                movq $87, %rax
+                syscall
+                testq %rax, %rax
+                je .Lio_del_ok
+            .Lio_del_fail:
+                xorl %eax, %eax
+                popq %rbx
+                ret
+            .Lio_del_rmdir:
+                leaq 24(%rbx), %rdi
+                movq $84, %rax
+                syscall
+                testq %rax, %rax
+                jne .Lio_del_fail
+            .Lio_del_ok:
+                movq $1, %rax
+                popq %rbx
+                ret
+
+            .globl kof_io_file_size
+            .type kof_io_file_size, @function
+            kof_io_file_size:
+                pushq %rbx
+                subq $144, %rsp
+                movq %rdi, %rbx
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq %rsp, %rdx
+                xorq %r10, %r10
+                movq $262, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_size_err
+                movq 48(%rsp), %rax
+                addq $144, %rsp
+                popq %rbx
+                ret
+            .Lio_size_err:
+                movq $-1, %rax
+                addq $144, %rsp
+                popq %rbx
+                ret
+
+            // ── Bytes ────────────────────────────────────────────
+
+            .globl kof_io_read_bytes
+            .type kof_io_read_bytes, @function
+            kof_io_read_bytes:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq $0, %rdx
+                movq $257, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_bytes_err
+                movq %rax, %rbx
+                subq $144, %rsp
+                movq %rbx, %rdi
+                movq %rsp, %rsi
+                movq $5, %rax
+                syscall
+                movq 48(%rsp), %r12
+                addq $144, %rsp
+                movq %r12, %rdi
+                call kof_alloc
+                movq %rax, %r15
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                movq %r12, %rdx
+                movq $0, %rax
+                syscall
+                movq %rbx, %rdi
+                movq $3, %rax
+                syscall
+                movl %r12d, %edi
+                movq $4, %rsi
+                call kof_array_alloc
+                movq %rax, %r13
+                xorq %rcx, %rcx
+            .Lio_bytes_spread:
+                cmpq %r12, %rcx
+                jge .Lio_bytes_done
+                movb (%r15,%rcx), %al
+                movb %al, 24(%r13,%rcx,4)
+                incq %rcx
+                jmp .Lio_bytes_spread
+            .Lio_bytes_done:
+                movq %r13, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_bytes_err:
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_write_bytes
+            .type kof_io_write_bytes, @function
+            kof_io_write_bytes:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq $577, %rdx
+                movq $420, %r10
+                movq $257, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_wb_err
+                movq %rax, %rbx
+                movl 16(%r12), %r14d
+                leal 16(%r14), %edi
+                call kof_alloc
+                movq %rax, %r13
+                xorq %rcx, %rcx
+            .Lio_wb_copy:
+                cmpq %r14, %rcx
+                jge .Lio_wb_write
+                movl 24(%r12,%rcx,4), %eax
+                movb %al, (%r13,%rcx)
+                incq %rcx
+                jmp .Lio_wb_copy
+            .Lio_wb_write:
+                movq %rbx, %rdi
+                movq %r13, %rsi
+                movq %r14, %rdx
+                movq $1, %rax
+                syscall
+                movq %rbx, %rdi
+                movq $3, %rax
+                syscall
+                movq $1, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_wb_err:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_io_append_bytes
+            .type kof_io_append_bytes, @function
+            kof_io_append_bytes:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq $1089, %rdx
+                movq $420, %r10
+                movq $257, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_ab_err
+                movq %rax, %rbx
+                movl 16(%r12), %r14d
+                leal 16(%r14), %edi
+                call kof_alloc
+                movq %rax, %r13
+                xorq %rcx, %rcx
+            .Lio_ab_copy:
+                cmpq %r14, %rcx
+                jge .Lio_ab_write
+                movl 24(%r12,%rcx,4), %eax
+                movb %al, (%r13,%rcx)
+                incq %rcx
+                jmp .Lio_ab_copy
+            .Lio_ab_write:
+                movq %rbx, %rdi
+                movq %r13, %rsi
+                movq %r14, %rdx
+                movq $1, %rax
+                syscall
+                movq %rbx, %rdi
+                movq $3, %rax
+                syscall
+                movq $1, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_ab_err:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            // ── Directory ────────────────────────────────────────
+
+            .globl kof_io_dir_create
+            .type kof_io_dir_create, @function
+            kof_io_dir_create:
+                pushq %rbx
+                movq %rdi, %rbx
+                leaq 24(%rbx), %rdi
+                movq $493, %rsi
+                movq $83, %rax
+                syscall
+                testq %rax, %rax
+                je .Lio_mkdir_ok
+                xorl %eax, %eax
+                popq %rbx
+                ret
+            .Lio_mkdir_ok:
+                movq $1, %rax
+                popq %rbx
+                ret
+
+            .globl kof_io_dir_create_dirs
+            .type kof_io_dir_create_dirs, @function
+            kof_io_dir_create_dirs:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                subq $520, %rsp
+                movq %rdi, %rbx
+                movl 16(%rbx), %r13d
+                movq $1, %r12
+            .Lio_dirs_scan:
+                cmpq %r13, %r12
+                jg .Lio_dirs_final
+                leaq 24(%rbx), %rax
+                cmpb $47, (%rax,%r12)
+                jne .Lio_dirs_advance
+                call .Lio_dirs_mkdir_prefix
+                testq %rax, %rax
+                je .Lio_dirs_advance
+                jmp .Lio_dirs_err
+            .Lio_dirs_advance:
+                incq %r12
+                jmp .Lio_dirs_scan
+            .Lio_dirs_final:
+                leaq 24(%rbx), %rdi
+                movq $493, %rsi
+                movq $83, %rax
+                syscall
+                testq %rax, %rax
+                je .Lio_dirs_ok
+                cmpq $-17, %rax
+                jne .Lio_dirs_err
+            .Lio_dirs_ok:
+                movq $1, %rax
+                addq $520, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_dirs_err:
+                xorl %eax, %eax
+                addq $520, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_dirs_mkdir_prefix:
+                leaq 8(%rsp), %r8
+                movq %r12, %rcx
+                xorq %r9, %r9
+                leaq 24(%rbx), %rsi
+                movq %r8, %rdi
+            .Lio_dirs_copy:
+                cmpq %rcx, %r9
+                jge .Lio_dirs_copy_done
+                movb (%rsi,%r9), %al
+                movb %al, (%rdi,%r9)
+                incq %r9
+                jmp .Lio_dirs_copy
+            .Lio_dirs_copy_done:
+                movb $0, (%rdi,%r9)
+                cmpq $1, %rcx
+                jle .Lio_dirs_prefix_skip
+                movq %r8, %rdi
+                movq $493, %rsi
+                movq $83, %rax
+                syscall
+                testq %rax, %rax
+                je .Lio_dirs_prefix_skip
+                cmpq $-17, %rax
+                je .Lio_dirs_prefix_skip
+                movq $-1, %rax
+                ret
+            .Lio_dirs_prefix_skip:
+                xorl %eax, %eax
+                ret
+
+            .globl kof_io_dir_delete
+            .type kof_io_dir_delete, @function
+            kof_io_dir_delete:
+                pushq %rbx
+                movq %rdi, %rbx
+                leaq 24(%rbx), %rdi
+                movq $84, %rax
+                syscall
+                testq %rax, %rax
+                je .Lio_rmdir_ok
+                movq $-1, %rax
+                popq %rbx
+                ret
+            .Lio_rmdir_ok:
+                movq $1, %rax
+                popq %rbx
+                ret
+
+            .globl kof_io_dir_list
+            .type kof_io_dir_list, @function
+            kof_io_dir_list:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $32768, %rsp
+                movq %rdi, %rbx
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                movq $65536, %rdx
+                movq $257, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_list_err
+                movq %rax, %rbx
+                movq %rsp, %r13
+                call kof_list_new
+                movq %rax, %r12
+            .Lio_list_loop:
+                movq %rbx, %rdi
+                movq %r13, %rsi
+                movq $32768, %rdx
+                movq $217, %rax
+                syscall
+                testq %rax, %rax
+                jle .Lio_list_done
+                movq %rax, %r14
+                movq %r13, %r15
+            .Lio_list_entry:
+                movzwq 16(%r15), %rdx
+                testq %rdx, %rdx
+                je .Lio_list_next_buf
+                cmpb $46, 19(%r15)
+                jne .Lio_list_add
+                cmpb $0, 20(%r15)
+                je .Lio_list_skip
+                cmpb $46, 20(%r15)
+                jne .Lio_list_add
+                cmpb $0, 21(%r15)
+                je .Lio_list_skip
+            .Lio_list_add:
+                leaq 19(%r15), %rdi
+                call kof_io_strlen
+                movq %rax, %rsi
+                leaq 19(%r15), %rdi
+                call kof_io_make_string
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_list_add
+            .Lio_list_skip:
+                movzwq 16(%r15), %rdx
+                addq %rdx, %r15
+                leaq (%r13,%r14), %rax
+                cmpq %rax, %r15
+                jb .Lio_list_entry
+                jmp .Lio_list_loop
+            .Lio_list_next_buf:
+                jmp .Lio_list_done
+            .Lio_list_done:
+                movq %rbx, %rdi
+                movq $3, %rax
+                syscall
+                call .Lio_list_sort
+                movq %r12, %rax
+                addq $32768, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_list_sort:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r11
+                movq %r12, %rbx
+                movl 16(%rbx), %r12d
+                movq 24(%rbx), %r11
+                movq $1, %r13
+            .Lio_sort_i:
+                cmpl %r12d, %r13d
+                jge .Lio_sort_done
+                movq (%r11,%r13,8), %r15
+                movl %r13d, %r14d
+            .Lio_sort_j:
+                testl %r14d, %r14d
+                jle .Lio_sort_place
+                movq -8(%r11,%r14,8), %rdi
+                movq %r15, %rsi
+                call .Lio_str_less
+                testq %rax, %rax
+                jne .Lio_sort_place
+                movq -8(%r11,%r14,8), %rax
+                movq %rax, (%r11,%r14,8)
+                decl %r14d
+                jmp .Lio_sort_j
+            .Lio_sort_place:
+                movq %r15, (%r11,%r14,8)
+                incq %r13
+                jmp .Lio_sort_i
+            .Lio_sort_done:
+                popq %r11
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_str_less:
+                movl 16(%rdi), %ecx
+                movl 16(%rsi), %r8d
+                xorl %r9d, %r9d
+            .Lio_less_loop:
+                cmpl %ecx, %r9d
+                jge .Lio_less_left_done
+                cmpl %r8d, %r9d
+                jge .Lio_less_longer
+                movzbl 24(%rdi,%r9), %eax
+                movzbl 24(%rsi,%r9), %r10d
+                cmpl %r10d, %eax
+                jl .Lio_less_true
+                jg .Lio_less_false
+                incl %r9d
+                jmp .Lio_less_loop
+            .Lio_less_left_done:
+                cmpl %r8d, %r9d
+                jl .Lio_less_true
+            .Lio_less_false:
+                xorl %eax, %eax
+                ret
+            .Lio_less_longer:
+                xorl %eax, %eax
+                ret
+            .Lio_less_true:
+                movq $1, %rax
+                ret
+            .Lio_list_err:
+                xorl %eax, %eax
+                addq $32768, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            """);
+    }
+
+    private static void emitUiColorFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lui_rgb: .asciz "rgb("
+            .Lui_rgba: .asciz "rgba("
+            .Lui_comma: .asciz ", "
+            .Lui_close_str: .asciz ")"
+            .section .text
+
+            kof_ui_color_to_css:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movl %edi, %ebx
+                movl %ebx, %r12d
+                andl $255, %r12d
+                xorl %r14d, %r14d
+                cmpl $255, %r12d
+                je .Lui_rgb_prefix
+                leaq .Lui_rgba(%rip), %rdi
+                movq $5, %rsi
+                call kof_string_from_literal
+                movq %rax, %r15
+                movq $1, %r14
+                jmp .Lui_red
+            .Lui_rgb_prefix:
+                leaq .Lui_rgb(%rip), %rdi
+                movq $4, %rsi
+                call kof_string_from_literal
+                movq %rax, %r15
+            .Lui_red:
+                movl %ebx, %r12d
+                shrl $24, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                leaq .Lui_comma(%rip), %rdi
+                movq $2, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movl %ebx, %r12d
+                shrl $16, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                leaq .Lui_comma(%rip), %rdi
+                movq $2, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movl %ebx, %r12d
+                shrl $8, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                testq %r14, %r14
+                je .Lui_close
+                leaq .Lui_comma(%rip), %rdi
+                movq $2, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movl %ebx, %r12d
+                andl $255, %r12d
+                movl %r12d, %edi
+                call kof_int_to_string
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+            .Lui_close:
+                leaq .Lui_close_str(%rip), %rdi
+                movq $1, %rsi
+                call kof_string_from_literal
+                movq %r15, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r15
+                movq %r15, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            """);
+    }
+
+    private static void emitUiWindowFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lui_empty: .asciz ""
+            .section .text
+
+            kof_ui_window_new:
+                movl $1, %eax
+                ret
+            kof_ui_window_set_title:
+                ret
+            kof_ui_window_title:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_window_bind:
+                ret
+            kof_ui_window_show:
+                ret
+            kof_ui_window_close:
+                ret
+            kof_ui_window_set_size:
+                ret
+            kof_ui_window_set_theme:
+                ret
+            kof_ui_label_new:
+                movl $1, %eax
+                ret
+            kof_ui_label_set_text:
+                ret
+            kof_ui_label_text:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_label_set_font_size:
+                ret
+            kof_ui_label_font_size:
+                xorl %eax, %eax
+                ret
+            kof_ui_label_set_bold:
+                ret
+            kof_ui_label_bold:
+                xorl %eax, %eax
+                ret
+            kof_ui_label_set_color:
+                ret
+            kof_ui_label_color:
+                xorl %eax, %eax
+                ret
+            kof_ui_label_remove:
+                ret
+            kof_ui_button_new:
+                movl $1, %eax
+                ret
+            kof_ui_button_new_action:
+                movl $1, %eax
+                ret
+            kof_ui_button_set_text:
+                ret
+            kof_ui_button_text:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_button_remove:
+                ret
+            kof_ui_input_new:
+                movl $1, %eax
+                ret
+            kof_ui_input_set_text:
+                ret
+            kof_ui_input_text:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_input_remove:
+                ret
+            kof_ui_column_new:
+                movl $1, %eax
+                ret
+            kof_ui_row_new:
+                movl $1, %eax
+                ret
+            kof_ui_view_new:
+                movl $1, %eax
+                ret
+            kof_ui_style_new:
+                movl $1, %eax
+                ret
+            kof_ui_view_bind:
+                ret
+            kof_ui_view_remove:
+                ret
+            """);
+    }
+
     private static void emitNetSocket(StringBuilder sb) {
         sb.append("""
             .globl kof_net_socket
@@ -2766,11 +3952,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_bind(fd, port, addr) → status
-     * Binds socket. %rdi=fd, %esi=port, %rdx=addr_ptr
-     * Returns 0 on success, -1 on error.
-     */
+
     private static void emitNetBind(StringBuilder sb) {
         sb.append("""
             .globl kof_net_bind
@@ -2806,10 +3988,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_listen(fd, backlog) → status
-     * Listens on socket. %rdi=fd, %esi=backlog
-     */
+
     private static void emitNetListen(StringBuilder sb) {
         sb.append("""
             .globl kof_net_listen
@@ -2821,11 +4000,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_accept(fd) → client_fd
-     * Accepts a connection. %rdi=fd
-     * Returns client fd in %rax.
-     */
+
     private static void emitNetAccept(StringBuilder sb) {
         sb.append("""
             .globl kof_net_accept
@@ -2843,10 +4018,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_read(fd, buf, len) → bytes_read
-     * Reads from socket. %rdi=fd, %rsi=buf, %rdx=len
-     */
+
     private static void emitNetRead(StringBuilder sb) {
         sb.append("""
             .globl kof_net_read
@@ -2858,10 +4030,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_write(fd, buf, len) → bytes_written
-     * Writes to socket. %rdi=fd, %rsi=buf, %rdx=len
-     */
+
     private static void emitNetWrite(StringBuilder sb) {
         sb.append("""
             .globl kof_net_write
@@ -2873,10 +4042,7 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_net_close(fd) → status
-     * Closes socket. %rdi=fd
-     */
+
     private static void emitNetClose(StringBuilder sb) {
         sb.append("""
             .globl kof_net_close
@@ -2888,12 +4054,8 @@ final class NativeRuntime {
             """);
     }
 
-    /**
-     * kof_instanceof(obj_ptr, target_type_id) → bool
-     * Walks the class hierarchy using kof_super_table.
-     * %rdi = obj_ptr, %esi = target_type_id
-     * Returns 1 if object's type is target or a subtype, 0 otherwise.
-     */
+
+
     private static void emitInstanceof(StringBuilder sb) {
         sb.append("""
             .globl kof_instanceof
@@ -2925,6 +4087,874 @@ final class NativeRuntime {
             .Lkof_instanceof_null:
                 xorl %eax, %eax
                 ret
+            """);
+    }
+
+    /**
+     * kof.security for the Native target (docs/security.md §5).
+     *
+     * Implemented in raw x86-64 assembly (no libc): SHA-256, HMAC-SHA256,
+     * secure random via the getrandom syscall, constant-time comparison,
+     * redaction, and environment secrets via /proc/self/environ.
+     * Features not implemented on Native produce a compile-time diagnostic
+     * (SECN00x) — never silent divergence.
+     */
+    private static void emitSecurityFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .rodata
+            .balign 8
+            .Lsec_hex_chars: .ascii "0123456789abcdef"
+            .Lsec_sha256_k:
+                .long 0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5
+                .long 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5
+                .long 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3
+                .long 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174
+                .long 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc
+                .long 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da
+                .long 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7
+                .long 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967
+                .long 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13
+                .long 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85
+                .long 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3
+                .long 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070
+                .long 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5
+                .long 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3
+                .long 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208
+                .long 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+            .text
+
+            # kof_sec_sha256_internal(rdi=out32, rsi=src, rdx=len)
+            # SHA-256 over an in-memory buffer; writes 32 big-endian bytes.
+            .globl kof_sec_sha256_internal
+            .type kof_sec_sha256_internal, @function
+            kof_sec_sha256_internal:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $296, %rsp          # w[64]=256 + h[8]=32 + len(8) -> use 272..287 for w? layout below
+                movq %rdi, %r12          # out
+                movq %rsi, %r13          # src
+                movq %rdx, %r14          # len
+                movl $0x6a09e667, 0(%rsp)
+                movl $0xbb67ae85, 4(%rsp)
+                movl $0x3c6ef372, 8(%rsp)
+                movl $0xa54ff53a, 12(%rsp)
+                movl $0x510e527f, 16(%rsp)
+                movl $0x9b05688c, 20(%rsp)
+                movl $0x1f83d9ab, 24(%rsp)
+                movl $0x5be0cd19, 28(%rsp)
+                # w starts at 32(%rsp) — 256 bytes → ends at 288(%rsp)
+                # process full 64-byte blocks from src
+                xorq %r15, %r15          # offset
+            .Lsec_sha256_full_block:
+                movq %r14, %rax
+                subq %r15, %rax
+                cmpq $64, %rax
+                jl .Lsec_sha256_final_block
+                movq %rsp, %rdi
+                leaq (%r13,%r15), %rsi
+                movl $64, %edx
+                call kof_sec_sha256_block
+                addq $64, %r15
+                jmp .Lsec_sha256_full_block
+            .Lsec_sha256_final_block:
+                # rem = len - offset; build the final block(s) on the stack
+                movq %r14, %rax
+                subq %r15, %rax
+                movq %rax, %rcx          # rem
+                subq $128, %rsp
+                xorq %rdx, %rdx
+            .Lsec_sha256_copy_rem:
+                cmpq %rcx, %rdx
+                jge .Lsec_sha256_copy_done
+                leaq (%r13,%r15), %rsi
+                movb (%rsi,%rdx), %al
+                movb %al, (%rsp,%rdx)
+                incq %rdx
+                jmp .Lsec_sha256_copy_rem
+            .Lsec_sha256_copy_done:
+                movb $0x80, (%rsp,%rcx)
+                movq %rcx, %r15          # rem (offset no longer needed)
+                movq %rcx, %rdx
+                incq %rdx
+            .Lsec_sha256_zero_pad:
+                cmpq $128, %rdx
+                jge .Lsec_sha256_zero_done
+                movb $0, (%rsp,%rdx)
+                incq %rdx
+                jmp .Lsec_sha256_zero_pad
+            .Lsec_sha256_zero_done:
+                movq %r15, %rax
+                addq $9, %rax
+                cmpq $64, %rax
+                jg .Lsec_sha256_len_in_second
+                movq %r14, %rax
+                shlq $3, %rax
+                bswapq %rax
+                movq %rax, 56(%rsp)
+                leaq 128(%rsp), %rdi
+                movq %rsp, %rsi
+                movl $64, %edx
+                call kof_sec_sha256_block
+                jmp .Lsec_sha256_final_done
+            .Lsec_sha256_len_in_second:
+                movq %r14, %rax
+                shlq $3, %rax
+                bswapq %rax
+                movq %rax, 120(%rsp)
+                leaq 128(%rsp), %rdi
+                movq %rsp, %rsi
+                movl $64, %edx
+                call kof_sec_sha256_block
+                leaq 64(%rsp), %rsi
+                leaq 128(%rsp), %rdi
+                movl $64, %edx
+                call kof_sec_sha256_block
+            .Lsec_sha256_final_done:
+                addq $128, %rsp
+                jmp .Lsec_sha256_finish
+            .Lsec_sha256_finish:
+                # write h0..h7 big-endian to out
+                xorq %rcx, %rcx
+            .Lsec_sha256_out:
+                cmpq $8, %rcx
+                jge .Lsec_sha256_ret
+                movl (%rsp,%rcx,4), %eax
+                bswapl %eax
+                movl %eax, (%r12,%rcx,4)
+                incq %rcx
+                jmp .Lsec_sha256_out
+            .Lsec_sha256_ret:
+                addq $296, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_sha256_block(rdi=h[8] uint32, rsi=block64)
+            .globl kof_sec_sha256_block
+            .type kof_sec_sha256_block, @function
+            kof_sec_sha256_block:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $272, %rsp          # w[64] = 256 + scratch 8 + h 8
+                movq %rdi, 264(%rsp)     # h saved on the stack
+                movq %rdi, %r12          # h (also used as scratch; reloaded at the end)
+                movq %rsi, %r13          # block
+                xorq %rcx, %rcx
+            .Lsec_w_load:
+                cmpq $16, %rcx
+                jge .Lsec_w_load_done
+                movl (%r13,%rcx,4), %eax
+                bswapl %eax
+                movl %eax, (%rsp,%rcx,4)
+                incq %rcx
+                jmp .Lsec_w_load
+            .Lsec_w_load_done:
+                movq $16, %rcx
+            .Lsec_w_extend:
+                cmpq $64, %rcx
+                jge .Lsec_w_extend_done
+                # s0 = ror7(w[i-15]) ^ ror18 ^ shr3
+                movl -60(%rsp,%rcx,4), %eax
+                movl %eax, %edx
+                movl %eax, %ebx
+                roll $25, %eax           # ror 7
+                roll $14, %edx           # ror 18
+                shrl $3, %ebx
+                xorl %edx, %eax
+                xorl %ebx, %eax
+                # s1 = ror17(w[i-2]) ^ ror19 ^ shr10
+                movl -8(%rsp,%rcx,4), %edx
+                movl %edx, %ebx
+                movl %edx, %r14d
+                roll $15, %edx           # ror 17
+                roll $13, %ebx           # ror 19
+                shrl $10, %r14d
+                xorl %ebx, %edx
+                xorl %r14d, %edx
+                movl -64(%rsp,%rcx,4), %r14d   # w[i-16]
+                addl %eax, %r14d
+                addl -28(%rsp,%rcx,4), %r14d   # + w[i-7]
+                addl %edx, %r14d
+                movl %r14d, (%rsp,%rcx,4)
+                incq %rcx
+                jmp .Lsec_w_extend
+            .Lsec_w_extend_done:
+                movl 0(%r12), %eax       # a
+                movl 4(%r12), %ebx       # b
+                movl 8(%r12), %ecx       # c
+                movl 12(%r12), %edx      # d
+                movl 16(%r12), %r8d      # e
+                movl 20(%r12), %r9d      # f
+                movl 24(%r12), %r10d     # g
+                movl 28(%r12), %r11d     # h
+                movq $0, %r14            # round index
+            .Lsec_round:
+                cmpq $64, %r14
+                jge .Lsec_round_done
+                # S1(e) -> 256(%rsp)
+                movl %r8d, %r15d
+                movl %r8d, %r12d
+                roll $26, %r15d          # ror 6
+                roll $21, %r12d          # ror 11
+                xorl %r12d, %r15d
+                movl %r8d, %r12d
+                roll $7, %r12d           # ror 25
+                xorl %r12d, %r15d
+                movl %r15d, 256(%rsp)
+                # ch = (e & f) ^ (~e & g) -> r15d
+                movl %r8d, %r15d
+                andl %r9d, %r15d
+                movl %r8d, %r12d
+                notl %r12d
+                andl %r10d, %r12d
+                xorl %r12d, %r15d
+                # t1 = h + S1 + ch + K[i] + w[i] -> r13d
+                leaq .Lsec_sha256_k(%rip), %r13
+                movl (%r13,%r14,4), %r13d
+                addl (%rsp,%r14,4), %r13d
+                addl 256(%rsp), %r13d    # + S1
+                addl %r15d, %r13d        # + ch
+                addl %r11d, %r13d        # + h
+                # S0(a) -> 256(%rsp)
+                movl %eax, %r15d
+                movl %eax, %r12d
+                roll $30, %r15d          # ror 2
+                roll $19, %r12d          # ror 13
+                xorl %r12d, %r15d
+                movl %eax, %r12d
+                roll $10, %r12d          # ror 22
+                xorl %r12d, %r15d
+                movl %r15d, 256(%rsp)
+                # maj = (a&b)^(a&c)^(b&c) -> r15d
+                movl %eax, %r15d
+                andl %ebx, %r15d
+                movl %eax, %r12d
+                andl %ecx, %r12d
+                xorl %r12d, %r15d
+                movl %ebx, %r12d
+                andl %ecx, %r12d
+                xorl %r12d, %r15d
+                # t2 = S0 + maj -> 256(%rsp)
+                addl 256(%rsp), %r15d
+                movl %r15d, 256(%rsp)
+                # shift: h=g, g=f, f=e, e=d+t1, d=c, c=b, b=a, a=t1+t2
+                movl %r10d, %r11d
+                movl %r9d, %r10d
+                movl %r8d, %r9d
+                movl %edx, %r8d
+                addl %r13d, %r8d         # e = d + t1
+                movl %ecx, %edx
+                movl %ebx, %ecx
+                movl %eax, %ebx
+                movl %r13d, %eax
+                addl 256(%rsp), %eax     # a = t1 + t2
+                incq %r14
+                jmp .Lsec_round
+            .Lsec_round_done:
+                movq 264(%rsp), %r12
+                addl %eax, 0(%r12)
+                addl %ebx, 4(%r12)
+                addl %ecx, 8(%r12)
+                addl %edx, 12(%r12)
+                addl %r8d, 16(%r12)
+                addl %r9d, 20(%r12)
+                addl %r10d, 24(%r12)
+                addl %r11d, 28(%r12)
+                addq $272, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_sha256(rdi=string) → hex string
+            .globl kof_sec_sha256
+            .type kof_sec_sha256, @function
+            kof_sec_sha256:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                subq $32, %rsp
+                movq %rsp, %rdi
+                movq %rbx, %rsi
+                addq $24, %rsi           # payload
+                movslq %r12d, %rdx
+                call kof_sec_sha256_internal
+                # build hex string: 24 + 64 + 1
+                movl $89, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $64, 16(%r13)
+                movl $0, 20(%r13)
+                xorq %rcx, %rcx
+            .Lsec_sha256_hex:
+                cmpq $32, %rcx
+                jge .Lsec_sha256_hex_done
+                movzbl (%rsp,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r13,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r13,%rcx,2)
+                incq %rcx
+                jmp .Lsec_sha256_hex
+            .Lsec_sha256_hex_done:
+                movb $0, 88(%r13)
+                movq %r13, %rax
+                addq $32, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_hmac_sha256(rdi=key, rsi=data) → hex string
+            # HMAC-SHA256: H((K^opad) || H((K^ipad) || data)) with K padded to 64
+            .globl kof_sec_hmac_sha256
+            .type kof_sec_hmac_sha256, @function
+            kof_sec_hmac_sha256:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # key
+                movq %rsi, %r12          # data
+                subq $576, %rsp          # k64(64) + inner(64+datalen up to 448) + out(32) + scratch
+                movq %rbx, %r13
+                movl 16(%rbx), %r13d     # key len
+                # build k64 in 0..63(%rsp): key bytes (or hash if keylen>64)
+                cmpl $64, %r13d
+                jg .Lsec_hmac_key_hash
+                xorq %rcx, %rcx
+            .Lsec_hmac_key_copy:
+                cmpl %r13d, %ecx
+                jge .Lsec_hmac_key_copy_done
+                movb 24(%rbx,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_copy
+            .Lsec_hmac_key_copy_done:
+                movq %r13, %rcx
+            .Lsec_hmac_key_zero:
+                cmpq $64, %rcx
+                jge .Lsec_hmac_key_done
+                movb $0, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_zero
+            .Lsec_hmac_key_done:
+                jmp .Lsec_hmac_key_ready
+            .Lsec_hmac_key_hash:
+                leaq 512(%rsp), %rdi     # out
+                movq %rbx, %rsi
+                addq $24, %rsi
+                movslq %r13d, %rdx
+                call kof_sec_sha256_internal
+                xorq %rcx, %rcx
+            .Lsec_hmac_key_hash_copy:
+                cmpq $32, %rcx
+                jge .Lsec_hmac_key_hash_done
+                movb 512(%rsp,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_hash_copy
+            .Lsec_hmac_key_hash_done:
+                movq $32, %rcx
+            .Lsec_hmac_key_hash_zero:
+                cmpq $64, %rcx
+                jge .Lsec_hmac_key_ready
+                movb $0, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_hash_zero
+            .Lsec_hmac_key_ready:
+                # inner input: ipad(64) at 64(%rsp) + data at 128(%rsp)
+                movq %r12, %r14
+                movl 16(%r12), %r14d     # data len
+                movl $63, %ecx
+            .Lsec_hmac_ipad:
+                movb (%rsp,%rcx), %al
+                xorb $0x36, %al
+                movb %al, 64(%rsp,%rcx)
+                decq %rcx
+                jns .Lsec_hmac_ipad
+            .Lsec_hmac_ipad_done:
+                movq %r14, %rcx
+                decq %rcx
+            .Lsec_hmac_data_copy:
+                testq %rcx, %rcx
+                js .Lsec_hmac_data_copy_done
+                movb 24(%r12,%rcx), %al
+                movb %al, 128(%rsp,%rcx)
+                decq %rcx
+                jmp .Lsec_hmac_data_copy
+            .Lsec_hmac_data_copy_done:
+                # inner = sha256(64+data at 64(%rsp)) → 544(%rsp)
+                leaq 544(%rsp), %rdi
+                leaq 64(%rsp), %rsi
+                movq %r14, %rdx
+                addq $64, %rdx
+                call kof_sec_sha256_internal
+                # outer input: opad(64) + inner(32) → 64(%rsp)
+                movl $63, %ecx
+            .Lsec_hmac_opad:
+                movb (%rsp,%rcx), %al
+                xorb $0x5c, %al
+                movb %al, 64(%rsp,%rcx)
+                decq %rcx
+                jns .Lsec_hmac_opad
+            .Lsec_hmac_opad_done:
+                movl $31, %ecx
+            .Lsec_hmac_outer_copy:
+                movb 544(%rsp,%rcx), %al
+                movb %al, 128(%rsp,%rcx)
+                decq %rcx
+                jns .Lsec_hmac_outer_copy
+            .Lsec_hmac_outer_done:
+                # mac = sha256(64+32 at 64(%rsp)) → 512(%rsp)
+                leaq 512(%rsp), %rdi
+                leaq 64(%rsp), %rsi
+                movq $96, %rdx
+                call kof_sec_sha256_internal
+                # build hex string (24 + 64 + 1)
+                movl $89, %edi
+                call kof_alloc
+                movq %rax, %r15
+                movl $1, 0(%r15)
+                movl $0, 4(%r15)
+                movq $0, 8(%r15)
+                movl $64, 16(%r15)
+                movl $0, 20(%r15)
+                xorq %rcx, %rcx
+            .Lsec_hmac_hex:
+                cmpq $32, %rcx
+                jge .Lsec_hmac_hex_done
+                movzbl 512(%rsp,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r15,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r15,%rcx,2)
+                incq %rcx
+                jmp .Lsec_hmac_hex
+            .Lsec_hmac_hex_done:
+                movb $0, 88(%r15)
+                movq %r15, %rax
+                addq $576, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_constant_time_equals(rdi=a, rsi=b) → 1/0
+            .globl kof_sec_constant_time_equals
+            .type kof_sec_constant_time_equals, @function
+            kof_sec_constant_time_equals:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                movl 16(%r12), %ecx
+                cmpl %ecx, %r13d
+                je .Lsec_cte_len_ok
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_cte_len_ok:
+                movl %r13d, %ecx
+                xorl %eax, %eax
+            .Lsec_cte_loop:
+                testl %ecx, %ecx
+                jle .Lsec_cte_done
+                movzbl 23(%rbx,%rcx), %edx
+                movzbl 23(%r12,%rcx), %r15d
+                xorl %r15d, %edx
+                orl %edx, %eax
+                decq %rcx
+                jmp .Lsec_cte_loop
+            .Lsec_cte_done:
+                testl %eax, %eax
+                setz %al
+                movzbl %al, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_random_hex(rdi=nbytes) → hex string via getrandom
+            .globl kof_sec_random_hex
+            .type kof_sec_random_hex, @function
+            kof_sec_random_hex:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx          # nbytes
+                # alloc n + 24 + 1
+                leaq 25(%rbx), %rdi
+                call kof_alloc
+                movq %rax, %r12
+                movl $1, 0(%r12)
+                movl $0, 4(%r12)
+                movq $0, 8(%r12)
+                leal (%rbx,%rbx), %eax
+                movl %eax, 16(%r12)
+                movl $0, 20(%r12)
+                # getrandom(buf, nbytes, 0)
+                movq %r12, %rdi
+                addq $24, %rdi
+                movq %rbx, %rsi
+                xorq %rdx, %rdx
+                movq $318, %rax
+                syscall
+                testq %rax, %rax
+                js .Lsec_random_fail
+                # hex encode nbytes at 24(%r12) into 24..24+2n
+                movq %rbx, %rcx
+                decq %rcx
+            .Lsec_random_hex_loop:
+                testq %rcx, %rcx
+                jl .Lsec_random_hex_done
+                movzbl 24(%r12,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r12,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r12,%rcx,2)
+                decq %rcx
+                jmp .Lsec_random_hex_loop
+            .Lsec_random_hex_done:
+                movb $0, 24(%r12,%rbx,2)
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_random_fail:
+                movq $0, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_random_int(rdi=bound) → secure random int in [0, bound)
+            .globl kof_sec_random_int
+            .type kof_sec_random_int, @function
+            kof_sec_random_int:
+                pushq %rbx
+                movq %rdi, %rbx
+                testq %rbx, %rbx
+                jg .Lsec_random_int_ok
+                xorl %eax, %eax
+                popq %rbx
+                ret
+            .Lsec_random_int_ok:
+                # rejection sampling: 32-bit value < bound * (2^32 / bound)
+                movl %ebx, %r10d
+                xorl %r9d, %r9d
+                movl $1, %r11d
+                # range = (2^32 / bound) * bound
+                movl $0xffffffff, %eax
+                xorl %edx, %edx
+                divl %ebx              # eax = 2^32/bound
+                movl %eax, %r9d
+                imull %ebx, %r9d       # range
+                subq $4, %rsp
+            .Lsec_random_int_retry:
+                movq %rsp, %rdi
+                movq $4, %rsi
+                xorq %rdx, %rdx
+                movq $318, %rax
+                syscall
+                testq %rax, %rax
+                js .Lsec_random_int_fail
+                movl (%rsp), %eax
+                cmpl %r9d, %eax
+                jae .Lsec_random_int_retry
+                xorl %edx, %edx
+                divl %ebx
+                movl %edx, %eax
+                addq $4, %rsp
+                popq %rbx
+                ret
+            .Lsec_random_int_fail:
+                addq $4, %rsp
+                xorl %eax, %eax
+                popq %rbx
+                ret
+
+            # kof_sec_redact(rdi=value) → masked string
+            .globl kof_sec_redact
+            .type kof_sec_redact, @function
+            kof_sec_redact:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                cmpl $8, %r12d
+                jg .Lsec_redact_long
+                # return "********"
+                movl $32, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $8, 16(%r13)
+                movl $0, 20(%r13)
+                movq $0x2a2a2a2a2a2a2a2a, %rax
+                movq %rax, 24(%r13)
+                movb $0, 32(%r13)
+                movq %r13, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_redact_long:
+                # first4 + "********" + last4: total 16 chars
+                movl $40, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $16, 16(%r13)
+                movl $0, 20(%r13)
+                movq $0x2a2a2a2a2a2a2a2a, %rax
+                movq %rax, 28(%r13)
+                movb 24(%rbx), %al
+                movb %al, 24(%r13)
+                movb 25(%rbx), %al
+                movb %al, 25(%r13)
+                movb 26(%rbx), %al
+                movb %al, 26(%r13)
+                movb 27(%rbx), %al
+                movb %al, 27(%r13)
+                movl %r12d, %r14d
+                movl %r12d, %eax
+                subl $4, %eax
+                movl %eax, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 36(%r13)
+                movl %r12d, %r14d
+                subl $3, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 37(%r13)
+                movl %r12d, %r14d
+                subl $2, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 38(%r13)
+                movl %r12d, %r14d
+                subl $1, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 39(%r13)
+                movb $0, 40(%r13)
+                movq %r13, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_secret_get(rdi=name) → value or 0 (null)
+            # reads /proc/self/environ via syscalls (no libc)
+            .globl kof_sec_secret_get
+            .type kof_sec_secret_get, @function
+            kof_sec_secret_get:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # name
+                subq $65536, %rsp
+                # open("/proc/self/environ", O_RDONLY)
+                leaq .Lsec_environ_path(%rip), %rdi
+                xorq %rsi, %rsi
+                xorq %rdx, %rdx
+                movq $2, %rax
+                syscall
+                testq %rax, %rax
+                js .Lsec_secret_open_fail
+                movq %rax, %r12          # fd
+                movq %r12, %rdi
+                movq %rsp, %rsi
+                movq $65536, %rdx
+                xorq %rax, %rax
+                syscall
+                movq %rax, %r13          # bytes read
+                # close
+                movq %r12, %rdi
+                movq $3, %rax
+                syscall
+                testq %r13, %r13
+                jle .Lsec_secret_open_fail
+                # scan entries: NAME=VALUE NUL-separated
+                xorq %r14, %r14          # entry start
+            .Lsec_secret_scan:
+                cmpq %r13, %r14
+                jge .Lsec_secret_not_found
+                # find '=' in this entry
+                movq %r14, %rcx
+            .Lsec_secret_find_eq:
+                cmpq %r13, %rcx
+                jge .Lsec_secret_next
+                movb (%rsp,%rcx), %al
+                cmpb $0x3d, %al          # '='
+                je .Lsec_secret_eq_found
+                cmpb $0, %al
+                je .Lsec_secret_next
+                incq %rcx
+                jmp .Lsec_secret_find_eq
+            .Lsec_secret_eq_found:
+                # name length = rcx - r14; compare with name
+                movq %rcx, %r15
+                subq %r14, %r15
+                movl 16(%rbx), %r8d
+                movslq %r8d, %r8
+                cmpq %r15, %r8
+                jne .Lsec_secret_next
+                # compare bytes
+                xorq %rdx, %rdx
+            .Lsec_secret_cmp:
+                cmpq %r15, %rdx
+                jge .Lsec_secret_match
+                leaq (%rsp,%r14), %rsi
+                movb (%rsi,%rdx), %al
+                movb 24(%rbx,%rdx), %cl
+                cmpb %cl, %al
+                jne .Lsec_secret_next
+                incq %rdx
+                jmp .Lsec_secret_cmp
+            .Lsec_secret_match:
+                # value = bytes after '=' until NUL
+                movq %rcx, %r15          # '=' position
+                incq %r15
+                movq %r15, %r14
+            .Lsec_secret_val_end:
+                cmpq %r13, %r14
+                jge .Lsec_secret_val_done
+                cmpb $0, (%rsp,%r14)
+                je .Lsec_secret_val_done
+                incq %r14
+                jmp .Lsec_secret_val_end
+            .Lsec_secret_val_done:
+                movq %r14, %r13
+                subq %r15, %r13          # value len
+                leaq 25(%r13), %rdi
+                call kof_alloc
+                movq %rax, %r12
+                movl $1, 0(%r12)
+                movl $0, 4(%r12)
+                movq $0, 8(%r12)
+                movl %r13d, 16(%r12)
+                movl $0, 20(%r12)
+                xorq %rcx, %rcx
+            .Lsec_secret_val_copy:
+                cmpq %r13, %rcx
+                jge .Lsec_secret_val_copy_done
+                leaq (%rsp,%r15), %r14
+                movb (%r14,%rcx), %al
+                movb %al, 24(%r12,%rcx)
+                incq %rcx
+                jmp .Lsec_secret_val_copy
+            .Lsec_secret_val_copy_done:
+                movb $0, 24(%r12,%r13)
+                movq %r12, %rax
+                addq $65536, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_secret_next:
+                # advance to next entry (past NUL)
+                movq %r14, %rcx
+            .Lsec_secret_skip:
+                cmpq %r13, %rcx
+                jge .Lsec_secret_not_found
+                cmpb $0, (%rsp,%rcx)
+                je .Lsec_secret_skip_done
+                incq %rcx
+                jmp .Lsec_secret_skip
+            .Lsec_secret_skip_done:
+                incq %rcx
+                movq %rcx, %r14
+                jmp .Lsec_secret_scan
+            .Lsec_secret_not_found:
+                addq $65536, %rsp
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_secret_open_fail:
+                addq $65536, %rsp
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_secret_get_default(rdi=name, rsi=fallback) → value or fallback
+            .globl kof_sec_secret_get_default
+            .type kof_sec_secret_get_default, @function
+            kof_sec_secret_get_default:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx          # name
+                movq %rsi, %r12          # fallback (callee-saved; rsi is clobbered)
+                call kof_sec_secret_get
+                testq %rax, %rax
+                jnz .Lsec_secret_default_done
+                movq %r12, %rax
+            .Lsec_secret_default_done:
+                popq %r12
+                popq %rbx
+                ret
+
+            .Lsec_environ_path:
+                .asciz "/proc/self/environ"
             """);
     }
 }

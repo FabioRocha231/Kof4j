@@ -17,7 +17,7 @@ MAJOR.MINOR.PATCH
 ## Estágio atual
 
 - O Kof está em `0.0.x` (Alpha).
-- O release carrega explicitamente o sufixo: `0.0.4-alpha`.
+- O release carrega explicitamente o sufixo: `0.0.5-alpha`.
 - Nada é chamado de stable.
 - Evolução pretendida: Alpha → Beta → Release Candidate → Stable.
 - A versão de componente (compiler/runtime/stdlib) é `0.0.4`; o sufixo
@@ -50,9 +50,9 @@ commit → CI → testes → version bump → package → GitHub Release
 ## Artefatos
 
 ```text
-kof-0.0.4-alpha-linux-x86_64.tar.gz
-kof-0.0.4-alpha-windows-x86_64.zip
-kof-0.0.4-alpha-macos-x86_64.tar.gz
+kof-0.0.5-alpha-linux-x86_64.tar.gz
+kof-0.0.5-alpha-windows-x86_64.zip
+kof-0.0.5-alpha-macos-x86_64.tar.gz
 SHA256SUMS
 ```
 

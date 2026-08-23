@@ -1,6 +1,6 @@
 # 05 — Controle de Fluxo
 
-> **Status: planejado**
+> **Status: implementado**
 >
 > O parser já reconhece `if`, `else`, `while`, `for`, `switch`, mas a geração de bytecode para controle de fluxo ainda não está implementada. Este capítulo documenta a sintaxe planejada.
 
@@ -42,23 +42,33 @@ for (var i = 0; i < 10; i++) {
 }
 ```
 
-### for-each (planejado)
+### for-in
 
 ```kf
-for (String nome : nomes) {
-    print(nome);
+for (var nome in nomes) {
+    print(nome)
 }
 ```
+
+Funciona sobre `List<T>` e arrays.
 
 ## switch
 
 ```kf
-return switch (dia) {
-    case "segunda" -> "início";
-    case "sexta" -> "fim";
-    default -> "meio";
-};
+switch (dia) {
+    case 1:
+        println("segunda")
+        break
+    case 5:
+        println("sexta")
+        break
+    default:
+        println("meio")
+}
 ```
+
+> Nota: switch usa `case N:` com `break` (estilo C). If-expr é a forma
+> preferida para valores condicionais: `var x = if (c) a else b`.
 
 ## break e continue
 

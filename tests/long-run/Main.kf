@@ -1,0 +1,17 @@
+record Point(Int x, Int y)
+
+main() {
+    var epoch = 0
+    while (epoch < 100000) {
+        var l = new List<Int>()
+        for (var i = 0; i < 50000; i++) {
+            l.add(i)
+            var p = Point(i, i + 1)
+            if (p.x() + p.y() > i * 2) {
+                l.set(i, i + 1)
+            }
+        }
+        epoch = epoch + 1
+        println(epoch)
+    }
+}

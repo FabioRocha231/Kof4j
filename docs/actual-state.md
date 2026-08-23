@@ -1,7 +1,7 @@
 # Estado Atual do Projeto Kof
 
 **Última atualização:** 22 de agosto de 2026
-**Versão:** 0.0.4-alpha
+**Versão:** 0.0.5-alpha
 
 ---
 
@@ -15,7 +15,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Fase F CONCLUÍDA**: String model, Array model, Inheritance, Virtual Dispatch, Interfaces, Exceptions, Memory (mmap, sem GC).
 
-**Pipeline 0.0.4 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
+**Pipeline 0.0.5 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
 
 ---
 
@@ -24,7 +24,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (292/292) |
+| `mvn test` | ✅ PASSA (490/490) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build --target jvm` | ✅ FUNCIONA |
 | `kof build --target native` | ✅ FUNCIONA |
@@ -66,14 +66,18 @@ Gera `.class` válido (construtor, accessors, toString/equals/hashCode no JVM) e
 ### Classes
 
 ```kf
-class User {
-    String name
-    public constructor(String name) { this.name = name }
-    public getName(): String { return name }
+class User(String name, Int age) {
+    greeting(): String {
+        return "Hello " + name
+    }
 }
 ```
 
-Compila, gera `.class`, executa na JVM e no Native (herança, virtual dispatch, interfaces).
+O construtor primário gera campos, construtor e acesso dentro de métodos —
+sem `this.name = name`. `User(...)` e `new User(...)` são equivalentes
+(`new` é retrocompatível). Inicializadores de campo rodam em todos os
+construtores (JVM, Native, KofJS). Herança, virtual dispatch e interfaces
+funcionam.
 
 ### JSON
 
@@ -114,6 +118,43 @@ handle(String method, String path, String body): String {
 
 Handlers top-level (static), Content-Type automático, `--port`/`--host`, graceful shutdown.
 
+### HTTP moderno (`web.app()` — stack web nativa)
+
+```kf
+var app = web.app()
+app.get("/users/:id") {
+    var user = User(param("id"))
+    json.encode(user)
+}
+app.listen(8080)
+```
+
+Rotas com path params (`:id`), query, headers, middleware `app.use { }`,
+Content-Type automático (JSON), 404/500, concorrência com virtual threads.
+`kof serve <file.kf>` detecta `main()` e executa apps `web.app()`.
+9 testes E2E com sockets reais (`KofWebE2ETest`). Ver `docs/stdlib-web.md`.
+
+### kof.config e kof.log
+
+```kf
+config.str("database.url", "jdbc:h2:mem:test")   // arquivo > env > profile > default
+log.info("servindo na porta 8080")               // debug/info/warn/error, níveis
+```
+
+`kof.config` (typed: str/int/long/bool, env/has) e `kof.log` (níveis, off,
+warn→stderr) — JVM; Native/JS reportam CONFIG001/LOG001. Testes:
+`KofConfigE2ETest` (8), `KofLogE2ETest` (7).
+
+### kof.ui (plataforma de UI)
+
+`Color` (RGBA 32-bit), `Theme` (light/dark), `Palette.*`, widgets
+`Window`/`Label`/`Button`/`Input`/`Column`/`Row`/`View`/`Style` — renderização
+**KofJS**: `kof run --target=js` abre o app interativo no webview nativo
+(`bin/kof-webview`, WebKitGTK embutido; módulos ES sobre `file://` habilitados
+via `webkit_settings_set_allow_file_access_from_file_urls`). Ações de botão
+por lambdas com capturas; fechar a janela encerra o programa. JVM/Native:
+handles no-ops.
+
 ---
 
 ## O que está implementado
@@ -140,6 +181,23 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 | Expressões binárias, unárias, bitwise | ✅ |
 | Arrays, List\<T\>, generics | ✅ |
 | JSON, strings (API completa), `instanceof`/`as` | ✅ |
+
+### Segurança (kof.security — docs/security.md)
+
+| Feature | Status |
+|---------|--------|
+| `passwords.hash/verify/needsRehash` | ✅ JVM/JS (PBKDF2-HMAC-SHA256 600k); Native SECN001 |
+| `crypto.sha256/sha512/hmacSha256` | ✅ JVM/Native (asm)/JS — valores idênticos |
+| `crypto.aesGcm` | ✅ JVM; outros SECN002 |
+| `crypto.randomHex/randomInt` | ✅ JVM (SecureRandom)/Native (getrandom)/JS |
+| `jwt.create/verify` (HS256, exp/iss/aud) | ✅ JVM/JS; Native pendente |
+| `secrets.get/redact` | ✅ JVM/Native (/proc/self/environ)/JS |
+| `security.constantTimeEquals` | ✅ 3 targets |
+| `security.csrf*/corsAllowed/headers` | ✅ JVM |
+| `auth.*` (contexto web Bearer JWT) | ✅ JVM |
+| Gaps por target | ✅ Diagnostics claros SECN001/002/003 |
+| `KofSecurityTest` | ✅ 22 testes (unit + E2E + adversariais) |
+| `benchmarks/security/` | ✅ password-hash, jwt, hash-speed, aes-gcm |
 
 ### Backend JVM (ASM)
 
@@ -172,6 +230,9 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 | `kof serve`, `kof check`, `kof info [--json]` | ✅ |
 | `kof lsp` (LSP mínimo com frontend real) | ✅ |
 | `kof install`, `kof version` | ✅ |
+| `kof bench` (33 benchmarks, mediana+RSS+baseline), `kof profile` | ✅ |
+| `kof inspect` (IR) | ✅ |
+| `kof debug <file.kf>` (DAP + JDWP cru; breakpoints por linha Kof, stack) | ✅ |
 
 ---
 
@@ -179,9 +240,8 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 
 ### Language Features
 - Enums, Annotations, Pattern matching
-- Lambdas/closures (parseados, não lowerados)
 - Map, Set
-- Async/await, concorrência
+- Async/await, concorrência (spawn: JVM)
 - Reflection
 
 ### Type System
@@ -190,7 +250,7 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 - Sealed types
 
 ### Backends
-- KofJS (Web) — planejado
+- KofJS — funcional (while(true), try/finally, switch, incrementos, listOf, decode de objetos — com parity JVM/Native/JS nos testes E2E)
 - KofScript — hoje = compilar para JVM e executar (`kof run`)
 
 ### Runtime
@@ -198,8 +258,22 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 - Exceptions recuperáveis no Native (`throw` = `kof_panic`)
 - JSON de objetos no Native (JSN002 — diagnostic claro)
 
+### Security (kof.security — docs/security.md)
+- v1 implementado (ver seção "Segurança" acima).
+- Pendente: OAuth2/OIDC client, sessions, rate limiting, audit logging,
+  JWT/passwords no Native (SECN001 — HMAC asm já existe), sha512 no Native
+  (SECN003), AES-GCM fora do JVM (SECN002), e diagnósticos de target
+  completos para jwt/auth/csrf/cors/headers (gap G7 da auditoria).
+
+### Plataforma (gaps da auditoria — docs/ecosystem-coverage.md §4)
+- Database/SQL (G1), HTTP client (G2), validation (G4), health/metrics
+  (G5), suíte estruturada de testes (G6), scheduling (G8), rate
+  limiting/sessions/API keys (G9), TLS/HTTPS (G12).
+- `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001.
+
 ### Tooling
-- `kof test` (planejado — suite como parte da stdlib)
+- `kof test` (PASS/FAIL por exit code com `assert`; suíte estruturada
+  `test "nome" { }` planejada)
 - REPL
 - `kof fmt` (planejado)
 
@@ -228,9 +302,12 @@ Source (.kf)
 
 | Métrica | Valor |
 |---------|-------|
-| Testes JUnit | 292 (todos passando) |
+| Testes JUnit | 490 (todos passando) |
 | E2E JVM | 29 |
-| E2E Native | 49 |
-| E2E JSON | 13 |
-| E2E Exceptions | 6 |
-| E2E Sintaxe de funções | 4 |
+| E2E Native | 50 |
+| E2E JS (KofJS) | 35 |
+| E2E JSON | 14 |
+| E2E Exceptions | 9 |
+| E2E HTTP | 8 |
+| E2E kof.io | 15 |
+| E2E Spawn/Assert/Lambda | 12 |

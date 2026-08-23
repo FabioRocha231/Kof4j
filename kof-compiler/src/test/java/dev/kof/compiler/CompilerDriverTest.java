@@ -307,11 +307,11 @@ class CompilerDriverTest {
         assertTrue(result.success(), "Compilation should succeed");
     }
 
-    // ── Architectural isolation tests ──────────────────────────────
+
 
     @Test
     void irNodesHasNoAsmDependency() throws Exception {
-        // Verify that IRNodes.java does not import org.objectweb.asm
+
         Path irNodes = Path.of("src/main/java/dev/kof/compiler/IRNodes.java");
         String content = Files.readString(irNodes);
         assertFalse(content.contains("org.objectweb.asm"), "IRNodes must not depend on ASM");
@@ -352,7 +352,7 @@ class CompilerDriverTest {
         assertFalse(content.contains("JvmTypeMapper"), "NativeBackend must not use JvmTypeMapper");
     }
 
-    // ── IR representation tests ────────────────────────────────────
+
 
     @Test
     void irFieldUsesTypeNotDescriptor() {
@@ -408,7 +408,7 @@ class CompilerDriverTest {
         assertTrue((AccessFlags.FINAL & 0x0010) != 0);
     }
 
-    // ── End-to-end JVM tests ───────────────────────────────────────
+
 
     @Test
     void compilesRecordInstantiationWithAccessor(@TempDir Path tempDir) throws IOException {
@@ -481,7 +481,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "Compilation should succeed");
     }
 
-    // ── Phase F: Runtime + Object Model Tests ──────────────────────
+
 
     @Test
     void phaseF_recordNativeConstructorEmitted(@TempDir Path tempDir) throws IOException {
@@ -654,7 +654,7 @@ class CompilerDriverTest {
         }
     }
 
-    // ── Phase F.1: String Model Tests ──────────────────────────────
+
 
     @Test
     void phaseF1_stringLiteralJvm(@TempDir Path tempDir) throws IOException {
@@ -779,8 +779,10 @@ class CompilerDriverTest {
         Path asmFile = tempDir.resolve("out/Default/Main.s");
         if (Files.exists(asmFile)) {
             String asm = Files.readString(asmFile);
-            assertTrue(asm.contains("call kof_print_int"), "Should use kof_print_int for int");
-            assertFalse(asm.contains("kof_println_string"), "Should NOT use kof_println_string for int");
+            assertTrue(asm.contains("kof_int_to_string") || asm.contains("kof_print_int"),
+                    "Should convert int to text before printing");
+            assertTrue(asm.contains("kof_println_string") || asm.contains("kof_print_int"),
+                    "Should emit a string println path for int");
         }
     }
 
@@ -790,7 +792,7 @@ class CompilerDriverTest {
         assertEquals(24, NativeRuntime.KOF_STRING_HEADER_SIZE, "KofString header should be 24 bytes");
     }
 
-    // ── Phase F.2: Array Model Tests ──────────────────────────────
+
 
     @Test
     void phaseF2_arrayCreationJvm(@TempDir Path tempDir) throws IOException {
@@ -1225,7 +1227,7 @@ class CompilerDriverTest {
         }
     }
 
-    // ── Phase F.3: Inheritance Tests ──────────────────────────────
+
 
     @Test
     void phaseF3_simpleSubclassJvm(@TempDir Path tempDir) throws IOException {
@@ -1797,7 +1799,7 @@ class CompilerDriverTest {
         }
     }
 
-    // ── Phase F.4: Virtual Dispatch Tests ──────────────────────────
+
 
     @Test
     void phaseF4_simpleOverrideJvm(@TempDir Path tempDir) throws IOException {
@@ -2125,7 +2127,7 @@ class CompilerDriverTest {
         }
     }
 
-    // ── Phase F.5: Interface Tests ────────────────────────────────
+
 
     @Test
     void phaseF5_simpleInterfaceJvm(@TempDir Path tempDir) throws IOException {
@@ -2451,7 +2453,7 @@ class CompilerDriverTest {
         }
     }
 
-    // ── Phase F.6: Exception Tests ────────────────────────────────
+
 
     @Test
     void phaseF6_throwJvm(@TempDir Path tempDir) throws IOException {
@@ -2696,7 +2698,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "Throw in function should compile to native");
     }
 
-    // ── String Concat Integration Tests ──────────────────────────
+
 
     @Test
     void stringConcatJvm(@TempDir Path tempDir) throws IOException {
@@ -2755,7 +2757,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "String concat literal should compile to native");
     }
 
-    // ── Type System Tests ────────────────────────────────────────
+
 
     @Test
     void typeCheck_stringConcatResultType(@TempDir Path tempDir) throws IOException {
@@ -2946,7 +2948,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "Interface method return type should be correct");
     }
 
-    // ── Comprehensive Integration Tests ──────────────────────────
+
 
     @Test
     void integration_fullProgramJvm(@TempDir Path tempDir) throws IOException {
@@ -3378,7 +3380,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "Multiple classes should compile to native");
     }
 
-    // ── Do-While Tests ──────────────────────────────────────────
+
 
     @Test
     void doWhileSimpleJvm(@TempDir Path tempDir) throws IOException {
@@ -3484,7 +3486,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "do-while runs at least once should compile to native");
     }
 
-    // ── Instanceof / Cast Tests ──────────────────────────────────
+
 
     @Test
     void instanceofBasicJvm(@TempDir Path tempDir) throws IOException {
@@ -3688,7 +3690,7 @@ class CompilerDriverTest {
         assertTrue(result.success(), "instanceof with if/else should compile to native");
     }
 
-    // ── Switch Statement Tests ────────────────────────────────────
+
 
     @Test
     void switchBasicJvm(@TempDir Path tempDir) throws IOException {

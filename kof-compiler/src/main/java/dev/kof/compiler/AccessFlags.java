@@ -1,10 +1,6 @@
 package dev.kof.compiler;
 
-/**
- * Semantic access flags — NOT JVM-specific.
- * These represent language-level visibility and modifiers.
- * Backends map these to their own representation.
- */
+
 final class AccessFlags {
     static final int PUBLIC     = 0x0001;
     static final int PRIVATE    = 0x0002;

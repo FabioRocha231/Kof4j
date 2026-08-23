@@ -2,22 +2,51 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Kof",
   "scopeName": "source.kof",
-  "fileTypes": ["kf", "kof"],
+  "fileTypes": [
+    "kf",
+    "kof"
+  ],
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#numbers" },
-    { "include": "#keywords" },
-    { "include": "#types" },
-    { "include": "#function-declaration" },
-    { "include": "#class-declaration" },
-    { "include": "#operators" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#function-declaration"
+    },
+    {
+      "include": "#class-declaration"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#builtins"
+    }
   ],
   "repository": {
     "comments": {
       "patterns": [
-        { "name": "comment.line.double-slash.kof", "match": "//.*$" },
-        { "name": "comment.block.kof", "begin": "/\\*", "end": "\\*/" }
+        {
+          "name": "comment.line.double-slash.kof",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.kof",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
       ]
     },
     "strings": {
@@ -27,8 +56,14 @@
           "begin": "\"",
           "end": "\"",
           "patterns": [
-            { "name": "constant.character.escape.kof", "match": "\\\\[\\\\\"nrt0bf]" },
-            { "name": "constant.character.escape.unicode.kof", "match": "\\\\u[0-9a-fA-F]{4}" }
+            {
+              "name": "constant.character.escape.kof",
+              "match": "\\\\[\\\\\"nrt0bf]"
+            },
+            {
+              "name": "constant.character.escape.unicode.kof",
+              "match": "\\\\u[0-9a-fA-F]{4}"
+            }
           ]
         },
         {
@@ -36,53 +71,118 @@
           "begin": "'",
           "end": "'",
           "patterns": [
-            { "name": "constant.character.escape.kof", "match": "\\\\[\\\\'nrt0bf]" }
+            {
+              "name": "constant.character.escape.kof",
+              "match": "\\\\[\\\\'nrt0bf]"
+            }
           ]
         }
       ]
     },
     "numbers": {
       "patterns": [
-        { "name": "constant.numeric.kof", "match": "\\b(0[xX][0-9a-fA-F]+|0[bB][01]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?[lLfFdD]?)\\b" }
+        {
+          "name": "constant.numeric.kof",
+          "match": "\\b(0[xX][0-9a-fA-F]+|0[bB][01]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?[lLfFdD]?)\\b"
+        }
       ]
     },
     "keywords": {
       "patterns": [
-        { "name": "keyword.control.kof", "match": "\\b(if|else|for|while|do|switch|case|break|continue|return|throw|try|catch|finally|instanceof|as|new|this|super)\\b" },
-        { "name": "keyword.declaration.kof", "match": "\\b(class|interface|record|extends|implements|sealed|permits|package|import|public|private|protected|static|final|abstract|transient|volatile|synchronized|native|default|override|var|val|void)\\b" },
-        { "name": "constant.language.kof", "match": "\\b(true|false|null)\\b" }
+        {
+          "name": "keyword.control.kof",
+          "match": "\\b(if|else|for|while|do|switch|case|break|continue|return|throw|try|catch|finally|instanceof|as|new|this|super)\\b"
+        },
+        {
+          "name": "keyword.declaration.kof",
+          "match": "\\b(class|interface|record|extends|implements|sealed|permits|package|import|public|private|protected|static|final|abstract|transient|volatile|synchronized|native|default|override|var|val|void|constructor)\\b"
+        },
+        {
+          "name": "constant.language.kof",
+          "match": "\\b(true|false|null)\\b"
+        }
       ]
     },
     "types": {
       "patterns": [
-        { "name": "storage.type.kof", "match": "\\b(bool|byte|short|int|long|float|double|char|string|String|Int|Long|Float|Double|Bool|Byte|Short|Char|List|ArrayList)\\b" }
+        {
+          "name": "storage.type.kof",
+          "match": "\\b(bool|byte|short|int|long|float|double|char|string|String|Int|Long|Float|Double|Bool|Byte|Short|Char|List|ArrayList)\\b"
+        }
       ]
     },
     "function-declaration": {
       "patterns": [
-        { "name": "meta.function.kof", "begin": "(?<=^|\\{|;)\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(", "end": "(?=\\{|\\n)", "patterns": [
-            { "name": "entity.name.function.kof", "match": "[a-zA-Z_][a-zA-Z0-9_]*" },
-            { "include": "#types" },
-            { "include": "#comments" }
-        ] }
+        {
+          "name": "meta.function.kof",
+          "begin": "(?<=^|\\{|;)\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "end": "(?=\\{|\\n)",
+          "patterns": [
+            {
+              "name": "entity.name.function.kof",
+              "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#comments"
+            }
+          ]
+        }
       ]
     },
     "class-declaration": {
       "patterns": [
-        { "name": "meta.class.kof", "begin": "\\b(class|interface|record)\\b", "end": "(?=\\{|\\n)", "patterns": [
-            { "name": "entity.name.type.kof", "match": "[a-zA-Z_][a-zA-Z0-9_]*" },
-            { "include": "#types" },
-            { "include": "#comments" }
-        ] }
+        {
+          "name": "meta.class.kof",
+          "begin": "\\b(class|interface|record)\\b",
+          "end": "(?=\\{|\\n)",
+          "patterns": [
+            {
+              "name": "entity.name.type.kof",
+              "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#comments"
+            }
+          ]
+        }
       ]
     },
     "operators": {
       "patterns": [
-        { "name": "keyword.operator.arithmetic.kof", "match": "[+\\-*/%]" },
-        { "name": "keyword.operator.comparison.kof", "match": "==|!=|<=|>=|<|>" },
-        { "name": "keyword.operator.logical.kof", "match": "&&|\\|\\||!" },
-        { "name": "keyword.operator.bitwise.kof", "match": "&|\\||\\^|<<|>>|>>>|~" },
-        { "name": "keyword.operator.assignment.kof", "match": "=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=" }
+        {
+          "name": "keyword.operator.arithmetic.kof",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.comparison.kof",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.kof",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.bitwise.kof",
+          "match": "&|\\||\\^|<<|>>|>>>|~"
+        },
+        {
+          "name": "keyword.operator.assignment.kof",
+          "match": "=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>="
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.kof",
+          "match": "\\b(listOf|json)\\b"
+        }
       ]
     }
   }

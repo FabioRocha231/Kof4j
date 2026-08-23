@@ -69,12 +69,56 @@ class SymbolTable {
     record FieldSymbol(String name, Type type, int accessFlags, String ownerClass) implements Symbol {
     }
 
-    record MethodSymbol(String name, String ownerClass, Type returnType,
-                        List<Type> parameterTypes, int accessFlags,
-                        DispatchKind dispatchKind) implements Symbol {
+    static final class MethodSymbol implements Symbol {
+        private final String name;
+        private final String ownerClass;
+        private Type returnType;
+        private final List<Type> parameterTypes;
+        private final int accessFlags;
+        private final DispatchKind dispatchKind;
+
+        MethodSymbol(String name, String ownerClass, Type returnType,
+                     List<Type> parameterTypes, int accessFlags,
+                     DispatchKind dispatchKind) {
+            this.name = name;
+            this.ownerClass = ownerClass;
+            this.returnType = returnType;
+            this.parameterTypes = parameterTypes;
+            this.accessFlags = accessFlags;
+            this.dispatchKind = dispatchKind;
+        }
+
+        void setReturnType(Type returnType) {
+            this.returnType = returnType;
+        }
+
         @Override
         public Type type() {
             return returnType;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public String ownerClass() {
+            return ownerClass;
+        }
+
+        public Type returnType() {
+            return returnType;
+        }
+
+        public List<Type> parameterTypes() {
+            return parameterTypes;
+        }
+
+        public int accessFlags() {
+            return accessFlags;
+        }
+
+        public DispatchKind dispatchKind() {
+            return dispatchKind;
         }
     }
 

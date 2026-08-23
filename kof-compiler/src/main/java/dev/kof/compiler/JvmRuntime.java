@@ -13,28 +13,26 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * JvmRuntime — emits the dev/kof/runtime/KofRuntime helper class for the JVM backend.
- *
- * The JVM target has no native JSON functions (unlike the assembly runtime), so the
- * backend compiles a small, self-contained Java class once per build and writes it
- * next to the user classes. It is compiled with the JDK's own compiler (ToolProvider),
- * which is always available because the CLI and the compiler run on a full JDK.
- *
- * Object encode/decode (classes and records declared in the Kof program) is done via
- * reflection: class fields are public by default in Kof, and record components are
- * mapped through their accessors/canonical constructor.
- */
+
 final class JvmRuntime {
 
     private JvmRuntime() {}
 
-    static boolean hasRuntimeFn(String methodName) {
+static boolean hasRuntimeFn(String methodName) {
         return methodName.startsWith("kof_json_")
+                || methodName.startsWith("kof_io_")
+                || methodName.startsWith("kof_web_")
+                || methodName.startsWith("kof_config_")
+                || methodName.startsWith("kof_log_")
+                || methodName.startsWith("kof_ui_")
+                || methodName.startsWith("kof_sec_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
-                || methodName.equals("kof_write_file");
+                || methodName.equals("kof_write_file")
+                || methodName.equals("kof_spawn")
+                || methodName.equals("kof_process_run")
+                || methodName.equals("kof_args_list");
     }
 
     static void ensureCompiled(Path outputDir, List<IRClass> classes) throws IOException {
@@ -47,10 +45,13 @@ final class JvmRuntime {
         if (compiler == null) {
             throw new IOException("JVM runtime requires a full JDK (javac not available)");
         }
-        int rc = compiler.run(null, null, null, "-d", outputDir.toString(),
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        int rc = compiler.run(null, null, err, "-d", outputDir.toString(),
                 "-classpath", outputDir.toString(), sourceFile.toString());
         if (rc != 0) {
-            throw new IOException("failed to compile KofRuntime helper (javac exit " + rc + ")");
+            String detail = err.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            throw new IOException("failed to compile KofRuntime helper (javac exit " + rc + "): "
+                    + (detail.isEmpty() ? "unknown error" : detail));
         }
         Files.deleteIfExists(sourceFile);
     }
@@ -68,10 +69,83 @@ final class JvmRuntime {
             case "kof_json_decode_string" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_json_decode_int_list", "kof_json_decode_string_list", "kof_json_decode_list"
                     -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_json_decode_object_list" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_now" -> "()J";
             case "kof_read_line" -> "()Ljava/lang/String;";
             case "kof_read_file" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_write_file" -> "(Ljava/lang/String;Ljava/lang/String;)I";
+            case "kof_spawn" -> "(Ljava/lang/Object;)V";
+            case "kof_io_file_exists", "kof_io_file_is_file", "kof_io_file_is_dir" -> "(Ljava/lang/String;)I";
+            case "kof_io_read_text" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_io_write_text", "kof_io_append_text" -> "(Ljava/lang/String;Ljava/lang/String;)I";
+            case "kof_io_read_bytes" -> "(Ljava/lang/String;)[I";
+            case "kof_io_write_bytes", "kof_io_append_bytes" -> "(Ljava/lang/String;[I)I";
+            case "kof_io_delete", "kof_io_dir_create", "kof_io_dir_create_dirs", "kof_io_dir_delete"
+                    -> "(Ljava/lang/String;)I";
+            case "kof_io_file_size" -> "(Ljava/lang/String;)J";
+            case "kof_io_file_name", "kof_io_path_parent", "kof_io_path_file_name",
+                    "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_to_absolute"
+                    -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/List;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_args_list" -> "([Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
+            case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
+            case "kof_ui_window_new", "kof_ui_label_new", "kof_ui_button_new", "kof_ui_input_new"
+                    -> "(Ljava/lang/String;)I";
+            case "kof_ui_button_new_action" -> "(Ljava/lang/String;Ljava/lang/Object;)I";
+            case "kof_ui_window_set_title", "kof_ui_label_set_text", "kof_ui_button_set_text",
+                    "kof_ui_input_set_text" -> "(ILjava/lang/String;)V";
+            case "kof_ui_window_bind", "kof_ui_view_bind" -> "(II)V";
+            case "kof_ui_window_set_size" -> "(III)V";
+            case "kof_ui_column_new", "kof_ui_row_new" -> "(Ljava/util/ArrayList;)I";
+            case "kof_ui_view_new" -> "(I)I";
+            case "kof_ui_style_new" -> "(IIII)I";
+            case "kof_ui_window_set_theme", "kof_ui_label_set_font_size", "kof_ui_label_set_bold",
+                    "kof_ui_label_set_color" -> "(II)V";
+            case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "(I)I";
+            case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
+                    -> "(I)Ljava/lang/String;";
+            case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
+                    "kof_ui_input_remove", "kof_ui_view_remove" -> "(I)V";
+            case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_web_app_new" -> "()Ljava/lang/String;";
+            case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
+            case "kof_web_use" -> "(Ljava/lang/String;Ljava/lang/Object;)V";
+            case "kof_web_listen" -> "(Ljava/lang/String;I)V";
+            case "kof_web_port" -> "(Ljava/lang/String;)I";
+            case "kof_web_close" -> "(Ljava/lang/String;)V";
+            case "kof_web_param", "kof_web_query", "kof_web_header"
+                    -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
+            case "kof_config_get", "kof_config_env" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_config_str" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_config_has" -> "(Ljava/lang/String;)I";
+            case "kof_config_int", "kof_config_bool" -> "(Ljava/lang/String;I)I";
+            case "kof_config_long" -> "(Ljava/lang/String;J)J";
+            case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
+                    -> "(Ljava/lang/String;)V";
+            // ── kof.security (docs/security.md §5) ───────────────────
+            case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
+                    "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_sec_hmac_sha256", "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt",
+                    "kof_sec_secret_get_default", "kof_sec_jwt_create", "kof_sec_jwt_verify"
+                    -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_sec_jwt_create_ttl" -> "(Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;";
+            case "kof_sec_jwt_verify_iss_aud"
+                    -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_sec_random_hex" -> "(I)Ljava/lang/String;";
+            case "kof_sec_random_int" -> "(I)I";
+            case "kof_sec_constant_time_equals", "kof_sec_password_verify", "kof_sec_cors_allowed"
+                    -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_sec_password_needs_rehash", "kof_sec_csrf_valid",
+                    "kof_sec_auth_secret", "kof_sec_auth_has_role", "kof_sec_auth_has_permission"
+                    -> "(Ljava/lang/String;)Z";
+            case "kof_sec_auth_authenticated" -> "()Z";
+            case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
+                    "kof_sec_hsts_header", "kof_sec_content_type_options_header",
+                    "kof_sec_frame_header", "kof_sec_referrer_header", "kof_sec_auth_token",
+                    "kof_sec_auth_claims" -> "()Ljava/lang/String;";
             default -> "(Ljava/lang/String;)Ljava/lang/Object;";
         };
     }
@@ -82,8 +156,44 @@ final class JvmRuntime {
             case "kof_json_decode_long", "kof_now" -> "J";
             case "kof_json_decode_int_list", "kof_json_decode_string_list", "kof_json_decode_list"
                     -> "Ljava/util/ArrayList;";
+            case "kof_json_decode_object_list" -> "Ljava/util/ArrayList;";
             case "kof_json_decode_string", "kof_read_line", "kof_read_file" -> "Ljava/lang/String;";
             case "kof_write_file" -> "I";
+            case "kof_io_file_exists", "kof_io_file_is_file", "kof_io_file_is_dir",
+                    "kof_io_write_text", "kof_io_append_text", "kof_io_write_bytes", "kof_io_append_bytes",
+                    "kof_io_delete", "kof_io_dir_create", "kof_io_dir_create_dirs", "kof_io_dir_delete",
+                    "kof_io_path_is_absolute" -> "I";
+            case "kof_io_read_text", "kof_io_file_name", "kof_io_path_parent", "kof_io_path_file_name",
+                    "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_resolve",
+                    "kof_io_path_to_absolute" -> "Ljava/lang/String;";
+            case "kof_process_run" -> "Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_args_list" -> "Ljava/util/ArrayList;";
+            case "kof_io_read_bytes" -> "[I";
+            case "kof_io_file_size" -> "J";
+            case "kof_io_dir_list" -> "Ljava/util/ArrayList;";
+            case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
+                    "kof_web_body", "kof_web_method", "kof_web_path" -> "Ljava/lang/String;";
+            case "kof_config_get", "kof_config_env", "kof_config_str" -> "Ljava/lang/String;";
+            case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
+            case "kof_config_long" -> "J";
+            case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error" -> "V";
+             case "kof_web_port" -> "I";
+             case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "I";
+             case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
+                     "kof_ui_window_set_theme" -> "V";
+            // ── kof.security (docs/security.md §5) ───────────────────
+            case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_hmac_sha256", "kof_sec_redact",
+                    "kof_sec_secret_get", "kof_sec_secret_get_default", "kof_sec_password_hash",
+                    "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt", "kof_sec_jwt_create",
+                    "kof_sec_jwt_create_ttl", "kof_sec_jwt_verify", "kof_sec_jwt_verify_iss_aud",
+                    "kof_sec_jwt_secret", "kof_sec_random_hex", "kof_sec_csrf_token",
+                    "kof_sec_csp_header", "kof_sec_hsts_header", "kof_sec_content_type_options_header",
+                    "kof_sec_frame_header", "kof_sec_referrer_header", "kof_sec_auth_token",
+                    "kof_sec_auth_claims", "kof_sec_auth_user" -> "Ljava/lang/String;";
+            case "kof_sec_random_int", "kof_sec_constant_time_equals", "kof_sec_password_verify",
+                    "kof_sec_password_needs_rehash", "kof_sec_csrf_valid", "kof_sec_cors_allowed",
+                    "kof_sec_auth_secret", "kof_sec_auth_authenticated", "kof_sec_auth_has_role",
+                    "kof_sec_auth_has_permission" -> "I";
             default -> "Ljava/lang/Object;";
         };
     }
@@ -271,6 +381,17 @@ final class JvmRuntime {
                     Object parsed = kof_json_parse(json);
                     if (parsed instanceof ArrayList<?> l) return new ArrayList<Object>(l);
                     return new ArrayList<Object>();
+                }
+
+                public static ArrayList<Object> kof_json_decode_object_list(String json, String className)
+                        throws Exception {
+                    Object parsed = kof_json_parse(json);
+                    ArrayList<Object> result = new ArrayList<>();
+                    if (parsed instanceof List<?> l) {
+                        Class<?> type = Class.forName(className);
+                        for (Object e : l) result.add(kof_json_bind(type, e));
+                    }
+                    return result;
                 }
 
                 public static Object kof_json_decode_object(String json, Class<?> type) throws Exception {
@@ -464,6 +585,132 @@ final class JvmRuntime {
 
             %s
 
+                public static int kof_ui_window_new(String title) {
+                    return 1;
+                }
+
+                public static void kof_ui_window_set_title(int window, String title) {
+                }
+
+                public static String kof_ui_window_title(int window) {
+                    return "";
+                }
+
+                public static void kof_ui_window_bind(int window, int label) {
+                }
+
+                public static void kof_ui_window_show(int window) {
+                }
+
+                public static void kof_ui_window_close(int window) {
+                }
+
+                public static void kof_ui_window_set_size(int window, int width, int height) {
+                }
+
+                public static void kof_ui_window_set_theme(int window, int theme) {
+                }
+
+                public static int kof_ui_label_new(String text) {
+                    return 1;
+                }
+
+                public static void kof_ui_label_set_text(int label, String text) {
+                }
+
+                public static String kof_ui_label_text(int label) {
+                    return "";
+                }
+
+                public static void kof_ui_label_set_font_size(int label, int size) {
+                }
+
+                public static int kof_ui_label_font_size(int label) {
+                    return 0;
+                }
+
+                public static void kof_ui_label_set_bold(int label, int bold) {
+                }
+
+                public static int kof_ui_label_bold(int label) {
+                    return 0;
+                }
+
+                public static void kof_ui_label_set_color(int label, int color) {
+                }
+
+                public static int kof_ui_label_color(int label) {
+                    return 0;
+                }
+
+                public static void kof_ui_label_remove(int label) {
+                }
+
+                public static int kof_ui_button_new(String text) {
+                    return 1;
+                }
+
+                public static int kof_ui_button_new_action(String text, Object action) {
+                    return 1;
+                }
+
+                public static void kof_ui_button_set_text(int button, String text) {
+                }
+
+                public static String kof_ui_button_text(int button) {
+                    return "";
+                }
+
+                public static void kof_ui_button_remove(int button) {
+                }
+
+                public static int kof_ui_input_new(String text) {
+                    return 1;
+                }
+
+                public static void kof_ui_input_set_text(int input, String text) {
+                }
+
+                public static String kof_ui_input_text(int input) {
+                    return "";
+                }
+
+                public static void kof_ui_input_remove(int input) {
+                }
+
+                public static int kof_ui_column_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_row_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_view_new(int style) {
+                    return 1;
+                }
+
+                public static int kof_ui_style_new(int background, int foreground, int padding, int radius) {
+                    return 1;
+                }
+
+                public static void kof_ui_view_bind(int view, int child) {
+                }
+
+                public static void kof_ui_view_remove(int view) {
+                }
+
+                public static String kof_ui_color_to_css(int color) {
+                    int r = (color >>> 24) & 0xFF;
+                    int g = (color >>> 16) & 0xFF;
+                    int b = (color >>> 8) & 0xFF;
+                    int a = color & 0xFF;
+                    if (a == 255) {
+                        return "rgb(" + r + ", " + g + ", " + b + ")";
+                    }
+                    return "rgba(" + r + ", " + g + ", " + b + ", " + a + ")";
+                }
+
                 // ── kof.time ───────────────────────────────────────
 
                 public static long kof_now() {
@@ -495,6 +742,1071 @@ final class JvmRuntime {
                     } catch (java.io.IOException e) {
                         return -1;
                     }
+                }
+
+                // ── kof.concurrent ─────────────────────────────────
+
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_ACTIVE_TASKS =
+                        new java.util.concurrent.atomic.AtomicInteger();
+
+                static {
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                        while (KOF_ACTIVE_TASKS.get() > 0) {
+                            Thread.onSpinWait();
+                        }
+                    }, "kof-wait-tasks"));
+                }
+
+                public static void kof_spawn(Object task) {
+                    KOF_ACTIVE_TASKS.incrementAndGet();
+                    Thread.startVirtualThread(() -> {
+                        try {
+                            task.getClass().getMethod("invoke").invoke(task);
+                        } catch (Exception e) {
+                            Throwable cause = e.getCause() != null ? e.getCause() : e;
+                            System.err.println("spawn task failed: " + cause.getMessage());
+                        } finally {
+                            KOF_ACTIVE_TASKS.decrementAndGet();
+                        }
+                    });
+                }
+
+                public static ArrayList<String> kof_args_list(String[] args) {
+                    ArrayList<String> list = new ArrayList<>(args.length);
+                    for (String a : args) list.add(a);
+                    return list;
+                }
+
+                // ── kof.process — multiplatform process abstraction ──
+
+                public static final class ProcessResult {
+                    public final String stdout;
+                    public final String stderr;
+                    public final int exitCode;
+
+                    public ProcessResult(String stdout, String stderr, int exitCode) {
+                        this.stdout = stdout;
+                        this.stderr = stderr;
+                        this.exitCode = exitCode;
+                    }
+                }
+
+                public static ProcessResult kof_process_run(String program, List<String> args) {
+                    try {
+                        List<String> cmd = new ArrayList<>();
+                        cmd.add(program);
+                        cmd.addAll(args);
+                        Process p = new ProcessBuilder(cmd)
+                                .redirectErrorStream(false)
+                                .start();
+                        java.util.concurrent.FutureTask<String> outTask = new java.util.concurrent.FutureTask<>(
+                                () -> new String(p.getInputStream().readAllBytes(),
+                                        java.nio.charset.StandardCharsets.UTF_8));
+                        java.util.concurrent.FutureTask<String> errTask = new java.util.concurrent.FutureTask<>(
+                                () -> new String(p.getErrorStream().readAllBytes(),
+                                        java.nio.charset.StandardCharsets.UTF_8));
+                        Thread.startVirtualThread(outTask);
+                        Thread.startVirtualThread(errTask);
+                        int code = p.waitFor();
+                        String out = outTask.get();
+                        String err = errTask.get();
+                        return new ProcessResult(out, err, code);
+                    } catch (Exception e) {
+                        return new ProcessResult("", e.getMessage() == null
+                                ? e.getClass().getSimpleName() : e.getMessage(), -1);
+                    }
+                }
+
+                // ── kof.io — File / Path / Directory ──────────────
+
+                private static java.nio.file.Path p(String path) {
+                    return java.nio.file.Path.of(path);
+                }
+
+                public static int kof_io_file_exists(String path) {
+                    return java.nio.file.Files.exists(p(path)) ? 1 : 0;
+                }
+
+                public static int kof_io_file_is_file(String path) {
+                    return java.nio.file.Files.isRegularFile(p(path)) ? 1 : 0;
+                }
+
+                public static int kof_io_file_is_dir(String path) {
+                    return java.nio.file.Files.isDirectory(p(path)) ? 1 : 0;
+                }
+
+                public static String kof_io_read_text(String path) {
+                    try {
+                        return java.nio.file.Files.readString(p(path), java.nio.charset.StandardCharsets.UTF_8);
+                    } catch (java.io.IOException e) {
+                        return null;
+                    }
+                }
+
+                public static int kof_io_write_text(String path, String content) {
+                    try {
+                        java.nio.file.Files.writeString(p(path), content, java.nio.charset.StandardCharsets.UTF_8);
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static int kof_io_append_text(String path, String content) {
+                    try {
+                        java.nio.file.Files.writeString(p(path), content, java.nio.charset.StandardCharsets.UTF_8,
+                                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static int[] kof_io_read_bytes(String path) {
+                    try {
+                        byte[] b = java.nio.file.Files.readAllBytes(p(path));
+                        int[] out = new int[b.length];
+                        for (int i = 0; i < b.length; i++) out[i] = b[i] & 0xFF;
+                        return out;
+                    } catch (java.io.IOException e) {
+                        return null;
+                    }
+                }
+
+                public static int kof_io_write_bytes(String path, int[] bytes) {
+                    try {
+                        byte[] b = new byte[bytes.length];
+                        for (int i = 0; i < bytes.length; i++) b[i] = (byte) (bytes[i] & 0xFF);
+                        java.nio.file.Files.write(p(path), b);
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static int kof_io_append_bytes(String path, int[] bytes) {
+                    try {
+                        byte[] b = new byte[bytes.length];
+                        for (int i = 0; i < bytes.length; i++) b[i] = (byte) (bytes[i] & 0xFF);
+                        java.nio.file.Files.write(p(path), b,
+                                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static int kof_io_delete(String path) {
+                    try {
+                        if (!java.nio.file.Files.exists(p(path))) return 0;
+                        java.nio.file.Files.deleteIfExists(p(path));
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static long kof_io_file_size(String path) {
+                    try {
+                        return java.nio.file.Files.size(p(path));
+                    } catch (java.io.IOException e) {
+                        return -1;
+                    }
+                }
+
+                public static String kof_io_file_name(String path) {
+                    java.nio.file.Path pp = p(path).getFileName();
+                    return pp == null ? path : pp.toString();
+                }
+
+                public static String kof_io_path_resolve(String base, String child) {
+                    return p(base).resolve(child).toString();
+                }
+
+                public static String kof_io_path_parent(String path) {
+                    java.nio.file.Path pp = p(path).getParent();
+                    return pp == null ? null : pp.toString();
+                }
+
+                public static String kof_io_path_file_name(String path) {
+                    return kof_io_file_name(path);
+                }
+
+                public static String kof_io_path_extension(String path) {
+                    String name = kof_io_file_name(path);
+                    int dot = name.lastIndexOf('.');
+                    return dot <= 0 || dot == name.length() - 1 ? "" : name.substring(dot + 1);
+                }
+
+                public static String kof_io_path_normalize(String path) {
+                    String n = p(path).normalize().toString();
+                    return n.isEmpty() ? "." : n;
+                }
+
+                public static int kof_io_path_is_absolute(String path) {
+                    return p(path).isAbsolute() ? 1 : 0;
+                }
+
+                public static String kof_io_path_to_absolute(String path) {
+                    return p(path).toAbsolutePath().toString();
+                }
+
+                public static int kof_io_dir_create(String path) {
+                    try {
+                        java.nio.file.Files.createDirectory(p(path));
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static int kof_io_dir_create_dirs(String path) {
+                    try {
+                        java.nio.file.Files.createDirectories(p(path));
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static int kof_io_dir_delete(String path) {
+                    try {
+                        if (!java.nio.file.Files.exists(p(path))) return 0;
+                        java.nio.file.Files.deleteIfExists(p(path));
+                        return 1;
+                    } catch (java.io.IOException e) {
+                        return 0;
+                    }
+                }
+
+                public static java.util.ArrayList<String> kof_io_dir_list(String path) {
+                    try (var stream = java.nio.file.Files.list(p(path))) {
+                        return stream.map(java.nio.file.Path::getFileName)
+                                .map(java.nio.file.Path::toString).sorted()
+                                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                    } catch (java.io.IOException e) {
+                        return null;
+                    }
+                }
+
+                // ── kof.web — native web stack ────────────────────
+
+                private static final java.util.concurrent.ConcurrentHashMap<String, WebApp> KOF_WEB_APPS =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_WEB_SEQ =
+                        new java.util.concurrent.atomic.AtomicInteger();
+                private static final ThreadLocal<WebRequest> KOF_WEB_REQUEST = new ThreadLocal<>();
+
+                public static final class WebRoute {
+                    final String method;
+                    final String[] segments;
+                    final boolean[] params;
+                    final Object handler;
+
+                    WebRoute(String method, String path, Object handler) {
+                        this.method = method;
+                        String[] raw = path.split("/");
+                        this.segments = new String[raw.length];
+                        this.params = new boolean[raw.length];
+                        for (int i = 0; i < raw.length; i++) {
+                            this.segments[i] = raw[i];
+                            this.params[i] = raw[i].startsWith(":");
+                        }
+                        this.handler = handler;
+                    }
+                }
+
+                public static final class WebRequest {
+                    final String method;
+                    final String path;
+                    final String query;
+                    final String rawHeaders;
+                    final String body;
+                    final java.util.Map<String, String> params = new java.util.HashMap<>();
+                    final java.util.Map<String, String> queryParams = new java.util.HashMap<>();
+                    final java.util.Map<String, String> headers = new java.util.HashMap<>();
+
+                    WebRequest(String method, String path, String query, String rawHeaders, String body) {
+                        this.method = method;
+                        this.path = path;
+                        this.query = query;
+                        this.rawHeaders = rawHeaders;
+                        this.body = body;
+                        if (!query.isEmpty()) {
+                            for (String pair : query.split("&")) {
+                                int eq = pair.indexOf('=');
+                                if (eq < 0) queryParams.put(pair, "");
+                                else queryParams.put(pair.substring(0, eq), pair.substring(eq + 1));
+                            }
+                        }
+                        String[] lines = rawHeaders.split("\\r\\n");
+                        for (int i = 1; i < lines.length; i++) {
+                            int colon = lines[i].indexOf(':');
+                            if (colon > 0) {
+                                headers.put(lines[i].substring(0, colon).trim().toLowerCase(),
+                                        lines[i].substring(colon + 1).trim());
+                            }
+                        }
+                    }
+
+                    String param(String name) {
+                        return params.get(name);
+                    }
+
+                    String query(String name) {
+                        return queryParams.get(name);
+                    }
+
+                    String header(String name) {
+                        return headers.get(name.toLowerCase());
+                    }
+                }
+
+                public static final class WebApp {
+                    final String id;
+                    final java.util.List<WebRoute> routes = new java.util.ArrayList<>();
+                    final java.util.List<Object> middlewares = new java.util.ArrayList<>();
+                    volatile java.net.ServerSocket serverSocket;
+                    volatile boolean running;
+
+                    WebApp(String id) {
+                        this.id = id;
+                    }
+                }
+
+                public static String kof_web_app_new() {
+                    String id = "app" + KOF_WEB_SEQ.incrementAndGet();
+                    KOF_WEB_APPS.put(id, new WebApp(id));
+                    return id;
+                }
+
+                private static WebApp kof_web_app(String appId) {
+                    WebApp app = KOF_WEB_APPS.get(appId);
+                    if (app == null) throw new IllegalArgumentException("unknown web app: " + appId);
+                    return app;
+                }
+
+                public static void kof_web_route(String appId, String method, String path, Object handler) {
+                    if (handler == null) throw new IllegalArgumentException("route handler is null");
+                    kof_web_app(appId).routes.add(new WebRoute(method.toUpperCase(), path, handler));
+                }
+
+                public static void kof_web_use(String appId, Object handler) {
+                    if (handler == null) throw new IllegalArgumentException("middleware is null");
+                    kof_web_app(appId).middlewares.add(handler);
+                }
+
+                public static int kof_web_port(String appId) {
+                    java.net.ServerSocket ss = kof_web_app(appId).serverSocket;
+                    return ss == null ? -1 : ss.getLocalPort();
+                }
+
+                public static void kof_web_close(String appId) {
+                    WebApp app = kof_web_app(appId);
+                    app.running = false;
+                    if (app.serverSocket != null) {
+                        try {
+                            app.serverSocket.close();
+                        } catch (java.io.IOException ignored) {
+                        }
+                    }
+                }
+
+                public static void kof_web_listen(String appId, int port) {
+                    WebApp app = kof_web_app(appId);
+                    if (app.serverSocket != null) {
+                        throw new IllegalStateException("app already listening: " + appId);
+                    }
+                    try {
+                        app.serverSocket = new java.net.ServerSocket(port, 64,
+                                java.net.InetAddress.getByName("0.0.0.0"));
+                    } catch (java.io.IOException e) {
+                        throw new RuntimeException("cannot bind port " + port + ": " + e.getMessage(), e);
+                    }
+                    app.running = true;
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> kof_web_close(appId)));
+                    while (app.running) {
+                        try {
+                            java.net.Socket client = app.serverSocket.accept();
+                            client.setSoTimeout(15000);
+                            Thread.startVirtualThread(() -> kof_web_handle(app, client));
+                        } catch (java.io.IOException e) {
+                            if (!app.running) break;
+                        }
+                    }
+                }
+
+                private static void kof_web_handle(WebApp app, java.net.Socket client) {
+                    try (client) {
+                        WebRequest req = readRequest(client.getInputStream());
+                        String response = kof_web_dispatch(app, req);
+                        client.getOutputStream().write(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        client.getOutputStream().flush();
+                    } catch (Exception e) {
+                        System.err.println("kof web connection error: " + e.getMessage());
+                    }
+                }
+
+                private static String kof_web_dispatch(WebApp app, WebRequest req) {
+                    KOF_WEB_REQUEST.set(req);
+                    try {
+                        for (Object middleware : app.middlewares) {
+                            Object result = kof_web_invoke(middleware, req);
+                            if (result != null) {
+                                return kof_web_build(200, "OK", String.valueOf(result));
+                            }
+                        }
+                        for (WebRoute route : app.routes) {
+                            if (!route.method.equals(req.method)) continue;
+                            String[] pathSegs = req.path.split("/");
+                            if (pathSegs.length != route.segments.length) continue;
+                            boolean match = true;
+                            java.util.Map<String, String> params = new java.util.HashMap<>();
+                            for (int i = 0; i < pathSegs.length; i++) {
+                                if (route.params[i]) {
+                                    params.put(route.segments[i].substring(1), pathSegs[i]);
+                                } else if (!route.segments[i].equals(pathSegs[i])) {
+                                    match = false;
+                                    break;
+                                }
+                            }
+                            if (!match) continue;
+                            req.params.putAll(params);
+                            Object result = kof_web_invoke(route.handler, req);
+                            if (result == null) {
+                                return kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}");
+                            }
+                            return kof_web_build(200, "OK", String.valueOf(result));
+                        }
+                        return kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}");
+                    } catch (Exception e) {
+                        String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                        return kof_web_build(500, "Internal Server Error",
+                                "{\\"error\\": \\"handler error: " + msg + "\\"}");
+                    } finally {
+                        KOF_WEB_REQUEST.remove();
+                    }
+                }
+
+                private static Object kof_web_invoke(Object target, WebRequest req) throws Exception {
+                    try {
+                        return target.getClass().getMethod("invoke").invoke(target);
+                    } catch (NoSuchMethodException e) {
+                        return target.getClass()
+                                .getMethod("invoke", String.class, String.class, String.class,
+                                        String.class, String.class)
+                                .invoke(target, req.method, req.path, req.body, req.query, req.rawHeaders);
+                    }
+                }
+
+                private static String kof_web_build(int status, String statusText, String body) {
+                    byte[] bodyBytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    String contentType = "text/plain; charset=utf-8";
+                    String trimmed = body.trim();
+                    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                        contentType = "application/json; charset=utf-8";
+                    }
+                    return "HTTP/1.1 " + status + " " + statusText + "\\r\\n"
+                            + "Content-Type: " + contentType + "\\r\\n"
+                            + "Content-Length: " + bodyBytes.length + "\\r\\n"
+                            + "Connection: close\\r\\n"
+                            + "\\r\\n"
+                            + body;
+                }
+
+                private static WebRequest readRequest(java.io.InputStream in) throws java.io.IOException {
+                    StringBuilder head = new StringBuilder();
+                    byte[] buffer = new byte[8192];
+                    int headerEnd = -1;
+                    while (true) {
+                        int n = in.read(buffer);
+                        if (n == -1) throw new java.io.IOException("connection closed before headers");
+                        head.append(new String(buffer, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+                        headerEnd = head.indexOf("\\r\\n\\r\\n");
+                        if (headerEnd >= 0) break;
+                        if (head.length() > 65536) throw new java.io.IOException("headers too large");
+                    }
+
+                    String requestText = head.toString();
+                    String headerBlock = requestText.substring(0, headerEnd);
+                    StringBuilder body = new StringBuilder(requestText.substring(headerEnd + 4));
+
+                    int contentLength = 0;
+                    for (String line : headerBlock.split("\\r\\n")) {
+                        if (line.toLowerCase().startsWith("content-length:")) {
+                            try {
+                                contentLength = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                    while (body.length() < contentLength) {
+                        int n = in.read(buffer);
+                        if (n == -1) break;
+                        body.append(new String(buffer, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+                    }
+                    if (body.length() > contentLength) {
+                        body.setLength(contentLength);
+                    }
+
+                    String[] lines = headerBlock.split("\\r\\n");
+                    String[] parts = lines.length > 0 ? lines[0].split(" ") : new String[0];
+                    String method = parts.length > 0 ? parts[0] : "GET";
+                    String fullPath = parts.length > 1 ? parts[1] : "/";
+                    String path = fullPath;
+                    String query = "";
+                    int q = fullPath.indexOf('?');
+                    if (q >= 0) {
+                        path = fullPath.substring(0, q);
+                        query = fullPath.substring(q + 1);
+                    }
+                    return new WebRequest(method, path, query, headerBlock, body.toString());
+                }
+
+                public static String kof_web_param(String name) {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    return req == null ? null : req.param(name);
+                }
+
+                public static String kof_web_query(String name) {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    return req == null ? null : req.query(name);
+                }
+
+                public static String kof_web_header(String name) {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    return req == null ? null : req.header(name);
+                }
+
+                public static String kof_web_body() {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    return req == null ? null : req.body;
+                }
+
+                public static String kof_web_method() {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    return req == null ? null : req.method;
+                }
+
+                public static String kof_web_path() {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    return req == null ? null : req.path;
+                }
+
+                // ── kof.config — native configuration ────────────────
+
+                public static String kof_config_env(String name) {
+                    return System.getenv(name);
+                }
+
+                public static String kof_config_get(String key) {
+                    return kof_config_lookup(key);
+                }
+
+                public static String kof_config_str(String key, String def) {
+                    String v = kof_config_lookup(key);
+                    return v != null ? v : def;
+                }
+
+                public static int kof_config_int(String key, int def) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) return def;
+                    try {
+                        return Integer.parseInt(v.trim());
+                    } catch (NumberFormatException e) {
+                        return def;
+                    }
+                }
+
+                public static long kof_config_long(String key, long def) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) return def;
+                    try {
+                        return Long.parseLong(v.trim());
+                    } catch (NumberFormatException e) {
+                        return def;
+                    }
+                }
+
+                public static int kof_config_bool(String key, int def) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) return def;
+                    String t = v.trim().toLowerCase();
+                    if (t.equals("true") || t.equals("1") || t.equals("yes")) return 1;
+                    if (t.equals("false") || t.equals("0") || t.equals("no")) return 0;
+                    return def;
+                }
+
+                public static int kof_config_has(String key) {
+                    return kof_config_lookup(key) != null ? 1 : 0;
+                }
+
+                private static String kof_config_lookup(String key) {
+                    String file = System.getenv("KOF_CONFIG");
+                    if (file != null && !file.isBlank()) {
+                        String v = kof_config_read_key(java.nio.file.Path.of(file), key);
+                        if (v != null) return v;
+                    }
+                    String envName = "KOF_" + key.toUpperCase()
+                            .replace('.', '_').replace('-', '_');
+                    String env = System.getenv(envName);
+                    if (env != null) return env;
+                    String profile = System.getenv("KOF_PROFILE");
+                    String fileName = (profile != null && !profile.isBlank())
+                            ? "kof." + profile + ".config" : "kof.config";
+                    return kof_config_read_key(java.nio.file.Path.of(fileName), key);
+                }
+
+                private static String kof_config_read_key(java.nio.file.Path file, String key) {
+                    if (!java.nio.file.Files.exists(file)) return null;
+                    try {
+                        for (String line : java.nio.file.Files.readAllLines(
+                                file, java.nio.charset.StandardCharsets.UTF_8)) {
+                            String t = line.trim();
+                            if (t.isEmpty() || t.startsWith("#")) continue;
+                            int eq = t.indexOf('=');
+                            if (eq <= 0) continue;
+                            if (t.substring(0, eq).trim().equals(key)) {
+                                return t.substring(eq + 1).trim();
+                            }
+                        }
+                    } catch (java.io.IOException ignored) {
+                    }
+                    return null;
+                }
+
+                // ── kof.log — native logging ─────────────────────────
+
+                private static final int KOF_LOG_LEVEL = kof_log_parse_level(System.getenv("KOF_LOG_LEVEL"));
+
+                private static int kof_log_parse_level(String s) {
+                    if (s == null || s.isBlank()) return 1;
+                    return switch (s.trim().toLowerCase()) {
+                        case "debug" -> 0;
+                        case "info" -> 1;
+                        case "warn", "warning" -> 2;
+                        case "error" -> 3;
+                        case "off" -> 4;
+                        default -> 1;
+                    };
+                }
+
+                private static String kof_log_timestamp() {
+                    return java.time.LocalDateTime.now()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+                }
+
+                public static void kof_log_debug(String msg) {
+                    kof_log(0, "DEBUG", msg);
+                }
+
+                public static void kof_log_info(String msg) {
+                    kof_log(1, "INFO", msg);
+                }
+
+                public static void kof_log_warn(String msg) {
+                    kof_log(2, "WARN", msg);
+                }
+
+                public static void kof_log_error(String msg) {
+                    kof_log(3, "ERROR", msg);
+                }
+
+                private static void kof_log(int level, String label, String msg) {
+                    if (level < KOF_LOG_LEVEL) return;
+                    String line = kof_log_timestamp() + " " + label + " " + (msg == null ? "null" : msg);
+                    if (level >= 2) {
+                        System.err.println(line);
+                    } else {
+                        System.out.println(line);
+                    }
+                }
+
+                // ── kof.security (docs/security.md §5) ──────────────────
+
+                private static final java.security.SecureRandom KOF_SEC_RANDOM = new java.security.SecureRandom();
+                private static volatile String KOF_AUTH_SECRET = System.getenv("KOF_JWT_SECRET");
+                private static final ThreadLocal<String> KOF_AUTH_CLAIMS = new ThreadLocal<>();
+                private static final ThreadLocal<String> KOF_CSRF_TOKEN = new ThreadLocal<>();
+                private static final int KOF_PBKDF2_ITERATIONS = 600_000;
+
+                private static final char[] KOF_SEC_HEX = "0123456789abcdef".toCharArray();
+
+                private static String kof_sec_hex(byte[] bytes) {
+                    StringBuilder sb = new StringBuilder(bytes.length * 2);
+                    for (byte b : bytes) {
+                        sb.append(KOF_SEC_HEX[(b >> 4) & 0xF]);
+                        sb.append(KOF_SEC_HEX[b & 0xF]);
+                    }
+                    return sb.toString();
+                }
+
+                private static byte[] kof_sec_fromHex(String hex) {
+                    if (hex == null || (hex.length() & 1) != 0) throw new IllegalArgumentException("invalid hex");
+                    byte[] out = new byte[hex.length() / 2];
+                    for (int i = 0; i < out.length; i++) {
+                        out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+                    }
+                    return out;
+                }
+
+                public static String kof_sec_sha256(String data) {
+                    try {
+                        return kof_sec_hex(java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    } catch (java.security.NoSuchAlgorithmException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                public static String kof_sec_sha512(String data) {
+                    try {
+                        return kof_sec_hex(java.security.MessageDigest.getInstance("SHA-512")
+                                .digest(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    } catch (java.security.NoSuchAlgorithmException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                public static String kof_sec_hmac_sha256(String key, String data) {
+                    try {
+                        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+                        mac.init(new javax.crypto.spec.SecretKeySpec(
+                                key.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+                        return kof_sec_hex(mac.doFinal(data.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                public static String kof_sec_random_hex(int bytes) {
+                    if (bytes < 0 || bytes > 4096) throw new IllegalArgumentException("invalid length: " + bytes);
+                    byte[] buf = new byte[bytes];
+                    KOF_SEC_RANDOM.nextBytes(buf);
+                    return kof_sec_hex(buf);
+                }
+
+                public static int kof_sec_random_int(int bound) {
+                    if (bound <= 0) throw new IllegalArgumentException("bound must be positive");
+                    return KOF_SEC_RANDOM.nextInt(bound);
+                }
+
+                public static boolean kof_sec_constant_time_equals(String a, String b) {
+                    if (a == null || b == null) return a == b;
+                    return java.security.MessageDigest.isEqual(
+                            a.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                            b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+
+                public static String kof_sec_redact(String value) {
+                    if (value == null) return null;
+                    if (value.length() <= 8) return "********";
+                    return value.substring(0, 4) + "********" + value.substring(value.length() - 4);
+                }
+
+                public static String kof_sec_secret_get(String name) {
+                    return System.getenv(name);
+                }
+
+                public static String kof_sec_secret_get_default(String name, String fallback) {
+                    String v = System.getenv(name);
+                    return v == null ? fallback : v;
+                }
+
+                // password hashing — pbkdf2$sha256$<iterations>$<saltB64>$<hashB64>
+
+                public static String kof_sec_password_hash(String password) {
+                    try {
+                        byte[] salt = new byte[16];
+                        KOF_SEC_RANDOM.nextBytes(salt);
+                        javax.crypto.SecretKeyFactory f = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(
+                                password.toCharArray(), salt, KOF_PBKDF2_ITERATIONS, 256);
+                        byte[] dk = f.generateSecret(spec).getEncoded();
+                        return "pbkdf2$sha256$" + KOF_PBKDF2_ITERATIONS + "$"
+                                + java.util.Base64.getEncoder().encodeToString(salt) + "$"
+                                + java.util.Base64.getEncoder().encodeToString(dk);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                public static boolean kof_sec_password_verify(String password, String hash) {
+                    if (hash == null) return false;
+                    String[] parts = hash.split("\\\\$");
+                    if (parts.length != 5 || !"pbkdf2".equals(parts[0]) || !"sha256".equals(parts[1])) return false;
+                    try {
+                        int iterations = Integer.parseInt(parts[2]);
+                        byte[] salt = java.util.Base64.getDecoder().decode(parts[3]);
+                        byte[] expected = java.util.Base64.getDecoder().decode(parts[4]);
+                        javax.crypto.SecretKeyFactory f = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(
+                                password.toCharArray(), salt, iterations, expected.length * 8);
+                        byte[] actual = f.generateSecret(spec).getEncoded();
+                        return java.security.MessageDigest.isEqual(expected, actual);
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }
+
+                public static boolean kof_sec_password_needs_rehash(String hash) {
+                    if (hash == null) return true;
+                    String[] parts = hash.split("\\\\$");
+                    if (parts.length != 5 || !"pbkdf2".equals(parts[0]) || !"sha256".equals(parts[1])) return true;
+                    try {
+                        return Integer.parseInt(parts[2]) < KOF_PBKDF2_ITERATIONS;
+                    } catch (NumberFormatException e) {
+                        return true;
+                    }
+                }
+
+                // AES-GCM — aesgcm$<ivB64>$<ciphertextAndTagB64>
+
+                public static String kof_sec_aesgcm_encrypt(String plaintext, String keyHex) {
+                    try {
+                        byte[] key = kof_sec_fromHex(keyHex);
+                        if (key.length != 32) throw new IllegalArgumentException("AES-GCM key must be 32 bytes (64 hex chars)");
+                        byte[] iv = new byte[12];
+                        KOF_SEC_RANDOM.nextBytes(iv);
+                        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+                        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, new javax.crypto.spec.SecretKeySpec(key, "AES"),
+                                new javax.crypto.spec.GCMParameterSpec(128, iv));
+                        byte[] ct = cipher.doFinal(plaintext.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        return "aesgcm$" + java.util.Base64.getEncoder().encodeToString(iv) + "$"
+                                + java.util.Base64.getEncoder().encodeToString(ct);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                public static String kof_sec_aesgcm_decrypt(String ciphertext, String keyHex) {
+                    try {
+                        byte[] key = kof_sec_fromHex(keyHex);
+                        if (key.length != 32) throw new IllegalArgumentException("AES-GCM key must be 32 bytes (64 hex chars)");
+                        String[] parts = ciphertext.split("\\\\$");
+                        if (parts.length != 3 || !"aesgcm".equals(parts[0])) throw new IllegalArgumentException("invalid ciphertext format");
+                        byte[] iv = java.util.Base64.getDecoder().decode(parts[1]);
+                        byte[] ct = java.util.Base64.getDecoder().decode(parts[2]);
+                        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, new javax.crypto.spec.SecretKeySpec(key, "AES"),
+                                new javax.crypto.spec.GCMParameterSpec(128, iv));
+                        return new String(cipher.doFinal(ct), java.nio.charset.StandardCharsets.UTF_8);
+                    } catch (Exception e) {
+                        throw new RuntimeException("decryption failed: " + e.getMessage());
+                    }
+                }
+
+                // JWT — HS256 only; the algorithm is never taken from the token.
+
+                private static String kof_sec_b64url(byte[] data) {
+                    return java.util.Base64.getUrlEncoder().withoutPadding()
+                            .encodeToString(data);
+                }
+
+                private static byte[] kof_sec_b64urlDecode(String s) {
+                    return java.util.Base64.getUrlDecoder().decode(s);
+                }
+
+                private static String kof_sec_jwt_sign(String headerB64, String payloadB64, String secret) {
+                    try {
+                        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+                        mac.init(new javax.crypto.spec.SecretKeySpec(
+                                secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+                        return kof_sec_b64url(mac.doFinal(
+                                (headerB64 + "." + payloadB64).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                public static String kof_sec_jwt_secret() {
+                    String secret = System.getenv("KOF_JWT_SECRET");
+                    if (secret != null && !secret.isBlank()) return secret;
+                    return kof_sec_random_hex(32);
+                }
+
+                public static String kof_sec_jwt_create(String claimsJson, String secret) {
+                    return kof_sec_jwt_create_ttl(claimsJson, secret, 3600);
+                }
+
+                public static String kof_sec_jwt_create_ttl(String claimsJson, String secret, int ttlSeconds) {
+                    Object parsed = kof_json_parse(claimsJson);
+                    if (!(parsed instanceof Map<?, ?>)) throw new IllegalArgumentException("JWT claims must be a JSON object");
+                    int lastBrace = claimsJson.lastIndexOf('}');
+                    if (lastBrace < 0) throw new IllegalArgumentException("JWT claims must be a JSON object");
+                    String head = claimsJson.substring(0, lastBrace).trim();
+                    String sep = head.isEmpty() || head.endsWith("{") ? "" : ",";
+                    long now = System.currentTimeMillis() / 1000;
+                    String payload = head + sep + "\\"iat\\":" + now + ",\\"exp\\":" + (now + ttlSeconds) + "}";
+                    String headerB64 = kof_sec_b64url("{\\"alg\\":\\"HS256\\",\\"typ\\":\\"JWT\\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    String payloadB64 = kof_sec_b64url(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    return headerB64 + "." + payloadB64 + "." + kof_sec_jwt_sign(headerB64, payloadB64, secret);
+                }
+
+                public static String kof_sec_jwt_verify(String token, String secret) {
+                    return kof_sec_jwt_verify_iss_aud(token, secret, null, null);
+                }
+
+                public static String kof_sec_jwt_verify_iss_aud(String token, String secret, String issuer, String audience) {
+                    if (token == null || secret == null) throw new IllegalArgumentException("invalid token or secret");
+                    String[] parts = token.split("\\\\.");
+                    if (parts.length != 3) throw new IllegalArgumentException("malformed token");
+                    try {
+                        String headerJson = new String(kof_sec_b64urlDecode(parts[0]), java.nio.charset.StandardCharsets.UTF_8);
+                        if (!headerJson.contains("\\"HS256\\"")) throw new IllegalArgumentException("algorithm not allowed");
+                        String expected = kof_sec_jwt_sign(parts[0], parts[1], secret);
+                        if (!kof_sec_constant_time_equals(expected, parts[2])) throw new IllegalArgumentException("invalid signature");
+                        String payloadJson = new String(kof_sec_b64urlDecode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+                        Object parsed = kof_json_parse(payloadJson);
+                        if (!(parsed instanceof Map<?, ?> claims)) throw new IllegalArgumentException("invalid payload");
+                        Object exp = claims.get("exp");
+                        if (exp instanceof Number n && n.longValue() * 1000 <= System.currentTimeMillis()) {
+                            throw new IllegalArgumentException("token expired");
+                        }
+                        if (issuer != null) {
+                            Object iss = claims.get("iss");
+                            if (!(iss instanceof String s && s.equals(issuer))) {
+                                throw new IllegalArgumentException("issuer mismatch");
+                            }
+                        }
+                        if (audience != null) {
+                            Object aud = claims.get("aud");
+                            if (!(aud instanceof String s && s.equals(audience))) {
+                                throw new IllegalArgumentException("audience mismatch");
+                            }
+                        }
+                        return payloadJson;
+                    } catch (IllegalArgumentException e) {
+                        throw e;
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException("malformed token");
+                    }
+                }
+
+                // Web security context (kof.security.auth) — request-scoped.
+
+                public static boolean kof_sec_auth_secret(String secret) {
+                    if (secret == null || secret.isBlank()) return false;
+                    KOF_AUTH_SECRET = secret;
+                    return true;
+                }
+
+                private static String kof_sec_auth_bearerToken() {
+                    WebRequest req = KOF_WEB_REQUEST.get();
+                    if (req == null) return null;
+                    String auth = req.header("Authorization");
+                    if (auth == null) return null;
+                    if (auth.startsWith("Bearer ")) return auth.substring(7);
+                    if (auth.startsWith("bearer ")) return auth.substring(7);
+                    return auth;
+                }
+
+                private static boolean kof_sec_auth_resolve() {
+                    String cached = KOF_AUTH_CLAIMS.get();
+                    if (cached != null) return true;
+                    String token = kof_sec_auth_bearerToken();
+                    if (token == null || KOF_AUTH_SECRET == null || KOF_AUTH_SECRET.isBlank()) return false;
+                    try {
+                        KOF_AUTH_CLAIMS.set(kof_sec_jwt_verify(token, KOF_AUTH_SECRET));
+                        return true;
+                    } catch (IllegalArgumentException e) {
+                        return false;
+                    }
+                }
+
+                public static String kof_sec_auth_token() {
+                    return kof_sec_auth_bearerToken();
+                }
+
+                public static boolean kof_sec_auth_authenticated() {
+                    return kof_sec_auth_resolve();
+                }
+
+                public static String kof_sec_auth_claims() {
+                    if (!kof_sec_auth_resolve()) return null;
+                    return KOF_AUTH_CLAIMS.get();
+                }
+
+                public static String kof_sec_auth_user() {
+                    Object claims = kof_sec_auth_claims();
+                    if (claims == null) return null;
+                    try {
+                        Object parsed = kof_json_parse((String) claims);
+                        if (parsed instanceof Map<?, ?> m && m.get("sub") instanceof String sub) return sub;
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                    return null;
+                }
+
+                public static boolean kof_sec_auth_has_role(String role) {
+                    return kof_sec_auth_claimContains("roles", role);
+                }
+
+                public static boolean kof_sec_auth_has_permission(String permission) {
+                    return kof_sec_auth_claimContains("permissions", permission);
+                }
+
+                private static boolean kof_sec_auth_claimContains(String claim, String value) {
+                    Object claims = kof_sec_auth_claims();
+                    if (claims == null) return false;
+                    try {
+                        Object parsed = kof_json_parse((String) claims);
+                        if (!(parsed instanceof Map<?, ?> m)) return false;
+                        Object v = m.get(claim);
+                        if (v instanceof String s) return s.equals(value);
+                        if (v instanceof List<?> list) {
+                            for (Object item : list) {
+                                if (item instanceof String s && s.equals(value)) return true;
+                            }
+                        }
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                    return false;
+                }
+
+                // CSRF / CORS / security headers
+
+                public static String kof_sec_csrf_token() {
+                    String existing = KOF_CSRF_TOKEN.get();
+                    if (existing != null) return existing;
+                    String token = kof_sec_random_hex(32);
+                    KOF_CSRF_TOKEN.set(token);
+                    return token;
+                }
+
+                public static boolean kof_sec_csrf_valid(String token) {
+                    String expected = KOF_CSRF_TOKEN.get();
+                    if (expected == null || token == null) return false;
+                    return kof_sec_constant_time_equals(expected, token);
+                }
+
+                public static boolean kof_sec_cors_allowed(String origin, String allowed) {
+                    if (allowed == null) return false;
+                    if ("*".equals(allowed)) return true;
+                    for (String a : allowed.split(",")) {
+                        if (a.trim().equals(origin)) return true;
+                    }
+                    return false;
+                }
+
+                public static String kof_sec_csp_header() {
+                    return "default-src 'self'; frame-ancestors 'none'; base-uri 'self'";
+                }
+
+                public static String kof_sec_hsts_header() {
+                    return "max-age=31536000; includeSubDomains";
+                }
+
+                public static String kof_sec_content_type_options_header() {
+                    return "nosniff";
+                }
+
+                public static String kof_sec_frame_header() {
+                    return "DENY";
+                }
+
+                public static String kof_sec_referrer_header() {
+                    return "no-referrer";
                 }
             }
             """.formatted(decoders);

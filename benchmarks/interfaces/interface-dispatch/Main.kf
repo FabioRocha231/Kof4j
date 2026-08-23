@@ -1,0 +1,22 @@
+interface Shape {
+    area(): Int
+}
+
+class Square implements Shape {
+    Int side
+
+    constructor(Int side) {
+        this.side = side
+    }
+
+    public area(): Int = side * side
+}
+
+main() {
+    var acc = 0
+    Shape s = new Square(3)
+    for (var i = 0; i < 5000000; i++) {
+        acc = acc + s.area()
+    }
+    println(acc)
+}

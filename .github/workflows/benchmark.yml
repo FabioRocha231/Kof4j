@@ -1,0 +1,44 @@
+name: Benchmark
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  benchmark:
+    name: Benchmarks (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [jvm, native, js]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build
+        run: mvn -q package -pl kof-cli -am -DskipTests
+
+      - name: Bench
+        run: |
+          VERSION=$(cat VERSION)
+          JAR=$(ls kof-cli/target/kof-cli-*.jar | grep -v original | head -1)
+          BASELINE="benchmarks/baselines/${{ matrix.target }}-${VERSION}.json"
+          ARGS="--target ${{ matrix.target }} --quick --fail-on-regression --threshold 1.20"
+          if [ -f "$BASELINE" ]; then
+            java -jar "$JAR" bench $ARGS --baseline "$BASELINE"
+          else
+            java -jar "$JAR" bench $ARGS
+          fi
+
+      - name: Report regression
+        if: failure()
+        run: echo "PERFORMANCE REGRESSION — investigate before merging"

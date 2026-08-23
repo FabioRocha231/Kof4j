@@ -38,7 +38,7 @@ kof/
 
 1. Baixar `kof-<versão>-<os>-<arch>.tar.gz` (ou `.zip`) do GitHub Releases.
 2. `sha256sum -c SHA256SUMS` (verificação de integridade).
-3. `tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz`.
+3. `tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz`.
 4. Adicionar `<instalação>/bin` ao PATH.
 5. `kof version` e `kof info` para verificar.
 
@@ -54,7 +54,7 @@ bin/kof info
 ## `kof info` (saída de referência)
 
 ```text
-Kof 0.0.4-alpha
+Kof 0.0.5-alpha
 Tooling API: 21
 OS: linux
 Arch: x86_64
@@ -63,7 +63,7 @@ JVM: Eclipse Adoptium 25.0.4 (embedded)
 Compiler: 0.0.4
 Runtime: 0.0.4
 Stdlib: 0.0.4
-Targets: jvm, native
+Targets: jvm, native, js
 Install: /opt/kof
 ```
 

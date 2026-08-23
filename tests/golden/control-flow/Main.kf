@@ -1,0 +1,16 @@
+main() {
+    var v = if (5 > 3) "maior" else "menor"
+    println(v)
+    var total = 0
+    for (var i = 0; i < 4; i = i + 1) {
+        total = total + i
+    }
+    println(total)
+    while (total > 3) {
+        total = total - 1
+    }
+    println(total)
+    for (var item in listOf("x", "y")) {
+        println(item)
+    }
+}

@@ -1,0 +1,11 @@
+main() {
+    var l = new List<Int>()
+    for (var i = 0; i < 500000; i++) {
+        l.add(i)
+    }
+    var total = 0l
+    for (var i = 0; i < l.size; i++) {
+        total = total + l.get(i)
+    }
+    println(total)
+}

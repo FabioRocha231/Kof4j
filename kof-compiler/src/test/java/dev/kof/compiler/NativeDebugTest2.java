@@ -18,7 +18,7 @@ class NativeDebugTest2 {
         for (var d : result.diagnostics().getDiagnostics()) {
             System.out.println("  " + d);
         }
-        // Check if files exist
+
         Files.walk(outDir).forEach(p -> {
             try { if (Files.isRegularFile(p)) System.out.println("  FILE: " + p + " (" + Files.size(p) + " bytes)"); } catch (Exception e) {}
         });

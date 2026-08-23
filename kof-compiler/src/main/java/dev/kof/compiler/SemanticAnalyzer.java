@@ -16,6 +16,7 @@ class SemanticAnalyzer {
     private final Map<MethodCallExpr, SymbolTable.MethodSymbol> resolvedMethods = new IdentityHashMap<>();
     private final Map<NewExpr, SymbolTable.ConstructorSymbol> resolvedConstructors = new IdentityHashMap<>();
     private String currentClassName;
+    private String currentFunctionName;
     private String currentPackage;
     private DiagnosticCollector diagnostics;
 
@@ -40,6 +41,11 @@ class SemanticAnalyzer {
 
     SymbolTable.MethodSymbol getResolvedMethod(MethodCallExpr mc) {
         return resolvedMethods.get(mc);
+    }
+
+    Type resolvedMethodReturnType(MethodDeclarationNode method) {
+        SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+        return ms != null ? ms.returnType() : null;
     }
 
     SymbolTable.ConstructorSymbol getResolvedConstructor(NewExpr ne) {
@@ -117,6 +123,11 @@ class SemanticAnalyzer {
         }
     }
 
+    private boolean isLocalName(String name, SymbolTable scope) {
+        if (scope == null) return false;
+        return scope.resolve(name) != null;
+    }
+
     private Type resolveType(String name, SymbolTable scope) {
         SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
         if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
@@ -136,95 +147,56 @@ class SemanticAnalyzer {
         for (AstNode member : cls.members()) {
             if (member instanceof FieldDeclarationNode field) {
                 Type fieldType = resolveType(field.type(), classScope);
-                SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, 0, cls.name());
+                int flags = field.modifiers().contains("static") ? AccessFlags.STATIC : 0;
+                SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, flags, cls.name());
                 classSym.members().define(fs);
                 classScope.define(fs);
+                if (field.initializer() != null) {
+                    inferType(field.initializer(), classScope);
+                }
             }
         }
+        boolean hasCtor = false;
         for (AstNode member : cls.members()) {
             if (member instanceof ConstructorDeclarationNode ctor) {
-                analyzeConstructor(ctor, cls.name(), classScope);
+                defineConstructorSymbol(ctor, cls.name(), classScope);
+                hasCtor = true;
             } else if (member instanceof MethodDeclarationNode method) {
-                analyzeMethod(method, cls.name(), classScope);
+                defineMethodSymbol(method, cls.name(), classScope);
             }
+        }
+        if (!hasCtor) {
+            // implicit default constructor: classes without an explicit
+            // constructor always have one (Kof semantics)
+            classScope.define(new SymbolTable.ConstructorSymbol(cls.name(), List.of(), 1));
+        }
+        for (int pass = 0; pass < 4; pass++) {
+            boolean changed = false;
+            expressionTypes.clear();
+            for (AstNode member : cls.members()) {
+                if (member instanceof ConstructorDeclarationNode ctor) {
+                    analyzeConstructorBody(ctor);
+                } else if (member instanceof MethodDeclarationNode method) {
+                    SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+                    Type before = ms != null ? ms.returnType() : null;
+                    analyzeMethodBody(method);
+                    Type after = ms != null ? ms.returnType() : null;
+                    if (before != null && after != null && !before.equals(after)) {
+                        changed = true;
+                    }
+                }
+            }
+            if (!changed) break;
         }
         currentScope = prevScope;
         currentClassName = prevClass;
     }
 
-    private void analyzeRecord(RecordDeclarationNode rec) {
-        String prevClass = currentClassName;
-        currentClassName = rec.name();
-        SymbolTable.ClassSymbol classSym = knownClasses.get(rec.name());
-        SymbolTable classScope = classSym.members().enterScope();
-        SymbolTable prevScope = currentScope;
-        currentScope = classScope;
-        List<Type> compTypes = new ArrayList<>();
-        for (RecordComponentNode comp : rec.components()) {
-            Type compType = Type.of(comp.type());
-            compTypes.add(compType);
-            SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(comp.name(), compType, 0, rec.name());
-            classSym.members().define(fs);
-            classScope.define(fs);
-        }
-        SymbolTable.ConstructorSymbol ctorSym = new SymbolTable.ConstructorSymbol(rec.name(), compTypes, 1);
-        classSym.members().define(ctorSym);
-        classScope.define(ctorSym);
-        for (RecordComponentNode comp : rec.components()) {
-            Type compType = Type.of(comp.type());
-            SymbolTable.MethodSymbol ms = new SymbolTable.MethodSymbol(comp.name(), rec.name(),
-                    compType, List.of(), 1, SymbolTable.DispatchKind.INSTANCE);
-            classSym.members().define(ms);
-            classScope.define(ms);
-        }
-        for (AstNode member : rec.members()) {
-            if (member instanceof MethodDeclarationNode method) {
-                analyzeMethod(method, rec.name(), classScope);
-            }
-        }
-        currentScope = prevScope;
-        currentClassName = prevClass;
-    }
+    private final java.util.IdentityHashMap<ConstructorDeclarationNode, SymbolTable> ctorScopes = new java.util.IdentityHashMap<>();
+    private final java.util.IdentityHashMap<MethodDeclarationNode, SymbolTable> methodScopes = new java.util.IdentityHashMap<>();
+    private final java.util.IdentityHashMap<MethodDeclarationNode, SymbolTable.MethodSymbol> methodSymbols = new java.util.IdentityHashMap<>();
 
-    private void analyzeInterface(InterfaceDeclarationNode iface) {
-        String prevClass = currentClassName;
-        currentClassName = iface.name();
-        SymbolTable.ClassSymbol classSym = knownClasses.get(iface.name());
-        SymbolTable classScope = classSym.members().enterScope();
-        SymbolTable prevScope = currentScope;
-        currentScope = classScope;
-        for (AstNode member : iface.members()) {
-            if (member instanceof MethodDeclarationNode method) {
-                Type returnType = resolveType(method.returnType(), classScope);
-                List<Type> paramTypes = new ArrayList<>();
-                for (FormalParameterNode p : method.parameters()) paramTypes.add(Type.of(p.type()));
-                classScope.define(new SymbolTable.MethodSymbol(method.name(), iface.name(),
-                        returnType, paramTypes, 0, SymbolTable.DispatchKind.INSTANCE));
-            }
-        }
-        currentScope = prevScope;
-        currentClassName = prevClass;
-    }
-
-    private void analyzeFunction(FunctionDeclarationNode func) {
-        SymbolTable funcScope = currentScope.enterScope();
-        for (String tp : func.typeParameters()) {
-            funcScope.define(new SymbolTable.TypeParameterSymbol(tp));
-        }
-        Type returnType = resolveType(func.returnType(), funcScope);
-        int idx = 0;
-        for (FormalParameterNode param : func.parameters()) {
-            Type paramType = Type.of(param.type());
-            funcScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
-            idx++;
-        }
-        SymbolTable prevScope = currentScope;
-        currentScope = funcScope;
-        analyzeBody(func.body(), funcScope, returnType);
-        currentScope = prevScope;
-    }
-
-    private void analyzeConstructor(ConstructorDeclarationNode ctor, String className, SymbolTable classScope) {
+    private void defineConstructorSymbol(ConstructorDeclarationNode ctor, String className, SymbolTable classScope) {
         List<Type> paramTypes = new ArrayList<>();
         SymbolTable ctorScope = classScope.enterScope();
         ctorScope.define(new SymbolTable.ParameterSymbol("this",
@@ -240,13 +212,10 @@ class SemanticAnalyzer {
         classScope.define(ctorSym);
         SymbolTable.ClassSymbol cs = knownClasses.get(className);
         if (cs != null) cs.members().define(ctorSym);
-        SymbolTable prevScope = currentScope;
-        currentScope = ctorScope;
-        analyzeBody(ctor.body(), ctorScope, Type.PrimitiveType.VOID);
-        currentScope = prevScope;
+        ctorScopes.put(ctor, ctorScope);
     }
 
-    private void analyzeMethod(MethodDeclarationNode method, String className, SymbolTable classScope) {
+    private void defineMethodSymbol(MethodDeclarationNode method, String className, SymbolTable classScope) {
         SymbolTable methodScope = classScope.enterScope();
         methodScope.define(new SymbolTable.ParameterSymbol("this",
                 new Type.ClassType(currentPackage, className, List.of()), 0));
@@ -264,12 +233,132 @@ class SemanticAnalyzer {
         classScope.define(methodSym);
         SymbolTable.ClassSymbol cs = knownClasses.get(className);
         if (cs != null) cs.members().define(methodSym);
-        if (method.body() != null && !method.body().isEmpty()) {
-            SymbolTable prevScope = currentScope;
-            currentScope = methodScope;
-            analyzeBody(method.body(), methodScope, returnType);
-            currentScope = prevScope;
+        methodScopes.put(method, methodScope);
+        methodSymbols.put(method, methodSym);
+    }
+
+    private void analyzeConstructorBody(ConstructorDeclarationNode ctor) {
+        SymbolTable ctorScope = ctorScopes.get(ctor);
+        if (ctorScope == null || ctor.body() == null || ctor.body().isEmpty()) return;
+        SymbolTable prevScope = currentScope;
+        currentScope = ctorScope;
+        analyzeBody(ctor.body(), ctorScope, Type.PrimitiveType.VOID);
+        currentScope = prevScope;
+    }
+
+    private void analyzeMethodBody(MethodDeclarationNode method) {
+        SymbolTable methodScope = methodScopes.get(method);
+        if (methodScope == null || method.body() == null || method.body().isEmpty()) return;
+        Type returnType = resolveType(method.returnType(), methodScope);
+        SymbolTable prevScope = currentScope;
+        currentScope = methodScope;
+        analyzeBody(method.body(), methodScope, returnType);
+        currentScope = prevScope;
+        if (Type.isVoid(returnType) && method.body().getLast() instanceof ReturnStmt ret
+                && ret.value() != null) {
+            Type inferred = inferType(ret.value(), methodScope);
+            SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+            if (ms != null && !(inferred instanceof Type.UnknownType)) {
+                ms.setReturnType(inferred);
+            }
         }
+    }
+
+    private void analyzeRecord(RecordDeclarationNode rec) {
+        String prevClass = currentClassName;
+        currentClassName = rec.name();
+        SymbolTable.ClassSymbol classSym = knownClasses.get(rec.name());
+        SymbolTable classScope = classSym.members().enterScope();
+        SymbolTable prevScope = currentScope;
+        currentScope = classScope;
+        List<Type> compTypes = new ArrayList<>();
+        for (RecordComponentNode comp : rec.components()) {
+            Type compType = Type.of(comp.type());
+            compTypes.add(compType);
+            SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(comp.name(), compType, 0, rec.name());
+            classSym.members().define(fs);
+            classScope.define(fs);
+            if (comp.initializer() != null) {
+                inferType(comp.initializer(), classScope);
+            }
+        }
+        SymbolTable.ConstructorSymbol ctorSym = new SymbolTable.ConstructorSymbol(rec.name(), compTypes, 1);
+        classSym.members().define(ctorSym);
+        classScope.define(ctorSym);
+        for (RecordComponentNode comp : rec.components()) {
+            Type compType = Type.of(comp.type());
+            SymbolTable.MethodSymbol ms = new SymbolTable.MethodSymbol(comp.name(), rec.name(),
+                    compType, List.of(), 1, SymbolTable.DispatchKind.INSTANCE);
+            classSym.members().define(ms);
+            classScope.define(ms);
+        }
+        for (AstNode member : rec.members()) {
+            if (member instanceof MethodDeclarationNode method) {
+                defineMethodSymbol(method, rec.name(), classScope);
+            }
+        }
+        for (int pass = 0; pass < 4; pass++) {
+            boolean changed = false;
+            expressionTypes.clear();
+            for (AstNode member : rec.members()) {
+                if (member instanceof MethodDeclarationNode method) {
+                    SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+                    Type before = ms != null ? ms.returnType() : null;
+                    analyzeMethodBody(method);
+                    Type after = ms != null ? ms.returnType() : null;
+                    if (before != null && after != null && !before.equals(after)) {
+                        changed = true;
+                    }
+                }
+            }
+            if (!changed) break;
+        }
+        currentScope = prevScope;
+        currentClassName = prevClass;
+    }
+
+    private void analyzeInterface(InterfaceDeclarationNode iface) {
+        String prevClass = currentClassName;
+        currentClassName = iface.name();
+        SymbolTable.ClassSymbol classSym = knownClasses.get(iface.name());
+        SymbolTable classScope = classSym.members().enterScope();
+        SymbolTable prevScope = currentScope;
+        currentScope = classScope;
+        for (AstNode member : iface.members()) {
+            if (member instanceof MethodDeclarationNode method) {
+                Type returnType = resolveType(method.returnType(), classScope);
+                List<Type> paramTypes = new ArrayList<>();
+                for (FormalParameterNode p : method.parameters()) paramTypes.add(Type.of(p.type()));
+                SymbolTable.MethodSymbol ms = new SymbolTable.MethodSymbol(method.name(), iface.name(),
+                        returnType, paramTypes, 0, SymbolTable.DispatchKind.INSTANCE);
+                classScope.define(ms);
+                // Interface methods must be resolvable from outside the
+                // interface's own scope (resolveInHierarchy uses members()).
+                classSym.members().define(ms);
+            }
+        }
+        currentScope = prevScope;
+        currentClassName = prevClass;
+    }
+
+    private void analyzeFunction(FunctionDeclarationNode func) {
+        String prevFunction = currentFunctionName;
+        currentFunctionName = func.name();
+        SymbolTable funcScope = currentScope.enterScope();
+        for (String tp : func.typeParameters()) {
+            funcScope.define(new SymbolTable.TypeParameterSymbol(tp));
+        }
+        Type returnType = resolveType(func.returnType(), funcScope);
+        int idx = 0;
+        for (FormalParameterNode param : func.parameters()) {
+            Type paramType = Type.of(param.type());
+            funcScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
+            idx++;
+        }
+        SymbolTable prevScope = currentScope;
+        currentScope = funcScope;
+        analyzeBody(func.body(), funcScope, returnType);
+        currentScope = prevScope;
     }
 
     private void analyzeBody(List<StatementNode> body, SymbolTable scope, Type returnType) {
@@ -332,6 +421,18 @@ class SemanticAnalyzer {
                 analyzeStatement(fs.body(), forScope, returnType);
                 if (fs.update() != null) inferType(fs.update(), forScope);
             }
+            case ForInStmt fis -> {
+                SymbolTable forScope = scope.enterScope();
+                Type collType = inferType(fis.collection(), forScope);
+                Type elemType = Type.UnknownType.UNKNOWN;
+                if (collType instanceof Type.ClassType ct && "List".equals(ct.name()) && !ct.typeArguments().isEmpty()) {
+                    elemType = ct.typeArguments().get(0);
+                } else if (collType instanceof Type.ArrayType at) {
+                    elemType = at.componentType();
+                }
+                forScope.define(new SymbolTable.LocalVariableSymbol(fis.varName(), elemType, 0));
+                analyzeStatement(fis.body(), forScope, returnType);
+            }
             case SwitchStmt ss -> {
                 inferType(ss.expression(), scope);
                 SymbolTable switchScope = scope.enterScope();
@@ -354,6 +455,12 @@ class SemanticAnalyzer {
             case ThrowStmt ts -> {
                 if (ts.expression() != null) inferType(ts.expression(), scope);
             }
+            case SpawnStmt ss -> {
+                if (ss.expression() != null) inferType(ss.expression(), scope);
+            }
+            case AssertStmt asrt -> {
+                if (asrt.condition() != null) inferType(asrt.condition(), scope);
+            }
             default -> {}
         }
     }
@@ -372,6 +479,9 @@ class SemanticAnalyzer {
             case IdentifierExpr ie -> {
                 SymbolTable.Symbol sym = scope.resolve(ie.name());
                 if (sym != null) yield sym.type();
+                if ("args".equals(ie.name()) && "main".equals(currentFunctionName)) {
+                    yield new Type.ArrayType(BuiltinTypes.STRING);
+                }
                 if (currentClassName != null && !currentClassName.isEmpty()) {
                     SymbolTable.Symbol fieldSym = resolveInHierarchy(currentClassName, ie.name());
                     if (fieldSym != null) {
@@ -380,7 +490,14 @@ class SemanticAnalyzer {
                     }
                 }
                 if (diagnostics != null && !"this".equals(ie.name()) && !"super".equals(ie.name())
-                        && !"json".equals(ie.name()) && !knownClasses.containsKey(ie.name())) {
+                        && !"json".equals(ie.name()) && !"process".equals(ie.name())
+                        && !KofWeb.isWebNamespace(ie.name())
+                        && !KofConfig.isConfigNamespace(ie.name())
+                        && !KofLog.isLogNamespace(ie.name())
+                        && !KofSecurity.isSecurityNamespace(ie.name())
+                        && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
+                        && !"Theme".equals(ie.name())
+                        && !knownClasses.containsKey(ie.name())) {
                     diagnostics.error("", 0, 0, 0,
                             "Undefined variable or type: '" + ie.name() + "'", "SEM011");
                 }
@@ -405,9 +522,22 @@ class SemanticAnalyzer {
                 yield targetType;
             }
             case BinaryExpr bin -> {
-                Type leftType = inferType(bin.left(), scope);
-                Type rightType = inferType(bin.right(), scope);
-                yield inferBinaryResultType(bin.operator(), leftType, rightType);
+                // Left-associative chains (huge string concatenations in
+                // generated UIs, editors) are iterated instead of recursed:
+                // deep chains would overflow the compiler's own stack.
+                java.util.List<BinaryExpr> chain = new ArrayList<>();
+                ExpressionNode cursor = bin;
+                while (cursor instanceof BinaryExpr be) {
+                    chain.add(be);
+                    cursor = be.left();
+                }
+                Type accType = inferType(cursor, scope);
+                for (int ci = chain.size() - 1; ci >= 0; ci--) {
+                    BinaryExpr be = chain.get(ci);
+                    Type rightType = inferType(be.right(), scope);
+                    accType = inferBinaryResultType(be.operator(), accType, rightType);
+                }
+                yield accType;
             }
             case UnaryExpr ue -> {
                 Type operandType = inferType(ue.operand(), scope);
@@ -415,6 +545,31 @@ class SemanticAnalyzer {
                 yield operandType;
             }
             case MethodCallExpr mc -> {
+                if (mc.receiver() == null && "listOf".equals(mc.methodName())) {
+                    // listOf(...) keeps its element type: List<T> must survive
+                    // the whole pipeline (for-in, get, method resolution).
+                    Type elemType = Type.UnknownType.UNKNOWN;
+                    if (!mc.typeArguments().isEmpty()) {
+                        elemType = resolveType(mc.typeArguments().get(0), scope);
+                    } else if (!mc.arguments().isEmpty()) {
+                        elemType = inferType(mc.arguments().get(0), scope);
+                    }
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield new Type.ClassType("kof", "List", List.of(elemType));
+                }
+                if (mc.receiver() == null && knownClasses.containsKey(mc.methodName())) {
+                    // Implicit construction: ClassName(args) without `new`.
+                    // User classes take precedence over builtin helpers with
+                    // the same name (e.g. KofUi's Color).
+                    SymbolTable.ClassSymbol ctorClass = knownClasses.get(mc.methodName());
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    SymbolTable.Symbol ctorSym = ctorClass.members().resolve("<init>");
+                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctor) {
+                        resolvedMethods.put(mc, new SymbolTable.MethodSymbol("<init>", mc.methodName(),
+                                ctor.type(), ctor.parameterTypes(), ctor.accessFlags(), SymbolTable.DispatchKind.STATIC));
+                    }
+                    yield new Type.ClassType(ctorClass.packageName(), ctorClass.name(), List.of());
+                }
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.VOID;
@@ -425,6 +580,11 @@ class SemanticAnalyzer {
                 if (mc.receiver() == null && "readLine".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                     yield BuiltinTypes.STRING;
                 }
+                if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())
+                        && KofWeb.contextCall(mc.methodName(), mc.arguments().size()) != null) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield BuiltinTypes.STRING;
+                }
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     inferType(mc.arguments().get(0), scope);
                     yield BuiltinTypes.STRING;
@@ -433,8 +593,94 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.INT;
                 }
+                if (mc.receiver() == null && KofIo.isConstructor(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofIo.constructorType(mc.methodName());
+                }
+                if (mc.receiver() == null && "Color".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 3)) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.COLOR;
+                }
+                if (mc.receiver() == null && "Window".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.WINDOW;
+                }
+                if (mc.receiver() == null && "Label".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.LABEL;
+                }
+                if (mc.receiver() == null && "Button".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.BUTTON;
+                }
+                if (mc.receiver() == null && "Input".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.INPUT;
+                }
+                if (mc.receiver() == null && ("Column".equals(mc.methodName()) || "Row".equals(mc.methodName()))
+                        && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield "Column".equals(mc.methodName()) ? KofUi.COLUMN : KofUi.ROW;
+                }
+                if (mc.receiver() == null && "View".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.VIEW;
+                }
+                if (mc.receiver() == null && "Style".equals(mc.methodName()) && mc.arguments().size() == 4) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.STYLE;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
+                    KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
+                    if (uiCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        yield uiCall.returnType();
+                    }
+                }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
+                        if (logCall != null) yield logCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
+                            && !isLocalName(rid.name(), scope)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                        if (procCall != null) yield procCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
+                        if (cfgCall != null) yield cfgCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
+                        if (secCall != null) yield secCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())
+                            && "app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        yield KofWeb.APP;
+                    }
+                    if (KofWeb.isAppType(recvType)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), argTypes);
+                        if (webCall != null) yield webCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (recvType instanceof Type.FunctionType ft) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -462,20 +708,36 @@ class SemanticAnalyzer {
                         checkArgTypes(mc.methodName(), argTypes, lft.parameterTypes());
                         yield lft.returnType();
                     }
+                    if (currentClassName != null && !currentClassName.isEmpty()) {
+                        SymbolTable.Symbol m = resolveInHierarchy(currentClassName, mc.methodName());
+                        if (m instanceof SymbolTable.MethodSymbol ms) {
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                            checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
+                            resolvedMethods.put(mc, ms);
+                            yield ms.returnType();
+                        }
+                    }
                 }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())
                         && !"listOf".equals(mc.methodName())
                         && !"now".equals(mc.methodName()) && !"readLine".equals(mc.methodName())
                         && !"readFile".equals(mc.methodName()) && !"writeFile".equals(mc.methodName())
-                        && !"super".equals(mc.methodName())) {
+                        && !"super".equals(mc.methodName())
+                        && !KofIo.isConstructor(mc.methodName())
+                        && !KofUi.isConstructor(mc.methodName())
+                        && !KofWeb.isContextFunction(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                     boolean found = false;
                     for (AstNode d : currentUnit.declarations()) {
                         if (d instanceof FunctionDeclarationNode fn && fn.name().equals(mc.methodName())) {
                             found = true;
-                            if (fn.typeParameters().isEmpty()) {
+                            boolean hasDefaults = fn.parameters().stream()
+                                    .anyMatch(p -> p.defaultExpression() != null);
+                            if (fn.typeParameters().isEmpty() && (!hasDefaults
+                                    || mc.arguments().size() >= fn.parameters().size())) {
                                 List<Type> paramTypes = new ArrayList<>();
                                 for (FormalParameterNode p : fn.parameters()) paramTypes.add(resolveType(p.type(), scope));
                                 checkArgTypes(mc.methodName(), argTypes, paramTypes);
@@ -517,12 +779,22 @@ class SemanticAnalyzer {
                 yield Type.UnknownType.UNKNOWN;
             }
             case FieldAccessExpr fa -> {
+                if (fa.receiver() instanceof IdentifierExpr pId && KofUi.isPalette(pId.name())
+                        && KofUi.paletteColor(fa.fieldName()) != null) {
+                    yield KofUi.COLOR;
+                }
                 Type recvType = inferType(fa.receiver(), scope);
+                if (KofProcess.isResult(recvType) && KofProcess.isField(fa.fieldName())) {
+                    yield KofProcess.fieldType(fa.fieldName());
+                }
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
                 }
                 if (Type.isString(recvType) && "length".equals(fa.fieldName())) {
                     yield Type.PrimitiveType.INT;
+                }
+                if (Type.isString(recvType) && ("name".equals(fa.fieldName()) || "path".equals(fa.fieldName()))) {
+                    yield BuiltinTypes.STRING;
                 }
                 if (recvType instanceof Type.ClassType ct) {
                     SymbolTable.Symbol field = resolveInHierarchy(ct.name(), fa.fieldName());
@@ -553,6 +825,7 @@ class SemanticAnalyzer {
                     lambdaScope.define(new SymbolTable.ParameterSymbol(p.name(), paramType, idx));
                     idx++;
                 }
+                analyzeBody(le.body(), lambdaScope, Type.UnknownType.UNKNOWN);
                 Type returnType = Type.UnknownType.UNKNOWN;
                 for (StatementNode s : le.body()) {
                     if (s instanceof ReturnStmt rs && rs.value() != null) {
@@ -765,8 +1038,13 @@ class SemanticAnalyzer {
                 for (ExpressionNode arg : mc.arguments()) resolveInExpression(arg);
             }
             case BinaryExpr bin -> {
-                resolveInExpression(bin.left());
-                resolveInExpression(bin.right());
+                // iterate the left-associative chain (huge concat trees)
+                ExpressionNode cur = bin;
+                while (cur instanceof BinaryExpr be) {
+                    resolveInExpression(be.right());
+                    cur = be.left();
+                }
+                resolveInExpression(cur);
             }
             case UnaryExpr ue -> resolveInExpression(ue.operand());
             case AssignmentExpr ae -> {

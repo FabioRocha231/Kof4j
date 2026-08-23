@@ -1,0 +1,19 @@
+main() {
+    var limit = 200000
+    var sieve = new Int[limit + 1]
+    for (var i = 2; i <= limit; i++) {
+        sieve[i] = 1
+    }
+    var count = 0
+    for (var i = 2; i <= limit; i++) {
+        if (sieve[i] == 1) {
+            count = count + 1
+            var j = i * 2
+            while (j <= limit) {
+                sieve[j] = 0
+                j = j + i
+            }
+        }
+    }
+    println(count)
+}

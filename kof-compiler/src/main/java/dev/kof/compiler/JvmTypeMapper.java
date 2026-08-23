@@ -11,6 +11,7 @@ final class JvmTypeMapper {
     static String toDescriptor(Type type) {
         return switch (type) {
             case Type.PrimitiveType p -> primitiveDescriptor(p);
+            case Type.ClassType c when KofUi.isUiType(c) -> "I";
             case Type.ClassType c -> classDescriptor(c);
             case Type.ArrayType a -> "[" + toDescriptor(a.componentType());
             case Type.TypeVariable tv -> "Ljava/lang/Object;";
@@ -40,6 +41,9 @@ final class JvmTypeMapper {
         if ("java.lang".equals(c.packageName()) && "String".equals(c.name())) {
             return "Ljava/lang/String;";
         }
+        if ("kof".equals(c.packageName()) && "List".equals(c.name())) {
+            return "Ljava/util/ArrayList;";
+        }
         return "L" + internalName + ";";
     }
 
@@ -60,6 +64,7 @@ final class JvmTypeMapper {
     static String toInternalName(String packageName, String simpleName) {
         if (simpleName.contains("/")) return simpleName;
         if (simpleName.contains(".")) return simpleName.replace('.', '/');
+        if ("kof".equals(packageName) && "List".equals(simpleName)) return "java/util/ArrayList";
         if (packageName.isEmpty()) return simpleName;
         return packageName.replace('.', '/') + "/" + simpleName;
     }

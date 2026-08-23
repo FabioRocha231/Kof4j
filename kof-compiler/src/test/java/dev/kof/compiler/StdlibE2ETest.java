@@ -9,10 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Standard library primitives: kof.time (now) and kof.io (readFile/writeFile)
- * with JVM + Native parity.
- */
+
 class StdlibE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();

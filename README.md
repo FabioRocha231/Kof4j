@@ -124,28 +124,183 @@ Kof não depende de Java como linguagem intermediária.
 
 # Estado Atual
 
-Kof está em desenvolvimento ativo — **Alpha 0.0.4** (`0.0.4-alpha`).
+Kof está em desenvolvimento ativo — **Alpha 0.0.5** (`0.0.5-alpha`).
 
-O compilador já possui uma fundação funcional.
+O compilador possui frontend próprio, type system, Kof IR e três backends.
 
-| Feature | JVM | Native |
-|---------|-----|--------|
-| println | ✅ | ✅ |
-| variables | ✅ | ✅ |
-| arithmetic | ✅ | ✅ |
-| if/else | ✅ | ✅ |
-| while | ✅ | ✅ |
-| for | ✅ | ✅ |
-| functions | ✅ | ✅ |
-| records | ✅ | ✅ |
-| classes | ✅ | ✅ |
-| constructors | ✅ | ✅ |
-| methods | ✅ | ✅ |
-| fields | ✅ | ✅ |
-| field access | ✅ | ✅ |
-| field assignment | ✅ | ✅ |
-| JSON encode/decode | ✅ | ✅ |
-| List\<T\> | ✅ | ✅ |
+| Feature | JVM | Native | KofJS |
+|---------|-----|--------|-------|
+| println | ✅ | ✅ | ✅ |
+| variables | ✅ | ✅ | ✅ |
+| arithmetic | ✅ | ✅ | ✅ |
+| if/else, if-expr | ✅ | ✅ | ✅ |
+| while, for, do-while, for-in | ✅ | ✅ | ✅ |
+| switch | ✅ | ✅ | ✅ |
+| functions (sem `fun`) | ✅ | ✅ | ✅ |
+| records | ✅ | ✅ | ✅ |
+| classes | ✅ | ✅ | ✅ |
+| constructors (`constructor(...)` + primary) | ✅ | ✅ | ✅ |
+| inheritance, interfaces, virtual dispatch | ✅ | ✅ | ✅ |
+| generics (erasure) | ✅ | ✅ | ✅ |
+| lambdas | ✅ | ✅ | ✅ |
+| exceptions (try/catch/finally) | ✅ | ✅ | ✅ |
+| assert | ✅ | ✅ | ✅ |
+| spawn (concorrência) | ✅ | CONC001 | — |
+| strings (concat `+`, `==`, API completa) | ✅ | ✅ | ✅ |
+| arrays | ✅ | ✅ | ✅ |
+| List\<T\>, listOf | ✅ | ✅ | ✅ |
+| JSON encode/decode (objetos no JVM) | ✅ | ✅ | ✅ |
+| kof.io (File, Path, Directory) | ✅ | ✅ |
+| kof.ui (Color, Palette, Theme) | ✅ | ✅ |
+| kof.ui Window/Label/Button/Input (bind + ações) | ✅ | ✅ (JS render) | ✅ |
+| kof.ui Column/Row/View/Style (layout) | ✅ | ✅ (JS render) | ✅ |
+| Lambdas com capturas | ✅ | ✅ | ✅ |
+| kof.time (`now()`) | ✅ | ✅ | ✅ |
+| kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
+| kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
+| kof.config (arquivo > env > profile, typed) | ✅ | CONFIG001 | CONFIG001 |
+| kof.log (níveis, off, stderr) | ✅ | LOG001 | LOG001 |
+
+**KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
+(ECMAScript 2022+) executados na engine JS embarcada (GraalJS — sem Node.js
+nem runtime externo). `kof build --target js` / `kof run --target js`.
+Status alpha: [docs/targets/KOFJS.md](docs/targets/KOFJS.md).
+
+**Concorrência**: `spawn tarefa()` / `spawn { ... }` — virtual threads na JVM,
+join implícito; Native reporta `CONC001` (gap documentado). Ver
+[docs/concurrency.md](docs/concurrency.md).
+
+**Testes**: `assert(cond, "msg")` + `kof test <file.kf|dir>` — PASS/FAIL por
+exit code. Ver [learn/23-testing.md](learn/23-testing.md).
+
+**Depuração**: `kof debug <file.kf>` — servidor DAP sobre stdio com JDWP cru
+(breakpoints por linha Kof, call stack com funções/linhas Kof, continue,
+disconnect). Ver [docs/debugging.md](docs/debugging.md).
+
+**Auditoria do ecossistema**: matriz de cobertura da stdlib (inventário,
+gaps G1-G12, prioridade e estratégia) em
+[docs/ecosystem-coverage.md](docs/ecosystem-coverage.md).
+
+---
+
+# kof.ui — A plataforma de UI
+
+A fundação da UI do Kof: `Color` (RGBA 32-bit), `Palette` (cores nomeadas)
+e `Theme` (light/dark com cores semânticas) — mesma semântica em JVM,
+Native e JS. A renderização é **KofJS**: widgets → DOM real no webview
+nativo (`bin/kof-webview`, WebKitGTK embutido) ou no browser.
+
+Widgets: `Window` (título, bind, show/close, size, theme), `Label` (text,
+fontSize, bold, color), `Button` (texto + ação por lambda com capturas),
+`Input` (text), containers `Column`/`Row`, `View`+`Style` (background,
+padding, radius).
+
+```kof
+class App {
+    static Int count = 0
+}
+
+main() {
+    var w = Window("Contador")
+    var label = Label("contagem: 0")
+    w.bind(label)
+    w.bind(Button("+1", () -> {
+        App.count = App.count + 1
+        label.text = "contagem: " + App.count
+    }))
+    w.show()
+}
+```
+
+```bash
+kof run contador.kf --target=js   # abre a janela; fechar encerra o programa
+```
+
+Ver: [learn/35-kof-ui.md](learn/35-kof-ui.md) e
+[learn/37-kofjs.md](learn/37-kofjs.md).
+
+---
+
+# Documentação — onde procurar o quê
+
+| Pasta | Para quem | O que contém |
+|-------|-----------|--------------|
+| [`docs/`](docs/) | arquitetos, mantenedores, decisões | **Documentação técnica e de projeto**: estado atual (`status.md`, `actual-state.md`), arquitetura (`architecture.md`), segurança (`security.md`), performance (`performance.md`), depuração (`debugging*.md`), roadmap (`roadmap.md`), stdlib (`stdlib/`, `stdlib-web.md`...), targets (`targets/`), distribuição (`distribution/`), ferramentas (`tooling/`), visões futuras (`future/`) e auditorias (`ecosystem-coverage.md`, `complexity-audit.md`) |
+| [`learn/`](learn/README.md) | humanos aprendendo Kof | **Trilha de aprendizado em capítulos numerados** (00 Introdução → 37 KofJS): linguagem, classes, funções, lambdas, UI, segurança — cada capítulo um guia prático; `learn/native/` para o alvo nativo |
+| [`training/`](training/README.md) | LLMs e ferramentas de IA | **Corpus estruturado otimizado para modelos de linguagem**: fatos por tópico (`language/`), idiomas (`idioms/`), padrões/anti-padrões (`patterns/`, `anti-patterns/`), exemplos compiláveis (`examples/`), referência (`reference/`), migração Java→Kof (`migration/`), tooling e releases |
+
+**Regra prática**: `docs/` diz *como o Kof é* (estado e arquitetura);
+`learn/` ensina *como usar o Kof* (passo a passo); `training/` alimenta
+*quem gera código Kof* (LLMs).
+
+---
+
+# kof.web — Stack Web Nativa
+
+Aplicações web sem Spring, sem servlet container, sem annotations:
+
+```kof
+record User(String name, Int age)
+
+main() {
+    var app = web.app()
+
+    app.use {
+        if (header("x-auth") == "secret") {
+            return null
+        }
+        return "{\"error\": \"unauthorized\"}"
+    }
+
+    app.get("/hello") {
+        return "Hello from Kof"
+    }
+
+    app.get("/users/:id") {
+        return "user " + param("id") + " q=" + query("name")
+    }
+
+    app.post("/user") {
+        var user = json.decode<User>(body())
+        return json.encode(user)
+    }
+
+    app.listen(8080)
+}
+```
+
+```bash
+kof serve app.kf
+```
+
+Path params, query, headers, body, middleware, JSON tipado e servidor HTTP
+embutido no runtime do programa. Ver: [docs/stdlib-web.md](docs/stdlib-web.md).
+
+---
+
+# kof.io — Filesystem
+
+Arquivos, diretórios e caminhos com uma API única em todos os targets:
+
+```kof
+var path = Path("data/users.txt")
+path.parent().createDirectories()
+path.writeText("Mel\nKof\n")
+println(path.readText())
+println(path.size())
+```
+
+```kof
+var dir = Directory("data")
+dir.createDirectories()
+for (var entry in dir.list()) {
+    println(entry.name)
+}
+```
+
+Texto sempre UTF-8; bytes como `Int[]`; erros consistentes (Bool/`null`).
+Ver: [learn/34-file-system.md](learn/34-file-system.md) e
+[docs/stdlib/IO.md](docs/stdlib/IO.md).
 
 ---
 
@@ -157,11 +312,11 @@ externa de Java é necessária.**
 
 ```bash
 # Baixe o artefato do GitHub Releases e extraia:
-tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
 
-kof version        # kof 0.0.4-alpha
-kof info           # ambiente completo (JVM embutida, Tooling API 21, target)
+kof version        # kof 0.0.5-alpha
+kof info           # ambiente completo (JVM embutida, Tooling API 21, targets)
 ```
 
 Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) e
@@ -172,16 +327,18 @@ Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) e
 # CLI
 
 ```bash
-kof build <dir> [--target jvm|native] [--output <dir>]
-kof run <file.kf> [args...]
+kof build <dir> [--target jvm|native|js] [--output <dir>]
+kof run <file.kf> [--target jvm|native|js] [args...]
 kof serve <file.kf> [--port <port>] [--host <host>]
 kof check <file.kf|dir>
+kof test <file.kf|dir> [--target jvm|native]
 kof info [--json]
 kof lsp
+kof install <dir>
 kof version
 ```
 
-`kof test` e `kof fmt` são planejados (ver [docs/tooling/README.md](docs/tooling/README.md)).
+`kof fmt` é planejado (ver [docs/tooling/README.md](docs/tooling/README.md)).
 
 ---
 
@@ -225,6 +382,30 @@ Source (.kf)
 6. Interoperabilidade
 7. Sem mágica desnecessária
 8. Ferramentas importam
+
+## O "paradigma" da intenção
+
+Kof é **orientada à intenção** — o que não é um paradigma formal, e sim a
+orientação a objetos levada ao extremo: o código expressa *o que* quer, e a
+plataforma (linguagem + compilador + runtime + stdlib) decide *como*, por
+target e por convenção.
+
+```text
+intenção → Kof → compilador → backend
+```
+
+Você escreve `spawn tarefa()` (não `Thread`), `app.get("/users/:id")` (não
+servlet container), `Window`/`Button("+1", () -> ...)` (não WebView/JavaFX),
+`json.decode<User>(body)` (não parser manual), `Palette.red` (não
+`0xFF0000FF`). Se é essencial para qualquer programa, pertence à plataforma.
+
+Quando um target não consegue realizar a intenção, ele diz isso em
+compile-time com um código de gap (`CONC001`, `JSN002`, ...) — nunca
+silenciosamente.
+
+Detalhes: [docs/philosophy.md](docs/philosophy.md) · idiomas:
+[training/idioms/](training/idioms/) · anti-padrões:
+[training/anti-patterns/](training/anti-patterns/).
 
 ---
 

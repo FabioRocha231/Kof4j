@@ -1,0 +1,106 @@
+package dev.kof.compiler;
+
+import java.util.List;
+
+
+/**
+ * Compile-time dispatch table for the Kof-native web stack ({@code kof.web}).
+ *
+ * <p>The Kof surface is idiomatic:
+ *
+ * <pre>{@code
+ * app = web.app()
+ * app.get("/hello") { return "Hello" }
+ * app.get("/users/:id") { return "user " + param("id") }
+ * app.listen(8080)
+ * }</pre>
+ *
+ * <p>Internally every call maps to a static {@code kof_web_*} function of the
+ * generated {@code dev.kof.runtime.KofRuntime} class (JVM target). The
+ * {@code kof.web.App} type exists only at compile time; at runtime an app is
+ * a String handle registered in the runtime registry.
+ */
+final class KofWeb {
+
+    private KofWeb() {}
+
+    static final Type APP = new Type.ClassType("kof.web", "App", List.of());
+
+    private static final Type STR = BuiltinTypes.STRING;
+    private static final Type INT = Type.PrimitiveType.INT;
+    private static final Type VOID = Type.PrimitiveType.VOID;
+
+    /** HTTP methods that can be routed with {@code app.<method>(path, handler)}. */
+    private static final List<String> ROUTE_METHODS =
+            List.of("get", "post", "put", "delete", "patch", "options");
+
+    static boolean isAppType(Type t) {
+        return APP.equals(t);
+    }
+
+    static boolean isWebNamespace(String name) {
+        return "web".equals(name);
+    }
+
+    static boolean isContextFunction(String name) {
+        return switch (name) {
+            case "param", "query", "header" -> true;
+            case "body", "method", "path" -> true;
+            default -> false;
+        };
+    }
+
+    static boolean isRouteMethod(String name) {
+        return ROUTE_METHODS.contains(name);
+    }
+
+
+    record WebCall(String function, Type returnType, List<Type> parameterTypes) {}
+
+
+    /** {@code web.app()} — creates a new application and returns its handle. */
+    static WebCall appConstructor() {
+        return new WebCall("kof_web_app_new", APP, List.of());
+    }
+
+
+    /** Instance methods on {@code kof.web.App} receivers. */
+    static WebCall instanceMethod(String name, List<Type> argTypes) {
+        if (ROUTE_METHODS.contains(name)) {
+            if (argTypes.size() == 2) {
+                return new WebCall("kof_web_route", VOID,
+                        List.of(STR, STR, STR, argTypes.get(1)));
+            }
+            return null;
+        }
+        return switch (name) {
+            case "use" -> argTypes.size() == 1
+                    ? new WebCall("kof_web_use", VOID, List.of(STR, argTypes.get(0)))
+                    : null;
+            case "listen" -> argTypes.size() == 1
+                    ? new WebCall("kof_web_listen", VOID, List.of(STR, argTypes.get(0)))
+                    : null;
+            case "port" -> argTypes.isEmpty()
+                    ? new WebCall("kof_web_port", INT, List.of(STR))
+                    : null;
+            case "close" -> argTypes.isEmpty()
+                    ? new WebCall("kof_web_close", VOID, List.of(STR))
+                    : null;
+            default -> null;
+        };
+    }
+
+
+    /** Request-context functions available inside route handlers. */
+    static WebCall contextCall(String name, int argCount) {
+        return switch (name) {
+            case "param", "query", "header" -> argCount == 1
+                    ? new WebCall("kof_web_" + name, STR, List.of(STR))
+                    : null;
+            case "body", "method", "path" -> argCount == 0
+                    ? new WebCall("kof_web_" + name, STR, List.of())
+                    : null;
+            default -> null;
+        };
+    }
+}

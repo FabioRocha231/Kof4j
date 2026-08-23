@@ -1,0 +1,11 @@
+main() {
+    var a = new Int[2000000]
+    for (var i = 0; i < 2000000; i++) {
+        a[i] = i
+    }
+    var total = 0l
+    for (var i = 0; i < 2000000; i++) {
+        total = total + a[i]
+    }
+    println(total)
+}

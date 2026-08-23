@@ -1,0 +1,11 @@
+main() {
+    var acc = 0
+    for (var i = 0; i < 200000; i++) {
+        var s = "abcde"
+        var t = s.substring(1) + s.substring(0, 2)
+        if (t.contains("bc") && s.startsWith("a")) {
+            acc = acc + 1
+        }
+    }
+    println(acc)
+}

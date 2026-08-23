@@ -3,10 +3,7 @@ package dev.kof.cli;
 import dev.kof.compiler.*;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +18,11 @@ public final class Main {
             case "run" -> run(args);
             case "serve" -> serve(args);
             case "check" -> check(args);
+            case "test" -> test(args);
+            case "bench" -> System.exit(Bench.run(args));
+            case "profile" -> System.exit(Profile.run(args));
+            case "inspect" -> System.exit(Inspect.run(args));
+            case "debug" -> System.exit(KofDebug.run(args));
             case "info" -> info(args);
             case "lsp" -> lsp();
             case "install" -> install(args);
@@ -30,18 +32,65 @@ public final class Main {
     }
 
     private static void run(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [args...]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]"); return; }
         Path file = Path.of(args[1]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
+
+        Target target = Target.JVM;
+        boolean release = false;
+        int argStart = 2;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].startsWith("--target=")) {
+                target = parseTarget(args[i].substring("--target=".length()));
+                argStart = i + 1;
+            } else if (args[i].equals("--target") && i + 1 < args.length) {
+                target = parseTarget(args[i + 1]);
+                argStart = i + 2;
+                i++;
+            } else if (args[i].equals("--release")) {
+                release = true;
+            }
+        }
 
         Path tempDir;
         try { tempDir = Files.createTempDirectory("kof-run-"); }
         catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
 
         CompilerDriver driver = new CompilerDriver();
-        CompilationResult result = driver.compile(file, tempDir, Target.JVM);
+        if (release) driver.setDebugInfoEnabled(false);
+        CompilationResult result = driver.compile(file, tempDir, target);
         for (Diagnostic d : result.diagnostics().getDiagnostics()) System.err.println(d.format());
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
+
+        if (target == Target.JS) {
+            String entry = findJsEntry(tempDir);
+            if (entry == null) {
+                System.err.println("no JS entry point found");
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            // The KofJS target executes the generated module with the embedded
+            // JavaScript engine — no Node.js or external runtime required.
+            // Windows created with kof.ui open in the system webview.
+            int exitCode;
+            String[] programArgs = new String[Math.max(0, args.length - argStart)];
+            for (int i = argStart; i < args.length; i++) {
+                programArgs[i - argStart] = args[i];
+            }
+            try {
+                exitCode = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry),
+                        System.out, System.in, System.err, true, programArgs);
+            } catch (IOException e) {
+                System.err.println("failed to execute: " + e.getMessage());
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            cleanup(tempDir);
+            System.exit(exitCode);
+            return;
+        }
 
         String className = findMainClass(tempDir);
         if (className == null) {
@@ -55,31 +104,52 @@ public final class Main {
         javaArgs.add("-cp");
         javaArgs.add(tempDir.toString());
         javaArgs.add(className);
-        for (int i = 2; i < args.length; i++) javaArgs.add(args[i]);
+        for (int i = argStart; i < args.length; i++) javaArgs.add(args[i]);
+        executeProcess(javaArgs, tempDir);
+    }
 
+    private static Process servedProcess;
+
+    private static void executeProcess(List<String> command, Path tempDir) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(javaArgs);
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.inheritIO();
             Process p = pb.start();
+            servedProcess = p;
             int exitCode = p.waitFor();
-            cleanup(tempDir);
+            if (tempDir != null) cleanup(tempDir);
             System.exit(exitCode);
         } catch (IOException e) {
             System.err.println("failed to execute: " + e.getMessage());
-            cleanup(tempDir);
+            if (tempDir != null) cleanup(tempDir);
             System.exit(1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            cleanup(tempDir);
+            if (tempDir != null) cleanup(tempDir);
             System.exit(1);
         }
     }
 
-    private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native] [--output <dir>]"); return; }
+    private static String findJsEntry(Path dir) {
+        Path defaultEntry = dir.resolve("Default.mjs");
+        if (Files.exists(defaultEntry)) return defaultEntry.toString();
+        try (var s = Files.walk(dir)) {
+            return s.filter(p -> p.toString().endsWith(".mjs"))
+                    .filter(p -> !p.toString().contains("kof-runtime"))
+                    .findFirst()
+                    .map(p -> p.toString())
+                    .orElse(null);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+private static void build(String[] args) {
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]"); return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         Path out = Path.of("build/classes");
+        boolean release = false;
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             if (arg.startsWith("--target=")) {
@@ -92,9 +162,12 @@ public final class Main {
             } else if (arg.equals("--output") && i + 1 < args.length) {
                 out = Path.of(args[i + 1]);
                 i++;
+            } else if (arg.equals("--release")) {
+                release = true;
             }
         }
         CompilerDriver driver = new CompilerDriver();
+        if (release) driver.setDebugInfoEnabled(false);
         List<Path> files = collect(src);
         if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
         boolean ok = true;
@@ -110,6 +183,7 @@ public final class Main {
         return switch (value) {
             case "jvm" -> Target.JVM;
             case "native" -> Target.NATIVE;
+            case "js" -> Target.JS;
             default -> {
                 System.err.println("unknown target: " + value);
                 System.exit(1);
@@ -162,14 +236,23 @@ public final class Main {
 
     private static void printUsage() {
         System.out.println("usage: kof <command>");
-        System.out.println("  build <dir> [--target jvm|native] [--output <dir>]");
-        System.out.println("  run <file.kf> [args...]");
+        System.out.println("  build <dir> [--target jvm|native|js] [--output <dir>] [--release]");
+        System.out.println("  run <file.kf> [--target jvm|native|js] [--release] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
+        System.out.println("  test <file.kf|dir> [--target jvm|native]   run programs, PASS/FAIL by exit code");
+        System.out.println("  bench [paths...] [--target jvm|native|js] [--iterations N] [--warmup N] [--baseline <file>]");
+        System.out.println("                          [--update-baseline <file>] [--threshold <ratio>] [--json] [--quick]");
+        System.out.println("                          [--fail-on-regression]");
+        System.out.println("                          compile, run, validate output, collect metrics, compare baseline");
+        System.out.println("  profile <file.kf> [--target jvm|native|js] [args...]   run + execution metrics (CPU, RSS, GC)");
+        System.out.println("  inspect <file.kf> [--json]   IR statistics: ops before/after optimization");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");
         System.out.println("  version");
+        System.out.println();
+        System.out.println("note: the js target is in development (alpha); it runs on Kof's embedded JS engine");
     }
 
     private static void install(String[] args) {
@@ -240,6 +323,87 @@ public final class Main {
         }
     }
 
+    private static void test(String[] args) {
+        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native]"); System.exit(1); return; }
+        Path src = Path.of(args[1]);
+        Target target = Target.JVM;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].equals("--target") && i + 1 < args.length) {
+                target = parseTarget(args[i + 1]);
+                i++;
+            }
+        }
+        if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
+        List<Path> files = Files.isDirectory(src) ? collect(src) : List.of(src);
+        if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
+        CompilerDriver driver = new CompilerDriver();
+        int passed = 0;
+        int failed = 0;
+        for (Path f : files) {
+            Path tmp;
+            try { tmp = Files.createTempDirectory("kof-test-"); }
+            catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
+            CompilationResult result = driver.compile(f, tmp, target);
+            boolean ok = result.success();
+            StringBuilder output = new StringBuilder();
+            if (ok) {
+                for (Diagnostic d : result.diagnostics().getDiagnostics()) output.append(d.format()).append('\n');
+                if (target == Target.JVM) {
+                    String className = findMainClass(tmp);
+                    if (className == null) {
+                        ok = false;
+                        output.append("no main class found\n");
+                    } else {
+                        try {
+                            ProcessBuilder pb = new ProcessBuilder(javaExecutable(), "-cp", tmp.toString(), className);
+                            pb.redirectErrorStream(true);
+                            Process p = pb.start();
+                            output.append(new String(p.getInputStream().readAllBytes()));
+                            int ec = p.waitFor();
+                            ok = ec == 0;
+                            if (!ok) output.append("exit code: ").append(ec).append('\n');
+                        } catch (IOException | InterruptedException e) {
+                            ok = false;
+                            output.append("failed to execute: ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                } else {
+                    Path bin = tmp.resolve("Default/Main");
+                    if (!Files.exists(bin)) {
+                        ok = false;
+                        output.append("no binary produced\n");
+                    } else {
+                        try {
+                            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+                            pb.redirectErrorStream(true);
+                            Process p = pb.start();
+                            output.append(new String(p.getInputStream().readAllBytes()));
+                            int ec = p.waitFor();
+                            ok = ec == 0;
+                            if (!ok) output.append("exit code: ").append(ec).append('\n');
+                        } catch (IOException | InterruptedException e) {
+                            ok = false;
+                            output.append("failed to execute: ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                }
+            } else {
+                for (Diagnostic d : result.diagnostics().getDiagnostics()) output.append(d.format()).append('\n');
+            }
+            cleanup(tmp);
+            if (ok) {
+                passed++;
+                System.out.println("PASS " + f);
+            } else {
+                failed++;
+                System.out.println("FAIL " + f);
+                System.out.print(output);
+            }
+        }
+        System.out.println(passed + " passed, " + failed + " failed");
+        if (failed > 0) System.exit(1);
+    }
+
     private static void check(String[] args) {
         if (args.length < 2) { System.err.println("usage: kof check <file.kf|dir>"); System.exit(1); return; }
         Path src = Path.of(args[1]);
@@ -290,7 +454,7 @@ public final class Main {
                     + ",\"compiler\":\"" + KofVersion.compiler()
                     + "\",\"runtime\":\"" + KofVersion.runtime()
                     + "\",\"stdlib\":\"" + KofVersion.stdlib()
-                    + "\",\"targets\":[\"jvm\",\"native\"]"
+                    + "\",\"targets\":[\"jvm\",\"native\",\"js\"]"
                     + ",\"lsp\":true"
                     + ",\"editorSupport\":true"
                     + ",\"install\":\"" + jsonEscape(installDir) + "\"}");
@@ -307,7 +471,7 @@ public final class Main {
         System.out.println("Compiler: " + KofVersion.compiler());
         System.out.println("Runtime: " + KofVersion.runtime());
         System.out.println("Stdlib: " + KofVersion.stdlib());
-        System.out.println("Targets: jvm, native");
+        System.out.println("Targets: jvm, native, js (alpha)");
         System.out.println("LSP: available");
         System.out.println("Editor support: available");
         System.out.println("Install: " + installDir);
@@ -387,169 +551,47 @@ public final class Main {
             return;
         }
 
-        try (ServerSocket serverSocket = new ServerSocket(port, 50, java.net.InetAddress.getByName(host))) {
+        try {
+            Class<?> handlerClass = Class.forName(className, true, handlerLoader);
+            boolean hasMain = false;
+            try {
+                handlerClass.getMethod("main", String[].class);
+                hasMain = true;
+            } catch (NoSuchMethodException ignored) {
+            }
+            if (hasMain) {
+                // Kof-native web app (web.app() + app.listen()): the program
+                // runs its own server. Legacy handle(...) apps have no main.
+                handlerLoader.close();
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    System.out.println("\nkof serve shutting down...");
+                    if (servedProcess != null && servedProcess.isAlive()) {
+                        servedProcess.destroy();
+                    }
+                    cleanup(tempDir);
+                }));
+                executeProcess(List.of(javaExecutable(), "-cp", tempDir.toString(), className), tempDir);
+                return;
+            }
+            dev.kof.compiler.KofHttpServer server = new dev.kof.compiler.KofHttpServer(
+                    dev.kof.compiler.ReflectiveHandler.forClass(handlerClass));
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 System.out.println("\nkof serve shutting down...");
-                try { serverSocket.close(); } catch (IOException ignored) {}
+                server.close();
                 try { handlerLoader.close(); } catch (IOException ignored) {}
                 cleanup(tempDir);
             }));
 
             System.out.println("listening for connections...");
-
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    Socket clientSocket = serverSocket.accept();
-                    clientSocket.setSoTimeout(5000);
-                    handleRequest(clientSocket, className, handlerLoader);
-                } catch (IOException e) {
-                    if (!Thread.currentThread().isInterrupted()) {
-                        System.err.println("connection error: " + e.getMessage());
-                    }
-                }
-            }
+            server.serve(host, port);
+        } catch (ClassNotFoundException e) {
+            System.err.println("handler class not found: " + e.getMessage());
+            cleanup(tempDir);
+            System.exit(1);
         } catch (IOException e) {
             System.err.println("server error: " + e.getMessage());
             cleanup(tempDir);
             System.exit(1);
         }
-    }
-
-    private static void handleRequest(Socket clientSocket, String className, URLClassLoader handlerLoader) {
-        try {
-            InputStream in = clientSocket.getInputStream();
-            OutputStream out = clientSocket.getOutputStream();
-
-            StringBuilder request = new StringBuilder();
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            boolean headersComplete = false;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                request.append(new String(buffer, 0, bytesRead));
-                if (request.toString().contains("\r\n\r\n")) {
-                    headersComplete = true;
-                    break;
-                }
-            }
-
-            if (!headersComplete) {
-                sendResponse(out, 400, "Bad Request", "Invalid HTTP request");
-                clientSocket.close();
-                return;
-            }
-
-            String firstLine = request.toString().split("\r\n")[0];
-            String[] parts = firstLine.split(" ");
-            if (parts.length < 2) {
-                sendResponse(out, 400, "Bad Request", "Invalid HTTP request");
-                clientSocket.close();
-                return;
-            }
-
-            String method = parts[0];
-            String path = parts[1];
-
-            String body = "";
-            int headerEnd = request.toString().indexOf("\r\n\r\n");
-            if (headerEnd >= 0) {
-                body = request.substring(headerEnd + 4);
-            }
-
-            List<String> headers = new ArrayList<>();
-            String[] headerLines = request.toString().split("\r\n");
-            for (int i = 1; i < headerLines.length; i++) {
-                if (headerLines[i].isEmpty()) break;
-                headers.add(headerLines[i]);
-            }
-
-            String response = invokeHandler(className, method, path, body, headers, handlerLoader);
-            sendRawResponse(out, response);
-            clientSocket.close();
-        } catch (Exception e) {
-            try {
-                sendResponse(clientSocket.getOutputStream(), 500, "Internal Server Error", e.getMessage());
-                clientSocket.close();
-            } catch (IOException ignored) {}
-        }
-    }
-
-    private static String invokeHandler(String className, String method, String path, String body, List<String> headers,
-                                    URLClassLoader handlerLoader) {
-        try {
-            Class<?> clazz = Class.forName(className, true, handlerLoader);
-            Object instance = null;
-            try {
-                instance = clazz.getDeclaredConstructor().newInstance();
-            } catch (NoSuchMethodException e) {
-                // top-level functions compile to static methods on a class
-                // without a public constructor; handlers are invoked statically.
-            }
-
-            // Try handle(method, path, body) first
-            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                if (m.getName().equals("handle") && m.getParameterCount() == 3) {
-                    Class<?>[] params = m.getParameterTypes();
-                    if (params[0] == String.class && params[1] == String.class && params[2] == String.class
-                            && (java.lang.reflect.Modifier.isStatic(m.getModifiers()) || instance != null)) {
-                        Object result = m.invoke(instance, method, path, body);
-                        if (result instanceof String s) {
-                            return buildHttpResponse(200, "OK", s);
-                        }
-                    }
-                }
-            }
-
-            // Try handle() with no args
-            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                if (m.getName().equals("handle") && m.getParameterCount() == 0
-                        && (java.lang.reflect.Modifier.isStatic(m.getModifiers()) || instance != null)) {
-                    Object result = m.invoke(instance);
-                    if (result instanceof String s) {
-                        return buildHttpResponse(200, "OK", s);
-                    }
-                }
-            }
-
-            // Try method-specific handlers: get(), post(), etc.
-            String handlerName = method.toLowerCase();
-            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                if (m.getName().equals(handlerName) && m.getParameterCount() == 0
-                        && (java.lang.reflect.Modifier.isStatic(m.getModifiers()) || instance != null)) {
-                    Object result = m.invoke(instance);
-                    if (result instanceof String s) {
-                        return buildHttpResponse(200, "OK", s);
-                    }
-                }
-            }
-
-            return buildHttpResponse(200, "OK", "Hello from Kof!");
-        } catch (Exception e) {
-            return buildHttpResponse(500, "Internal Server Error", "Handler error: " + e.getMessage());
-        }
-    }
-
-    private static String buildHttpResponse(int status, String statusText, String body) {
-        byte[] bodyBytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        String contentType = "text/plain; charset=utf-8";
-        if (body.startsWith("{") || body.startsWith("[")) {
-            contentType = "application/json; charset=utf-8";
-        }
-        return "HTTP/1.1 " + status + " " + statusText + "\r\n"
-                + "Content-Type: " + contentType + "\r\n"
-                + "Content-Length: " + bodyBytes.length + "\r\n"
-                + "Connection: close\r\n"
-                + "\r\n"
-                + body;
-    }
-
-    private static void sendResponse(OutputStream out, int status, String statusText, String body) throws IOException {
-        String response = buildHttpResponse(status, statusText, body);
-        out.write(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        out.flush();
-    }
-
-    private static void sendRawResponse(OutputStream out, String response) throws IOException {
-        out.write(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        out.flush();
     }
 }

@@ -36,8 +36,9 @@ Kof não é apenas uma linguagem para a JVM. É uma linguagem que pode compilar 
 Isso significa que você pode escrever o mesmo código Kof e compilar para:
 - **JVM** — bytecode `.class` que roda em qualquer JVM
 - **Nativo** — executável ELF x86-64 que roda direto no Linux
-- **Script** — execução interativa pelo runtime (futuro)
-- **Web** — código JavaScript para o navegador (futuro)
+- **KofJS** — ES Modules (ECMAScript 2022+) executados na engine JS
+  embarcada (sem Node); `kof.ui` renderiza em webview nativo ou browser.
+  Ver [capítulo 37](37-kofjs.md).
 
 ## A comparação visual
 
@@ -134,9 +135,10 @@ Kof não tenta ser:
 - uma linguagem funcional
 - uma linguagem para sistemas distribuídos
 - uma linguagem para machine learning
-- uma linguagem para web frontend (isso seria KofJS, um projeto futuro)
 
-Kof tenta ser a melhor forma de escrever código orientado a objetos para a JVM e, agora, também para binários nativos.
+Kof tenta ser a melhor forma de escrever código orientado a objetos para a
+JVM, para binários nativos e — via KofJS — para a web (frontend com
+`kof.ui` + `kof run --target=js`; ver [capítulo 37](37-kofjs.md)).
 
 ## Por que "Kof"
 

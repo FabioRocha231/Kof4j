@@ -1,0 +1,10 @@
+main() {
+    var total = 0
+    for (var i = 0; i < 20; i++) {
+        var hash = passwords.hash("senha-segura-" + i)
+        if (passwords.verify("senha-segura-" + i, hash)) {
+            total = total + 1
+        }
+    }
+    println(total)
+}

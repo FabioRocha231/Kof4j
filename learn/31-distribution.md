@@ -5,7 +5,7 @@
 A partir do 0.0.4, o Kof se comporta como uma linguagem distribuível:
 
 ```text
-Kof 0.0.4-alpha
+Kof 0.0.5-alpha
         ├── Compiler
         ├── CLI
         ├── Runtime
@@ -24,8 +24,10 @@ separadamente**.
 ```text
 kof/
 ├── bin/
-│   ├── kof          # launcher (Unix)
-│   └── kof.bat      # launcher (Windows)
+│   ├── kof              # launcher (Unix)
+│   ├── kof.bat          # launcher (Windows)
+│   └── kof-webview      # webview nativo Linux (WebKitGTK embutido) —
+│                        #   usado por `kof run --target=js` para kof.ui
 ├── lib/
 │   └── kof.jar      # CLI + compiler + tooling (autocontido)
 ├── jdk/             # OpenJDK embutido (pacote oficial)
@@ -34,6 +36,10 @@ kof/
 ├── docs/
 └── VERSION
 ```
+
+O `kof-webview` é compilado por `scripts/build-webview.sh` (Linux, requer
+`libwebkit2gtk-4.1`); sem ele, `kof run --target=js` abre no browser do
+sistema.
 
 ## JDK embutido
 
@@ -74,8 +80,8 @@ runtime absorvem isso.
 ## Instalação
 
 ```bash
-tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
 kof info
 ```
 

@@ -1,6 +1,25 @@
-// web.kf — Web Server Example
+// Kof web server example — run with:
+//   kof serve web.kf --port 8080
+//
+// The server dispatches to the top-level `handle` function.
+// Variants supported by kof serve:
+//   handle(method, path, body, query, headers)  (5 args)
+//   handle(method, path, body, query)           (4 args)
+//   handle(method, path, body)                  (3 args)
+//   handle()                                    (no args)
+//   get() / post() / ...                        (HTTP-method handlers)
+//
+// Returning null means 404 Not Found.
 
-main() {
-    println("Starting web server...")
-    println("Server ready at http://localhost:8080")
+handle(String method, String path, String body, String query, String headers): String {
+    if (path == "/") {
+        return "{\"msg\": \"kof serve online\", \"version\": \"0.0.5\"}"
+    }
+    if (path == "/echo") {
+        return "{\"method\": " + json.encode(method) + ", \"body\": " + body + "}"
+    }
+    if (path == "/users") {
+        return json.encode(listOf("ana", "mel", "pedro"))
+    }
+    return null
 }

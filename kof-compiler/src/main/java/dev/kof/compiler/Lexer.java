@@ -49,6 +49,8 @@ class Lexer {
         KEYWORDS.put("try", TokenType.TRY);
         KEYWORDS.put("catch", TokenType.CATCH);
         KEYWORDS.put("finally", TokenType.FINALLY);
+        KEYWORDS.put("spawn", TokenType.SPAWN);
+        KEYWORDS.put("assert", TokenType.ASSERT);
         KEYWORDS.put("instanceof", TokenType.INSTANCEOF);
         KEYWORDS.put("var", TokenType.VAR);
         KEYWORDS.put("val", TokenType.VAL);
@@ -225,8 +227,28 @@ class Lexer {
             case '\'' -> '\'';
             case '"' -> '"';
             case '0' -> '\0';
+            case 'u' -> readUnicodeEscape();
             default -> c;
         };
+    }
+
+    private char readUnicodeEscape() {
+        if (pos + 4 > source.length()) {
+            diagnostics.error(file, line, column, 1, "Incomplete unicode escape (expected \\uXXXX)", "LEX006");
+            return '\0';
+        }
+        String hex = source.substring(pos, pos + 4);
+        int code;
+        try {
+            code = Integer.parseInt(hex, 16);
+        } catch (NumberFormatException e) {
+            diagnostics.error(file, line, column, 4, "Invalid unicode escape: \\u" + hex, "LEX007");
+            pos += 4;
+            return '\0';
+        }
+        pos += 4;
+        column += 4;
+        return (char) code;
     }
 
     private void readNumber() {
@@ -236,6 +258,20 @@ class Lexer {
         boolean isLong = false;
         boolean isFloat = false;
         boolean isDouble = false;
+        boolean isHex = false;
+        // hexadecimal literal: 0x...
+        if (pos + 1 < source.length() && source.charAt(pos) == '0'
+                && (source.charAt(pos + 1) == 'x' || source.charAt(pos + 1) == 'X')) {
+            isHex = true;
+            advance();
+            advance();
+            while (pos < source.length() && isHexDigit(source.charAt(pos))) {
+                advance();
+            }
+            String hexValue = source.substring(startOffset, pos);
+            addToken(TokenType.INT_LITERAL, hexValue, startLine, startCol, startOffset, pos - startOffset);
+            return;
+        }
         while (pos < source.length() && Character.isDigit(source.charAt(pos))) {
             advance();
         }
@@ -283,7 +319,19 @@ class Lexer {
         addToken(type, value, startLine, startCol, startOffset, pos - startOffset);
     }
 
+    private boolean isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
     private boolean isIntegerLiteral(String value) {
+        if (value.startsWith("0x") || value.startsWith("0X")) {
+            try {
+                Long.parseLong(value.substring(2), 16);
+                return true;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
         try {
             Integer.parseInt(value);
             return true;

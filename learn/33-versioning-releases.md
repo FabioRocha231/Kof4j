@@ -18,7 +18,7 @@ pequenos ajustes sem mudança arquitetural relevante.
 O Kof está em `0.0.x` (Alpha). Cada release carrega o sufixo:
 
 ```text
-0.0.4-alpha
+0.0.5-alpha
 ```
 
 Nada é chamado de stable. A evolução pretendida: Alpha → Beta → Release

@@ -63,19 +63,20 @@ public interface Backend {
 Implementations:
 - `JvmBackend` - generates `.class` files via ASM
 - `NativeBackend` - generates ELF x86-64 via assembly + as + ld
+- `JsBackend` - generates ES Modules (ECMAScript 2022+), executed by the
+  embedded GraalJS engine (KofJsRunner)
 
 ### Target Enum
 
 ```java
 public enum Target {
     JVM,
-    NATIVE
+    NATIVE,
+    JS
 }
 ```
 
-Future targets:
-- `WEB` (KofJS)
-- `SCRIPT` (KofScript)
+`kof run`/`kof build --target js` executa JS sem Node.js (runtime embarcado).
 
 ## Type System
 
@@ -83,13 +84,13 @@ The type system supports:
 
 - Primitive types: `bool`, `byte`, `short`, `int`, `long`, `float`, `double`, `char`
 - Reference types: classes, interfaces, enums, records
-- Generic types: `List<T>`, `Map<K, V>` (future)
-- Type parameters: `<T>`, `<T extends Comparable<T>>` (future)
+- Generic types: `List<T>` (implemented, erasure); `Map<K, V>` (future)
+- Type parameters: `<T>` (implemented, erasure); bounds (future)
 - Wildcards: `?`, `? extends T`, `? super T` (future)
 - Arrays: `int[]`, `String[]`
 - Null types
 - Void type
-- Function types (future)
+- Function types: `FunctionType` (lambdas, implemented)
 
 ### Type Representation
 
@@ -210,6 +211,30 @@ Implementation:
 - Compiles to JVM bytecode in temp directory
 - Executes via `java -cp`
 - Cleans up temp files
+
+## Standard Library (compile-time dispatch)
+
+A Standard Library do Kof é implementada como **tabelas de dispatch
+compile-time** (docs/stdlib.md): cada módulo é um descriptor no compilador
+(`KofIo.java`, `KofWeb.java`, `KofSecurity.java`, `KofUi.java`) que mapeia a
+intenção do programador para funções de runtime `kof_*`:
+
+```text
+Kof source
+  ↓
+SemanticAnalyzer   → tipos das chamadas
+CompilerDriver     → lowering para KofCall(kof_*)
+  ├── JvmRuntime   → KofRuntime.java gerado (javax.crypto, java.nio...)
+  ├── NativeRuntime→ assembly x86-64 (syscalls, sem libc)
+  └── JsBackend    → kof-runtime.mjs (JS puro + kof_platform)
+```
+
+Gaps de target produzem **diagnósticos claros em compile-time** (SECN00x,
+CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
+
+Módulos: `kof.core`, `kof.collections`, `kof.io`, `kof.time`, `kof.json`,
+`kof.http`, `kof.web`, `kof.security`, `kof.concurrent`, `kof.test`,
+`kof.cli`. Estado completo em docs/stdlib.md.
 
 ## Diagnostics
 

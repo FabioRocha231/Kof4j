@@ -11,18 +11,19 @@ A CLI é a ferramenta central da plataforma Kof.
 | `kof run <file.kf>` | Compila e executa |
 | `kof serve <file.kf>` | Web server HTTP básico |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
+| `kof test <file.kf\|dir>` | Roda programas e reporta PASS/FAIL pelo exit code |
 | `kof info [--json]` | Relatório do ambiente |
 | `kof lsp` | Language Server (stdio, LSP 3.x) |
 | `kof version` | Versão da plataforma |
 
-Planejados: `kof test` (test runner), `kof fmt` (formatter).
+Planejado: `kof fmt` (formatter).
 
 ## `kof info`
 
 Diagnóstico oficial do ambiente — para usuários e suporte:
 
 ```text
-Kof 0.0.4-alpha
+Kof 0.0.5-alpha
 Tooling API: 21
 OS: linux
 Arch: x86_64
@@ -31,7 +32,7 @@ JVM: Eclipse Adoptium 25.0.4 (embedded)
 Compiler: 0.0.4
 Runtime: 0.0.4
 Stdlib: 0.0.4
-Targets: jvm, native
+Targets: jvm, native, js
 Install: /opt/kof
 ```
 

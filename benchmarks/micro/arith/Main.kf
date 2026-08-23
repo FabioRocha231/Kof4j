@@ -1,0 +1,7 @@
+main() {
+    var total = 0l
+    for (var i = 0; i < 20000000; i++) {
+        total = total + i
+    }
+    println(total)
+}

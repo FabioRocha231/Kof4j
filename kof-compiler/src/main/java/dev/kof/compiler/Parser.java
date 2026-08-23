@@ -42,8 +42,12 @@ class Parser {
         String returnType = "void";
         String name;
         if ((check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType())
-                && !checkNext(TokenType.LPAREN) && !checkNext(TokenType.LESS)) {
+                && !checkNext(TokenType.LPAREN)
+                && (isGenericReturnTypeAhead() || !checkNext(TokenType.LESS))) {
             returnType = advance().value();
+            if (check(TokenType.LESS)) {
+                returnType = returnType + consumeGenericTypeArgs();
+            }
             name = expectId("Expected function name", "PARSE010");
         } else {
             name = expectId("Expected function name", "PARSE010");
@@ -73,6 +77,48 @@ class Parser {
             expectSemicolon();
         }
         return new FunctionDeclarationNode(p, mods, returnType, name, params, thrown, typeParams, body);
+    }
+
+    /**
+     * True when the current token is a generic return type: IDENTIFIER '<'
+     * type args '>' IDENTIFIER '(' — e.g. "List<Int> ints(".
+     */
+    private boolean isGenericReturnTypeAhead() {
+        if (!checkNext(TokenType.LESS)) return false;
+        int depth = 0;
+        for (int i = 1; i + 1 < tokens.size() - pos; i++) {
+            TokenType t = tokens.get(pos + i).type();
+            if (t == TokenType.LESS) depth++;
+            else if (t == TokenType.GREATER) {
+                depth--;
+                if (depth == 0) {
+                    return tokens.get(pos + i + 1).type() == TokenType.IDENTIFIER
+                            && tokens.get(pos + i + 2).type() == TokenType.LPAREN;
+                }
+            } else if (t == TokenType.EOF) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Consumes the generic type arguments starting at the current LESS token
+     * and returns their source text, e.g. "<Int, String>".
+     */
+    private String consumeGenericTypeArgs() {
+        StringBuilder sb = new StringBuilder();
+        int depth = 0;
+        while (!atEnd()) {
+            Token t = advance();
+            sb.append(t.value());
+            if (t.type() == TokenType.LESS) depth++;
+            else if (t.type() == TokenType.GREATER) {
+                depth--;
+                if (depth == 0) break;
+            }
+        }
+        return sb.toString();
     }
 
     private List<String> parseTypeParameters() {
@@ -168,7 +214,7 @@ class Parser {
         return mods;
     }
 
-    private ClassDeclarationNode parseClassDeclaration(List<String> mods) {
+    private AstNode parseClassDeclaration(List<String> mods) {
         advance();
         String name = expectId("Expected class name", "PARSE008");
         currentClassName = name;
@@ -179,6 +225,10 @@ class Parser {
             superClass = parseTypeRef();
         }
         List<String> ifaces = parseImplementedInterfaces();
+
+        if (check(TokenType.LPAREN)) {
+            return parseRecordBody(name, mods, superClass, ifaces, typeParams);
+        }
         List<AstNode> members = new ArrayList<>();
         if (check(TokenType.LBRACE)) {
             advance();
@@ -216,6 +266,18 @@ class Parser {
     private RecordDeclarationNode parseRecordDeclaration(List<String> mods) {
         advance();
         String name = expectId("Expected record name", "PARSE012");
+        List<String> typeParams = parseTypeParameters();
+        String superClass = null;
+        if (check(TokenType.EXTENDS)) {
+            advance();
+            superClass = parseTypeRef();
+        }
+        List<String> ifaces = parseImplementedInterfaces();
+        return parseRecordBody(name, mods, superClass, ifaces, typeParams);
+    }
+
+    private RecordDeclarationNode parseRecordBody(String name, List<String> mods, String superClass,
+                                                  List<String> ifaces, List<String> typeParams) {
         List<RecordComponentNode> components = new ArrayList<>();
         if (check(TokenType.LPAREN)) {
             advance();
@@ -228,12 +290,6 @@ class Parser {
             }
             expect(TokenType.RPAREN, "Expected ')' after record components", "PARSE013");
         }
-        String superClass = null;
-        if (check(TokenType.EXTENDS)) {
-            advance();
-            superClass = parseTypeRef();
-        }
-        List<String> ifaces = parseImplementedInterfaces();
         List<AstNode> members = new ArrayList<>();
         if (check(TokenType.LBRACE)) {
             advance();
@@ -263,7 +319,12 @@ class Parser {
         List<String> mods = parseModifiers();
         String type = parseTypeRef();
         String name = expectId("Expected component name", "PARSE015");
-        return new RecordComponentNode(pos(), mods, type, name);
+        ExpressionNode init = null;
+        if (check(TokenType.EQUAL)) {
+            advance();
+            init = parseExpression();
+        }
+        return new RecordComponentNode(pos(), mods, type, name, init);
     }
 
     private AstNode parseClassMember() {
@@ -392,9 +453,26 @@ class Parser {
 
     private FormalParameterNode parseFormalParameter() {
         List<String> mods = parseModifiers();
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            // name: Type — annotation form (idiomatic for main(args: List<String>))
+            String name = advance().value();
+            advance();
+            String type = parseTypeRef();
+            ExpressionNode defaultValue = null;
+            if (check(TokenType.EQUAL)) {
+                advance();
+                defaultValue = parseExpression();
+            }
+            return new FormalParameterNode(pos(), mods, type, name, defaultValue);
+        }
         String type = parseTypeRef();
         String name = expectId("Expected parameter name", "PARSE023");
-        return new FormalParameterNode(pos(), mods, type, name);
+        ExpressionNode defaultValue = null;
+        if (check(TokenType.EQUAL)) {
+            advance();
+            defaultValue = parseExpression();
+        }
+        return new FormalParameterNode(pos(), mods, type, name, defaultValue);
     }
 
     private List<String> parseThrows() {
@@ -441,6 +519,30 @@ class Parser {
         }
         if (check(TokenType.THROW)) {
             return parseThrowStatement();
+        }
+        if (check(TokenType.SPAWN)) {
+            SourcePosition p = pos();
+            advance();
+            ExpressionNode expr = parseExpression();
+            expectSemicolon();
+            return new SpawnStmt(p, expr);
+        }
+        if (check(TokenType.ASSERT)) {
+            SourcePosition p = pos();
+            advance();
+            expect(TokenType.LPAREN, "Expected '('", "PARSE011");
+            ExpressionNode condition = parseExpression();
+            String message = null;
+            if (check(TokenType.COMMA)) {
+                advance();
+                ExpressionNode msgExpr = parseExpression();
+                if (msgExpr instanceof LiteralExpr lit && lit.kind() == ConcreteLiteralKind.STRING) {
+                    message = lit.value();
+                }
+            }
+            expect(TokenType.RPAREN, "Expected ')'", "PARSE040");
+            expectSemicolon();
+            return new AssertStmt(p, condition, message);
         }
         if (check(TokenType.TRY)) {
             return parseTryStatement();
@@ -490,6 +592,10 @@ class Parser {
             advance();
             return new ReturnStmt(p, null);
         }
+        if (check(TokenType.RBRACE) || atEnd()) {
+            // bare return: `return` followed by the end of the block
+            return new ReturnStmt(p, null);
+        }
         ExpressionNode value = parseExpression();
         expectSemicolon();
         return new ReturnStmt(p, value);
@@ -536,6 +642,17 @@ class Parser {
         SourcePosition p = pos();
         advance();
         expect(TokenType.LPAREN, "Expected '(' after 'for'", "PARSE032");
+        if (check(TokenType.VAR, TokenType.VAL) && checkNext(TokenType.IDENTIFIER)
+                && pos + 2 < tokens.size() && tokens.get(pos + 2).is(TokenType.IDENTIFIER)
+                && "in".equals(tokens.get(pos + 2).value())) {
+            advance();
+            String varName = advance().value();
+            advance();
+            ExpressionNode collection = parseExpression();
+            expect(TokenType.RPAREN, "Expected ')'", "PARSE035");
+            StatementNode body = parseStatement();
+            return new ForInStmt(p, varName, collection, body);
+        }
         StatementNode init;
         if (check(TokenType.SEMICOLON)) {
             advance();
@@ -637,6 +754,11 @@ class Parser {
             type = parseTypeRef();
         }
         String name = expectId("Expected variable name", "PARSE037");
+        if (check(TokenType.COLON)) {
+            // var name: Type = value — explicit type annotation
+            advance();
+            type = parseTypeRef();
+        }
         ExpressionNode init = null;
         if (check(TokenType.EQUAL)) {
             advance();
@@ -733,8 +855,24 @@ class Parser {
         while (true) {
             if (check(TokenType.DOT)) {
                 advance();
-                String field = expectId("Expected field name", "PARSE039");
-                expr = new FieldAccessExpr(pos(), expr, field);
+                String field;
+                if (check(TokenType.IDENTIFIER)) {
+                    field = advance().value();
+                } else if (isTypeKeywordField()) {
+                    // type keywords are valid method names after a dot
+                    // (config.int, user.toString, ...)
+                    field = advance().value();
+                } else {
+                    field = expectId("Expected field name", "PARSE039");
+                }
+                if (check(TokenType.LBRACE)) {
+                    // trailing lambda call: receiver.method { ... } — the
+                    // block is the final argument of the method call
+                    expr = new MethodCallExpr(pos(), expr, field, List.of(),
+                            List.of(new LambdaExpr(pos(), List.of(), parseBlock())));
+                } else {
+                    expr = new FieldAccessExpr(pos(), expr, field);
+                }
             } else if (check(TokenType.LBRACKET)) {
                 SourcePosition p = pos();
                 advance();
@@ -743,6 +881,9 @@ class Parser {
                 expr = new ArrayAccessExpr(p, expr, index);
             } else if (check(TokenType.LPAREN)) {
                 List<ExpressionNode> args = parseArguments();
+                if (check(TokenType.LBRACE)) {
+                    args.add(new LambdaExpr(pos(), List.of(), parseBlock()));
+                }
                 if (expr instanceof IdentifierExpr ie) {
                     expr = new MethodCallExpr(pos(), null, ie.name(), List.of(), args);
                 } else if (expr instanceof FieldAccessExpr fa) {
@@ -754,15 +895,22 @@ class Parser {
                     && looksLikeGenericCall()) {
                 List<String> typeArgs = parseCallTypeArguments();
                 List<ExpressionNode> args = parseArguments();
+                if (check(TokenType.LBRACE)) {
+                    args.add(new LambdaExpr(pos(), List.of(), parseBlock()));
+                }
                 if (expr instanceof IdentifierExpr ie3) {
                     expr = new MethodCallExpr(pos(), null, ie3.name(), typeArgs, args);
                 } else if (expr instanceof FieldAccessExpr fa2) {
                     expr = new MethodCallExpr(pos(), fa2.receiver(), fa2.fieldName(), typeArgs, args);
                 }
-            } else if (check(TokenType.PLUS_PLUS)) {
+            } else if (check(TokenType.PLUS_PLUS)
+                    && (expr instanceof IdentifierExpr || expr instanceof FieldAccessExpr
+                    || expr instanceof ArrayAccessExpr)) {
                 advance();
                 expr = new UnaryExpr(pos(), "++", expr, false);
-            } else if (check(TokenType.MINUS_MINUS)) {
+            } else if (check(TokenType.MINUS_MINUS)
+                    && (expr instanceof IdentifierExpr || expr instanceof FieldAccessExpr
+                    || expr instanceof ArrayAccessExpr)) {
                 advance();
                 expr = new UnaryExpr(pos(), "--", expr, false);
             } else {
@@ -944,13 +1092,7 @@ class Parser {
         return "Object";
     }
 
-    /**
-     * Disambiguation: a '<' after an identifier may be a less-than comparison or
-     * the start of call type arguments (e.g. listOf<Int>(...)). We only treat it
-     * as generic call when the token stream between '<' and the matching '>'
-     * consists solely of type-like tokens (identifiers, primitives, '.', ',')
-     * and the '>' is immediately followed by '('.
-     */
+
     private boolean looksLikeGenericCall() {
         if (!check(TokenType.LESS)) return false;
         int i = pos + 1;
@@ -1135,6 +1277,13 @@ class Parser {
         if (check(TokenType.IDENTIFIER)) return advance().value();
         diagnostics.error(file, peek().line(), peek().column(), peek().length(), message, code);
         return "error";
+    }
+
+    /** Type keywords are valid as field/method names after a dot (config.int). */
+    private boolean isTypeKeywordField() {
+        return check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE,
+                TokenType.DOUBLE_TYPE, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE,
+                TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE);
     }
 
     private SourcePosition pos() {

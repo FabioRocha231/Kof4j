@@ -9,14 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * JVM End-to-End execution tests.
- *
- * These tests compile Kof source to JVM bytecode and then actually EXECUTE
- * the generated classes with `java -cp`, asserting on stdout. This is the
- * missing counterpart to NativeE2ETest — the JVM backend must execute the
- * real program, not merely compile it.
- */
+
 class JvmE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();

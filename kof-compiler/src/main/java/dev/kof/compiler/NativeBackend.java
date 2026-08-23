@@ -8,10 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Native Backend — transforms Kof IR into x86-64 Linux ELF assembly.
- * Uses System V AMD64 ABI calling convention.
- */
+
 public class NativeBackend implements Backend {
 
     private final Map<LabelId, String> labelMap = new HashMap<>();
@@ -253,6 +250,9 @@ public class NativeBackend implements Backend {
         currentClass = clazz;
 
         String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
+        if ("<init>".equals(method.name())) {
+            mangled += "_" + method.parameterTypes().size();
+        }
         functionMangleMap.put(method.name(), mangled);
         sb.append("\n.globl ").append(mangled).append("\n");
         sb.append(".type ").append(mangled).append(", @function\n");
@@ -377,6 +377,22 @@ public class NativeBackend implements Backend {
             case KofCall kc -> emitCall(sb, kc);
             case KofNewObject no -> emitNewObject(sb, no);
             case KofDup dup -> sb.append("    movq (%rsp), %rax\n    pushq %rax\n");
+            case KofDupX1 x1 -> sb.append("""
+                    movq (%rsp), %rax
+                    movq 8(%rsp), %rbx
+                    pushq %rax
+                    pushq %rbx
+                    pushq %rax
+                """.stripIndent());
+            case KofDupX2 x2 -> sb.append("""
+                    movq (%rsp), %rax
+                    movq 8(%rsp), %rbx
+                    movq 16(%rsp), %rcx
+                    pushq %rax
+                    pushq %rcx
+                    pushq %rbx
+                    pushq %rax
+                """.stripIndent());
             case KofPop pop -> sb.append("    addq $8, %rsp\n");
             case KofGetStatic gs -> { }
             case KofPutStatic ps -> sb.append("    addq $8, %rsp\n");
@@ -538,7 +554,7 @@ public class NativeBackend implements Backend {
             sb.append("    sete %al\n");
             sb.append("    movzbl %al, %eax\n");
         }
-        // Widening conversions (I2L, I2F, ...) are no-ops: native values are 64-bit slots.
+
         sb.append("    pushq %rax\n");
     }
 
@@ -560,7 +576,7 @@ public class NativeBackend implements Backend {
 
     private void emitCall(StringBuilder sb, KofCall kc) {
         if ("kof_box".equals(kc.methodName()) || "kof_unbox".equals(kc.methodName())) {
-            // Erasure box/unbox are JVM-only concerns; native values are 64-bit slots.
+
             return;
         }
         if (kc.kind() == KofCallKind.INSTANCE && "println".equals(kc.methodName())) {
@@ -617,9 +633,12 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.INSTANCE && "substring".equals(kc.methodName())) {
             int argCount = kc.parameterTypes().size();
-            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
-            for (int i = argCount - 1; i >= 0; i--) {
-                sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+            if (argCount == 1) {
+                sb.append("    popq %rsi\n");
+                sb.append("    xorq %rdx, %rdx\n");
+            } else {
+                sb.append("    popq %rdx\n");
+                sb.append("    popq %rsi\n");
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
@@ -849,7 +868,7 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR) {
             if (kc.ownerType() instanceof Type.ClassType ct) {
-                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>");
+                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>") + "_" + kc.parameterTypes().size();
             }
         }
         if (kc.ownerType() instanceof Type.ClassType ct) {

@@ -19,9 +19,9 @@ Plataformas:
 
 | Plataforma | Artefato |
 |-----------|----------|
-| Linux x86_64 | `kof-0.0.4-alpha-linux-x86_64.tar.gz` |
-| Windows x86_64 | `kof-0.0.4-alpha-windows-x86_64.zip` |
-| macOS x86_64 | `kof-0.0.4-alpha-macos-x86_64.tar.gz` |
+| Linux x86_64 | `kof-0.0.5-alpha-linux-x86_64.tar.gz` |
+| Windows x86_64 | `kof-0.0.5-alpha-windows-x86_64.zip` |
+| macOS x86_64 | `kof-0.0.5-alpha-macos-x86_64.tar.gz` |
 
 ARM64 (Linux/macOS/Windows) é planejado para versões futuras.
 
@@ -40,14 +40,14 @@ sha256sum -c SHA256SUMS
 ### Linux / macOS
 
 ```bash
-tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
 kof version
 ```
 
 ### Windows
 
-Extraia o zip e adicione `kof-0.0.4-alpha-windows-x86_64\bin` ao `PATH`.
+Extraia o zip e adicione `kof-0.0.5-alpha-windows-x86_64\bin` ao `PATH`.
 
 ```bat
 kof version

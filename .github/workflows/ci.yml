@@ -32,8 +32,41 @@ jobs:
           scripts/bump-version.sh
           git diff --exit-code
 
+      - name: Install native webview deps (Linux)
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev
+
+      - name: Build native webview shell
+        run: scripts/build-webview.sh
+
       - name: Test
         run: mvn clean test
 
+      - name: Golden tests (jvm + native)
+        run: tests/run-golden.sh
+
+      - name: Integration tests (CLI + serve)
+        run: tests/run-integration.sh
+
       - name: Package check
         run: mvn clean package -DskipTests
+
+  multiplatform:
+    name: kof.io multiplatform (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: kof.io E2E over the real filesystem
+        shell: bash
+        run: mvn test -pl kof-compiler -am -Dtest=IoE2ETest -Dsurefire.failIfNoSpecifiedTests=false

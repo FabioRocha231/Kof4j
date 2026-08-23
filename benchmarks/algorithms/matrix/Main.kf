@@ -1,0 +1,23 @@
+main() {
+    var n = 80
+    var a = new Int[n * n]
+    var b = new Int[n * n]
+    var c = new Int[n * n]
+    for (var i = 0; i < n; i++) {
+        for (var j = 0; j < n; j++) {
+            a[i * n + j] = i + j
+            b[i * n + j] = i - j
+        }
+    }
+    for (var i = 0; i < n; i++) {
+        for (var j = 0; j < n; j++) {
+            var acc = 0
+            for (var k = 0; k < n; k++) {
+                acc = acc + a[i * n + k] * b[k * n + j]
+            }
+            c[i * n + j] = acc
+        }
+    }
+    println(c[0])
+    println(c[n * n - 1])
+}

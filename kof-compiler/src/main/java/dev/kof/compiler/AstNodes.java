@@ -37,7 +37,8 @@ record RecordDeclarationNode(SourcePosition position, String name, List<String> 
                              List<? extends AstNode> members) implements TypeDeclarationNode {
 }
 
-record RecordComponentNode(SourcePosition position, List<String> modifiers, String type, String name) implements AstNode {
+record RecordComponentNode(SourcePosition position, List<String> modifiers, String type, String name,
+                            ExpressionNode initializer) implements AstNode {
 }
 
 sealed interface MemberNode extends AstNode {
@@ -59,7 +60,11 @@ record ConstructorDeclarationNode(SourcePosition position, List<String> modifier
 }
 
 record FormalParameterNode(SourcePosition position, List<String> modifiers, String type,
-                           String name) implements AstNode {
+                           String name, ExpressionNode defaultExpression) implements AstNode {
+
+    FormalParameterNode(SourcePosition position, List<String> modifiers, String type, String name) {
+        this(position, modifiers, type, name, null);
+    }
 }
 
 sealed interface ExpressionNode extends AstNode {
@@ -141,11 +146,30 @@ record ForStmt(SourcePosition position, StatementNode init, ExpressionNode condi
                ExpressionNode update, StatementNode body) implements StatementNode {
 }
 
+record ForInStmt(SourcePosition position, String varName, ExpressionNode collection,
+                 StatementNode body) implements StatementNode {
+}
+
 record VarDeclStmt(SourcePosition position, String type, String name,
                    ExpressionNode initializer) implements StatementNode {
 }
 
 record ThrowStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
+}
+
+/**
+ * SpawnStmt — runs the given call (or block) as a concurrent task.
+ * The program waits for spawned tasks before exiting.
+ */
+record SpawnStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
+}
+
+/**
+ * AssertStmt — assert(condition) or assert(condition, "message").
+ * Throws "assertion failed" (or the given message) when the condition
+ * is false. The failure exit code powers `kof test`.
+ */
+record AssertStmt(SourcePosition position, ExpressionNode condition, String message) implements StatementNode {
 }
 
 record BreakStmt(SourcePosition position) implements StatementNode {

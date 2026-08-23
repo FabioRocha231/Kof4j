@@ -105,8 +105,16 @@ Map<String, Integer> map = new HashMap<>();
 
 ### Kof
 ```kof
-var list = new String[0]  // arrays (collections coming soon)
+var list = listOf("hello")          // List<String>
+var list2 = new List<Int>()         // ou new ArrayList<Int>()
+list2.add(1)
+list.add("world")
+list.contains("hello")
+list.size
 ```
+
+**`Map`/`Set` não existem ainda (planned).** Para associações, use
+`List<record>` com busca linear ou funções dedicadas.
 
 ## HTTP
 

@@ -14,12 +14,7 @@ import java.util.stream.Collectors;
 
 import static org.objectweb.asm.Opcodes.*;
 
-/**
- * JVM Backend — transforms Kof IR into JVM bytecode via ASM.
- *
- * This class is the ONLY place that should know about ASM, JVM descriptors,
- * and JVM opcodes. The core IR does NOT depend on any of these.
- */
+
 class JvmBackend implements Backend {
 
     private final Map<LabelId, Label> labelMap = new HashMap<>();
@@ -74,6 +69,12 @@ class JvmBackend implements Backend {
                 default -> "java/lang/Integer";
             };
         }
+        // kof.ui handles (Color, Theme, Label, Button, Input, Column, Row,
+        // View, Style, Window) are Int values on every target; on the JVM
+        // they must be boxed when stored in Object slots (e.g. List<Label>).
+        if (dev.kof.compiler.KofUi.isUiType(primitive)) {
+            return "java/lang/Integer";
+        }
         return null;
     }
 
@@ -82,8 +83,13 @@ class JvmBackend implements Backend {
         if (boxed != null) {
             String desc = JvmTypeMapper.toDescriptor(type);
             if ("char".equals(typeName(type)) || "Char".equals(typeName(type))) desc = "I";
+            if (KofUi.isUiType(type)) desc = "I";
             mv.visitMethodInsn(INVOKESTATIC, boxed, "valueOf", "(" + desc + ")L" + boxed + ";", false);
         }
+    }
+
+    private boolean isPrimitiveType(Type type) {
+        return type instanceof Type.PrimitiveType pt && !"void".equals(pt.name());
     }
 
     private void emitUnboxIfPrimitive(MethodVisitor mv, Type type) {
@@ -127,6 +133,13 @@ class JvmBackend implements Backend {
 
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
+        emit(module, outputDir, true);
+    }
+
+    @Override
+    public void emit(IRModule module, Path outputDir, boolean debugInfo) throws IOException {
+        this.sourceName = module.sourceName();
+        this.debugInfoEnabled = debugInfo;
         for (IRClass clazz : module.classes()) {
             emitClass(clazz, outputDir);
         }
@@ -135,7 +148,9 @@ class JvmBackend implements Backend {
         }
     }
 
+    private boolean debugInfoEnabled = true;
     private boolean usesJson = false;
+    private String sourceName;
 
     private void emitClass(IRClass clazz, Path outputDir) throws IOException {
         Path classFile = outputDir.resolve(clazz.name() + ".class");
@@ -145,6 +160,9 @@ class JvmBackend implements Backend {
         String superName = clazz.superName() != null ? clazz.superName() : "java/lang/Object";
         cw.visit(V21, clazz.accessFlags(), clazz.name(), clazz.signature(),
                 superName, clazz.interfaces().toArray(new String[0]));
+        if (sourceName != null && debugInfoEnabled) {
+            cw.visitSource(sourceName, null);
+        }
 
         for (IRField field : clazz.fields()) {
             String desc = JvmTypeMapper.toDescriptor(field.type());
@@ -174,7 +192,7 @@ class JvmBackend implements Backend {
         String cn = clazz.name();
         String simpleName = cn.contains("/") ? cn.substring(cn.lastIndexOf('/') + 1) : cn;
 
-        // toString: "Simple[x=1, y=2]"
+
         MethodVisitor mv = cw.visitMethod(ACC_PUBLIC, "toString", "()Ljava/lang/String;", null, null);
         mv.visitCode();
         mv.visitTypeInsn(NEW, "java/lang/StringBuilder");
@@ -201,7 +219,7 @@ class JvmBackend implements Backend {
         mv.visitMaxs(0, 0);
         mv.visitEnd();
 
-        // equals
+
         mv = cw.visitMethod(ACC_PUBLIC, "equals", "(Ljava/lang/Object;)Z", null, null);
         mv.visitCode();
         mv.visitVarInsn(ALOAD, 0);
@@ -231,7 +249,7 @@ class JvmBackend implements Backend {
         mv.visitMaxs(0, 0);
         mv.visitEnd();
 
-        // hashCode
+
         mv = cw.visitMethod(ACC_PUBLIC, "hashCode", "()I", null, null);
         mv.visitCode();
         mv.visitInsn(ICONST_1);
@@ -354,12 +372,12 @@ class JvmBackend implements Backend {
                 .flatMap(b -> b.operations().stream())
                 .collect(Collectors.toList());
         if ("<init>".equals(method.name())) {
-            boolean hasSuperCall = ops.stream().anyMatch(op ->
-                    op instanceof KofCall kc && kc.kind() == KofCallKind.CONSTRUCTOR);
+            String superName = classSuperName != null ? classSuperName : "java/lang/Object";
+            boolean hasSuperCall = ops.stream().anyMatch(op -> op instanceof KofCall kc
+                    && kc.kind() == KofCallKind.CONSTRUCTOR);
             if (!hasSuperCall) {
-                // JVM requires constructors to invoke super() or this() first.
+
                 Type thisType = classTypeFromInternal(className);
-                String superName = classSuperName != null ? classSuperName : "java/lang/Object";
                 ops.add(0, new KofCall(classTypeFromInternal(superName),
                         "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 ops.add(0, new KofLoadLocal(thisType, 0));
@@ -372,8 +390,31 @@ class JvmBackend implements Backend {
             maxLocals = Math.max(maxLocals, computeLocals(block.operations()));
             maxStack = Math.max(maxStack, computeStack(block.operations()));
         }
+        java.util.Map<KofOperation, SourcePosition> debugPositions =
+                method.debugInfo() != null ? method.debugInfo().positions() : java.util.Map.of();
+        Label debugStart = null;
+        if (debugInfoEnabled) {
+            debugStart = new Label();
+            mv.visitLabel(debugStart);
+        }
+        int lastLine = -1;
         for (KofOperation op : ops) {
+            SourcePosition pos = debugPositions.get(op);
+            if (pos != null && pos.line() != lastLine && debugInfoEnabled) {
+                Label lineLabel = new Label();
+                mv.visitLabel(lineLabel);
+                mv.visitLineNumber(pos.line(), lineLabel);
+                lastLine = pos.line();
+            }
             emitOperation(mv, className, op);
+        }
+        if (debugInfoEnabled && debugStart != null) {
+            Label debugEnd = new Label();
+            mv.visitLabel(debugEnd);
+            for (IRLocalVariable local : method.localVariables()) {
+                mv.visitLocalVariable(local.name(), JvmTypeMapper.toDescriptor(local.type()), null,
+                        debugStart, debugEnd, local.index());
+            }
         }
 
         for (TryCatchEntry entry : tryCatches) {
@@ -406,6 +447,9 @@ class JvmBackend implements Backend {
                 String owner = JvmTypeMapper.toInternalName(
                         lf.ownerType() instanceof Type.ClassType ct ? ct.packageName() : "",
                         lf.ownerType() instanceof Type.ClassType ct ? ct.name() : "?");
+                if (KofProcess.isResult(lf.ownerType())) {
+                    owner = "dev/kof/runtime/KofRuntime$ProcessResult";
+                }
                 mv.visitFieldInsn(GETFIELD, owner, lf.name(), JvmTypeMapper.toDescriptor(lf.fieldType()));
             }
         } else if (op instanceof KofStoreField sf) {
@@ -512,14 +556,37 @@ class JvmBackend implements Backend {
         } else if (op instanceof KofJump kj) {
             mv.visitJumpInsn(GOTO, resolveLabel(kj.target()));
         } else if (op instanceof KofConditionalJump kc) {
-            int opcode = switch (kc.comparison()) {
-                case EQ -> IF_ICMPEQ;
-                case NE -> IF_ICMPNE;
-                case LT -> IF_ICMPLT;
-                case LE -> IF_ICMPLE;
-                case GT -> IF_ICMPGT;
-                case GE -> IF_ICMPGE;
-            };
+            boolean isLong = isPrimitiveOf(kc.operandType(), "long");
+            boolean isFloat = isPrimitiveOf(kc.operandType(), "float");
+            boolean isDouble = isPrimitiveOf(kc.operandType(), "double");
+            if (isLong) {
+                mv.visitInsn(LCMP);
+            } else if (isFloat) {
+                mv.visitInsn(FCMPL);
+            } else if (isDouble) {
+                mv.visitInsn(DCMPL);
+            }
+            int opcode;
+            if (isLong || isFloat || isDouble) {
+                // LCMP/FCMPL/DCMPL leave a single int; use 1-operand jumps.
+                opcode = switch (kc.comparison()) {
+                    case EQ -> IFEQ;
+                    case NE -> IFNE;
+                    case LT -> IFLT;
+                    case LE -> IFLE;
+                    case GT -> IFGT;
+                    case GE -> IFGE;
+                };
+            } else {
+                opcode = switch (kc.comparison()) {
+                    case EQ -> IF_ICMPEQ;
+                    case NE -> IF_ICMPNE;
+                    case LT -> IF_ICMPLT;
+                    case LE -> IF_ICMPLE;
+                    case GT -> IF_ICMPGT;
+                    case GE -> IF_ICMPGE;
+                };
+            }
             mv.visitJumpInsn(opcode, resolveLabel(kc.trueLabel()));
             mv.visitJumpInsn(GOTO, resolveLabel(kc.falseLabel()));
         } else if (op instanceof KofCall kc && ("kof_box".equals(kc.methodName()) || "kof_unbox".equals(kc.methodName()))) {
@@ -552,7 +619,9 @@ class JvmBackend implements Backend {
             if ("kof_string_concat".equals(kc.methodName())) {
                 mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;", false);
             } else {
-                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+                // null-safe string equality (Objects.equals tolerates null)
+                mv.visitMethodInsn(INVOKESTATIC, "java/util/Objects", "equals",
+                        "(Ljava/lang/Object;Ljava/lang/Object;)Z", false);
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isList(kc.ownerType())) {
             Type elemType = listElementType(kc.ownerType());
@@ -569,6 +638,11 @@ class JvmBackend implements Backend {
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
+                    if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType)) {
+                        mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(
+                                elemType instanceof Type.ClassType ct ? ct.packageName() : "",
+                                elemType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object"));
+                    }
                     emitUnboxIfPrimitive(mv, elemType);
                 }
                 case "kof_list_set" -> {
@@ -611,6 +685,10 @@ class JvmBackend implements Backend {
             mv.visitTypeInsn(NEW, typeName);
         } else if (op instanceof KofDup) {
             mv.visitInsn(DUP);
+        } else if (op instanceof KofDupX1) {
+            mv.visitInsn(DUP_X1);
+        } else if (op instanceof KofDupX2) {
+            mv.visitInsn(DUP_X2);
         } else if (op instanceof KofPop) {
             mv.visitInsn(POP);
         } else if (op instanceof KofReturn kr) {
@@ -827,6 +905,7 @@ class JvmBackend implements Backend {
     }
 
     private int loadVarOpcode(Type type) {
+        if (KofUi.isUiType(type)) return ILOAD;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
                 case "int", "Int", "boolean", "bool", "Bool", "byte", "Byte", "short", "Short", "char", "Char" -> ILOAD;
@@ -840,6 +919,7 @@ class JvmBackend implements Backend {
     }
 
     private int storeVarOpcode(Type type) {
+        if (KofUi.isUiType(type)) return ISTORE;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
                 case "int", "Int", "boolean", "bool", "Bool", "byte", "Byte", "short", "Short", "char", "Char" -> ISTORE;

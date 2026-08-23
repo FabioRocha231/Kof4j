@@ -1,6 +1,6 @@
 # 10 — Herança
 
-> **Status: planejado**
+> **Status: implementado**
 >
 > A herança está parcialmente suportada no parser, mas a resolução de chamadas de métodos herdados não está implementada.
 

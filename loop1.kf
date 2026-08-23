@@ -1,0 +1,9 @@
+main() {
+    var f = File("l1.txt")
+    var i = 0
+    while (i < 5) {
+        f.appendText("x")
+        i = i + 1
+    }
+    println(f.size())
+}

@@ -4,13 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
-/**
- * KofVersion — single access point for the Kof platform versions at runtime.
- *
- * The values come from the packaged resource kof/version.properties, which is
- * generated from the VERSION file at the repository root (see
- * scripts/bump-version.sh). Nothing here should be edited by hand.
- */
+
 public final class KofVersion {
 
     public static final int TOOLING_API = 21;
@@ -23,7 +17,7 @@ public final class KofVersion {
                 PROPS.load(in);
             }
         } catch (IOException e) {
-            // Never fail startup because of a missing version resource.
+
         }
     }
 

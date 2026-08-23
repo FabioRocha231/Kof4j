@@ -1,10 +1,6 @@
 package dev.kof.compiler;
 
-/**
- * NativeTypeMapper — converts Kof Type to native x86-64 representation.
- * This is the Native backend's equivalent of JvmTypeMapper.
- * NO dependency on ASM or JVM descriptors.
- */
+
 final class NativeTypeMapper {
 
     private NativeTypeMapper() {
