@@ -1504,6 +1504,31 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                    KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
+                            mc.arguments().size());
+                    if (tetrisCall != null) {
+                        if (!KofTetris.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofTetris.gapCode() + ")",
+                                        KofTetris.gapCode());
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.tetris", "Tetris", List.of()),
+                                tetrisCall.function(), tetrisCall.parameterTypes(), tetrisCall.returnType(),
+                                KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         if (target != Target.JVM) {
@@ -2303,6 +2328,12 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
                     if (cfgCall != null) yield cfgCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                    KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
+                            mc.arguments().size());
+                    if (tetrisCall != null) yield tetrisCall.returnType();
                     yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid2 && KofIo.isConstructor(rid2.name())) {

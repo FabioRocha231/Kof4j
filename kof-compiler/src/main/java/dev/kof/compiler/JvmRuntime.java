@@ -27,6 +27,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_db_")
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
+                || methodName.startsWith("kof_tetris_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
@@ -165,6 +166,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_sec_auth_secret", "kof_sec_auth_has_role", "kof_sec_auth_has_permission"
                     -> "(Ljava/lang/String;)Z";
             case "kof_sec_auth_authenticated" -> "()Z";
+            case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
                     "kof_sec_frame_header", "kof_sec_referrer_header", "kof_sec_auth_token",
@@ -228,6 +230,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_sec_password_needs_rehash", "kof_sec_csrf_valid", "kof_sec_cors_allowed",
                     "kof_sec_auth_secret", "kof_sec_auth_authenticated", "kof_sec_auth_has_role",
                     "kof_sec_auth_has_permission" -> "I";
+            case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };
     }
@@ -2079,6 +2082,247 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static String kof_sec_referrer_header() {
                     return "no-referrer";
+                }
+
+                // ── kof.tetris — hidden easter egg ────────────────────
+                // `tetris.run()` starts a simplified terminal tetris.
+                // Keys: a=left d=right s=down w=rotate space=hard drop
+                //       q=quit. On POSIX the terminal switches to raw mode
+                //       (stty) so single keystrokes work without Enter.
+
+                public static void kof_tetris_run() {
+                    final int COLS = 10;
+                    final int ROWS = 20;
+                    final int[][] board = new int[ROWS][COLS];
+                    final int[][][] SHAPES = {
+                            {{1, 1, 1, 1}},
+                            {{1, 1}, {1, 1}},
+                            {{0, 1, 0}, {1, 1, 1}},
+                            {{0, 1, 1}, {1, 1, 0}},
+                            {{1, 1, 0}, {0, 1, 1}},
+                            {{1, 0, 0}, {1, 1, 1}},
+                            {{0, 0, 1}, {1, 1, 1}}
+                    };
+                    final String ESC = "" + (char) 27;
+                    final java.util.Random rnd = new java.util.Random(System.nanoTime());
+                    final java.io.PrintStream out = System.out;
+
+                    boolean raw = false;
+                    try {
+                        Process p = new ProcessBuilder("stty", "raw", "-echo")
+                                .redirectErrorStream(true).start();
+                        raw = p.waitFor() == 0;
+                    } catch (Exception ignored) {
+                    }
+                    if (raw) {
+                        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                            try {
+                                new ProcessBuilder("stty", "sane").start().waitFor();
+                            } catch (Exception ignored) {
+                            }
+                        }, "kof-tetris-restore"));
+                    }
+
+                    int[][] cur = SHAPES[rnd.nextInt(SHAPES.length)];
+                    int cx = 4;
+                    int cy = 0;
+                    int score = 0;
+                    int level = 1;
+                    long dropAt = System.currentTimeMillis() + 600;
+                    boolean over = false;
+
+                    while (!over) {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append(ESC).append("[2J").append(ESC).append("[H");
+                        sb.append("kof.tetris  score=").append(score)
+                                .append("  level=").append(level);
+                        sb.append((char) 10);
+                        sb.append("+----------+").append((char) 10);
+                        for (int y = 0; y < ROWS; y++) {
+                            sb.append('|');
+                            for (int x = 0; x < COLS; x++) {
+                                boolean cell = board[y][x] != 0;
+                                if (!cell) {
+                                    for (int py = 0; py < cur.length; py++) {
+                                        for (int px = 0; px < cur[py].length; px++) {
+                                            if (cur[py][px] != 0 && cy + py == y && cx + px == x) {
+                                                cell = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                sb.append(cell ? '#' : '.');
+                            }
+                            sb.append('|').append((char) 10);
+                        }
+                        sb.append("+----------+").append((char) 10);
+                        sb.append("a:left d:right s:down w:rotate space:drop q:quit")
+                                .append((char) 10);
+                        out.print(sb);
+
+                        long now = System.currentTimeMillis();
+                        if (now >= dropAt) {
+                            if (kof_tetris_fits(cur, cx, cy + 1, board)) {
+                                cy++;
+                            } else {
+                                for (int y = 0; y < cur.length; y++) {
+                                    for (int x = 0; x < cur[y].length; x++) {
+                                        if (cur[y][x] != 0) {
+                                            board[cy + y][cx + x] = 1;
+                                        }
+                                    }
+                                }
+                                int lines = kof_tetris_clear_lines(board);
+                                if (lines > 0) {
+                                    score += lines * 100 * level;
+                                    level = 1 + score / 1000;
+                                }
+                                cur = SHAPES[rnd.nextInt(SHAPES.length)];
+                                cx = 4;
+                                cy = 0;
+                                if (!kof_tetris_fits(cur, cx, cy, board)) {
+                                    over = true;
+                                    break;
+                                }
+                            }
+                            dropAt = now + kof_tetris_drop_ms(level);
+                        }
+
+                        int key = kof_tetris_key();
+                        if (key == 'q' || key == -1) {
+                            break;
+                        }
+                        if (key == 'a' && kof_tetris_fits(cur, cx - 1, cy, board)) {
+                            cx--;
+                        }
+                        if (key == 'd' && kof_tetris_fits(cur, cx + 1, cy, board)) {
+                            cx++;
+                        }
+                        if (key == 's' && kof_tetris_fits(cur, cx, cy + 1, board)) {
+                            cy++;
+                        }
+                        if (key == ' ') {
+                            while (kof_tetris_fits(cur, cx, cy + 1, board)) {
+                                cy++;
+                            }
+                        }
+                        if (key == 'w') {
+                            int[][] rotated = kof_tetris_rotate(cur);
+                            int rcx = cx;
+                            if (!kof_tetris_fits(rotated, rcx, cy, board)) {
+                                rcx = cx - 1;
+                            }
+                            if (!kof_tetris_fits(rotated, rcx, cy, board)) {
+                                rcx = cx + 1;
+                            }
+                            if (kof_tetris_fits(rotated, rcx, cy, board)) {
+                                cur = rotated;
+                                cx = rcx;
+                            }
+                        }
+
+                        try {
+                            Thread.sleep(20);
+                        } catch (InterruptedException ignored) {
+                        }
+                    }
+
+                    out.print(ESC + "[2J" + ESC + "[H");
+                    if (over) {
+                        out.println("GAME OVER  score=" + score + "  level=" + level);
+                    } else {
+                        out.println("kof.tetris  score=" + score + "  bye");
+                    }
+                }
+
+                private static boolean kof_tetris_fits(int[][] s, int bx, int by, int[][] board) {
+                    for (int y = 0; y < s.length; y++) {
+                        for (int x = 0; x < s[y].length; x++) {
+                            if (s[y][x] == 0) {
+                                continue;
+                            }
+                            int gx = bx + x;
+                            int gy = by + y;
+                            if (gx < 0 || gx >= 10 || gy >= 20) {
+                                return false;
+                            }
+                            if (gy >= 0 && board[gy][gx] != 0) {
+                                return false;
+                            }
+                        }
+                    }
+                    return true;
+                }
+
+                private static int[][] kof_tetris_rotate(int[][] s) {
+                    int h = s.length;
+                    int w = s[0].length;
+                    int[][] r = new int[w][h];
+                    for (int y = 0; y < h; y++) {
+                        for (int x = 0; x < w; x++) {
+                            r[x][h - 1 - y] = s[y][x];
+                        }
+                    }
+                    return r;
+                }
+
+                private static int kof_tetris_clear_lines(int[][] board) {
+                    int rows = 0;
+                    for (int y = 0; y < 20; y++) {
+                        boolean full = true;
+                        for (int x = 0; x < 10; x++) {
+                            if (board[y][x] == 0) {
+                                full = false;
+                                break;
+                            }
+                        }
+                        if (full) {
+                            rows++;
+                        }
+                    }
+                    if (rows == 0) {
+                        return 0;
+                    }
+                    int[][] next = new int[20][10];
+                    int dst = 19;
+                    for (int y = 19; y >= 0; y--) {
+                        boolean full = true;
+                        for (int x = 0; x < 10; x++) {
+                            if (board[y][x] == 0) {
+                                full = false;
+                                break;
+                            }
+                        }
+                        if (full) {
+                            continue;
+                        }
+                        for (int x = 0; x < 10; x++) {
+                            next[dst][x] = board[y][x];
+                        }
+                        dst--;
+                    }
+                    for (int y = 0; y < 20; y++) {
+                        for (int x = 0; x < 10; x++) {
+                            board[y][x] = next[y][x];
+                        }
+                    }
+                    return rows;
+                }
+
+                private static int kof_tetris_drop_ms(int level) {
+                    int ms = 600 - (level - 1) * 40;
+                    return ms < 100 ? 100 : ms;
+                }
+
+                private static int kof_tetris_key() {
+                    try {
+                        java.io.InputStream in = System.in;
+                        if (in.available() > 0) {
+                            return in.read();
+                        }
+                    } catch (java.io.IOException ignored) {
+                    }
+                    return 0;
                 }
             }
             
