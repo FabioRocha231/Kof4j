@@ -4554,7 +4554,7 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $56, %rsp
+                subq $40, %rsp
                 movq %rdi, %rbx
                 movq %rsi, %r12
                 .if \\n >= 1
@@ -4623,6 +4623,7 @@ final class NativeRuntime {
                 movb $0x03, 4(%r13)
                 leaq 24(%r12), %rsi
                 movl 16(%r12), %ecx
+                movq %rcx, %rdx
                 leaq 5(%r13), %rdi
                 call kof_memcpy
                 leal 1(%ecx), %eax
@@ -4667,7 +4668,7 @@ final class NativeRuntime {
             .Ldb_exec_bad\\n:
                 xorl %eax, %eax
             .Ldb_exec_done\\n:
-                addq $56, %rsp
+                addq $40, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -4695,7 +4696,7 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $56, %rsp
+                subq $40, %rsp
                 movq %rdi, %rbx
                 movq %rsi, %r12
                 .if \\n >= 1
@@ -4849,6 +4850,7 @@ final class NativeRuntime {
                 movb $0x03, 4(%r13)
                 leaq 24(%r12), %rsi
                 movl 16(%r12), %ecx
+                movq %rcx, %rdx
                 leaq 5(%r13), %rdi
                 call kof_memcpy
                 leal 1(%ecx), %eax
@@ -4998,7 +5000,7 @@ final class NativeRuntime {
             .Ldb_query_bad\\n:
                 xorl %eax, %eax
             .Ldb_query_done\\n:
-                addq $56, %rsp
+                addq $40, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
