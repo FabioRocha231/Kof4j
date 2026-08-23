@@ -152,6 +152,13 @@ record VarDeclStmt(SourcePosition position, String type, String name,
 record ThrowStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
 }
 
+/**
+ * SpawnStmt — runs the given call (or block) as a concurrent task.
+ * The program waits for spawned tasks before exiting.
+ */
+record SpawnStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
+}
+
 record BreakStmt(SourcePosition position) implements StatementNode {
 }
 

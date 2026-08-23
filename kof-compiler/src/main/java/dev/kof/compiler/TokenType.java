@@ -55,6 +55,7 @@ enum TokenType {
     TRY,
     CATCH,
     FINALLY,
+    SPAWN,
     INSTANCEOF,
     VAR,
     VAL,

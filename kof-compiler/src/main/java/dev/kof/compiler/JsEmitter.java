@@ -23,10 +23,10 @@ final class JsEmitter {
         if (!module.runtimeImports().isEmpty()) {
             line("import { " + String.join(", ", module.runtimeImports()) + " } from './kof-runtime.mjs';");
         }
-        if (!module.nodeRuntimeImports().isEmpty()) {
-            line("import { " + String.join(", ", module.nodeRuntimeImports()) + " } from './kof-runtime-node.mjs';");
+        if (!module.ioRuntimeImports().isEmpty()) {
+            line("import { " + String.join(", ", module.ioRuntimeImports()) + " } from './kof-runtime-io.mjs';");
         }
-        if (!module.runtimeImports().isEmpty() || !module.nodeRuntimeImports().isEmpty()) {
+        if (!module.runtimeImports().isEmpty() || !module.ioRuntimeImports().isEmpty()) {
             line("");
         }
         for (JsIr.JsClass cls : module.classes()) {

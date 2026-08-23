@@ -366,6 +366,9 @@ class SemanticAnalyzer {
             case ThrowStmt ts -> {
                 if (ts.expression() != null) inferType(ts.expression(), scope);
             }
+            case SpawnStmt ss -> {
+                if (ss.expression() != null) inferType(ss.expression(), scope);
+            }
             default -> {}
         }
     }

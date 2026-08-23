@@ -452,6 +452,13 @@ class Parser {
         if (check(TokenType.THROW)) {
             return parseThrowStatement();
         }
+        if (check(TokenType.SPAWN)) {
+            SourcePosition p = pos();
+            advance();
+            ExpressionNode expr = parseExpression();
+            expectSemicolon();
+            return new SpawnStmt(p, expr);
+        }
         if (check(TokenType.TRY)) {
             return parseTryStatement();
         }

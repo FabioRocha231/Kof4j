@@ -429,6 +429,31 @@ public class CompilerDriver {
                 ops.add(new KofThrow());
                 yield localIdx;
             }
+            case SpawnStmt ss -> {
+                if (target == Target.NATIVE) {
+                    if (currentDiagnostics != null) {
+                        currentDiagnostics.error("", 0, 0, 0,
+                                "spawn: not supported on the Native target yet (JVM supports it)", "CONC001");
+                    }
+                    yield localIdx;
+                }
+                LambdaExpr le;
+                if (ss.expression() instanceof LambdaExpr le0) {
+                    le = le0;
+                } else {
+                    le = new LambdaExpr(ss.position(), List.of(),
+                            List.of(new ExpressionStmt(ss.position(), ss.expression())));
+                }
+                Type.FunctionType ft = new Type.FunctionType(List.of(), Type.PrimitiveType.VOID, null);
+                String lambdaClass = lambdaClass(le, ft);
+                Type taskType = new Type.ClassType("", lambdaClass, List.of());
+                ops.add(new KofNewObject(taskType, List.of()));
+                ops.add(new KofDup());
+                ops.add(new KofCall(taskType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                        "kof_spawn", List.of(taskType), Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                yield localIdx;
+            }
             case TryStmt ts -> {
                 LabelId tryStart = LabelId.create();
                 LabelId tryEnd = LabelId.create();

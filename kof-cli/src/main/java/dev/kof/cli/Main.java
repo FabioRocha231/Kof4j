@@ -54,12 +54,6 @@ public final class Main {
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
 
         if (target == Target.JS) {
-            if (!nodeAvailable()) {
-                System.err.println("kof run: Node.js not found in PATH (required for --target=js)");
-                cleanup(tempDir);
-                System.exit(1);
-                return;
-            }
             String entry = findJsEntry(tempDir);
             if (entry == null) {
                 System.err.println("no JS entry point found");
@@ -67,11 +61,19 @@ public final class Main {
                 System.exit(1);
                 return;
             }
-            List<String> nodeArgs = new ArrayList<>();
-            nodeArgs.add("node");
-            nodeArgs.add(entry);
-            for (int i = argStart; i < args.length; i++) nodeArgs.add(args[i]);
-            executeProcess(nodeArgs, tempDir);
+            // The KofJS target executes the generated module with the embedded
+            // JavaScript engine — no Node.js or external runtime required.
+            int exitCode;
+            try {
+                exitCode = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry));
+            } catch (IOException e) {
+                System.err.println("failed to execute: " + e.getMessage());
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            cleanup(tempDir);
+            System.exit(exitCode);
             return;
         }
 
@@ -107,15 +109,6 @@ public final class Main {
             Thread.currentThread().interrupt();
             cleanup(tempDir);
             System.exit(1);
-        }
-    }
-
-    private static boolean nodeAvailable() {
-        try {
-            Process p = new ProcessBuilder("node", "--version").redirectErrorStream(true).start();
-            return p.waitFor() == 0;
-        } catch (IOException | InterruptedException e) {
-            return false;
         }
     }
 
@@ -230,7 +223,7 @@ public final class Main {
         System.out.println("  install <dir>                install this build as a distribution");
         System.out.println("  version");
         System.out.println();
-        System.out.println("note: the js target is in development (alpha); node is required to run");
+        System.out.println("note: the js target is in development (alpha); it runs on Kof's embedded JS engine");
     }
 
     private static void install(String[] args) {

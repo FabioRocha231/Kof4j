@@ -20,7 +20,7 @@ final class JsIr {
     // ── Module ──────────────────────────────────────────────────────
 
     record JsModule(String name, List<JsClass> classes, List<JsFunction> functions,
-                    List<String> runtimeImports, List<String> nodeRuntimeImports,
+                    List<String> runtimeImports, List<String> ioRuntimeImports,
                     List<JsStatement> statements) {
     }
 

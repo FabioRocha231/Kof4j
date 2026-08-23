@@ -18,13 +18,13 @@ final class JvmRuntime {
 
     private JvmRuntime() {}
 
-    static boolean hasRuntimeFn(String methodName) {
+static boolean hasRuntimeFn(String methodName) {
         return methodName.startsWith("kof_json_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
                 || methodName.equals("kof_write_file")
-                || methodName.startsWith("kof_io_");
+                || methodName.equals("kof_spawn");
     }
 
     static void ensureCompiled(Path outputDir, List<IRClass> classes) throws IOException {
@@ -62,6 +62,7 @@ final class JvmRuntime {
             case "kof_read_line" -> "()Ljava/lang/String;";
             case "kof_read_file" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_write_file" -> "(Ljava/lang/String;Ljava/lang/String;)I";
+            case "kof_spawn" -> "(Ljava/lang/Object;)V";
             case "kof_io_file_exists", "kof_io_file_is_file", "kof_io_file_is_dir" -> "(Ljava/lang/String;)I";
             case "kof_io_read_text" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_write_text", "kof_io_append_text" -> "(Ljava/lang/String;Ljava/lang/String;)I";
@@ -509,6 +510,33 @@ final class JvmRuntime {
                     } catch (java.io.IOException e) {
                         return -1;
                     }
+                }
+
+                // ── kof.concurrent ─────────────────────────────────
+
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_ACTIVE_TASKS =
+                        new java.util.concurrent.atomic.AtomicInteger();
+
+                static {
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                        while (KOF_ACTIVE_TASKS.get() > 0) {
+                            Thread.onSpinWait();
+                        }
+                    }, "kof-wait-tasks"));
+                }
+
+                public static void kof_spawn(Object task) {
+                    KOF_ACTIVE_TASKS.incrementAndGet();
+                    Thread.startVirtualThread(() -> {
+                        try {
+                            task.getClass().getMethod("invoke").invoke(task);
+                        } catch (Exception e) {
+                            Throwable cause = e.getCause() != null ? e.getCause() : e;
+                            System.err.println("spawn task failed: " + cause.getMessage());
+                        } finally {
+                            KOF_ACTIVE_TASKS.decrementAndGet();
+                        }
+                    });
                 }
 
                 // ── kof.io — File / Path / Directory ──────────────

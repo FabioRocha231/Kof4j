@@ -1,9 +1,10 @@
 package dev.kof.compiler;
 
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,61 +15,43 @@ import static org.junit.jupiter.api.Assertions.*;
  * KofJS End-to-End execution tests.
  *
  * These tests compile Kof source to JavaScript (Kof IR → JsIr → .mjs) and then
- * actually EXECUTE the generated module with Node.js, asserting on stdout and
- * exit code. The tests are skipped when Node.js is not available.
+ * actually EXECUTE the generated module with Kof's embedded JavaScript engine
+ * (dev.kof.runtime.KofJsRunner) — no Node.js or external runtime is required.
+ * The tests assert on stdout and exit code.
  */
 class KofJsE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();
 
-    private static boolean nodeAvailable() {
-        try {
-            Process p = new ProcessBuilder("node", "--version").redirectErrorStream(true).start();
-            return p.waitFor() == 0;
-        } catch (IOException | InterruptedException e) {
-            return false;
-        }
-    }
-
     private String runJs(Path source, Path outDir, String expected) throws IOException {
-        Assumptions.assumeTrue(nodeAvailable(), "Node.js not available");
         CompilationResult result = driver.compile(source, outDir, Target.JS);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
         Path jsFile = outDir.resolve("Default.mjs");
         assertTrue(Files.exists(jsFile), "Generated JS module should exist");
-        try {
-            ProcessBuilder pb = new ProcessBuilder("node", jsFile.toString());
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
-            int ec = p.waitFor();
-            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
-            assertEquals(expected, output, "Unexpected output");
-            return output;
-        } catch (InterruptedException e) {
-            throw new IOException("Interrupted while running Node.js module", e);
-        }
+        ExecResult exec = execModule(jsFile, "");
+        assertEquals(0, exec.exitCode(), "Exit code should be 0, output: '" + exec.output() + "'");
+        assertEquals(expected, exec.output(), "Unexpected output");
+        return exec.output();
     }
 
     private String runJsWithStdin(Path source, Path outDir, String stdin, String expected) throws IOException {
-        Assumptions.assumeTrue(nodeAvailable(), "Node.js not available");
         CompilationResult result = driver.compile(source, outDir, Target.JS);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
         Path jsFile = outDir.resolve("Default.mjs");
-        try {
-            ProcessBuilder pb = new ProcessBuilder("node", jsFile.toString());
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            p.getOutputStream().write(stdin.getBytes());
-            p.getOutputStream().close();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
-            int ec = p.waitFor();
-            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
-            assertEquals(expected, output, "Unexpected output");
-            return output;
-        } catch (InterruptedException e) {
-            throw new IOException("Interrupted while running Node.js module", e);
-        }
+        ExecResult exec = execModule(jsFile, stdin);
+        assertEquals(0, exec.exitCode(), "Exit code should be 0, output: '" + exec.output() + "'");
+        assertEquals(expected, exec.output(), "Unexpected output");
+        return exec.output();
+    }
+
+    private record ExecResult(int exitCode, String output) {
+    }
+
+    private ExecResult execModule(Path jsFile, String stdin) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int exitCode = dev.kof.runtime.KofJsRunner.run(jsFile, out,
+                new ByteArrayInputStream(stdin.getBytes()), out);
+        return new ExecResult(exitCode, out.toString().trim());
     }
 
     // 1. Hello World ─────────────────────────────────────────────────
@@ -730,7 +713,6 @@ class KofJsE2ETest {
 
     @Test
     void emitsEsModule(@TempDir Path tempDir) throws IOException {
-        Assumptions.assumeTrue(nodeAvailable(), "Node.js not available");
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             Int answer() {
@@ -746,7 +728,6 @@ class KofJsE2ETest {
         assertTrue(result.success(), "Compilation should succeed");
         String js = Files.readString(outDir.resolve("Default.mjs"));
         assertTrue(js.contains("import {"), "Generated module should use ESM imports");
-        assertTrue(js.contains("export") || true, "module syntax");
         assertTrue(Files.exists(outDir.resolve("kof-runtime.mjs")), "Runtime module should exist");
         assertTrue(Files.exists(outDir.resolve("Default.mjs.map")), "Source map should exist");
     }
@@ -767,46 +748,33 @@ class KofJsE2ETest {
                 println("from B")
             }
             """);
-        Path outDir = tempDir.resolve("out");
-        CompilationResult ra = driver.compile(a, outDir, Target.JS);
-        CompilationResult rb = driver.compile(b, outDir, Target.JS);
+        Path outA = tempDir.resolve("outA");
+        Path outB = tempDir.resolve("outB");
+        CompilationResult ra = driver.compile(a, outA, Target.JS);
+        CompilationResult rb = driver.compile(b, outB, Target.JS);
         assertTrue(ra.success(), "A should compile");
         assertTrue(rb.success(), "B should compile");
-        assertEquals("from A", execModule(outDir.resolve("Default.mjs")));
+        assertEquals("from A", execModule(outA.resolve("Default.mjs"), "").output());
+        assertEquals("from B", execModule(outB.resolve("Default.mjs"), "").output());
     }
 
-    private String execModule(Path jsFile) throws IOException {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("node", jsFile.toString());
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
-            int ec = p.waitFor();
-            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
-            return output;
-        } catch (InterruptedException e) {
-            throw new IOException("Interrupted while running Node.js module", e);
-        }
-    }
-
-    // kof.io / kof.time on Node ──────────────────────────────────────
+    // kof.io / kof.time on the KofJS target ──────────────────────────
 
     @Test
     void execStdlibTimeAndIo(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("kof-js-test.txt");
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
                 var before = now()
                 println(before > 0)
-                var rc = writeFile("kof-js-test.txt", "kof io")
+                var rc = writeFile("%s", "kof io")
                 println(rc)
-                var content = readFile("kof-js-test.txt")
+                var content = readFile("%s")
                 println(content)
             }
-            """);
-        Path outDir = tempDir.resolve("out");
-        String output = runJs(source, outDir, "true\n0\nkof io");
-        assertEquals("true\n0\nkof io", output);
+            """.formatted(file.toString(), file.toString()));
+        runJs(source, tempDir.resolve("out"), "true\n0\nkof io");
     }
 
     @Test
