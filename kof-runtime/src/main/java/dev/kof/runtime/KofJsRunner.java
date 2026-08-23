@@ -68,9 +68,12 @@ public final class KofJsRunner {
                     .build();
             context.eval(source);
             if (openWindow) {
-                String html = context.getBindings("js").getMember("kof__uiRootHtml").asString();
-                if (html != null && !html.isEmpty()) {
-                    openInWebview(moduleFile, html);
+                Value uiRoot = context.getBindings("js").getMember("kof__uiRootHtml");
+                if (uiRoot != null && uiRoot.isString()) {
+                    String html = uiRoot.asString();
+                    if (html != null && !html.isEmpty()) {
+                        openInWebview(moduleFile, html);
+                    }
                 }
             }
             return 0;
@@ -207,10 +210,11 @@ public final class KofJsRunner {
                 String program = args[0].asString();
                 java.util.List<String> cmd = new java.util.ArrayList<>();
                 cmd.add(program);
-                if (args.length > 1 && !args[1].isNull()) {
+                if (args.length > 1 && !args[1].isNull() && args[1].hasArrayElements()) {
                     long n = args[1].getArraySize();
                     for (int i = 0; i < n; i++) {
-                        cmd.add(args[1].getArrayElement(i).asString());
+                        Value v = args[1].getArrayElement(i);
+                        cmd.add(v.isString() ? v.asString() : String.valueOf(v));
                     }
                 }
                 Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();

@@ -24,6 +24,8 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_web_")
                 || methodName.startsWith("kof_config_")
                 || methodName.startsWith("kof_log_")
+                || methodName.startsWith("kof_ui_")
+                || methodName.startsWith("kof_sec_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
@@ -84,7 +86,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_to_absolute"
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
-            case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/ArrayList;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/List;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
             case "kof_ui_window_new", "kof_ui_label_new", "kof_ui_button_new" -> "(Ljava/lang/String;)I";

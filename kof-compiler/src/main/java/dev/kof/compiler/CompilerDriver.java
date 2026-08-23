@@ -181,24 +181,236 @@ private Target target = Target.JVM;
     private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
     private int lambdaCounter = 0;
 
-    private String lambdaClass(LambdaExpr le, Type.FunctionType ft) {
+    /**
+     * Synthetic lambda class. Captured outer locals become private final
+     * fields set by a capturing <init>; invoke() copies them into locals at
+     * entry, so the body lowers unchanged (captures are read-only snapshots).
+     */
+    private String lambdaClass(LambdaExpr le, Type.FunctionType ft, List<IRLocalVariable> captures) {
         String existing = lambdaClassNames.get(le);
         if (existing != null) return existing;
         String name = "Lambda" + (lambdaCounter++);
-        String returnTypeName = typeToString(ft.returnType());
+        Type ownerType = new Type.ClassType("", name, List.of());
+        Type returnType = toType(typeToString(ft.returnType()));
         List<FormalParameterNode> params = le.parameters();
-        MethodDeclarationNode synthetic = new MethodDeclarationNode(le.position(), List.of("public"),
-                returnTypeName, "invoke", params, List.of(), le.body());
-        IRMethod invoke = lowerMethod(synthetic, name, false, List.of());
+        List<Type> paramTypes = new ArrayList<>();
+        for (FormalParameterNode p : params) paramTypes.add(toType(p.type()));
+
+        List<IRField> fields = new ArrayList<>();
+        List<Type> captureTypes = new ArrayList<>();
+        for (IRLocalVariable cap : captures) {
+            fields.add(new IRField(cap.name(), cap.type(),
+                    AccessFlags.PRIVATE | AccessFlags.FINAL, null));
+            captureTypes.add(cap.type());
+        }
+
+        List<KofOperation> ops = new ArrayList<>();
+        List<IRLocalVariable> locals = new ArrayList<>();
+        locals.add(new IRLocalVariable(0, "this", ownerType));
+        int localIdx = 1;
+        for (IRLocalVariable cap : captures) {
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofLoadField(ownerType, cap.name(), cap.type()));
+            ops.add(new KofStoreLocal(cap.type(), localIdx));
+            locals.add(new IRLocalVariable(localIdx, cap.name(), cap.type()));
+            localIdx += isDoubleWidth(cap.type()) ? 2 : 1;
+        }
+        for (int i = 0; i < params.size(); i++) {
+            locals.add(new IRLocalVariable(localIdx, params.get(i).name(), paramTypes.get(i)));
+            localIdx += isDoubleWidth(paramTypes.get(i)) ? 2 : 1;
+        }
+        for (StatementNode stmt : le.body()) {
+            localIdx = emitStatement(stmt, ops, name, localIdx, locals, returnType);
+        }
+        KofOperation last = ops.isEmpty() ? null : ops.get(ops.size() - 1);
+        if (last == null || !(last instanceof KofReturn || last instanceof KofReturnVoid)) {
+            if (Type.isVoid(returnType)) ops.add(new KofReturnVoid());
+            else ops.add(new KofReturn(returnType));
+        }
+        IRMethod invoke = new IRMethod("invoke", returnType, paramTypes,
+                AccessFlags.PUBLIC, List.of(),
+                List.of(new IRBasicBlock(0, ops)), locals);
+
+        List<KofOperation> ctorOps = new ArrayList<>();
+        List<IRLocalVariable> ctorLocals = new ArrayList<>();
+        ctorLocals.add(new IRLocalVariable(0, "this", ownerType));
+        int cidx = 1;
+        for (IRLocalVariable cap : captures) {
+            ctorOps.add(new KofLoadLocal(ownerType, 0));
+            ctorOps.add(new KofLoadLocal(cap.type(), cidx));
+            ctorOps.add(new KofStoreField(ownerType, cap.name(), cap.type()));
+            ctorLocals.add(new IRLocalVariable(cidx, cap.name(), cap.type()));
+            cidx += isDoubleWidth(cap.type()) ? 2 : 1;
+        }
+        ctorOps.add(new KofReturnVoid());
+        IRMethod ctor = new IRMethod("<init>", Type.PrimitiveType.VOID, captureTypes,
+                AccessFlags.PUBLIC, List.of(),
+                List.of(new IRBasicBlock(0, ctorOps)), ctorLocals);
+
         IRClass cls = new IRClass(name, "java/lang/Object", List.of(),
-                AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(),
-                List.of(invoke, generateDefaultConstructor(name, "java/lang/Object", List.of(),
-                        new java.util.LinkedHashMap<>())), List.of(), null, 200 + lambdaCounter);
+                AccessFlags.PUBLIC | AccessFlags.SUPER, fields,
+                List.of(invoke, ctor), List.of(), null, 200 + lambdaCounter);
         syntheticClasses.add(cls);
         lambdaClassNames.put(le, name);
         return name;
     }
 
+
+    /**
+     * Captured outer locals referenced by the lambda body, in first-reference
+     * order. Identifiers shadowed by locals declared inside the lambda are
+     * not captured.
+     */
+    private List<IRLocalVariable> collectCaptures(LambdaExpr le, List<IRLocalVariable> outerLocals) {
+        List<IRLocalVariable> captures = new ArrayList<>();
+        java.util.Set<String> captured = new java.util.HashSet<>();
+        collectCapturesStmts(le.body(), outerLocals, captures, captured, new java.util.HashSet<>());
+        return captures;
+    }
+
+    private void collectCapturesStmts(StatementNode stmt, List<IRLocalVariable> outerLocals,
+                                      List<IRLocalVariable> captures, java.util.Set<String> captured,
+                                      java.util.Set<String> shadowed) {
+        collectCapturesStmts(List.of(stmt), outerLocals, captures, captured, shadowed);
+    }
+
+    private void collectCapturesStmts(List<StatementNode> body, List<IRLocalVariable> outerLocals,
+                                      List<IRLocalVariable> captures, java.util.Set<String> captured,
+                                      java.util.Set<String> shadowed) {
+        for (StatementNode s : body) {
+            if (s instanceof ExpressionStmt es) {
+                collectCapturesExpr(es.expression(), outerLocals, captures, captured, shadowed);
+            } else if (s instanceof ReturnStmt rs) {
+                if (rs.value() != null) {
+                    collectCapturesExpr(rs.value(), outerLocals, captures, captured, shadowed);
+                }
+            } else if (s instanceof BlockStmt b) {
+                java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+                collectCapturesStmts(b.statements(), outerLocals, captures, captured, inner);
+            } else if (s instanceof IfStmt i) {
+                collectCapturesExpr(i.condition(), outerLocals, captures, captured, shadowed);
+                collectCapturesStmts(i.thenBranch(), outerLocals, captures, captured,
+                        new java.util.HashSet<>(shadowed));
+                if (i.elseBranch() != null) {
+                    collectCapturesStmts(i.elseBranch(), outerLocals, captures, captured,
+                            new java.util.HashSet<>(shadowed));
+                }
+            } else if (s instanceof WhileStmt w) {
+                collectCapturesExpr(w.condition(), outerLocals, captures, captured, shadowed);
+                collectCapturesStmts(w.body(), outerLocals, captures, captured,
+                        new java.util.HashSet<>(shadowed));
+            } else if (s instanceof DoWhileStmt dw) {
+                collectCapturesStmts(dw.body(), outerLocals, captures, captured,
+                        new java.util.HashSet<>(shadowed));
+                collectCapturesExpr(dw.condition(), outerLocals, captures, captured, shadowed);
+            } else if (s instanceof ForStmt f) {
+                if (f.init() instanceof VarDeclStmt vds) {
+                    collectCapturesVarDecl(vds, outerLocals, captures, captured, shadowed);
+                } else if (f.init() instanceof ExpressionStmt ies) {
+                    collectCapturesExpr(ies.expression(), outerLocals, captures, captured, shadowed);
+                }
+                if (f.condition() != null) {
+                    collectCapturesExpr(f.condition(), outerLocals, captures, captured, shadowed);
+                }
+                if (f.update() != null) {
+                    collectCapturesExpr(f.update(), outerLocals, captures, captured, shadowed);
+                }
+                collectCapturesStmts(f.body(), outerLocals, captures, captured,
+                        new java.util.HashSet<>(shadowed));
+            } else if (s instanceof ForInStmt fi) {
+                collectCapturesExpr(fi.collection(), outerLocals, captures, captured, shadowed);
+                java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+                inner.add(fi.varName());
+                collectCapturesStmts(fi.body(), outerLocals, captures, captured, inner);
+            } else if (s instanceof VarDeclStmt vds) {
+                collectCapturesVarDecl(vds, outerLocals, captures, captured, shadowed);
+            } else if (s instanceof ThrowStmt ts) {
+                collectCapturesExpr(ts.expression(), outerLocals, captures, captured, shadowed);
+            } else if (s instanceof AssertStmt as) {
+                collectCapturesExpr(as.condition(), outerLocals, captures, captured, shadowed);
+            } else if (s instanceof SpawnStmt ss) {
+                // spawn lambdas have their own (capture-free) scope.
+                collectCapturesExpr(ss.expression(), outerLocals, captures, captured, shadowed);
+            } else if (s instanceof SwitchStmt sw) {
+                collectCapturesExpr(sw.expression(), outerLocals, captures, captured, shadowed);
+                for (SwitchCase c : sw.cases()) {
+                    if (c.value() != null) {
+                        collectCapturesExpr(c.value(), outerLocals, captures, captured, shadowed);
+                    }
+                    collectCapturesStmts(c.body(), outerLocals, captures, captured,
+                            new java.util.HashSet<>(shadowed));
+                }
+                if (sw.defaultBody() != null) {
+                    collectCapturesStmts(sw.defaultBody(), outerLocals, captures, captured,
+                            new java.util.HashSet<>(shadowed));
+                }
+            } else if (s instanceof TryStmt ts) {
+                collectCapturesStmts(ts.tryBody(), outerLocals, captures, captured,
+                        new java.util.HashSet<>(shadowed));
+                for (CatchClause cc : ts.catchClauses()) {
+                    java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+                    inner.add(cc.exceptionName());
+                    collectCapturesStmts(cc.body(), outerLocals, captures, captured, inner);
+                }
+                collectCapturesStmts(ts.finallyBody(), outerLocals, captures, captured,
+                        new java.util.HashSet<>(shadowed));
+            }
+        }
+    }
+
+    private void collectCapturesVarDecl(VarDeclStmt vds, List<IRLocalVariable> outerLocals,
+                                        List<IRLocalVariable> captures, java.util.Set<String> captured,
+                                        java.util.Set<String> shadowed) {
+        if (vds.initializer() != null) {
+            collectCapturesExpr(vds.initializer(), outerLocals, captures, captured, shadowed);
+        }
+        shadowed.add(vds.name());
+    }
+
+    private void collectCapturesExpr(ExpressionNode expr, List<IRLocalVariable> outerLocals,
+                                     List<IRLocalVariable> captures, java.util.Set<String> captured,
+                                     java.util.Set<String> shadowed) {
+        if (expr instanceof IdentifierExpr ie) {
+            if (shadowed.contains(ie.name()) || captured.contains(ie.name())) return;
+            IRLocalVariable outer = findLocalVar(ie.name(), outerLocals);
+            if (outer != null) {
+                captures.add(outer);
+                captured.add(ie.name());
+            }
+        } else if (expr instanceof BinaryExpr bin) {
+            collectCapturesExpr(bin.left(), outerLocals, captures, captured, shadowed);
+            collectCapturesExpr(bin.right(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof UnaryExpr ue) {
+            collectCapturesExpr(ue.operand(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof AssignmentExpr ae) {
+            collectCapturesExpr(ae.target(), outerLocals, captures, captured, shadowed);
+            collectCapturesExpr(ae.value(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof MethodCallExpr mc) {
+            if (mc.receiver() != null) {
+                collectCapturesExpr(mc.receiver(), outerLocals, captures, captured, shadowed);
+            }
+            for (ExpressionNode arg : mc.arguments()) {
+                collectCapturesExpr(arg, outerLocals, captures, captured, shadowed);
+            }
+        } else if (expr instanceof FieldAccessExpr fa) {
+            collectCapturesExpr(fa.receiver(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof ArrayAccessExpr aa) {
+            collectCapturesExpr(aa.receiver(), outerLocals, captures, captured, shadowed);
+            collectCapturesExpr(aa.index(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof IfExpr iex) {
+            collectCapturesExpr(iex.condition(), outerLocals, captures, captured, shadowed);
+            collectCapturesExpr(iex.thenExpr(), outerLocals, captures, captured, shadowed);
+            collectCapturesExpr(iex.elseExpr(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof NewExpr ne) {
+            for (ExpressionNode arg : ne.arguments()) {
+                collectCapturesExpr(arg, outerLocals, captures, captured, shadowed);
+            }
+        } else if (expr instanceof NewArrayExpr nae) {
+            collectCapturesExpr(nae.size(), outerLocals, captures, captured, shadowed);
+        }
+        // Nested LambdaExpr bodies capture against the enclosing lambda's own
+        // locals (lowered at their own site); do not descend.
+    }
 
     private Type listOfElementType(MethodCallExpr mc, List<IRLocalVariable> locals) {
         if (!mc.arguments().isEmpty()) {
@@ -620,7 +832,7 @@ private Target target = Target.JVM;
                             List.of(new ExpressionStmt(ss.position(), ss.expression())));
                 }
                 Type.FunctionType ft = new Type.FunctionType(List.of(), Type.PrimitiveType.VOID, null);
-                String lambdaClass = lambdaClass(le, ft);
+                String lambdaClass = lambdaClass(le, ft, List.of());
                 Type taskType = new Type.ClassType("", lambdaClass, List.of());
                 ops.add(new KofNewObject(taskType, List.of()));
                 ops.add(new KofDup());
@@ -1477,6 +1689,17 @@ private Target target = Target.JVM;
                     }
                 }
                 if (ae.target() instanceof FieldAccessExpr fa) {
+                    if (fa.receiver() instanceof IdentifierExpr rid && semanticAnalyzer != null
+                            && semanticAnalyzer.getClass(rid.name()) != null) {
+                        // Static field store: Class.field = value.
+                        SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(rid.name());
+                        SymbolTable.Symbol fs = resolveFieldInHierarchy(cs.name(), fa.fieldName());
+                        if (fs instanceof SymbolTable.FieldSymbol fld) {
+                            localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            ops.add(new KofPutStatic(cs.type(), fa.fieldName(), fld.type()));
+                            yield localIdx;
+                        }
+                    }
                     Type faRecvType = inferExprType(fa.receiver(), locals);
                     if (KofUi.isWindow(faRecvType) && "title".equals(fa.fieldName())) {
                         localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
@@ -1670,14 +1893,21 @@ private Target target = Target.JVM;
             }
             case LambdaExpr le -> {
                 Type.FunctionType ft = (Type.FunctionType) inferExprType(le, locals);
-                String lambdaClass = lambdaClass(le, ft);
+                List<IRLocalVariable> captures = collectCaptures(le, locals);
+                String lambdaClass = lambdaClass(le, ft, captures);
                 if (ft.className() == null) {
                     ft = new Type.FunctionType(ft.parameterTypes(), ft.returnType(), lambdaClass);
                 }
-                ops.add(new KofNewObject(new Type.ClassType("", lambdaClass, List.of()), ft.parameterTypes()));
+                Type lambdaType = new Type.ClassType("", lambdaClass, List.of());
+                List<Type> captureTypes = new ArrayList<>();
+                for (IRLocalVariable cap : captures) captureTypes.add(cap.type());
+                ops.add(new KofNewObject(lambdaType, captureTypes));
                 ops.add(new KofDup());
-                ops.add(new KofCall(new Type.ClassType("", lambdaClass, List.of()), "<init>",
-                        List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                for (IRLocalVariable cap : captures) {
+                    ops.add(new KofLoadLocal(cap.type(), cap.index()));
+                }
+                ops.add(new KofCall(lambdaType, "<init>", captureTypes,
+                        Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
             }
             default -> localIdx;

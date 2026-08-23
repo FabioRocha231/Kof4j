@@ -1708,11 +1708,10 @@ class JsBackend implements Backend {
                 return;
             }
             if (receiver instanceof JsIr.JsIdentifier id && id.name().startsWith("__kof_t")) {
-                // The list reference stays on the stack (the caller dup'd it
-                // for the next append); the append itself must execute
-                // before any later operation.
+                // The dup'd copy of the list reference stays on the stack for the
+                // next append; the append itself must execute before any
+                // later operation.
                 preambleExprs.add(call);
-                stack.add(receiver);
                 return;
             }
             throw new StatementEnd(call);
@@ -1828,7 +1827,7 @@ class JsBackend implements Backend {
             return;
         }
         if (name.equals("kof_process_run")) {
-            registerRuntime("kofProcessRun");
+            registerIoRuntime("kofProcessRun");
             stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofProcessRun"), args));
             return;
         }
@@ -2092,8 +2091,13 @@ class JsBackend implements Backend {
                 const kofRoot = kofMakeEl("div");
                 kofRoot.id = "kof-root";
                 const kofElements = { "kof-root": kofRoot };
+                const kofHead = kofMakeEl("head");
+                const kofHtml = kofMakeEl("html");
+                kofHtml.appendChild(kofHead);
                 globalThis.document = {
                     title: "",
+                    head: kofHead,
+                    documentElement: kofHtml,
                     createElement(tag) { return kofMakeEl(tag); },
                     getElementById(id) { return kofElements[id] || null; }
                 };

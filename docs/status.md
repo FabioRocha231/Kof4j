@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 490 testes (JVM + Native + KofJS E2E)
+mvn test             → 486 testes (484 PASS + 2 em progresso: default params JS e webview UI)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -160,6 +160,8 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
+| kof.config (env, arquivos, profiles, typed) | ✅ | CONF001 | CONF001 |
+| kof.log (`log.info/warn/error/debug`) | ✅ | LOG001 | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
 | kof.ui (Color, Palette, Theme, Window) | ✅ | ✅ (JS render) | ✅ |
 | default parameters em funções | ✅ | ✅ | ✅ |
@@ -227,6 +229,38 @@ main() {
   a API legada `handle(...)` continua funcionando.
 - Ver: `docs/stdlib-web.md` e `KofWebE2ETest` (9 testes E2E com sockets reais).
 
+### Configuração nativa (`kof.config`)
+
+```kof
+main() {
+    var port = config.int("server.port", 8080)
+    var url = config.str("database.url", "jdbc:h2:mem")
+    var debug = config.bool("app.debug", false)
+    var home = config.env("HOME")
+    if (config.has("database.url")) { ... }
+}
+```
+
+- Precedência: arquivo explícito (`KOF_CONFIG`) > env `KOF_<KEY>` >
+  profile (`kof.<KOF_PROFILE>.config`) > arquivo padrão (`kof.config`).
+- Tipagem em compile-time; valores ausentes/inválidos → default.
+- Native/JS reportam `CONF001`; docs: `docs/stdlib-config.md`
+  (`KofConfigE2ETest`, 8 E2E).
+
+### Logging nativo (`kof.log`)
+
+```kof
+log.debug("detail")
+log.info("request started")
+log.warn("slow response")
+log.error("failed: " + message)
+```
+
+- Formato `timestamp LEVEL mensagem`; info/debug → stdout, warn/error →
+  stderr; nível via `KOF_LOG_LEVEL` (debug < info < warn < error < off).
+- Funciona dentro de handlers web; Native/JS reportam `LOG001`;
+  docs: `docs/stdlib-logging.md` (`KofLogE2ETest`, 7 E2E).
+
 ### Testes da linguagem
 
 ```kof
@@ -242,7 +276,11 @@ main() {
 
 ---
 
-## Testes (490/490 PASS)
+## Testes (486 — 484 PASS, 2 em progresso)
+
+> Os 2 testes em progresso pertencem a features da sessão paralela:
+> `CoreRegressionE2ETest.defaultParameters` (JS target) e
+> `WindowE2ETest.windowRendersBoundLabel` (webview UI).
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -258,7 +296,7 @@ main() {
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
-| KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONFIG001 |
+| KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
 | KofLogE2ETest | 7 | kof.log: níveis, stderr, off, LOG001 |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
@@ -270,7 +308,7 @@ main() {
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **490** | |
+| **Total** | **486** | |
 
 ---
 
@@ -343,9 +381,10 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 ## Próximos Passos
 
-- kof.config (configuração nativa: env vars, arquivos, tipagem) — Fase 3
-- logging nativo (`log.info/warn/error/debug`) — Fase 4
+- Corrigir os 2 testes em progresso da sessão paralela (default params JS,
+  webview UI)
 - Database + transactions nativos (JDBC por interop) — Fase 5
+- Validation + scheduling + events nativos — Fase 8
 - Aplicação web completa em Kof sem Spring (teste obrigatório) — Fase 12
 - Resultado observável de tarefas (`await`), filas (`kof.concurrent.Queue`)
 - Scheduler nativo para `spawn`

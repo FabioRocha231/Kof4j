@@ -111,20 +111,24 @@ target `js` reporta `WEB001`; target `native` sem servidor web ainda.
 - [ ] Testes de paridade JVM/Native.
 - [ ] Jackson continua funcionando via interop (teste de interoperabilidade).
 
-### Fase 3 — Configuração nativa (`kof.config`)
+### Fase 3 — Configuração nativa (`kof.config`) ✅ (concluída em 23/08/2026)
 
-- [ ] Ambiente, arquivos de config, profiles, secrets, tipagem.
-- [ ] `config.server.port`, `config.database.url` com validação em compile-time.
-- [ ] Suporte a environment variables.
-- [ ] Testes + docs `docs/stdlib-config.md`.
+- [x] Ambiente, arquivos de config, profiles, secrets, tipagem.
+- [x] `config.int/str/bool/long` com default + `config.get/has/env`.
+- [x] Precedência: arquivo explícito (`KOF_CONFIG`) > env `KOF_<KEY>` >
+      profile (`kof.<KOF_PROFILE>.config`) > arquivo padrão (`kof.config`).
+- [x] Suporte a environment variables.
+- [x] Testes (`KofConfigE2ETest`, 8 E2E) + docs `docs/stdlib-config.md`.
+- [x] Native/JS reportam `CONF001` em compile-time.
 
-### Fase 4 — Logging + Observabilidade
+### Fase 4 — Logging + Observabilidade ✅ (parcial — logging concluído em 23/08/2026)
 
-- [ ] `log.info/warn/error/debug` com níveis, contexto, correlation ID,
-      timestamps, structured logging (JSON).
-- [ ] Métricas, health checks, tracing hooks; OpenTelemetry/JFR/JMX como
-      integração opcional (nunca requisito).
-- [ ] Testes + docs.
+- [x] `log.info/warn/error/debug` com níveis (`KOF_LOG_LEVEL`), timestamp,
+      info/debug → stdout, warn/error → stderr.
+- [ ] Structured logging (JSON), correlation ID, context por tarefa — planned.
+- [ ] Métricas, health checks, tracing hooks — planned.
+- [x] Testes (`KofLogE2ETest`, 7 E2E) + docs `docs/stdlib-logging.md`.
+- [x] Native/JS reportam `LOG001` em compile-time.
 
 ### Fase 5 — Database + Transactions
 
