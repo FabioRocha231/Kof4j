@@ -144,13 +144,82 @@ class SemanticAnalyzer {
         }
         for (AstNode member : cls.members()) {
             if (member instanceof ConstructorDeclarationNode ctor) {
-                analyzeConstructor(ctor, cls.name(), classScope);
+                defineConstructorSymbol(ctor, cls.name(), classScope);
             } else if (member instanceof MethodDeclarationNode method) {
-                analyzeMethod(method, cls.name(), classScope);
+                defineMethodSymbol(method, cls.name(), classScope);
+            }
+        }
+        for (AstNode member : cls.members()) {
+            if (member instanceof ConstructorDeclarationNode ctor) {
+                analyzeConstructorBody(ctor);
+            } else if (member instanceof MethodDeclarationNode method) {
+                analyzeMethodBody(method);
             }
         }
         currentScope = prevScope;
         currentClassName = prevClass;
+    }
+
+    private final java.util.IdentityHashMap<ConstructorDeclarationNode, SymbolTable> ctorScopes = new java.util.IdentityHashMap<>();
+    private final java.util.IdentityHashMap<MethodDeclarationNode, SymbolTable> methodScopes = new java.util.IdentityHashMap<>();
+
+    private void defineConstructorSymbol(ConstructorDeclarationNode ctor, String className, SymbolTable classScope) {
+        List<Type> paramTypes = new ArrayList<>();
+        SymbolTable ctorScope = classScope.enterScope();
+        ctorScope.define(new SymbolTable.ParameterSymbol("this",
+                new Type.ClassType(currentPackage, className, List.of()), 0));
+        int idx = 1;
+        for (FormalParameterNode param : ctor.parameters()) {
+            Type paramType = resolveType(param.type(), ctorScope);
+            paramTypes.add(paramType);
+            ctorScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
+            idx++;
+        }
+        SymbolTable.ConstructorSymbol ctorSym = new SymbolTable.ConstructorSymbol(className, paramTypes, 1);
+        classScope.define(ctorSym);
+        SymbolTable.ClassSymbol cs = knownClasses.get(className);
+        if (cs != null) cs.members().define(ctorSym);
+        ctorScopes.put(ctor, ctorScope);
+    }
+
+    private void defineMethodSymbol(MethodDeclarationNode method, String className, SymbolTable classScope) {
+        SymbolTable methodScope = classScope.enterScope();
+        methodScope.define(new SymbolTable.ParameterSymbol("this",
+                new Type.ClassType(currentPackage, className, List.of()), 0));
+        Type returnType = resolveType(method.returnType(), methodScope);
+        List<Type> paramTypes = new ArrayList<>();
+        int idx = 1;
+        for (FormalParameterNode param : method.parameters()) {
+            Type paramType = resolveType(param.type(), methodScope);
+            paramTypes.add(paramType);
+            methodScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
+            idx++;
+        }
+        SymbolTable.MethodSymbol methodSym = new SymbolTable.MethodSymbol(method.name(), className,
+                returnType, paramTypes, 1, SymbolTable.DispatchKind.INSTANCE);
+        classScope.define(methodSym);
+        SymbolTable.ClassSymbol cs = knownClasses.get(className);
+        if (cs != null) cs.members().define(methodSym);
+        methodScopes.put(method, methodScope);
+    }
+
+    private void analyzeConstructorBody(ConstructorDeclarationNode ctor) {
+        SymbolTable ctorScope = ctorScopes.get(ctor);
+        if (ctorScope == null || ctor.body() == null || ctor.body().isEmpty()) return;
+        SymbolTable prevScope = currentScope;
+        currentScope = ctorScope;
+        analyzeBody(ctor.body(), ctorScope, Type.PrimitiveType.VOID);
+        currentScope = prevScope;
+    }
+
+    private void analyzeMethodBody(MethodDeclarationNode method) {
+        SymbolTable methodScope = methodScopes.get(method);
+        if (methodScope == null || method.body() == null || method.body().isEmpty()) return;
+        Type returnType = resolveType(method.returnType(), methodScope);
+        SymbolTable prevScope = currentScope;
+        currentScope = methodScope;
+        analyzeBody(method.body(), methodScope, returnType);
+        currentScope = prevScope;
     }
 
     private void analyzeRecord(RecordDeclarationNode rec) {
@@ -180,7 +249,12 @@ class SemanticAnalyzer {
         }
         for (AstNode member : rec.members()) {
             if (member instanceof MethodDeclarationNode method) {
-                analyzeMethod(method, rec.name(), classScope);
+                defineMethodSymbol(method, rec.name(), classScope);
+            }
+        }
+        for (AstNode member : rec.members()) {
+            if (member instanceof MethodDeclarationNode method) {
+                analyzeMethodBody(method);
             }
         }
         currentScope = prevScope;
@@ -223,54 +297,6 @@ class SemanticAnalyzer {
         currentScope = funcScope;
         analyzeBody(func.body(), funcScope, returnType);
         currentScope = prevScope;
-    }
-
-    private void analyzeConstructor(ConstructorDeclarationNode ctor, String className, SymbolTable classScope) {
-        List<Type> paramTypes = new ArrayList<>();
-        SymbolTable ctorScope = classScope.enterScope();
-        ctorScope.define(new SymbolTable.ParameterSymbol("this",
-                new Type.ClassType(currentPackage, className, List.of()), 0));
-        int idx = 1;
-        for (FormalParameterNode param : ctor.parameters()) {
-            Type paramType = resolveType(param.type(), ctorScope);
-            paramTypes.add(paramType);
-            ctorScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
-            idx++;
-        }
-        SymbolTable.ConstructorSymbol ctorSym = new SymbolTable.ConstructorSymbol(className, paramTypes, 1);
-        classScope.define(ctorSym);
-        SymbolTable.ClassSymbol cs = knownClasses.get(className);
-        if (cs != null) cs.members().define(ctorSym);
-        SymbolTable prevScope = currentScope;
-        currentScope = ctorScope;
-        analyzeBody(ctor.body(), ctorScope, Type.PrimitiveType.VOID);
-        currentScope = prevScope;
-    }
-
-    private void analyzeMethod(MethodDeclarationNode method, String className, SymbolTable classScope) {
-        SymbolTable methodScope = classScope.enterScope();
-        methodScope.define(new SymbolTable.ParameterSymbol("this",
-                new Type.ClassType(currentPackage, className, List.of()), 0));
-        Type returnType = resolveType(method.returnType(), methodScope);
-        List<Type> paramTypes = new ArrayList<>();
-        int idx = 1;
-        for (FormalParameterNode param : method.parameters()) {
-            Type paramType = resolveType(param.type(), methodScope);
-            paramTypes.add(paramType);
-            methodScope.define(new SymbolTable.ParameterSymbol(param.name(), paramType, idx));
-            idx++;
-        }
-        SymbolTable.MethodSymbol methodSym = new SymbolTable.MethodSymbol(method.name(), className,
-                returnType, paramTypes, 1, SymbolTable.DispatchKind.INSTANCE);
-        classScope.define(methodSym);
-        SymbolTable.ClassSymbol cs = knownClasses.get(className);
-        if (cs != null) cs.members().define(methodSym);
-        if (method.body() != null && !method.body().isEmpty()) {
-            SymbolTable prevScope = currentScope;
-            currentScope = methodScope;
-            analyzeBody(method.body(), methodScope, returnType);
-            currentScope = prevScope;
-        }
     }
 
     private void analyzeBody(List<StatementNode> body, SymbolTable scope, Type returnType) {

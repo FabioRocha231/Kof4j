@@ -951,7 +951,9 @@ public class CompilerDriver {
                     }
                     SymbolTable.MethodSymbol selfMethod = semanticAnalyzer != null
                             ? semanticAnalyzer.getResolvedMethod(mc) : null;
-                    if (selfMethod != null) {
+                    if (selfMethod != null && !owner.isEmpty()
+                            && !"<init>".equals(selfMethod.name())
+                            && selfMethod.ownerClass() != null) {
                         Type ownerType = ownerTypeFromInternal(selfMethod.ownerClass());
                         ops.add(new KofLoadLocal(ownerType, 0));
                         localIdx = emitArgumentsWithFormalTypes(mc.arguments(), selfMethod.parameterTypes(),
@@ -1886,6 +1888,16 @@ public class CompilerDriver {
         Type returnType = resolveWithTypeParams(method.returnType(), typeParams);
         List<Type> paramTypes = method.parameters().stream()
                 .map(p -> resolveWithTypeParams(p.type(), typeParams)).toList();
+        if (Type.isVoid(returnType) && method.body() != null && method.body().size() == 1
+                && method.body().getFirst() instanceof ReturnStmt ret && ret.value() != null) {
+            List<IRLocalVariable> tmpLocals = new ArrayList<>();
+            int tmpIdx = 1;
+            for (FormalParameterNode p : method.parameters()) {
+                tmpLocals.add(new IRLocalVariable(tmpIdx, p.name(), resolveWithTypeParams(p.type(), typeParams)));
+                tmpIdx++;
+            }
+            returnType = inferExprType(ret.value(), tmpLocals);
+        }
         int access = computeAccess(method.modifiers());
         if (isInterface && !method.modifiers().contains("default")) access |= AccessFlags.ABSTRACT;
         List<IRBasicBlock> body = List.of();

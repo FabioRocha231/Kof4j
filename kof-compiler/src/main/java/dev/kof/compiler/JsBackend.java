@@ -972,7 +972,8 @@ class JsBackend implements Backend {
     private String localName(MethodCtx ctx, int index) {
         String name = ctx.localNames.get(index);
         if (name == null) {
-            throw new IllegalStateException("KofJS: unknown local slot " + index);
+            throw new IllegalStateException("KofJS: unknown local slot " + index + " in " + ctx.methodName
+                    + "\nops=" + ctx.ops.stream().map(Object::toString).reduce("", (a, b) -> a + "\n" + b));
         }
         return name;
     }
