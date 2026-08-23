@@ -35,6 +35,12 @@ jobs:
       - name: Test (gate — a broken release is never published)
         run: mvn clean test
 
+      - name: Golden tests (jvm + native)
+        run: tests/run-golden.sh
+
+      - name: Integration tests (CLI + serve + kof test)
+        run: tests/run-integration.sh
+
       - name: Compute next version
         id: bump
         run: |
@@ -100,14 +106,7 @@ jobs:
       - name: Package with embedded JDK
         shell: bash
         run: |
-          VERSION=$(cat VERSION)
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            scripts/package.sh --jdk
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            scripts/package.sh --jdk
-          else
-            scripts/package.sh --jdk
-          fi
+          scripts/package.sh --jdk
           ls -la dist/
 
       - name: Validate artifact
