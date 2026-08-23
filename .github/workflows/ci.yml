@@ -35,5 +35,11 @@ jobs:
       - name: Test
         run: mvn clean test
 
+      - name: Golden tests (jvm + native)
+        run: tests/run-golden.sh
+
+      - name: Integration tests (CLI + serve)
+        run: tests/run-integration.sh
+
       - name: Package check
         run: mvn clean package -DskipTests
