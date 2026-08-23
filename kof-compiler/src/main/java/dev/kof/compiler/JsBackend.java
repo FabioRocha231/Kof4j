@@ -1470,6 +1470,12 @@ class JsBackend implements Backend {
                 stack.add(new JsIr.JsSequence(exprs, seq.value()));
                 return;
             }
+            if (receiver instanceof JsIr.JsIdentifier id && id.name().startsWith("__kof_t")) {
+                // preamble-style duplication: keep the list reference alive
+                stack.add(new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs));
+                stack.add(receiver);
+                return;
+            }
             throw new StatementEnd(call);
         }
         stack.add(call);

@@ -126,6 +126,7 @@ class JvmBackend implements Backend {
 
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
+        this.sourceName = module.sourceName();
         for (IRClass clazz : module.classes()) {
             emitClass(clazz, outputDir);
         }
@@ -135,6 +136,7 @@ class JvmBackend implements Backend {
     }
 
     private boolean usesJson = false;
+    private String sourceName;
 
     private void emitClass(IRClass clazz, Path outputDir) throws IOException {
         Path classFile = outputDir.resolve(clazz.name() + ".class");
@@ -144,6 +146,9 @@ class JvmBackend implements Backend {
         String superName = clazz.superName() != null ? clazz.superName() : "java/lang/Object";
         cw.visit(V21, clazz.accessFlags(), clazz.name(), clazz.signature(),
                 superName, clazz.interfaces().toArray(new String[0]));
+        if (sourceName != null) {
+            cw.visitSource(sourceName, null);
+        }
 
         for (IRField field : clazz.fields()) {
             String desc = JvmTypeMapper.toDescriptor(field.type());

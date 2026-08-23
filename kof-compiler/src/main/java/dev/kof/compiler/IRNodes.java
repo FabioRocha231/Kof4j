@@ -6,7 +6,10 @@ import java.util.List;
 
 
 
-record IRModule(String name, List<IRClass> classes, List<String> imports) {
+record IRModule(String name, List<IRClass> classes, List<String> imports, String sourceName) {
+    IRModule(String name, List<IRClass> classes, List<String> imports) {
+        this(name, classes, imports, null);
+    }
 }
 
 record IRClass(String name, String superName, List<String> interfaces,

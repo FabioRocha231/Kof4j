@@ -125,7 +125,8 @@ public class CompilerDriver {
                     AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(), topLevelFunctions, List.of(), null, 0));
         }
         classes.addAll(syntheticClasses);
-        return new IRModule(moduleName, classes, imports);
+        return new IRModule(moduleName, classes, imports, sourceFile.getFileName() != null
+                ? sourceFile.getFileName().toString() : null);
     }
 
     private final List<IRClass> syntheticClasses = new ArrayList<>();
@@ -208,8 +209,12 @@ public class CompilerDriver {
             if (Type.isVoid(returnType)) body.add(new KofReturnVoid());
             else body.add(new KofReturn(returnType));
         }
+        KofDebugInfo debugInfo = currentDebugPositions.isEmpty()
+                ? KofDebugInfo.EMPTY
+                : new KofDebugInfo(new java.util.HashMap<>(currentDebugPositions));
+        currentDebugPositions.clear();
         return new IRMethod(func.name(), returnType, paramTypes, access, func.thrownExceptions(),
-                List.of(new IRBasicBlock(0, body)), locals);
+                List.of(new IRBasicBlock(0, body)), locals, debugInfo);
     }
 
     private int emitStatement(StatementNode stmt, List<KofOperation> ops, String owner, int localIdx,
@@ -742,6 +747,7 @@ public class CompilerDriver {
             case UnaryExpr ue -> {
                 Type operandType = inferExprType(ue.operand(), locals);
                 if ("++".equals(ue.operator()) || "--".equals(ue.operator())) {
+                    System.err.println("DBG emitIncrement op=" + ue.operator() + " operand=" + ue.operand());
                     localIdx = emitIncrement(ue, operandType, ops, owner, localIdx, locals);
                     yield localIdx;
                 }
