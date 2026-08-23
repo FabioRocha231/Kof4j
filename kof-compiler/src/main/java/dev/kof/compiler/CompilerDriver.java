@@ -573,8 +573,11 @@ private Target target = Target.JVM;
                 if (ret.value() != null) {
                     localIdx = emitExpression(ret.value(), ops, owner, localIdx, locals);
                     ops.add(new KofReturn(returnType));
-                } else {
+                } else if (Type.isVoid(returnType)) {
                     ops.add(new KofReturnVoid());
+                } else {
+                    ops.add(defaultValueOp(returnType));
+                    ops.add(new KofReturn(returnType));
                 }
                 yield localIdx;
             }
@@ -1955,7 +1958,9 @@ private Target target = Target.JVM;
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
                 ops.add(new KofNewObject(type, argTypes));
                 ops.add(new KofDup());
-                List<Type> ctorParamTypes = resolvedCtor != null ? resolvedCtor.parameterTypes() : argTypes;
+                List<Type> ctorParamTypes = (resolvedCtor != null
+                        && resolvedCtor.parameterTypes().size() == ne.arguments().size())
+                        ? resolvedCtor.parameterTypes() : argTypes;
                 localIdx = emitArgumentsWithFormalTypes(ne.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                 ops.add(new KofCall(type, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
@@ -3141,6 +3146,18 @@ private Target target = Target.JVM;
             }
         }
         return null;
+    }
+
+    private KofLoadLiteral defaultValueOp(Type type) {
+        if (type instanceof Type.PrimitiveType pt) {
+            return switch (Type.canonicalPrimitiveName(pt.name())) {
+                case "long" -> new KofLoadLiteral(Type.PrimitiveType.LONG, 0L);
+                case "float" -> new KofLoadLiteral(Type.PrimitiveType.FLOAT, 0.0f);
+                case "double" -> new KofLoadLiteral(Type.PrimitiveType.DOUBLE, 0.0d);
+                default -> new KofLoadLiteral(Type.PrimitiveType.INT, 0);
+            };
+        }
+        return new KofLoadLiteral(type, null);
     }
 
     private boolean isComparisonShortcut(BinaryExpr bin, List<IRLocalVariable> locals) {

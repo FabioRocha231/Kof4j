@@ -2072,6 +2072,48 @@ final class NativeRuntime {
 
     private static void emitStringReplace(StringBuilder sb) {
         sb.append("""
+            .globl kof_string_replace_char
+            .type kof_string_replace_char, @function
+            kof_string_replace_char:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movl %edx, %r13d
+                movl 16(%rbx), %r14d
+                leal 25(%r14), %edi
+                call kof_alloc
+                movq %rax, %r15
+                movl $1, (%r15)
+                movl $0, 4(%r15)
+                movq $0, 8(%r15)
+                movl %r14d, 16(%r15)
+                movl $0, 20(%r15)
+                xorl %ecx, %ecx
+            .Lkof_replace_char_loop:
+                cmpl %r14d, %ecx
+                jge .Lkof_replace_char_done
+                movzbl 24(%rbx,%rcx), %eax
+                cmpl %r12d, %eax
+                jne .Lkof_replace_char_store
+                movl %r13d, %eax
+            .Lkof_replace_char_store:
+                movb %al, 24(%r15,%rcx)
+                incq %rcx
+                jmp .Lkof_replace_char_loop
+            .Lkof_replace_char_done:
+                movb $0, 24(%r15,%r14)
+                movq %r15, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
             .globl kof_string_replace
             .type kof_string_replace, @function
             kof_string_replace:

@@ -726,7 +726,15 @@ public class NativeBackend implements Backend {
             sb.append("    popq %rdx\n");
             sb.append("    popq %rsi\n");
             sb.append("    popq %rdi\n");
-            sb.append("    call kof_string_replace\n");
+            // replace(char, char) passes raw character codes (Ints);
+            // replace(String, String) passes KofString pointers. The two
+            // runtime helpers must be selected by the call's parameter types.
+            Type first = !kc.parameterTypes().isEmpty() ? kc.parameterTypes().get(0) : null;
+            boolean charArgs = first instanceof Type.PrimitiveType pt
+                    && "char".equals(Type.canonicalPrimitiveName(pt.name()));
+            sb.append(charArgs
+                    ? "    call kof_string_replace_char\n"
+                    : "    call kof_string_replace\n");
             sb.append("    pushq %rax\n");
             return;
         }
