@@ -153,7 +153,13 @@ String s = list.get(0);
 
 ### Kof
 
-Não implementado.
+```kof
+var list = listOf("hello", "world")
+list.add("!")
+var s = list.get(0)
+```
+
+Generics por erasure (classes e funções). Bounds: planejados.
 
 ---
 
@@ -169,7 +175,14 @@ Set<String> set = new HashSet<>();
 
 ### Kof
 
-Não implementado.
+```kof
+var list = listOf("hello", "world")     // List<String>
+list.add("!")
+list.contains("hello")
+list.size
+```
+
+`Map`/`Set`: planejados (use `List<record>` com busca linear por enquanto).
 
 ---
 
