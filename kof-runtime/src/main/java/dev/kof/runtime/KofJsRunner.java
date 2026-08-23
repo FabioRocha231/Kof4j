@@ -91,26 +91,49 @@ public final class KofJsRunner {
         Path page = moduleFile.resolveSibling("kof-ui.html");
         Files.writeString(page, html);
         System.err.println("kof: window rendered at " + page.toAbsolutePath());
+        Path shim = findWebviewShim();
+        if (shim != null) {
+            try {
+                new ProcessBuilder(shim.toString(), page.toAbsolutePath().toString()).start();
+                return;
+            } catch (IOException e) {
+                System.err.println("kof: native webview failed (" + e.getMessage() + ") — falling back");
+            }
+        }
         try {
             if (java.awt.Desktop.isDesktopSupported()
                     && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
                 java.awt.Desktop.getDesktop().browse(page.toUri());
+                return;
             }
-        } catch (Exception e) {
-            try {
-                String os = System.getProperty("os.name", "").toLowerCase();
-                if (os.contains("win")) {
-                    new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler",
-                            page.toAbsolutePath().toString()).start();
-                } else if (os.contains("mac")) {
-                    new ProcessBuilder("open", page.toAbsolutePath().toString()).start();
-                } else {
-                    new ProcessBuilder("xdg-open", page.toAbsolutePath().toString()).start();
-                }
-            } catch (IOException ignored) {
-                System.err.println("kof: open " + page.toAbsolutePath() + " to view the window");
-            }
+        } catch (Exception ignored) {
         }
+        try {
+            String os = System.getProperty("os.name", "").toLowerCase();
+            if (os.contains("win")) {
+                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler",
+                        page.toAbsolutePath().toString()).start();
+            } else if (os.contains("mac")) {
+                new ProcessBuilder("open", page.toAbsolutePath().toString()).start();
+            } else {
+                new ProcessBuilder("xdg-open", page.toAbsolutePath().toString()).start();
+            }
+        } catch (IOException ignored) {
+            System.err.println("kof: open " + page.toAbsolutePath() + " to view the window");
+        }
+    }
+
+    private static Path findWebviewShim() {
+        String install = System.getProperty("kof.install.dir", "");
+        if (!install.isEmpty()) {
+            Path p = Path.of(install, "bin", "kof-webview");
+            if (Files.isExecutable(p)) return p;
+        }
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (!os.contains("linux")) return null;
+        Path p = Path.of("bin", "kof-webview");
+        if (Files.isExecutable(p)) return p.toAbsolutePath();
+        return null;
     }
 
     /**

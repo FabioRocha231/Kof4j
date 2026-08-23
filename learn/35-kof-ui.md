@@ -100,7 +100,15 @@ main() {
 **Renderização é KofJS.** `kof build --target=js` gera `index.html` +
 `kof-runtime.mjs`: a página tem o ponto de montagem `#kof-root` e o runtime
 DOM cria/atualiza os elementos (`document.title`, `span.kof-label`, ...).
-Um webview nativo é o shell que carrega essa página — frente futura.
+
+**Webview nativo (Linux):** o shell `bin/kof-webview` (WebKitGTK embutido)
+é compilado por `scripts/build-webview.sh` (requer `libwebkit2gtk-4.1-dev`)
+e incluído no pacote oficial. `kof run --target=js`:
+
+1. executa o programa no GraalJS embutido (DOM shim);
+2. `w.show()` serializa a janela para `kof-ui.html`;
+3. abre no `kof-webview` (janela nativa com WebKit) — sem o shim, cai no
+   browser do sistema (`xdg-open`/`open`/`rundll32`).
 
 No JVM e Native os handles são no-ops (a UI é KofJS) — o programa executa,
 mas nada é renderizado.

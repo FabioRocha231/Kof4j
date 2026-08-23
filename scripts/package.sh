@@ -66,6 +66,10 @@ cp "$ROOT/kof-cli/target/kof-cli-$VERSION.jar" "$DIST_DIR/lib/kof.jar"
 cp "$ROOT/bin/kof" "$DIST_DIR/bin/kof"
 cp "$ROOT/bin/kof.bat" "$DIST_DIR/bin/kof.bat"
 chmod +x "$DIST_DIR/bin/kof"
+if [ -x "$ROOT/bin/kof-webview" ]; then
+    cp "$ROOT/bin/kof-webview" "$DIST_DIR/bin/kof-webview"
+    echo "package: native webview shell included"
+fi
 
 printf '%s\n' "$VERSION" > "$DIST_DIR/VERSION"
 
