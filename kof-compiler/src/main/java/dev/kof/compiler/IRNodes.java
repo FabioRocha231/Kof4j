@@ -19,10 +19,26 @@ record IRField(String name, Type type, int accessFlags, Object initialValue) {
 
 record IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
                 List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
-                List<IRLocalVariable> localVariables) {
+                List<IRLocalVariable> localVariables, KofDebugInfo debugInfo) {
+    IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
+             List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
+             List<IRLocalVariable> localVariables) {
+        this(name, returnType, parameterTypes, accessFlags, thrownExceptions,
+                basicBlocks, localVariables, KofDebugInfo.EMPTY);
+    }
 }
 
 record IRBasicBlock(int index, List<KofOperation> operations) {
+}
+
+/**
+ * KofDebugInfo — backend-agnostic debug metadata.
+ * Maps each IR operation to its source position so backends can emit
+ * line tables / source maps that keep the Kof identity. The position is
+ * registered before the backend, never synthesized there.
+ */
+record KofDebugInfo(java.util.Map<KofOperation, SourcePosition> positions) {
+    static final KofDebugInfo EMPTY = new KofDebugInfo(java.util.Map.of());
 }
 
 record IRLocalVariable(int index, String name, Type type) {
@@ -139,6 +155,13 @@ record KofDup() implements KofOperation {
  * Used for postfix field increments (the receiver must survive for the store).
  */
 record KofDupX1() implements KofOperation {
+}
+
+/**
+ * Duplicates the top value two slots below: [A, B, C] → [C, A, B, C].
+ * Used for prefix array increments (the value survives the array store).
+ */
+record KofDupX2() implements KofOperation {
 }
 record KofPop() implements KofOperation {
 }

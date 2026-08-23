@@ -874,10 +874,10 @@ class JsBackend implements Backend {
             if (op instanceof KofStoreLocal sl) {
                 pos[0]++;
                 JsIr.JsStatement stmt = storeLocalStatement(ctx, sl, pop(stack));
-                if (stack.isEmpty()) {
+                if (stack.isEmpty() && !isCompilerTemp(ctx, sl.index())) {
                     return finishExpressionStatement(preamble, preambleExprs, stmt);
                 }
-                // mid-expression store (++/-- on locals): keep evaluating
+                // mid-expression store (++/-- temps, compiler temporaries)
                 preamble.add(stmt);
                 continue;
             }
@@ -921,13 +921,10 @@ class JsBackend implements Backend {
             }
             if (op instanceof KofPop) {
                 pos[0]++;
-                if (stack.isEmpty()) {
-                    throw new IllegalStateException("KofJS: dangling pop");
-                }
-                pop(stack);
                 if (!stack.isEmpty()) {
-                    throw new IllegalStateException("KofJS: dangling stack at pop");
+                    pop(stack);
                 }
+                stack.clear();
                 return finishExpressionStatement(preamble, preambleExprs, null);
             }
             if (op instanceof KofReturn kr) {
@@ -954,11 +951,15 @@ class JsBackend implements Backend {
                 return List.of(parseIfBody(ctx, pos, cj, condition, stack));
             }
             if (!isExpressionOp(op)) {
-                // statement boundary: wrap any leftover stack (listOf(...) chains)
+                // statement boundary: wrap any leftover stack (listOf(...) chains,
+                // increment temps) and finish the statement
                 if (!stack.isEmpty()) {
                     JsIr.JsExpression wrapped = wrapStack(stack);
                     stack.clear();
                     return finishExpressionStatement(preamble, preambleExprs, new JsIr.JsExprStmt(wrapped));
+                }
+                if (!preamble.isEmpty() || !preambleExprs.isEmpty()) {
+                    return finishExpressionStatement(preamble, preambleExprs, null);
                 }
                 throw new IllegalStateException("KofJS: unexpected op in expression statement: " + op);
             }
@@ -1011,9 +1012,15 @@ class JsBackend implements Backend {
         if (pos[0] >= ctx.ops.size()) return false;
         KofOperation op = ctx.ops.get(pos[0]);
         if (op instanceof KofLoadLocal ll) {
-            return "#inc".equals(ctx.rawLocalNames.get(ll.index()));
+            String raw = ctx.rawLocalNames.get(ll.index());
+            return raw != null && raw.startsWith("#");
         }
         return false;
+    }
+
+    private boolean isCompilerTemp(MethodCtx ctx, int index) {
+        String raw = ctx.rawLocalNames.get(index);
+        return raw != null && raw.startsWith("#");
     }
 
     private JsIr.JsExpression wrapStack(List<Object> stack) {
@@ -1056,7 +1063,7 @@ class JsBackend implements Backend {
                 || op instanceof KofLoadField || op instanceof KofGetStatic
                 || op instanceof KofBinary || op instanceof KofUnary
                 || op instanceof KofCall || op instanceof KofNewObject
-                || op instanceof KofDup || op instanceof KofDupX1 || op instanceof KofNewArray
+                || op instanceof KofDup || op instanceof KofDupX1 || op instanceof KofDupX2 || op instanceof KofNewArray
                 || op instanceof KofArrayLoad || op instanceof KofArrayLength
                 || op instanceof KofInstanceOf || op instanceof KofCheckCast;
     }
@@ -1119,6 +1126,24 @@ class JsBackend implements Backend {
             preambleExprs.add(new JsIr.JsAssignExpr(temp, top));
             stack.add(new JsIr.JsIdentifier(temp));
             stack.add(below);
+            stack.add(new JsIr.JsIdentifier(temp));
+        } else if (op instanceof KofDupX2) {
+            JsIr.JsExpression top = pop(stack);
+            JsIr.JsExpression middle = pop(stack);
+            JsIr.JsExpression bottom = pop(stack);
+            if (top instanceof JsIr.JsNumber || top instanceof JsIr.JsString
+                    || top instanceof JsIr.JsNull) {
+                stack.add(top);
+                stack.add(bottom);
+                stack.add(middle);
+                stack.add(top);
+                return;
+            }
+            String temp = ctx.freshTemp();
+            preambleExprs.add(new JsIr.JsAssignExpr(temp, top));
+            stack.add(new JsIr.JsIdentifier(temp));
+            stack.add(bottom);
+            stack.add(middle);
             stack.add(new JsIr.JsIdentifier(temp));
         } else if (op instanceof KofNewArray na) {
             JsIr.JsExpression size = pop(stack);

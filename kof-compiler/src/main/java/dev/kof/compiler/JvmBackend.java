@@ -371,7 +371,17 @@ class JvmBackend implements Backend {
             maxLocals = Math.max(maxLocals, computeLocals(block.operations()));
             maxStack = Math.max(maxStack, computeStack(block.operations()));
         }
+        java.util.Map<KofOperation, SourcePosition> debugPositions =
+                method.debugInfo() != null ? method.debugInfo().positions() : java.util.Map.of();
+        int lastLine = -1;
         for (KofOperation op : ops) {
+            SourcePosition pos = debugPositions.get(op);
+            if (pos != null && pos.line() != lastLine) {
+                Label lineLabel = new Label();
+                mv.visitLabel(lineLabel);
+                mv.visitLineNumber(pos.line(), lineLabel);
+                lastLine = pos.line();
+            }
             emitOperation(mv, className, op);
         }
 
@@ -617,6 +627,8 @@ class JvmBackend implements Backend {
             mv.visitInsn(DUP);
         } else if (op instanceof KofDupX1) {
             mv.visitInsn(DUP_X1);
+        } else if (op instanceof KofDupX2) {
+            mv.visitInsn(DUP_X2);
         } else if (op instanceof KofPop) {
             mv.visitInsn(POP);
         } else if (op instanceof KofReturn kr) {

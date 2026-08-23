@@ -384,6 +384,15 @@ public class NativeBackend implements Backend {
                     pushq %rbx
                     pushq %rax
                 """.stripIndent());
+            case KofDupX2 x2 -> sb.append("""
+                    movq (%rsp), %rax
+                    movq 8(%rsp), %rbx
+                    movq 16(%rsp), %rcx
+                    pushq %rax
+                    pushq %rcx
+                    pushq %rbx
+                    pushq %rax
+                """.stripIndent());
             case KofPop pop -> sb.append("    addq $8, %rsp\n");
             case KofGetStatic gs -> { }
             case KofPutStatic ps -> sb.append("    addq $8, %rsp\n");

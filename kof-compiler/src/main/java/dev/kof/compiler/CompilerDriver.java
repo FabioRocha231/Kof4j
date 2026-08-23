@@ -14,6 +14,8 @@ public class CompilerDriver {
     private SemanticAnalyzer semanticAnalyzer;
     private Target target = Target.JVM;
     private DiagnosticCollector currentDiagnostics;
+    private final java.util.IdentityHashMap<KofOperation, SourcePosition> currentDebugPositions =
+            new java.util.IdentityHashMap<>();
     private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
     private final java.util.Deque<LabelId> continueLabels = new java.util.ArrayDeque<>();
 
@@ -212,6 +214,18 @@ public class CompilerDriver {
 
     private int emitStatement(StatementNode stmt, List<KofOperation> ops, String owner, int localIdx,
                               List<IRLocalVariable> locals, Type returnType) {
+        int before = ops.size();
+        int result = emitStatementInner(stmt, ops, owner, localIdx, locals, returnType);
+        if (stmt.position() != null) {
+            for (int i = before; i < ops.size(); i++) {
+                currentDebugPositions.put(ops.get(i), stmt.position());
+            }
+        }
+        return result;
+    }
+
+    private int emitStatementInner(StatementNode stmt, List<KofOperation> ops, String owner, int localIdx,
+                                   List<IRLocalVariable> locals, Type returnType) {
         return switch (stmt) {
             case ReturnStmt ret -> {
                 if (ret.value() != null) {
@@ -1702,20 +1716,31 @@ public class CompilerDriver {
         }
         if (target instanceof ArrayAccessExpr aa) {
             localIdx = emitExpression(aa.receiver(), ops, owner, localIdx, locals);
-            localIdx = emitExpression(aa.index(), ops, owner, localIdx, locals);
             Type recvType = inferExprType(aa.receiver(), locals);
             Type elemType = Type.arrayElementType(recvType);
-            {
-                // keep the previous value through a temp for both prefix and postfix
-                int tmp = localIdx++;
-                locals.add(new IRLocalVariable(tmp, "#inc", elemType));
-                ops.add(new KofArrayLoad(elemType));
-                ops.add(new KofDup());
-                ops.add(new KofStoreLocal(elemType, tmp));
-                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
-                ops.add(new KofBinary(op, elemType));
+            int arrTmp = localIdx++;
+            int idxTmp = localIdx++;
+            int valTmp = localIdx++;
+            locals.add(new IRLocalVariable(arrTmp, "#arr", recvType));
+            locals.add(new IRLocalVariable(idxTmp, "#idx", Type.PrimitiveType.INT));
+            locals.add(new IRLocalVariable(valTmp, "#val", elemType));
+            ops.add(new KofStoreLocal(recvType, arrTmp));
+            localIdx = emitExpression(aa.index(), ops, owner, localIdx, locals);
+            ops.add(new KofStoreLocal(Type.PrimitiveType.INT, idxTmp));
+            ops.add(new KofLoadLocal(recvType, arrTmp));
+            ops.add(new KofLoadLocal(Type.PrimitiveType.INT, idxTmp));
+            ops.add(new KofArrayLoad(elemType));
+            ops.add(new KofStoreLocal(elemType, valTmp));
+            ops.add(new KofLoadLocal(elemType, valTmp));
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+            ops.add(new KofBinary(op, elemType));
+            if (prefix) {
+                // [array, index, new] -> [new, array, index, new]
+                ops.add(new KofDupX2());
                 ops.add(new KofArrayStore(elemType));
-                ops.add(new KofLoadLocal(elemType, tmp));
+            } else {
+                ops.add(new KofArrayStore(elemType));
+                ops.add(new KofLoadLocal(elemType, valTmp));
             }
             return localIdx;
         }
@@ -1740,10 +1765,17 @@ public class CompilerDriver {
         int tmp = localIdx++;
         locals.add(new IRLocalVariable(tmp, "#inc", fieldType));
         ops.add(new KofStoreLocal(fieldType, tmp));
+        ops.add(new KofLoadLocal(fieldType, tmp));
         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
         ops.add(new KofBinary(op, fieldType));
-        ops.add(new KofStoreField(ownerType, fieldName, fieldType));
-        ops.add(new KofLoadLocal(fieldType, tmp));
+        if (prefix) {
+            // [receiver, new] -> [new, receiver, new]
+            ops.add(new KofDupX1());
+            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
+        } else {
+            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
+            ops.add(new KofLoadLocal(fieldType, tmp));
+        }
         return localIdx;
     }
 
@@ -2043,7 +2075,12 @@ public class CompilerDriver {
             body = List.of(new IRBasicBlock(0, ops));
             locals = localVars;
         }
-        return new IRMethod(method.name(), returnType, paramTypes, access, method.thrownExceptions(), body, locals);
+        KofDebugInfo debugInfo = currentDebugPositions.isEmpty()
+                ? KofDebugInfo.EMPTY
+                : new KofDebugInfo(new java.util.HashMap<>(currentDebugPositions));
+        currentDebugPositions.clear();
+        return new IRMethod(method.name(), returnType, paramTypes, access, method.thrownExceptions(),
+                body, locals, debugInfo);
     }
 
     private IRMethod lowerConstructor(ConstructorDeclarationNode ctor, String owner, String superName,
