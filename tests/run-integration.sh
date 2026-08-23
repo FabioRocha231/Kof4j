@@ -115,6 +115,28 @@ fi
 kill $SERVER_PID 2>/dev/null || true
 wait $SERVER_PID 2>/dev/null || true
 
+# ── kof test (assert suite) ────────────────────────────────────────
+mkdir -p "$WORK/tests"
+cat > "$WORK/tests/math.kf" <<'EOF'
+main() {
+    assert(2 + 2 == 4)
+    assert("kof" == "kof")
+    println("math ok")
+}
+EOF
+cat > "$WORK/tests/broken.kf" <<'EOF'
+main() {
+    assert(1 + 1 == 3)
+}
+EOF
+
+TEST_OUTPUT=$(java -jar "$KOF_JAR" test "$WORK/tests" --target jvm 2>&1 || true)
+if echo "$TEST_OUTPUT" | grep -q "1 passed, 1 failed"; then
+    pass "kof test (pass + fail)"
+else
+    fail "kof test (got: $TEST_OUTPUT)"
+fi
+
 echo ""
 echo "=== INTEGRATION TESTS: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ]
