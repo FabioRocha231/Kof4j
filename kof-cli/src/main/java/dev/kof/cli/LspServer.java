@@ -88,8 +88,24 @@ final class LspServer {
             case "exit" -> running = false;
             case "textDocument/didOpen" -> publishDiagnostics(params);
             case "textDocument/didChange" -> publishDiagnostics(params);
+            case "textDocument/didClose" -> clearDiagnostics(params);
             default -> {  }
         }
+    }
+
+    /** didClose — clears diagnostics for the closed document. */
+    private void clearDiagnostics(Map<String, Object> params) {
+        Map<String, Object> textDoc = params.get("textDocument") instanceof Map<?, ?> td
+                ? (Map<String, Object>) td : Map.of();
+        String uri = textDoc.get("uri") == null ? "" : textDoc.get("uri").toString();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("uri", uri);
+        result.put("diagnostics", List.of());
+        Map<String, Object> notification = new LinkedHashMap<>();
+        notification.put("jsonrpc", "2.0");
+        notification.put("method", "textDocument/publishDiagnostics");
+        notification.put("params", result);
+        writeMessage(Json.stringify(notification));
     }
 
     private void respond(Object id, Object result) {
