@@ -231,6 +231,24 @@ Ver as guidelines completas no todo da sessão.
 
 ---
 
+## Kof Debugger (em progresso)
+
+Princípio: o programador depura **código Kof**, nunca o artefato do backend.
+
+| Fase | Estado |
+|------|--------|
+| 1 — DebugInfo na IR (source location por op) | ✅ |
+| 2 — JVM: SourceFile + LineNumberTable + LocalVariableTable | ✅ |
+| 3 — `kof-debug` (DAP: launch, breakpoints, stack, stepping) | planejado |
+| 4 — Kof Editor (breakpoints, toolbar, variables) | planejado |
+| 5 — Native (DWARF) | planejado |
+| 6 — JS (source maps) | planejado |
+
+Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
+`debugging-jvm.md`, `debugging-native.md`, `debugging-js.md`.
+
+---
+
 ## Bugs Restantes (reais)
 
 1. GC no Native (memória devolvida ao SO no exit)
