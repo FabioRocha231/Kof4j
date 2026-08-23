@@ -46,6 +46,7 @@ public final class KofJsRunner {
         try (Context context = Context.newBuilder("js")
                 .allowIO(true)
                 .allowAllAccess(true)
+                .option("engine.WarnInterpreterOnly", "false")
                 .out(out)
                 .err(err)
                 .in(in)

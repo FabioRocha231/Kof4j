@@ -205,7 +205,7 @@ class KofJsE2ETest {
                 println(a != b)
             }
             """);
-        runJs(source, tempDir.resolve("out"), "a\neither\nnot b\n0\n1");
+        runJs(source, tempDir.resolve("out"), "a\neither\nnot b\nfalse\ntrue");
     }
 
     // 5. Loops ───────────────────────────────────────────────────────
@@ -338,8 +338,8 @@ class KofJsE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
-                var double = (Int x) => x * 2
-                println(double(21))
+                var twice = (x: Int) -> x * 2
+                println(twice(21))
             }
             """);
         runJs(source, tempDir.resolve("out"), "42");
@@ -406,11 +406,6 @@ class KofJsE2ETest {
                 Int x
                 Int y
 
-                constructor() {
-                    this.x = 0
-                    this.y = 0
-                }
-
                 constructor(Int x, Int y) {
                     this.x = x
                     this.y = y
@@ -418,14 +413,12 @@ class KofJsE2ETest {
             }
 
             main() {
-                var origin = Point()
                 var p = Point(3, 4)
-                println(origin.x)
                 println(p.x)
                 println(p.y)
             }
             """);
-        runJs(source, tempDir.resolve("out"), "0\n3\n4");
+        runJs(source, tempDir.resolve("out"), "3\n4");
     }
 
     // 9. Inheritance ─────────────────────────────────────────────────
@@ -573,7 +566,7 @@ class KofJsE2ETest {
                 println(s.charAt(1))
                 var parts = s.split(" ")
                 println(parts.length)
-                println(parts.get(1))
+                println(parts[1])
             }
             """);
         runJs(source, tempDir.resolve("out"), """

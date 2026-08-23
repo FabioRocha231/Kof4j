@@ -512,6 +512,46 @@ class JsBackend implements Backend {
         return new JsIr.JsIf(condition, thenBranch, elseBranch);
     }
 
+    /**
+     * Attempts to parse an if-expression: [Label(true), expr, Jump(end),
+     * Label(false), expr, Label(end)]. Returns null (restoring the position)
+     * when the upcoming ops form a statement-level if instead.
+     */
+    private JsIr.JsExpression tryParseIfExpr(MethodCtx ctx, int[] pos, KofConditionalJump cj,
+                                             JsIr.JsExpression condition) {
+        int saved = pos[0];
+        try {
+            if (!(ctx.ops.get(pos[0]) instanceof KofLabel kl && kl.label().equals(cj.trueLabel()))) {
+                pos[0] = saved;
+                return null;
+            }
+            pos[0]++;
+            JsIr.JsExpression thenExpr = parseExpressionFragment(ctx, pos);
+            if (!(ctx.ops.get(pos[0]) instanceof KofJump)) {
+                pos[0] = saved;
+                return null;
+            }
+            pos[0]++;
+            if (!(ctx.ops.get(pos[0]) instanceof KofLabel kl2 && kl2.label().equals(cj.falseLabel()))) {
+                pos[0] = saved;
+                return null;
+            }
+            pos[0]++;
+            JsIr.JsExpression elseExpr = parseExpressionFragment(ctx, pos);
+            if (!(ctx.ops.get(pos[0]) instanceof KofLabel)) {
+                pos[0] = saved;
+                return null;
+            }
+            pos[0]++;
+            return new JsIr.JsConditional(condition, thenExpr, elseExpr);
+        } catch (RuntimeException e) {
+            // statement-level if: expressions in the branches failed, so the
+            // construct is a statement, not an if-expression
+            pos[0] = saved;
+            return null;
+        }
+    }
+
     private JsIr.JsExpression comparisonExpr(KofComparison comp, JsIr.JsExpression left, JsIr.JsExpression right) {
         if (comp == KofComparison.NE && right instanceof JsIr.JsNumber n && "0".equals(n.text())) {
             // boolean conditions: (cond, 0) CJump(NE) — truthiness in JS
@@ -531,24 +571,19 @@ class JsBackend implements Backend {
 
     private JsIr.JsStatement parseLoop(MethodCtx ctx, int[] pos, LabelId startLabel) {
         pos[0]++;
-        // scan the condition ops to find the terminating conditional jump
-        int scan = pos[0];
-        KofConditionalJump loopJump = null;
-        while (scan < ctx.ops.size()) {
-            KofOperation op = ctx.ops.get(scan);
-            if (op instanceof KofConditionalJump cj) {
-                loopJump = cj;
+        // A do-while loop is the only construct whose conditional jump targets
+        // its own start label; scan the whole remaining stream to find it.
+        KofConditionalJump doWhileJump = null;
+        for (int i = pos[0]; i < ctx.ops.size(); i++) {
+            if (ctx.ops.get(i) instanceof KofConditionalJump cj && cj.trueLabel().equals(startLabel)) {
+                doWhileJump = cj;
                 break;
             }
-            if (!isExpressionOp(op)) break;
-            scan++;
         }
-        if (loopJump == null) {
-            throw new IllegalStateException("KofJS: loop without conditional jump");
+        if (doWhileJump != null) {
+            return parseDoWhile(ctx, pos, startLabel, doWhileJump);
         }
-        if (loopJump.trueLabel().equals(startLabel)) {
-            return parseDoWhile(ctx, pos, startLabel, loopJump);
-        }
+        // while / for: condition ops, CJump(body, end), Label(body), body, ...
         // while / for / for-in: condition ops, CJump(body, end), Label(body), body, ...
         List<Object> condStack = new ArrayList<>();
         while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofConditionalJump)) {
@@ -689,11 +724,16 @@ class JsBackend implements Backend {
             finallyBody = parseStatements(ctx, pos, Set.of(), exits);
             // skip the rethrow machinery: Label(rethrow) ... Label(done)
             LabelId done = exits.isEmpty() ? null : exits.get(exits.size() - 1);
-            while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofLabel kl
-                    && done != null && kl.label().equals(done))) {
+            if (done != null) {
+                while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofLabel kl
+                        && kl.label().equals(done))) {
+                    pos[0]++;
+                }
+                if (pos[0] < ctx.ops.size()) pos[0]++;
+            } else if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel) {
+                // no-finally: the trailing empty label (done) ends the try
                 pos[0]++;
             }
-            if (pos[0] < ctx.ops.size()) pos[0]++;
         }
         return new JsIr.JsTry(tryBody, catches, finallyBody);
     }
@@ -848,11 +888,17 @@ class JsBackend implements Backend {
             if (op instanceof KofConditionalJump cj && pos[0] + 1 < ctx.ops.size()
                     && ctx.ops.get(pos[0] + 1) instanceof KofLabel kl
                     && kl.label().equals(cj.trueLabel())) {
-                // statement-level if: condition operands are on the stack
+                // if-statement OR if-expression (var x = if (...) ... else ...)
                 pos[0]++;
                 JsIr.JsExpression right = pop(stack);
                 JsIr.JsExpression left = pop(stack);
-                return parseIfBody(ctx, pos, cj, comparisonExpr(cj.comparison(), left, right), stack);
+                JsIr.JsExpression condition = comparisonExpr(cj.comparison(), left, right);
+                JsIr.JsExpression ifExpr = tryParseIfExpr(ctx, pos, cj, condition);
+                if (ifExpr != null) {
+                    stack.add(ifExpr);
+                    continue;
+                }
+                return parseIfBody(ctx, pos, cj, condition, stack);
             }
             if (!isExpressionOp(op)) {
                 // statement boundary: wrap any leftover stack (listOf(...) chains)
@@ -989,25 +1035,11 @@ class JsBackend implements Backend {
             JsIr.JsExpression right = pop(stack);
             JsIr.JsExpression left = pop(stack);
             JsIr.JsExpression condition = comparisonExpr(cj.comparison(), left, right);
-            if (!(ctx.ops.get(pos[0]) instanceof KofLabel kl && kl.label().equals(cj.trueLabel()))) {
-                throw new IllegalStateException("KofJS: if-expr expected Label(true)");
+            JsIr.JsExpression ifExpr = tryParseIfExpr(ctx, pos, cj, condition);
+            if (ifExpr == null) {
+                throw new IllegalStateException("KofJS: malformed if-expression");
             }
-            pos[0]++;
-            JsIr.JsExpression thenExpr = parseExpressionFragment(ctx, pos);
-            if (!(ctx.ops.get(pos[0]) instanceof KofJump)) {
-                throw new IllegalStateException("KofJS: if-expr expected Jump(end)");
-            }
-            pos[0]++;
-            if (!(ctx.ops.get(pos[0]) instanceof KofLabel kl2 && kl2.label().equals(cj.falseLabel()))) {
-                throw new IllegalStateException("KofJS: if-expr expected Label(false)");
-            }
-            pos[0]++;
-            JsIr.JsExpression elseExpr = parseExpressionFragment(ctx, pos);
-            if (!(ctx.ops.get(pos[0]) instanceof KofLabel kl3 && kl3.label().equals(cj.falseLabel()))) {
-                throw new IllegalStateException("KofJS: if-expr expected Label(end)");
-            }
-            pos[0]++;
-            stack.add(new JsIr.JsConditional(condition, thenExpr, elseExpr));
+            stack.add(ifExpr);
         } else if (op instanceof KofCall kc) {
             handleCall(ctx, stack, kc);
         } else {
@@ -1031,6 +1063,19 @@ class JsBackend implements Backend {
                     || op instanceof KofThrow || op instanceof KofTryStart
                     || op instanceof KofCatchStart) {
                 break;
+            }
+            if (op instanceof KofConditionalJump && pos[0] + 1 < ctx.ops.size()
+                    && ctx.ops.get(pos[0] + 1) instanceof KofLabel kl
+                    && kl.label().equals(((KofConditionalJump) op).trueLabel())) {
+                // if-expression or a nested if-statement inside a branch
+                int saved = pos[0];
+                try {
+                    consumeExpressionOp(ctx, pos, stack);
+                } catch (RuntimeException e) {
+                    pos[0] = saved;
+                    break;
+                }
+                continue;
             }
             if (!isExpressionOp(op)) {
                 throw new IllegalStateException("KofJS: unexpected op in expression fragment: " + op);
@@ -1080,12 +1125,14 @@ class JsBackend implements Backend {
             handleListOp(ctx, stack, kc, receiver, args);
             return;
         }
-        if (isStringOp(kc)) {
-            handleStringOp(ctx, stack, kc, receiver, args);
+        if (isRuntimeOp(kc)) {
+            // kof_json_* / kof_io_* / kof_now / kof_box / kof_unbox — checked
+            // before string ops: json.encode("...") has a String owner.
+            handleRuntimeOp(ctx, stack, kc, receiver, args);
             return;
         }
-        if (isRuntimeOp(kc)) {
-            handleRuntimeOp(ctx, stack, kc, receiver, args);
+        if (isStringOp(kc)) {
+            handleStringOp(ctx, stack, kc, receiver, args);
             return;
         }
         if (kc.kind() == KofCallKind.FUNCTION) {
@@ -1118,14 +1165,13 @@ class JsBackend implements Backend {
     private void handleConstructorCall(List<Object> stack, KofCall kc) {
         List<JsIr.JsExpression> args = new ArrayList<>();
         for (int i = 0; i < kc.parameterTypes().size(); i++) {
+            if (stack.isEmpty()) break;
+            Object top = stack.get(stack.size() - 1);
+            if (top instanceof NewPending || top instanceof DupMarker) break;
             args.add(pop(stack));
         }
         java.util.Collections.reverse(args);
         Object top = popRaw(stack);
-        if (top instanceof NewPending np) {
-            stack.add(new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), args));
-            return;
-        }
         if (top instanceof DupMarker) {
             Object newObj = popRaw(stack);
             if (newObj instanceof NewPending np) {
@@ -1133,6 +1179,10 @@ class JsBackend implements Backend {
                 return;
             }
             throw new IllegalStateException("KofJS: DupMarker without NewPending");
+        }
+        if (top instanceof NewPending np) {
+            stack.add(new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), args));
+            return;
         }
         // super(...) constructor call
         throw new StatementEnd(new JsIr.JsCall(new JsIr.JsIdentifier("super"), args));
@@ -1176,12 +1226,12 @@ class JsBackend implements Backend {
                 yield new JsIr.JsBinary(left, "/", right);
             }
             case MOD -> new JsIr.JsBinary(left, "%", right);
-            case EQ -> ternary(new JsIr.JsBinary(left, "===", right));
-            case NE -> ternary(new JsIr.JsBinary(left, "!==", right));
-            case LT -> ternary(new JsIr.JsBinary(left, "<", right));
-            case LE -> ternary(new JsIr.JsBinary(left, "<=", right));
-            case GT -> ternary(new JsIr.JsBinary(left, ">", right));
-            case GE -> ternary(new JsIr.JsBinary(left, ">=", right));
+            case EQ -> new JsIr.JsBinary(left, "===", right);
+            case NE -> new JsIr.JsBinary(left, "!==", right);
+            case LT -> new JsIr.JsBinary(left, "<", right);
+            case LE -> new JsIr.JsBinary(left, "<=", right);
+            case GT -> new JsIr.JsBinary(left, ">", right);
+            case GE -> new JsIr.JsBinary(left, ">=", right);
             case AND -> new JsIr.JsBinary(left, "&", right);
             case OR -> new JsIr.JsBinary(left, "|", right);
             case XOR -> new JsIr.JsBinary(left, "^", right);
@@ -1202,10 +1252,6 @@ class JsBackend implements Backend {
         return inner;
     }
 
-    private JsIr.JsExpression ternary(JsIr.JsExpression condition) {
-        return new JsIr.JsConditional(condition, new JsIr.JsNumber("1"), new JsIr.JsNumber("0"));
-    }
-
     private JsIr.JsExpression unaryExpr(KofUnary ku, JsIr.JsExpression operand) {
         return switch (ku.op()) {
             case NEG -> new JsIr.JsUnary("-", operand);
@@ -1215,6 +1261,11 @@ class JsBackend implements Backend {
     }
 
     private JsIr.JsExpression literalExpr(KofLoadLiteral lit) {
+        if (lit.type() instanceof Type.PrimitiveType pt
+                && "bool".equals(Type.canonicalPrimitiveName(pt.name()))) {
+            Object v = lit.value();
+            return new JsIr.JsIdentifier((v instanceof Integer i && i != 0) ? "true" : "false");
+        }
         if (lit.value() instanceof Integer i) return new JsIr.JsNumber(Integer.toString(i));
         if (lit.value() instanceof Long l) return new JsIr.JsNumber(Long.toString(l));
         if (lit.value() instanceof Float f) return new JsIr.JsNumber(Float.toString(f));
@@ -1383,7 +1434,7 @@ class JsBackend implements Backend {
     }
 
     private String runtimeJsName(String kofName) {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder("kof");
         boolean upper = false;
         for (int i = 3; i < kofName.length(); i++) {
             char c = kofName.charAt(i);
@@ -1415,8 +1466,13 @@ class JsBackend implements Backend {
             return new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), List.of());
         }
         if (top instanceof DupMarker) {
-            throw new IllegalStateException("KofJS: DupMarker popped as expression; stack=" + stack
-                    + "\nops=" + currentCtxOps);
+            // The frontend omits the <init> call when the class has only the
+            // implicit default constructor; complete the pending new.
+            Object base = popRaw(stack);
+            if (base instanceof NewPending np) {
+                return new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), List.of());
+            }
+            throw new IllegalStateException("KofJS: DupMarker without NewPending; stack=" + stack);
         }
         return (JsIr.JsExpression) top;
     }
