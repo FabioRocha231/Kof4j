@@ -358,14 +358,14 @@ class JvmBackend implements Backend {
                 .flatMap(b -> b.operations().stream())
                 .collect(Collectors.toList());
         if ("<init>".equals(method.name())) {
-            boolean hasSuperCall = !ops.isEmpty() && ops.get(0) instanceof KofLoadLocal ll
-                    && ll.index() == 0
-                    && ops.size() > 1 && ops.get(1) instanceof KofCall kc
-                    && kc.kind() == KofCallKind.CONSTRUCTOR && "<init>".equals(kc.methodName());
+            String superName = classSuperName != null ? classSuperName : "java/lang/Object";
+            boolean hasSuperCall = ops.stream().anyMatch(op -> op instanceof KofCall kc
+                    && kc.kind() == KofCallKind.CONSTRUCTOR
+                    && kc.ownerType() instanceof Type.ClassType ct
+                    && superName.equals(ct.internalName()));
             if (!hasSuperCall) {
                 // JVM requires constructors to invoke super() or this() first.
                 Type thisType = classTypeFromInternal(className);
-                String superName = classSuperName != null ? classSuperName : "java/lang/Object";
                 ops.add(0, new KofCall(classTypeFromInternal(superName),
                         "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 ops.add(0, new KofLoadLocal(thisType, 0));
