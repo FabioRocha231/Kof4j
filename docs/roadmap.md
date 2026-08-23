@@ -84,14 +84,9 @@ A intenção é semelhante à filosofia do Flutter:
 
 Estado atual: 🟡 alpha — pipeline `.kf → Kof IR → KofJS → .mjs` funcional com
 execução na engine JS embarcada do próprio Kof (sem Node.js). Classes,
-herança, List, String API, JSON, exceções, lambdas com capturas,
-kof.time/kof.io e `kof run --target=js` funcionam. A plataforma de UI
-(`kof.ui`: Window/Label/Button/Input, Column/Row, View+Style, eventos) já
-renderiza em webview nativo (WebKitGTK) e browser via `index.html` estático.
-Próximas fases: UI declarativa (components), layout avançado, WebKit
-embutido multiplataforma (Windows/macOS), integração com `kof serve`.
-Ver: [docs/targets/KOFJS.md](../targets/KOFJS.md) e
-[learn/37-kofjs.md](../../learn/37-kofjs.md).
+herança, List, String API, JSON, exceções, kof.time/kof.io e `kof run
+--target=js` funcionam. A plataforma web (HTML/CSS/JS, browser) é a próxima
+fase. Ver: [docs/targets/KOFJS.md](../targets/KOFJS.md).
 
 ### KofScript — Execução Direta
 

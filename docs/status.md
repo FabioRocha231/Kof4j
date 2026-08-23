@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 491 testes (491/491 PASS)
+mvn test             → 513 testes (513/513 PASS)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -274,34 +274,9 @@ main() {
 - `kof test <file.kf|dir> [--target jvm|native]` reporta PASS/FAIL.
 - Ver: `learn/23-testing.md`.
 
-### kof.ui (plataforma de UI)
-
-Renderização é **KofJS** (JVM/Native = no-ops): `kof run --target=js` abre o
-app interativo no webview nativo (`bin/kof-webview`, WebKitGTK embutido).
-
-- **Cores/temas**: `Color` (0xRRGGBBAA, canais por bits no compilador),
-  `Palette.*`, `Theme.light()/dark()` (semânticas background/surface/primary/
-  secondary/text/error).
-- **Widgets**: `Window` (bind de título, `bind`, `show`/`close`, `size`,
-  `theme`), `Label` (`text`/`fontSize`/`bold`/`color`), `Button` (`text`,
-  ação por lambda com capturas), `Input` (`text`), containers `Column`/`Row`
-  (listas de handles), `Style(bg, fg, padding, radius)` + `View` (`bind`).
-- **Eventos**: `Button("Ok", () -> ...)` — lambda com capturas (foto
-  somente-leitura; estado mutável via campos estáticos de classe). Cliques
-  executam dentro da página WebKit (DOM real).
-- **Janelas**: múltiplas por página; `w.close()` remove só a própria;
-  **fechar a janela encerra o programa** (runner aguarda o webview).
-- **Shim DOM browser-safe**: `kofSerialize`/`Array.from`, `document.head`,
-  `kof_platform` com fallback de console no browser.
-- **Webview**: `kof-webview.c` sem headers (link direto nas `.so.0`),
-  `webkit_settings_set_allow_file_access_from_file_urls` para módulos ES
-  sobre `file://`; CI compila via `scripts/build-webview.sh`.
-- Testes: `UiE2ETest` (14), `WindowE2ETest` (3) — JVM/Native/JS.
-- Docs: `learn/35-kof-ui.md`.
-
 ---
 
-## Testes (491/491 PASS)
+## Testes (513/513 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -318,12 +293,12 @@ app interativo no webview nativo (`bin/kof-webview`, WebKitGTK embutido).
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
 | KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
-| KofLogE2ETest | 7 | kof.log: níveis, stderr, off, LOG001 |
+| KofLogE2ETest | 10 | kof.log: níveis, stderr, off, JSON estruturado, correlation ID, LOG001 |
+| JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
+| KofDbE2ETest | 7 | kof.db: JDBC, query<T>, transaction, rollback, DB001 |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
-| UiE2ETest | 14 | kof.ui: cores, temas, widgets, layout, estilo, janelas (JVM/Native/JS) |
-| WindowE2ETest | 3 | janela + label + bind (HTML via KofJS) |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
 | SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
@@ -331,7 +306,7 @@ app interativo no webview nativo (`bin/kof-webview`, WebKitGTK embutido).
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **508** | |
+| **Total** | **513** | |
 
 ---
 

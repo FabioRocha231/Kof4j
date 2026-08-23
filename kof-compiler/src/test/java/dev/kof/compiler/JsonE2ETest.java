@@ -226,16 +226,18 @@ class JsonE2ETest {
 
 
     @Test
-    void floatNotSupported(@TempDir Path tempDir) throws IOException {
+    void floatSupportedOnJvmRejectedOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
                 println(json.encode(1.5))
             }
             """);
-        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
-        assertFalse(result.success(), "Float encode should be rejected");
-        assertTrue(result.diagnostics().getDiagnostics().stream()
+        CompilationResult jvm = driver.compile(source, tempDir.resolve("jvm-out"), Target.JVM);
+        assertTrue(jvm.success(), "Float encode should work on JVM");
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
+        assertFalse(nativeResult.success(), "Float encode should be rejected on Native");
+        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
                 .anyMatch(d -> d.code().equals("JSN001")), "Should report JSN001");
     }
 
@@ -258,7 +260,7 @@ class JsonE2ETest {
     }
 
     @Test
-    void decodeArrayNotSupported(@TempDir Path tempDir) throws IOException {
+    void decodeArraySupportedOnJvmRejectedOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
@@ -266,7 +268,11 @@ class JsonE2ETest {
                 println(a.length)
             }
             """);
-        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
-        assertFalse(result.success(), "Array decode should be rejected");
+        CompilationResult jvm = driver.compile(source, tempDir.resolve("jvm-out"), Target.JVM);
+        assertTrue(jvm.success(), "Array decode should work on JVM");
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
+        assertFalse(nativeResult.success(), "Array decode should be rejected on Native");
+        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
+                .anyMatch(d -> d.code().equals("JSN003")), "Should report JSN003");
     }
 }

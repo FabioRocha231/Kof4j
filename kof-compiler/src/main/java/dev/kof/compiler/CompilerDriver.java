@@ -1170,6 +1170,25 @@ private Target target = Target.JVM;
                         yield localIdx;
                     }
                 }
+                if (mc.receiver() == null && "transaction".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    if (!KofDb.supportedOn(target)) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0,
+                                    0,
+                                    "transaction: not available on the " + target
+                                            + " target yet (" + KofDb.gapCode() + ")",
+                                    KofDb.gapCode());
+                        }
+                        yield localIdx;
+                    }
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.db", "Db", List.of()),
+                            "kof_db_transaction", List.of(Type.UnknownType.UNKNOWN),
+                            Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_file",
@@ -1320,6 +1339,50 @@ private Target target = Target.JVM;
                         }
                         ops.add(new KofCall(targetType, decodeFn, decodeParams,
                                 targetType, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+} else if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
+                    KofDb.DbCall dbCall = KofDb.staticCall(mc.methodName(), argTypes, typed);
+                    if (dbCall != null) {
+                        if (!KofDb.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofDb.gapCode() + ")",
+                                        KofDb.gapCode());
+                            }
+                            yield localIdx;
+                        }
+                        for (int i = 0; i < mc.arguments().size() && i < 2; i++) {
+                            localIdx = emitExpression(mc.arguments().get(i), ops, owner, localIdx, locals);
+                        }
+                        for (int i = 2; i < mc.arguments().size(); i++) {
+                            localIdx = emitExpression(mc.arguments().get(i), ops, owner, localIdx, locals);
+                            boxPrimitive(ops, argTypes.get(i));
+                        }
+                        if (KofDb.isQuery(mc.methodName())) {
+                            if (typed && !mc.typeArguments().isEmpty()) {
+                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING, mc.typeArguments().get(0)));
+                            } else {
+                                ops.add(new KofLoadLiteral(Type.UnknownType.UNKNOWN, null));
+                            }
+                        }
+                        List<Type> params = new ArrayList<>(dbCall.parameterTypes());
+                        Type retType = dbCall.returnType();
+                        if (typed) {
+                            params.add(BuiltinTypes.STRING);
+                            retType = new Type.ClassType("kof", "List",
+                                    List.of(toType(mc.typeArguments().get(0))));
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.db", "Db", List.of()),
+                                dbCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
@@ -2113,6 +2176,9 @@ private Target target = Target.JVM;
                 if ("now".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
                     yield Type.PrimitiveType.LONG;
                 }
+                if (mc.receiver() == null && "transaction".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    yield Type.PrimitiveType.VOID;
+                }
                 if (("readLine".equals(mc.methodName()) || "readFile".equals(mc.methodName()))
                         && mc.receiver() == null) {
                     yield BuiltinTypes.STRING;
@@ -2174,7 +2240,21 @@ private Target target = Target.JVM;
                     }
                     yield Type.UnknownType.UNKNOWN;
                 }
-if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
+                    KofDb.DbCall dbCall = KofDb.staticCall(mc.methodName(), argTypes, typed);
+                    if (dbCall != null) {
+                        if (typed && !mc.typeArguments().isEmpty()) {
+                            yield new Type.ClassType("kof", "List",
+                                    List.of(toType(mc.typeArguments().get(0))));
+                        }
+                        yield dbCall.returnType();
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
@@ -2913,18 +2993,26 @@ if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.nam
     private boolean jsonSupported(Type type, boolean isDecode) {
         Type check = BuiltinTypes.isList(type) ? listElementType(type) : type;
         if (check instanceof Type.PrimitiveType pt && ("float".equals(pt.name()) || "double".equals(pt.name()))) {
-            if (currentDiagnostics != null) {
-                currentDiagnostics.error("", 0, 0, 0,
-                        "json: Float/Double is not supported yet (use int, long, bool or String)", "JSN001");
+            if (target == Target.NATIVE) {
+                if (currentDiagnostics != null) {
+                    currentDiagnostics.error("", 0, 0, 0,
+                            "json: Float/Double is not supported on the Native target yet (use int, long, bool or String)",
+                            "JSN001");
+                }
+                return false;
             }
-            return false;
+            return true;
         }
         if (isDecode && type instanceof Type.ArrayType) {
-            if (currentDiagnostics != null) {
-                currentDiagnostics.error("", 0, 0, 0,
-                        "json.decode: arrays are not supported yet (use List<Int> or List<String>)", "JSN003");
+            if (target == Target.NATIVE) {
+                if (currentDiagnostics != null) {
+                    currentDiagnostics.error("", 0, 0, 0,
+                            "json.decode: arrays are not supported on the Native target yet (use List<Int> or List<String>)",
+                            "JSN003");
+                }
+                return false;
             }
-            return false;
+            return true;
         }
         if (check instanceof Type.ClassType && target == Target.NATIVE && !BuiltinTypes.isList(type)
                 && !BuiltinTypes.isString(type)) {
@@ -2944,6 +3032,8 @@ if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.nam
                 case "int", "char", "byte", "short" -> "kof_json_encode_int";
                 case "long" -> "kof_json_encode_long";
                 case "bool" -> "kof_json_encode_bool";
+                case "float" -> "kof_json_encode_float";
+                case "double" -> "kof_json_encode_double";
                 default -> "kof_json_encode_int";
             };
         }
@@ -2959,8 +3049,23 @@ if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.nam
                 case "int", "char", "byte", "short" -> "kof_json_decode_int";
                 case "long" -> "kof_json_decode_long";
                 case "bool" -> "kof_json_decode_bool";
+                case "float" -> "kof_json_decode_float";
+                case "double" -> "kof_json_decode_double";
                 default -> "kof_json_decode_int";
             };
+        }
+        if (type instanceof Type.ArrayType at) {
+            if (at.componentType() instanceof Type.PrimitiveType ap) {
+                return switch (ap.name()) {
+                    case "int", "char", "byte", "short" -> "kof_json_decode_int_array";
+                    case "bool" -> "kof_json_decode_bool_array";
+                    case "long" -> "kof_json_decode_long_array";
+                    case "double", "float" -> "kof_json_decode_double_array";
+                    default -> "kof_json_decode_int_array";
+                };
+            }
+            if (BuiltinTypes.isString(at.componentType())) return "kof_json_decode_string_array";
+            return "kof_json_decode_string_array";
         }
         if (BuiltinTypes.isString(type)) return "kof_json_decode_string";
         if (BuiltinTypes.isList(type)) {

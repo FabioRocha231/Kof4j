@@ -32,8 +32,8 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Test (gate — a broken release is never published)
-        run: mvn clean test
+      - name: Test + package (gate; golden/integration scripts need the CLI jar)
+        run: mvn clean package
 
       - name: Golden tests (jvm + native)
         run: tests/run-golden.sh

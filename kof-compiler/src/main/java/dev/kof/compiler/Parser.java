@@ -853,7 +853,11 @@ class Parser {
     private ExpressionNode parsePostfix() {
         ExpressionNode expr = parsePrimary();
         while (true) {
-            if (check(TokenType.DOT)) {
+            if (check(TokenType.LBRACE) && expr instanceof IdentifierExpr ie) {
+                // trailing lambda call: identifier { ... } (transaction { ... })
+                expr = new MethodCallExpr(pos(), null, ie.name(), List.of(),
+                        List.of(new LambdaExpr(pos(), List.of(), parseBlock())));
+            } else if (check(TokenType.DOT)) {
                 advance();
                 String field;
                 if (check(TokenType.IDENTIFIER)) {
@@ -1114,7 +1118,8 @@ class Parser {
                     if (depth == 0) return i + 1 < tokens.size() && tokens.get(i + 1).type() == TokenType.LPAREN;
                 }
                 case IDENTIFIER, INT_TYPE, LONG_TYPE, FLOAT_TYPE, DOUBLE_TYPE, BOOL_TYPE,
-                        BYTE_TYPE, SHORT_TYPE, CHAR_TYPE, STRING_TYPE, DOT, COMMA -> { }
+                        BYTE_TYPE, SHORT_TYPE, CHAR_TYPE, STRING_TYPE, DOT, COMMA,
+                        LBRACKET, RBRACKET -> { }
                 default -> {
                     return false;
                 }

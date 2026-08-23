@@ -493,6 +493,7 @@ class SemanticAnalyzer {
                         && !"json".equals(ie.name()) && !"process".equals(ie.name())
                         && !KofWeb.isWebNamespace(ie.name())
                         && !KofConfig.isConfigNamespace(ie.name())
+                        && !KofDb.isDbNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
@@ -585,6 +586,11 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield BuiltinTypes.STRING;
                 }
+                if (mc.receiver() == null && "transaction".equals(mc.methodName())
+                        && mc.arguments().size() == 1) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield Type.PrimitiveType.VOID;
+                }
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     inferType(mc.arguments().get(0), scope);
                     yield BuiltinTypes.STRING;
@@ -641,6 +647,20 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferType(mc.receiver(), scope);
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
+                        KofDb.DbCall dbCall = KofDb.staticCall(mc.methodName(), argTypes, typed);
+                        if (dbCall != null) {
+                            if (typed && !mc.typeArguments().isEmpty()) {
+                                yield new Type.ClassType("kof", "List",
+                                        List.of(resolveType(mc.typeArguments().get(0), scope)));
+                            }
+                            yield dbCall.returnType();
+                        }
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -727,7 +747,8 @@ class SemanticAnalyzer {
                         && !"super".equals(mc.methodName())
                         && !KofIo.isConstructor(mc.methodName())
                         && !KofUi.isConstructor(mc.methodName())
-                        && !KofWeb.isContextFunction(mc.methodName())) {
+                        && !KofWeb.isContextFunction(mc.methodName())
+                        && !"transaction".equals(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                     boolean found = false;

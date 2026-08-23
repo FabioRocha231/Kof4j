@@ -32,6 +32,11 @@ class KofLogE2ETest {
             """;
 
     private String[] run(Path tempDir, String kofSource, String level) throws IOException {
+        return run(tempDir, kofSource, level, null);
+    }
+
+    private String[] run(Path tempDir, String kofSource, String level,
+                         Map<String, String> extraEnv) throws IOException {
         Path source = tempDir.resolve("Log.kf");
         Files.writeString(source, kofSource);
         Path outDir = tempDir.resolve("classes");
@@ -41,6 +46,9 @@ class KofLogE2ETest {
             ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
             pb.redirectErrorStream(false);
             if (level != null) pb.environment().put("KOF_LOG_LEVEL", level);
+            if (extraEnv != null) {
+                for (var e : extraEnv.entrySet()) pb.environment().put(e.getKey(), e.getValue());
+            }
             Process p = pb.start();
             String stdout = new String(p.getInputStream().readAllBytes());
             String stderr = new String(p.getErrorStream().readAllBytes());
@@ -173,6 +181,100 @@ class KofLogE2ETest {
     private int freePort() throws IOException {
         try (java.net.ServerSocket probe = new java.net.ServerSocket(0)) {
             return probe.getLocalPort();
+        }
+    }
+
+    @Test
+    void jsonStructuredMode(@TempDir Path tempDir) throws IOException {
+        String[] out = run(tempDir, """
+                main() {
+                    log.info("hello json")
+                }
+                """, null, Map.of("KOF_LOG_JSON", "1"));
+        String line = out[0].trim();
+        assertTrue(line.startsWith("{\"ts\":\"2"), line);
+        assertTrue(line.contains("\"level\":\"INFO\""), line);
+        assertTrue(line.contains("\"msg\":\"hello json\""), line);
+        assertFalse(line.contains("requestId"), "no request context: " + line);
+    }
+
+    @Test
+    void jsonModeEscapesQuotes(@TempDir Path tempDir) throws IOException {
+        String[] out = run(tempDir, """
+                main() {
+                    log.warn("say \\"hi\\"")
+                }
+                """, null, Map.of("KOF_LOG_JSON", "1"));
+        assertTrue(out[1].contains("\\\"hi\\\""), out[1]);
+    }
+
+    @Test
+    void webRequestsCarryCorrelationId(@TempDir Path tempDir) throws IOException, InterruptedException {
+        int port = freePort();
+        Path source = tempDir.resolve("WebLog.kf");
+        Files.writeString(source, """
+                main() {
+                    var app = web.app()
+                    app.get("/x") {
+                        log.info("handled")
+                        return "ok"
+                    }
+                    app.listen(PORT)
+                }
+                """.replace("PORT", String.valueOf(port)));
+        Path outDir = tempDir.resolve("classes");
+        CompilationResult result = driver.compile(source, outDir, Target.JVM);
+        assertTrue(result.success(), result.diagnostics().getDiagnostics().toString());
+        ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
+        pb.redirectErrorStream(true);
+        pb.environment().put("KOF_LOG_JSON", "1");
+        Process server = pb.start();
+        StringBuilder serverOut = new StringBuilder();
+        Thread drain = new Thread(() -> {
+            try {
+                byte[] buffer = new byte[4096];
+                int n;
+                while ((n = server.getInputStream().read(buffer)) != -1) {
+                    serverOut.append(new String(buffer, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+                }
+            } catch (IOException ignored) {
+            }
+        });
+        drain.start();
+        try {
+            int attempt = 0;
+            while (attempt < 40) {
+                try (java.net.Socket probe = new java.net.Socket()) {
+                    probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 200);
+                    break;
+                } catch (IOException e) {
+                    Thread.sleep(100);
+                }
+                attempt++;
+            }
+            String request = "GET /x HTTP/1.1\r\nHost: x\r\n\r\n";
+            for (int i = 0; i < 2; i++) {
+                try (java.net.Socket socket = new java.net.Socket("127.0.0.1", port)) {
+                    socket.setSoTimeout(5000);
+                    socket.getOutputStream().write(request.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    socket.getOutputStream().flush();
+                    socket.getInputStream().readAllBytes();
+                }
+            }
+            Thread.sleep(400);
+            server.destroy();
+            drain.join(2000);
+            String out = serverOut.toString();
+            int first = out.indexOf("handled");
+            int second = out.indexOf("handled", first + 1);
+            assertTrue(first >= 0 && second >= 0, out);
+            String firstId = out.substring(out.indexOf("requestId"), out.indexOf("}", first));
+            String secondId = out.substring(out.indexOf("requestId", first + 1), out.indexOf("}", second));
+            assertTrue(firstId.contains("requestId\":\""), firstId);
+            assertTrue(secondId.contains("requestId\":\""), secondId);
+            assertFalse(firstId.equals(secondId), "request ids must differ per request");
+        } finally {
+            server.destroyForcibly();
         }
     }
 

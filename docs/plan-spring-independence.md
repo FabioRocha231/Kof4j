@@ -101,6 +101,16 @@ Implementado em: `KofWeb` (tabela compile-time), `Parser` (lambda trailing),
 Gaps documentados: status codes/headers customizados (fase posterior);
 target `js` reporta `WEB001`; target `native` sem servidor web ainda.
 
+### Fase 2 — JSON nativo completo ✅ (concluída em 23/08/2026)
+
+- [x] JVM: Float/Double em `json.encode`/`json.decode` (JSN001 fechado no JVM;
+      Native mantém o gap documentado).
+- [x] Decode de arrays (`Int[]`, `Long[]`, `Bool[]`, `String[]`, `Double[]`)
+      no JVM (JSN003 fechado no JVM; `List<User>` já funcionava).
+- [ ] Native: encode/decode de objetos e records (JSN002) — gap documentado.
+- [x] Jackson continua funcionando via interop (inalterado).
+- [x] Testes (`JsonCompleteE2ETest`, 7 E2E) + `JsonE2ETest` atualizado.
+
 ### Fase 2 — JSON nativo completo
 
 - [ ] JVM: Float/Double em `json.encode`/`json.decode` (remove JSN001 no JVM).
@@ -125,10 +135,23 @@ target `js` reporta `WEB001`; target `native` sem servidor web ainda.
 
 - [x] `log.info/warn/error/debug` com níveis (`KOF_LOG_LEVEL`), timestamp,
       info/debug → stdout, warn/error → stderr.
-- [ ] Structured logging (JSON), correlation ID, context por tarefa — planned.
+- [x] Structured logging (JSON via `KOF_LOG_JSON=1`) + correlation ID por
+      request web (requestId no JSON).
 - [ ] Métricas, health checks, tracing hooks — planned.
 - [x] Testes (`KofLogE2ETest`, 7 E2E) + docs `docs/stdlib-logging.md`.
 - [x] Native/JS reportam `LOG001` em compile-time.
+
+### Fase 5 — Database + Transactions ✅ (concluída em 23/08/2026)
+
+- [x] `db.connect/connect2/close`, `db.execute(handle, sql, args...)`,
+      `db.query(handle, sql, args...)` (linhas como JSON) e
+      `db.query<T>(...)` (bind tipado a records/classes via JDBC).
+- [x] `transaction { ... }` com commit/rollback automáticos.
+- [x] H2 em memória nos testes (dependência test-scope); JDBC por
+      interoperabilidade JVM.
+- [x] Native/JS reportam `DB001` em compile-time.
+- [x] Testes (`KofDbE2ETest`, 7 E2E) + docs `docs/stdlib-database.md`.
+- [ ] Connection pooling, migrações — planned.
 
 ### Fase 5 — Database + Transactions
 

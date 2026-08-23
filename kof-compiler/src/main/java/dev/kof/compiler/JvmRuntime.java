@@ -24,6 +24,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_web_")
                 || methodName.startsWith("kof_config_")
                 || methodName.startsWith("kof_log_")
+                || methodName.startsWith("kof_db_")
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.equals("kof_now")
@@ -61,14 +62,22 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_json_encode_int" -> "(I)Ljava/lang/String;";
             case "kof_json_encode_long" -> "(J)Ljava/lang/String;";
             case "kof_json_encode_bool" -> "(I)Ljava/lang/String;";
+            case "kof_json_encode_float" -> "(F)Ljava/lang/String;";
+            case "kof_json_encode_double" -> "(D)Ljava/lang/String;";
             case "kof_json_encode_string" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_json_encode_list" -> "(Ljava/util/List;I)Ljava/lang/String;";
             case "kof_json_encode_array", "kof_json_encode" -> "(Ljava/lang/Object;)Ljava/lang/String;";
             case "kof_json_decode_int", "kof_json_decode_bool" -> "(Ljava/lang/String;)I";
             case "kof_json_decode_long" -> "(Ljava/lang/String;)J";
+            case "kof_json_decode_float" -> "(Ljava/lang/String;)F";
+            case "kof_json_decode_double" -> "(Ljava/lang/String;)D";
             case "kof_json_decode_string" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_json_decode_int_list", "kof_json_decode_string_list", "kof_json_decode_list"
                     -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_json_decode_int_array", "kof_json_decode_bool_array" -> "(Ljava/lang/String;)[I";
+            case "kof_json_decode_long_array" -> "(Ljava/lang/String;)[J";
+            case "kof_json_decode_double_array" -> "(Ljava/lang/String;)[D";
+            case "kof_json_decode_string_array" -> "(Ljava/lang/String;)[Ljava/lang/String;";
             case "kof_json_decode_object_list" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_now" -> "()J";
             case "kof_read_line" -> "()Ljava/lang/String;";
@@ -125,6 +134,20 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_config_long" -> "(Ljava/lang/String;J)J";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
                     -> "(Ljava/lang/String;)V";
+            case "kof_db_connect" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_db_connect2" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_db_close" -> "(Ljava/lang/String;)V";
+            case "kof_db_execute" -> "(Ljava/lang/String;Ljava/lang/String;)I";
+            case "kof_db_execute1" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)I";
+            case "kof_db_execute2" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)I";
+            case "kof_db_execute3" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)I";
+            case "kof_db_execute4" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)I";
+            case "kof_db_query0" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_db_query1" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_db_query2" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_db_query3" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_db_query4" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_db_transaction" -> "(Ljava/lang/Object;)V";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -154,9 +177,15 @@ static boolean hasRuntimeFn(String methodName) {
         return switch (methodName) {
             case "kof_json_decode_int", "kof_json_decode_bool" -> "I";
             case "kof_json_decode_long", "kof_now" -> "J";
+            case "kof_json_decode_float" -> "F";
+            case "kof_json_decode_double" -> "D";
             case "kof_json_decode_int_list", "kof_json_decode_string_list", "kof_json_decode_list"
                     -> "Ljava/util/ArrayList;";
             case "kof_json_decode_object_list" -> "Ljava/util/ArrayList;";
+            case "kof_json_decode_int_array", "kof_json_decode_bool_array" -> "[I";
+            case "kof_json_decode_long_array" -> "[J";
+            case "kof_json_decode_double_array" -> "[D";
+            case "kof_json_decode_string_array" -> "[Ljava/lang/String;";
             case "kof_json_decode_string", "kof_read_line", "kof_read_file" -> "Ljava/lang/String;";
             case "kof_write_file" -> "I";
             case "kof_io_file_exists", "kof_io_file_is_file", "kof_io_file_is_dir",
@@ -177,6 +206,11 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
             case "kof_config_long" -> "J";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error" -> "V";
+            case "kof_db_connect", "kof_db_connect2" -> "Ljava/lang/String;";
+            case "kof_db_close", "kof_db_transaction" -> "V";
+            case "kof_db_execute", "kof_db_execute1", "kof_db_execute2", "kof_db_execute3", "kof_db_execute4" -> "I";
+            case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4"
+                    -> "Ljava/util/ArrayList;";
              case "kof_web_port" -> "I";
              case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "I";
              case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
@@ -245,6 +279,16 @@ static boolean hasRuntimeFn(String methodName) {
                     return value != 0 ? "true" : "false";
                 }
 
+                public static String kof_json_encode_float(float value) {
+                    if (Float.isNaN(value) || Float.isInfinite(value)) return "null";
+                    return Float.toString(value);
+                }
+
+                public static String kof_json_encode_double(double value) {
+                    if (Double.isNaN(value) || Double.isInfinite(value)) return "null";
+                    return Double.toString(value);
+                }
+
                 public static String kof_json_encode_string(String value) {
                     if (value == null) return "null";
                     StringBuilder sb = new StringBuilder(value.length() + 2);
@@ -305,6 +349,8 @@ static boolean hasRuntimeFn(String methodName) {
                     if (value instanceof Integer i) return kof_json_encode_int(i);
                     if (value instanceof Long l) return kof_json_encode_long(l);
                     if (value instanceof Boolean b) return kof_json_encode_bool(b ? 1 : 0);
+                    if (value instanceof Float f) return kof_json_encode_float(f);
+                    if (value instanceof Double d) return kof_json_encode_double(d);
                     if (value instanceof List<?> l) {
                         StringBuilder sb = new StringBuilder("[");
                         for (int i = 0; i < l.size(); i++) {
@@ -347,6 +393,14 @@ static boolean hasRuntimeFn(String methodName) {
                     return Long.parseLong(json.trim());
                 }
 
+                public static float kof_json_decode_float(String json) {
+                    return Float.parseFloat(json.trim());
+                }
+
+                public static double kof_json_decode_double(String json) {
+                    return Double.parseDouble(json.trim());
+                }
+
                 public static int kof_json_decode_bool(String json) {
                     return Boolean.parseBoolean(json.trim()) ? 1 : 0;
                 }
@@ -357,6 +411,56 @@ static boolean hasRuntimeFn(String methodName) {
                         return s.substring(1, s.length() - 1);
                     }
                     return s;
+                }
+
+                public static int[] kof_json_decode_int_array(String json) {
+                    Object parsed = kof_json_parse(json);
+                    if (parsed instanceof List<?> l) {
+                        int[] out = new int[l.size()];
+                        for (int i = 0; i < l.size(); i++) out[i] = ((Number) l.get(i)).intValue();
+                        return out;
+                    }
+                    return new int[0];
+                }
+
+                public static long[] kof_json_decode_long_array(String json) {
+                    Object parsed = kof_json_parse(json);
+                    if (parsed instanceof List<?> l) {
+                        long[] out = new long[l.size()];
+                        for (int i = 0; i < l.size(); i++) out[i] = ((Number) l.get(i)).longValue();
+                        return out;
+                    }
+                    return new long[0];
+                }
+
+                public static int[] kof_json_decode_bool_array(String json) {
+                    Object parsed = kof_json_parse(json);
+                    if (parsed instanceof List<?> l) {
+                        int[] out = new int[l.size()];
+                        for (int i = 0; i < l.size(); i++) out[i] = ((Boolean) l.get(i)) ? 1 : 0;
+                        return out;
+                    }
+                    return new int[0];
+                }
+
+                public static double[] kof_json_decode_double_array(String json) {
+                    Object parsed = kof_json_parse(json);
+                    if (parsed instanceof List<?> l) {
+                        double[] out = new double[l.size()];
+                        for (int i = 0; i < l.size(); i++) out[i] = ((Number) l.get(i)).doubleValue();
+                        return out;
+                    }
+                    return new double[0];
+                }
+
+                public static String[] kof_json_decode_string_array(String json) {
+                    Object parsed = kof_json_parse(json);
+                    if (parsed instanceof List<?> l) {
+                        String[] out = new String[l.size()];
+                        for (int i = 0; i < l.size(); i++) out[i] = String.valueOf(l.get(i));
+                        return out;
+                    }
+                    return new String[0];
                 }
 
                 public static ArrayList<Integer> kof_json_decode_int_list(String json) {
@@ -1149,6 +1253,7 @@ static boolean hasRuntimeFn(String methodName) {
 
                 private static String kof_web_dispatch(WebApp app, WebRequest req) {
                     KOF_WEB_REQUEST.set(req);
+                    KOF_LOG_REQUEST_ID.set(kof_sec_random_hex(16));
                     try {
                         for (Object middleware : app.middlewares) {
                             Object result = kof_web_invoke(middleware, req);
@@ -1185,6 +1290,7 @@ static boolean hasRuntimeFn(String methodName) {
                                 "{\\"error\\": \\"handler error: " + msg + "\\"}");
                     } finally {
                         KOF_WEB_REQUEST.remove();
+                        KOF_LOG_REQUEST_ID.remove();
                     }
                 }
 
@@ -1293,6 +1399,8 @@ static boolean hasRuntimeFn(String methodName) {
                     return req == null ? null : req.path;
                 }
 
+
+""".formatted(decoders) + """
                 // ── kof.config — native configuration ────────────────
 
                 public static String kof_config_env(String name) {
@@ -1378,6 +1486,10 @@ static boolean hasRuntimeFn(String methodName) {
                 // ── kof.log — native logging ─────────────────────────
 
                 private static final int KOF_LOG_LEVEL = kof_log_parse_level(System.getenv("KOF_LOG_LEVEL"));
+                private static final boolean KOF_LOG_JSON =
+                        "1".equals(System.getenv("KOF_LOG_JSON"))
+                                || "true".equalsIgnoreCase(System.getenv("KOF_LOG_JSON"));
+                private static final ThreadLocal<String> KOF_LOG_REQUEST_ID = new ThreadLocal<>();
 
                 private static int kof_log_parse_level(String s) {
                     if (s == null || s.isBlank()) return 1;
@@ -1414,11 +1526,171 @@ static boolean hasRuntimeFn(String methodName) {
 
                 private static void kof_log(int level, String label, String msg) {
                     if (level < KOF_LOG_LEVEL) return;
-                    String line = kof_log_timestamp() + " " + label + " " + (msg == null ? "null" : msg);
+                    String line;
+                    if (KOF_LOG_JSON) {
+                        String rid = KOF_LOG_REQUEST_ID.get();
+                        line = "{\\"ts\\":" + kof_json_encode_string(kof_log_timestamp())
+                                + ",\\"level\\":" + kof_json_encode_string(label)
+                                + ",\\"msg\\":" + kof_json_encode_string(msg == null ? "null" : msg)
+                                + (rid != null ? ",\\"requestId\\":" + kof_json_encode_string(rid) : "")
+                                + "}";
+                    } else {
+                        line = kof_log_timestamp() + " " + label + " " + (msg == null ? "null" : msg);
+                    }
                     if (level >= 2) {
                         System.err.println(line);
                     } else {
                         System.out.println(line);
+                    }
+                }
+
+                // ── kof.db — database (JDBC por interoperabilidade JVM) ──
+
+                private static final java.util.concurrent.ConcurrentHashMap<String, java.sql.Connection> KOF_DB_CONNECTIONS =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static volatile String KOF_DB_DEFAULT;
+                private static final ThreadLocal<java.sql.Connection> KOF_DB_TX = new ThreadLocal<>();
+
+                public static String kof_db_connect(String url) throws Exception {
+                    return kof_db_register(java.sql.DriverManager.getConnection(url));
+                }
+
+                public static String kof_db_connect2(String url, String user, String pass) throws Exception {
+                    return kof_db_register(java.sql.DriverManager.getConnection(url, user, pass));
+                }
+
+                private static String kof_db_register(java.sql.Connection c) {
+                    String id = "db" + (KOF_DB_CONNECTIONS.size() + 1);
+                    KOF_DB_CONNECTIONS.put(id, c);
+                    KOF_DB_DEFAULT = id;
+                    return id;
+                }
+
+                public static void kof_db_close(String id) throws Exception {
+                    java.sql.Connection c = KOF_DB_CONNECTIONS.remove(id);
+                    if (c != null) c.close();
+                }
+
+                private static java.sql.Connection kof_db_conn(String id) throws Exception {
+                    String key = (id == null || id.isEmpty()) ? KOF_DB_DEFAULT : id;
+                    java.sql.Connection c = key == null ? null : KOF_DB_CONNECTIONS.get(key);
+                    if (c == null) throw new IllegalArgumentException("unknown db connection: " + id);
+                    return c;
+                }
+
+                public static int kof_db_execute(String id, String sql) throws Exception {
+                    return kof_db_execute_n(id, sql, new Object[0]);
+                }
+
+                public static int kof_db_execute1(String id, String sql, Object a) throws Exception {
+                    return kof_db_execute_n(id, sql, new Object[]{a});
+                }
+
+                public static int kof_db_execute2(String id, String sql, Object a, Object b) throws Exception {
+                    return kof_db_execute_n(id, sql, new Object[]{a, b});
+                }
+
+                public static int kof_db_execute3(String id, String sql, Object a, Object b, Object c) throws Exception {
+                    return kof_db_execute_n(id, sql, new Object[]{a, b, c});
+                }
+
+                public static int kof_db_execute4(String id, String sql, Object a, Object b, Object c, Object d) throws Exception {
+                    return kof_db_execute_n(id, sql, new Object[]{a, b, c, d});
+                }
+
+                private static int kof_db_execute_n(String id, String sql, Object[] args) throws Exception {
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(sql)) {
+                        for (int i = 0; i < args.length; i++) ps.setObject(i + 1, args[i]);
+                        return ps.executeUpdate();
+                    }
+                }
+
+                public static java.util.ArrayList<Object> kof_db_query0(String id, String sql, String className) throws Exception {
+                    return kof_db_query_n(id, sql, new Object[0], className);
+                }
+
+                public static java.util.ArrayList<Object> kof_db_query1(String id, String sql, Object a, String className) throws Exception {
+                    return kof_db_query_n(id, sql, new Object[]{a}, className);
+                }
+
+                public static java.util.ArrayList<Object> kof_db_query2(String id, String sql, Object a, Object b, String className) throws Exception {
+                    return kof_db_query_n(id, sql, new Object[]{a, b}, className);
+                }
+
+                public static java.util.ArrayList<Object> kof_db_query3(String id, String sql, Object a, Object b, Object c, String className) throws Exception {
+                    return kof_db_query_n(id, sql, new Object[]{a, b, c}, className);
+                }
+
+                public static java.util.ArrayList<Object> kof_db_query4(String id, String sql, Object a, Object b, Object c, Object d, String className) throws Exception {
+                    return kof_db_query_n(id, sql, new Object[]{a, b, c, d}, className);
+                }
+
+                private static java.util.ArrayList<Object> kof_db_query_n(String id, String sql, Object[] args, String className) throws Exception {
+                    java.util.ArrayList<Object> rows = new java.util.ArrayList<>();
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(sql)) {
+                        for (int i = 0; i < args.length; i++) ps.setObject(i + 1, args[i]);
+                        try (java.sql.ResultSet rs = ps.executeQuery()) {
+                            java.sql.ResultSetMetaData md = rs.getMetaData();
+                            int cols = md.getColumnCount();
+                            while (rs.next()) {
+                                java.util.LinkedHashMap<String, Object> row = new java.util.LinkedHashMap<>();
+                                for (int i = 1; i <= cols; i++) {
+                                    row.put(md.getColumnLabel(i).toLowerCase(), rs.getObject(i));
+                                }
+                                if (className == null) {
+                                    rows.add(kof_db_row_to_json(row));
+                                } else {
+                                    rows.add(kof_json_bind(Class.forName(className), row));
+                                }
+                            }
+                        }
+                    }
+                    return rows;
+                }
+
+                private static String kof_db_row_to_json(java.util.Map<String, Object> row) {
+                    StringBuilder sb = new StringBuilder("{");
+                    boolean first = true;
+                    for (var e : row.entrySet()) {
+                        if (!first) sb.append(',');
+                        first = false;
+                        sb.append(kof_json_encode_string(e.getKey())).append(':');
+                        Object v = e.getValue();
+                        if (v == null) {
+                            sb.append("null");
+                        } else if (v instanceof String s) {
+                            sb.append(kof_json_encode_string(s));
+                        } else if (v instanceof Number n) {
+                            sb.append(n);
+                        } else if (v instanceof Boolean b) {
+                            sb.append(b);
+                        } else {
+                            sb.append(kof_json_encode_string(String.valueOf(v)));
+                        }
+                    }
+                    return sb.append('}').toString();
+                }
+
+                public static void kof_db_transaction(Object task) throws Exception {
+                    java.sql.Connection c = kof_db_conn(KOF_DB_DEFAULT);
+                    boolean prevAuto = c.getAutoCommit();
+                    c.setAutoCommit(false);
+                    KOF_DB_TX.set(c);
+                    try {
+                        task.getClass().getMethod("invoke").invoke(task);
+                        c.commit();
+                    } catch (Exception e) {
+                        try {
+                            c.rollback();
+                        } catch (Exception ignored) {
+                        }
+                        Throwable cause = e.getCause() != null ? e.getCause() : e;
+                        if (cause instanceof RuntimeException re) throw re;
+                        if (cause instanceof Error err) throw err;
+                        throw new RuntimeException(cause);
+                    } finally {
+                        c.setAutoCommit(prevAuto);
+                        KOF_DB_TX.remove();
                     }
                 }
 
@@ -1809,6 +2081,7 @@ static boolean hasRuntimeFn(String methodName) {
                     return "no-referrer";
                 }
             }
-            """.formatted(decoders);
+            
+""";
     }
 }
