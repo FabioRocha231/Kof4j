@@ -72,9 +72,11 @@ public final class Main {
             }
             // The KofJS target executes the generated module with the embedded
             // JavaScript engine — no Node.js or external runtime required.
+            // Windows created with kof.ui open in the system webview.
             int exitCode;
             try {
-                exitCode = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry));
+                exitCode = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry),
+                        System.out, System.in, System.err, true);
             } catch (IOException e) {
                 System.err.println("failed to execute: " + e.getMessage());
                 cleanup(tempDir);

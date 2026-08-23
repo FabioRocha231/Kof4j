@@ -43,6 +43,17 @@ public final class KofJsRunner {
 
     public static int run(Path moduleFile, OutputStream out, InputStream in,
                           OutputStream err) throws IOException {
+        return run(moduleFile, out, in, err, false);
+    }
+
+    /**
+     * Executes an ESM module. When {@code openWindow} is true and the program
+     * created a kof.ui window (kofUiFlush was triggered), the serialized page
+     * is written next to the module and opened in the system webview (the
+     * platform default browser).
+     */
+    public static int run(Path moduleFile, OutputStream out, InputStream in,
+                          OutputStream err, boolean openWindow) throws IOException {
         try (Context context = Context.newBuilder("js")
                 .allowIO(true)
                 .allowAllAccess(true)
@@ -56,6 +67,12 @@ public final class KofJsRunner {
                     .mimeType("application/javascript+module")
                     .build();
             context.eval(source);
+            if (openWindow) {
+                String html = context.getBindings("js").getMember("kof__uiRootHtml").asString();
+                if (html != null && !html.isEmpty()) {
+                    openInWebview(moduleFile, html);
+                }
+            }
             return 0;
         } catch (Exception e) {
             try {
@@ -67,6 +84,58 @@ public final class KofJsRunner {
             } catch (IOException ignored) {
             }
             return 1;
+        }
+    }
+
+    private static void openInWebview(Path moduleFile, String html) throws IOException {
+        Path page = moduleFile.resolveSibling("kof-ui.html");
+        Files.writeString(page, html);
+        System.err.println("kof: window rendered at " + page.toAbsolutePath());
+        try {
+            if (java.awt.Desktop.isDesktopSupported()
+                    && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                java.awt.Desktop.getDesktop().browse(page.toUri());
+            }
+        } catch (Exception e) {
+            try {
+                String os = System.getProperty("os.name", "").toLowerCase();
+                if (os.contains("win")) {
+                    new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler",
+                            page.toAbsolutePath().toString()).start();
+                } else if (os.contains("mac")) {
+                    new ProcessBuilder("open", page.toAbsolutePath().toString()).start();
+                } else {
+                    new ProcessBuilder("xdg-open", page.toAbsolutePath().toString()).start();
+                }
+            } catch (IOException ignored) {
+                System.err.println("kof: open " + page.toAbsolutePath() + " to view the window");
+            }
+        }
+    }
+
+    /**
+     * Executes the module and returns the serialized kof.ui window HTML
+     * (or null when the program created no window). Used by tests.
+     */
+    public static String runCaptureHtml(Path moduleFile, OutputStream out, InputStream in,
+                                        OutputStream err) throws IOException {
+        try (Context context = Context.newBuilder("js")
+                .allowIO(true)
+                .allowAllAccess(true)
+                .option("engine.WarnInterpreterOnly", "false")
+                .out(out)
+                .err(err)
+                .in(in)
+                .build()) {
+            exposePlatform(context, out, in);
+            Source source = Source.newBuilder("js", moduleFile.toFile())
+                    .mimeType("application/javascript+module")
+                    .build();
+            context.eval(source);
+            Value html = context.getBindings("js").getMember("kof__uiRootHtml");
+            return html.isString() && !html.asString().isEmpty() ? html.asString() : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

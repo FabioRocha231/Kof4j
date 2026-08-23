@@ -613,6 +613,27 @@ class JsBackend implements Backend {
         }
         // while / for: condition ops, CJump(body, end), Label(body), body, ...
         // while / for / for-in: condition ops, CJump(body, end), Label(body), body, ...
+        // A condition region contains a CJump before any statement boundary;
+        // otherwise the optimizer folded while(true) into a direct jump and
+        // the ops are the loop body (parse it without consuming anything).
+        boolean hasCondition = false;
+        for (int i = pos[0]; i < ctx.ops.size(); i++) {
+            KofOperation op = ctx.ops.get(i);
+            if (op instanceof KofConditionalJump) {
+                hasCondition = true;
+                break;
+            }
+            if (op instanceof KofStoreLocal || op instanceof KofLabel
+                    || op instanceof KofJump || op instanceof KofReturn
+                    || op instanceof KofReturnVoid || op instanceof KofThrow
+                    || op instanceof KofPop) {
+                break;
+            }
+        }
+        if (!hasCondition) {
+            // while (true): [Label(start), body..., Jump(start), Label(end)]
+            return parseTrueLoop(ctx, pos, startLabel);
+        }
         List<Object> condStack = new ArrayList<>();
         List<JsIr.JsExpression> condPreamble = new ArrayList<>();
         while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofConditionalJump)) {
@@ -622,10 +643,8 @@ class JsBackend implements Backend {
             }
             consumeExpressionOp(ctx, pos, condStack, condPreamble);
         }
-        if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofConditionalJump cj2)) {
-            // while (true): the optimizer folds the condition into a direct
-            // jump, leaving [Label(start), body..., Jump(start), Label(end)].
-            return parseTrueLoop(ctx, pos, startLabel);
+        if (!(ctx.ops.get(pos[0]) instanceof KofConditionalJump cj2)) {
+            throw new IllegalStateException("KofJS: loop condition not terminated");
         }
         pos[0]++;
         JsIr.JsExpression right = pop(condStack);
@@ -1928,6 +1947,67 @@ class JsBackend implements Backend {
             // This module is not a VM: it only provides operations that
             // JavaScript does not represent directly.
 
+            if (typeof document === "undefined") {
+                function kofMakeEl(tag) {
+                    return {
+                        tagName: String(tag).toUpperCase(),
+                        id: null,
+                        className: "",
+                        textContent: "",
+                        children: [],
+                        parentNode: null,
+                        appendChild(child) {
+                            if (child && child.parentNode) child.parentNode.removeChild(child);
+                            child.parentNode = this;
+                            this.children.push(child);
+                            return child;
+                        },
+                        removeChild(child) {
+                            const i = this.children.indexOf(child);
+                            if (i >= 0) { this.children.splice(i, 1); child.parentNode = null; }
+                            return child;
+                        },
+                        remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+                    };
+                }
+                const kofRoot = kofMakeEl("div");
+                kofRoot.id = "kof-root";
+                const kofElements = { "kof-root": kofRoot };
+                globalThis.document = {
+                    title: "",
+                    createElement(tag) { return kofMakeEl(tag); },
+                    getElementById(id) { return kofElements[id] || null; }
+                };
+                globalThis.window = globalThis;
+                globalThis.__kofRegisterElement = function (id, el) { kofElements[id] = el; };
+            }
+
+            function kofEscapeHtml(s) {
+                return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            }
+
+            function kofSerialize(node) {
+                if (!node) return "";
+                const tag = (node.tagName ? node.tagName.toLowerCase() : "div");
+                let attrs = "";
+                if (node.id) attrs += ' id="' + kofEscapeHtml(node.id) + '"';
+                if (node.className) attrs += ' class="' + kofEscapeHtml(node.className) + '"';
+                const inner = node.children.map(kofSerialize).join("");
+                const content = node.textContent || inner;
+                return "<" + tag + attrs + ">" + kofEscapeHtml(content) + "</" + tag + ">";
+            }
+
+            export function kofUiFlush() {
+                const root = document.getElementById("kof-root");
+                if (!root) return "";
+                const html = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
+                        + "<title>" + kofEscapeHtml(document.title || "Kof") + "</title>\n"
+                        + "</head>\n<body>\n" + kofSerialize(root) + "\n</body>\n</html>\n";
+                globalThis.kof__uiRootHtml = html;
+                return html;
+            }
+
             export function kofPrintln(x) {
                 console.log(x);
             }
@@ -1966,6 +2046,7 @@ class JsBackend implements Backend {
             }
 
             export function kofUiWindowShow(window) {
+                kofUiFlush();
             }
 
             export function kofUiWindowClose(window) {

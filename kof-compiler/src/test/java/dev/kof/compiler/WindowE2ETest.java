@@ -90,6 +90,33 @@ class WindowE2ETest {
     }
 
     @Test
+    void windowRendersBoundLabel(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("win3.kf");
+        Files.writeString(source, """
+                main() {
+                    var w = Window("Janela")
+                    var label = Label("valor inicial")
+                    w.bind(label)
+                    label.text = "valor atualizado"
+                    w.show()
+                }
+                """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("js"), Target.JS);
+        assertTrue(result.success(), "JS compile should succeed: " + result.diagnostics().getDiagnostics());
+        try {
+            var out = new java.io.ByteArrayOutputStream();
+            String html = dev.kof.runtime.KofJsRunner.runCaptureHtml(
+                    tempDir.resolve("js/Default.mjs"), out,
+                    new java.io.ByteArrayInputStream(new byte[0]), out);
+            assertNotNull(html, "The window should serialize to HTML");
+            assertTrue(html.contains("valor atualizado"), "Bound label text should appear in the page");
+            assertTrue(html.contains("Janela"), "Window title should appear in the page");
+        } catch (java.io.IOException e) {
+            throw new IOException(e);
+        }
+    }
+
+    @Test
     void windowBindAndRemove(@TempDir Path tempDir) throws IOException {
         String program = """
                 main() {

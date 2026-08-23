@@ -26,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class KofWebE2ETest {
 
+    private static final String JAVA_BIN = java.nio.file.Path.of(
+            System.getProperty("java.home"), "bin", "java").toString();
+
     private final CompilerDriver driver = new CompilerDriver();
     private Process serverProcess;
 
@@ -87,7 +90,7 @@ class KofWebE2ETest {
         Path outDir = tempDir.resolve("classes");
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
-        ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
+        ProcessBuilder pb = new ProcessBuilder(JAVA_BIN, "-cp", outDir.toString(), "Default.Main");
         pb.redirectErrorStream(true);
         serverProcess = pb.start();
         int attempt = 0;
@@ -183,7 +186,7 @@ class KofWebE2ETest {
     @Test
     void jsonRoundTrip(@TempDir Path tempDir) throws IOException {
         int port = startServer(tempDir);
-        String r = request(port, "POST /user HTTP/1.1\r\nHost: x\r\nX-Auth: secret\r\nContent-Length: 18\r\n\r\n{\"name\":\"Mel\",\"age\":26}");
+        String r = request(port, "POST /user HTTP/1.1\r\nHost: x\r\nX-Auth: secret\r\nContent-Length: 23\r\n\r\n{\"name\":\"Mel\",\"age\":26}");
         assertTrue(r.startsWith("HTTP/1.1 200 OK"), r);
         assertTrue(r.contains("application/json"), r);
         assertTrue(bodyOf(r).equals("{\"name\":\"Mel\",\"age\":26}"), r);
