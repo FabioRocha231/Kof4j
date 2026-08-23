@@ -2311,7 +2311,9 @@ class JsBackend implements Backend {
                         node.parentNode.removeChild(node);
                     }
                     delete window.__kofNodes[button];
-                    delete window.__kofActions[button];
+                    if (window.__kofActions) {
+                        delete window.__kofActions[button];
+                    }
                 }
             }
 
