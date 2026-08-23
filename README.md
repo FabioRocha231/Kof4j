@@ -189,6 +189,8 @@ kof version
 
 ```bash
 mvn clean package -DskipTests
+mkdir -p lib
+cp kof-cli/target/kof-cli-*.jar lib/kof.jar
 bin/kof info
 ```
 
