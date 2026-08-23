@@ -102,7 +102,7 @@ final class JdwpClient {
      */
     long setClassPrepareRequest(String className, EventHandler handler) throws IOException {
         Packet req = new Packet();
-        req.writeByte(4);   // event kind: ClassPrepare
+        req.writeByte(6);   // event kind: ClassPrepare
         req.writeByte(2);   // suspend policy: ALL
         req.writeInt(1);    // modifier count
         req.writeByte(1);   // ClassMatch
@@ -295,6 +295,7 @@ final class JdwpClient {
         try {
             while (true) {
                 Packet evt = readPacketLocked();
+                System.err.println("[jdwp-events] pkt id=" + evt.id + " event=" + evt.eventData + " len=" + evt.data.length);
                 if (evt.id >= 0 && !evt.eventData) {
                     synchronized (lock) {
                         replies.put(evt.id, evt);
@@ -302,12 +303,14 @@ final class JdwpClient {
                     }
                     continue;
                 }
-                evt.readByte(); // suspendPolicy
+                int sp = evt.readByte(); // suspendPolicy
                 int eventCount = evt.readInt();
+                System.err.println("[jdwp-events] composite suspend=" + sp + " count=" + eventCount);
                 for (int e = 0; e < eventCount; e++) {
+                    System.err.println("[jdwp-events] event index=" + e + " remaining=" + (evt.data.length - evt.pos));
                     int kind = evt.readByte();
                     evt.readInt(); // requestId
-                    if (kind == 4) { // ClassPrepare: threadID, tag, typeID, signature, status
+                    if (kind == 6) { // ClassPrepare: threadID, tag, typeID, signature, status
                         long threadId = evt.readReference();
                         evt.readByte();
                         long typeId = evt.readReference();

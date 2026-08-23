@@ -1095,7 +1095,7 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 private static byte[] kof_sec_fromHex(String hex) {
-                    if (hex == null || hex.length() % 2 != 0) throw new IllegalArgumentException("invalid hex");
+                    if (hex == null || (hex.length() & 1) != 0) throw new IllegalArgumentException("invalid hex");
                     byte[] out = new byte[hex.length() / 2];
                     for (int i = 0; i < out.length; i++) {
                         out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
@@ -1186,7 +1186,7 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static boolean kof_sec_password_verify(String password, String hash) {
                     if (hash == null) return false;
-                    String[] parts = hash.split("\\$");
+                    String[] parts = hash.split("\\\\$");
                     if (parts.length != 5 || !"pbkdf2".equals(parts[0]) || !"sha256".equals(parts[1])) return false;
                     try {
                         int iterations = Integer.parseInt(parts[2]);
@@ -1204,7 +1204,7 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static boolean kof_sec_password_needs_rehash(String hash) {
                     if (hash == null) return true;
-                    String[] parts = hash.split("\\$");
+                    String[] parts = hash.split("\\\\$");
                     if (parts.length != 5 || !"pbkdf2".equals(parts[0]) || !"sha256".equals(parts[1])) return true;
                     try {
                         return Integer.parseInt(parts[2]) < KOF_PBKDF2_ITERATIONS;
@@ -1236,7 +1236,7 @@ static boolean hasRuntimeFn(String methodName) {
                     try {
                         byte[] key = kof_sec_fromHex(keyHex);
                         if (key.length != 32) throw new IllegalArgumentException("AES-GCM key must be 32 bytes (64 hex chars)");
-                        String[] parts = ciphertext.split("\\$");
+                        String[] parts = ciphertext.split("\\\\$");
                         if (parts.length != 3 || !"aesgcm".equals(parts[0])) throw new IllegalArgumentException("invalid ciphertext format");
                         byte[] iv = java.util.Base64.getDecoder().decode(parts[1]);
                         byte[] ct = java.util.Base64.getDecoder().decode(parts[2]);
@@ -1302,7 +1302,7 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static String kof_sec_jwt_verify_iss_aud(String token, String secret, String issuer, String audience) {
                     if (token == null || secret == null) throw new IllegalArgumentException("invalid token or secret");
-                    String[] parts = token.split("\\.");
+                    String[] parts = token.split("\\\\.");
                     if (parts.length != 3) throw new IllegalArgumentException("malformed token");
                     try {
                         String headerJson = new String(kof_sec_b64urlDecode(parts[0]), java.nio.charset.StandardCharsets.UTF_8);
