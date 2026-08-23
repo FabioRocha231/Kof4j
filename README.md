@@ -151,7 +151,8 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | List\<T\>, listOf | ✅ | ✅ | ✅ |
 | JSON encode/decode (objetos no JVM) | ✅ | ✅ | ✅ |
 | kof.io (File, Path, Directory) | ✅ | ✅ |
-| kof.ui (Color, Palette, Theme) | ✅ | ✅ | ✅ |
+| kof.ui (Color, Palette, Theme) | ✅ | ✅ |
+| kof.ui Window + Label (bind) | ✅ | ✅ (JS render) | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules

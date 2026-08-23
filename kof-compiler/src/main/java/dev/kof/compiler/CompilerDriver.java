@@ -860,6 +860,14 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     yield localIdx;
                 }
+                if (mc.receiver() == null && ("Window".equals(mc.methodName()) || "Label".equals(mc.methodName()))
+                        && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    String fn = "Window".equals(mc.methodName()) ? "kof_ui_window_new" : "kof_ui_label_new";
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            fn, List.of(BuiltinTypes.STRING), Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = listOfElementType(mc, locals);
                     Type listType = new Type.ClassType("kof", "List", List.of(elemType));
@@ -1211,6 +1219,23 @@ private Target target = Target.JVM;
                     }
                 }
                 if (ae.target() instanceof FieldAccessExpr fa) {
+                    Type faRecvType = inferExprType(fa.receiver(), locals);
+                    if (KofUi.isWindow(faRecvType) && "title".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_window_set_title", List.of(Type.PrimitiveType.INT, BuiltinTypes.STRING),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    if (KofUi.isLabel(faRecvType) && "text".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_label_set_text", List.of(Type.PrimitiveType.INT, BuiltinTypes.STRING),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(fa.receiver(), locals);
@@ -1289,6 +1314,21 @@ private Target target = Target.JVM;
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, color));
                         yield localIdx;
                     }
+                }
+                Type faType = inferExprType(fa.receiver(), locals);
+                if (KofUi.isWindow(faType) && "title".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_window_title", List.of(Type.PrimitiveType.INT),
+                            BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (KofUi.isLabel(faType) && "text".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_label_text", List.of(Type.PrimitiveType.INT),
+                            BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                    yield localIdx;
                 }
                 Type recvType = inferExprType(fa.receiver(), locals);
                 if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
@@ -1427,6 +1467,12 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && "Color".equals(mc.methodName())
                         && (mc.arguments().size() == 1 || mc.arguments().size() == 3)) {
                     yield KofUi.COLOR;
+                }
+                if (mc.receiver() == null && "Window".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    yield KofUi.WINDOW;
+                }
+                if (mc.receiver() == null && "Label".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    yield KofUi.LABEL;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
@@ -1573,6 +1619,12 @@ private Target target = Target.JVM;
             }
             case FieldAccessExpr fa -> {
                 Type recvType = inferExprType(fa.receiver(), locals);
+                if (KofUi.isWindow(recvType) && "title".equals(fa.fieldName())) {
+                    yield BuiltinTypes.STRING;
+                }
+                if (KofUi.isLabel(recvType) && "text".equals(fa.fieldName())) {
+                    yield BuiltinTypes.STRING;
+                }
                 if (fa.receiver() instanceof IdentifierExpr pId && KofUi.isPalette(pId.name())
                         && KofUi.paletteColor(fa.fieldName()) != null) {
                     yield KofUi.COLOR;
@@ -2017,6 +2069,21 @@ private Target target = Target.JVM;
 
     private int emitUiInstance(Type recvType, MethodCallExpr mc, List<KofOperation> ops,
                                String owner, int localIdx, List<IRLocalVariable> locals) {
+        if (KofUi.isWindow(recvType) || KofUi.isLabel(recvType)) {
+            KofUi.UiCall uiCall = KofUi.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
+            if (uiCall != null) {
+                for (ExpressionNode arg : mc.arguments()) {
+                    localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                }
+                List<Type> uiParams = new ArrayList<>();
+                uiParams.add(Type.PrimitiveType.INT);
+                uiParams.addAll(uiCall.parameterTypes());
+                ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                        uiCall.function(), uiParams, uiCall.returnType(), KofCallKind.FUNCTION));
+                return localIdx;
+            }
+            return localIdx;
+        }
         if (KofUi.isColor(recvType)) {
             switch (mc.methodName()) {
                 case "red" -> {

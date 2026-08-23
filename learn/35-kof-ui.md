@@ -68,6 +68,43 @@ println(dark.background().toCss())   // rgb(18, 18, 18)
 println(dark.text().toCss())         // rgb(255, 255, 255)
 ```
 
+## Window e Label (webview)
+
+A janela do webview e os labels que se ligam a ela:
+
+```kof
+main() {
+    var w = Window("Minha Janela")
+    var label = Label("Olá, Kof!")
+
+    w.title = "Kof App"       // bind: título da janela
+    w.bind(label)             // monta o label na janela
+
+    label.text = "Olá, janela!"   // bind: atualiza o texto do label
+
+    println(label.text)
+    println(w.title)
+}
+```
+
+| Operação | Descrição |
+|----------|-----------|
+| `Window("título")` | cria a janela (handle) |
+| `w.title = v` / `w.title()` | bind do título |
+| `w.bind(label)` | monta um label na janela |
+| `w.show()` / `w.close()` | janela |
+| `Label("texto")` | cria um label (handle) |
+| `label.text = v` / `label.text()` | bind do texto |
+| `label.remove()` | remove o label da janela |
+
+**Renderização é KofJS.** `kof build --target=js` gera `index.html` +
+`kof-runtime.mjs`: a página tem o ponto de montagem `#kof-root` e o runtime
+DOM cria/atualiza os elementos (`document.title`, `span.kof-label`, ...).
+Um webview nativo é o shell que carrega essa página — frente futura.
+
+No JVM e Native os handles são no-ops (a UI é KofJS) — o programa executa,
+mas nada é renderizado.
+
 ## Representação
 
 - `Color` e `Theme` são valores de 32 bits (Int) — sem objetos.

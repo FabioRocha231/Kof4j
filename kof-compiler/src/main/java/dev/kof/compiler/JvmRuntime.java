@@ -41,10 +41,13 @@ static boolean hasRuntimeFn(String methodName) {
         if (compiler == null) {
             throw new IOException("JVM runtime requires a full JDK (javac not available)");
         }
-        int rc = compiler.run(null, null, null, "-d", outputDir.toString(),
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        int rc = compiler.run(null, null, err, "-d", outputDir.toString(),
                 "-classpath", outputDir.toString(), sourceFile.toString());
         if (rc != 0) {
-            throw new IOException("failed to compile KofRuntime helper (javac exit " + rc + ")");
+            String detail = err.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            throw new IOException("failed to compile KofRuntime helper (javac exit " + rc + "): "
+                    + (detail.isEmpty() ? "unknown error" : detail));
         }
         Files.deleteIfExists(sourceFile);
     }
@@ -81,6 +84,11 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
+            case "kof_ui_window_new", "kof_ui_label_new" -> "(Ljava/lang/String;)I";
+            case "kof_ui_window_set_title", "kof_ui_label_set_text" -> "(ILjava/lang/String;)V";
+            case "kof_ui_window_bind" -> "(II)V";
+            case "kof_ui_window_title", "kof_ui_label_text" -> "(I)Ljava/lang/String;";
+            case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove" -> "(I)V";
             case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_web_app_new" -> "()Ljava/lang/String;";
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
@@ -527,6 +535,40 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
             %s
+
+                public static int kof_ui_window_new(String title) {
+                    return 1;
+                }
+
+                public static void kof_ui_window_set_title(int window, String title) {
+                }
+
+                public static String kof_ui_window_title(int window) {
+                    return "";
+                }
+
+                public static void kof_ui_window_bind(int window, int label) {
+                }
+
+                public static void kof_ui_window_show(int window) {
+                }
+
+                public static void kof_ui_window_close(int window) {
+                }
+
+                public static int kof_ui_label_new(String text) {
+                    return 1;
+                }
+
+                public static void kof_ui_label_set_text(int label, String text) {
+                }
+
+                public static String kof_ui_label_text(int label) {
+                    return "";
+                }
+
+                public static void kof_ui_label_remove(int label) {
+                }
 
                 public static String kof_ui_color_to_css(int color) {
                     int r = (color >>> 24) & 0xFF;
@@ -1290,8 +1332,8 @@ static boolean hasRuntimeFn(String methodName) {
                     String head = claimsJson.substring(0, lastBrace).trim();
                     String sep = head.isEmpty() || head.endsWith("{") ? "" : ",";
                     long now = System.currentTimeMillis() / 1000;
-                    String payload = head + sep + "\"iat\":" + now + ",\"exp\":" + (now + ttlSeconds) + "}";
-                    String headerB64 = kof_sec_b64url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    String payload = head + sep + "\\"iat\\":" + now + ",\\"exp\\":" + (now + ttlSeconds) + "}";
+                    String headerB64 = kof_sec_b64url("{\\"alg\\":\\"HS256\\",\\"typ\\":\\"JWT\\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     String payloadB64 = kof_sec_b64url(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     return headerB64 + "." + payloadB64 + "." + kof_sec_jwt_sign(headerB64, payloadB64, secret);
                 }
@@ -1306,7 +1348,7 @@ static boolean hasRuntimeFn(String methodName) {
                     if (parts.length != 3) throw new IllegalArgumentException("malformed token");
                     try {
                         String headerJson = new String(kof_sec_b64urlDecode(parts[0]), java.nio.charset.StandardCharsets.UTF_8);
-                        if (!headerJson.contains("\"HS256\"")) throw new IllegalArgumentException("algorithm not allowed");
+                        if (!headerJson.contains("\\"HS256\\"")) throw new IllegalArgumentException("algorithm not allowed");
                         String expected = kof_sec_jwt_sign(parts[0], parts[1], secret);
                         if (!kof_sec_constant_time_equals(expected, parts[2])) throw new IllegalArgumentException("invalid signature");
                         String payloadJson = new String(kof_sec_b64urlDecode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);

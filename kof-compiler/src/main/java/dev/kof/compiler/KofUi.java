@@ -20,16 +20,21 @@ final class KofUi {
 
     static final Type COLOR = new Type.ClassType("kof.ui", "Color", List.of());
     static final Type THEME = new Type.ClassType("kof.ui", "Theme", List.of());
+    static final Type LABEL = new Type.ClassType("kof.ui", "Label", List.of());
+    static final Type WINDOW = new Type.ClassType("kof.ui", "Window", List.of());
 
     static boolean isColor(Type t) { return COLOR.equals(t); }
     static boolean isTheme(Type t) { return THEME.equals(t); }
+    static boolean isLabel(Type t) { return LABEL.equals(t); }
+    static boolean isWindow(Type t) { return WINDOW.equals(t); }
 
     static boolean isUiType(Type t) {
-        return isColor(t) || isTheme(t);
+        return isColor(t) || isTheme(t) || isLabel(t) || isWindow(t);
     }
 
     static boolean isConstructor(String name) {
-        return "Color".equals(name) || "Theme".equals(name);
+        return "Color".equals(name) || "Theme".equals(name)
+                || "Label".equals(name) || "Window".equals(name);
     }
 
     static Type constructorType(String name) {
@@ -65,6 +70,23 @@ final class KofUi {
     }
 
     static UiCall instanceMethod(Type receiver, String name, int argCount) {
+        if (isWindow(receiver)) {
+            return switch (name) {
+                case "title" -> argCount == 0 ? new UiCall("kof_ui_window_title", STR, List.of()) : null;
+                case "bind" -> argCount == 1 ? new UiCall("kof_ui_window_bind", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "show" -> argCount == 0 ? new UiCall("kof_ui_window_show", Type.PrimitiveType.VOID, List.of()) : null;
+                case "close" -> argCount == 0 ? new UiCall("kof_ui_window_close", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isLabel(receiver)) {
+            return switch (name) {
+                case "text" -> argCount == 0 ? new UiCall("kof_ui_label_text", STR, List.of()) : null;
+                case "setText" -> argCount == 1 ? new UiCall("kof_ui_label_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_label_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
         if (isColor(receiver)) {
             return switch (name) {
                 case "red" -> argCount == 0 ? new UiCall("kof_ui_color_red", INT, List.of()) : null;
@@ -74,6 +96,14 @@ final class KofUi {
                 case "toCss" -> argCount == 0 ? new UiCall("kof_ui_color_to_css", STR, List.of()) : null;
                 case "withAlpha" -> argCount == 1 ? new UiCall("kof_ui_color_with_alpha", COLOR, List.of(INT)) : null;
                 case "isOpaque" -> argCount == 0 ? new UiCall("kof_ui_color_is_opaque", BOOL, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isLabel(receiver)) {
+            return switch (name) {
+                case "text" -> argCount == 0 ? new UiCall("kof_ui_label_text", STR, List.of()) : null;
+                case "setText" -> argCount == 1 ? new UiCall("kof_ui_label_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_label_remove", Type.PrimitiveType.VOID, List.of()) : null;
                 default -> null;
             };
         }

@@ -49,6 +49,7 @@ final class NativeRuntime {
         emitIoTimeFunctions(sb);
         emitIoFileFunctions(sb);
         emitUiColorFunctions(sb);
+        emitUiWindowFunctions(sb);
         emitNetSocket(sb);
         emitNetBind(sb);
         emitNetListen(sb);
@@ -3841,6 +3842,41 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
+            """);
+    }
+
+    private static void emitUiWindowFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lui_empty: .asciz ""
+            .section .text
+
+            kof_ui_window_new:
+                movl $1, %eax
+                ret
+            kof_ui_window_set_title:
+                ret
+            kof_ui_window_title:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_window_bind:
+                ret
+            kof_ui_window_show:
+                ret
+            kof_ui_window_close:
+                ret
+            kof_ui_label_new:
+                movl $1, %eax
+                ret
+            kof_ui_label_set_text:
+                ret
+            kof_ui_label_text:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_label_remove:
+                ret
             """);
     }
 

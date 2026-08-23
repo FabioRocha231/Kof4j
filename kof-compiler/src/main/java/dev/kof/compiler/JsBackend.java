@@ -59,6 +59,7 @@ class JsBackend implements Backend {
         Path outFile = outputDir.resolve(fileName);
         Files.writeString(outFile, code + sourceMapUrl);
         writeRuntime(outputDir);
+        writeHtmlEntry(outputDir, module.name());
         if (debugInfo) {
             writeSourceMap(module, outputDir, fileName);
         }
@@ -1351,6 +1352,22 @@ class JsBackend implements Backend {
         throw new StatementEnd(new JsIr.JsCall(new JsIr.JsIdentifier("super"), args));
     }
 
+    private String capitalizeUiFn(String name) {
+        String rest = name.startsWith("kof_") ? name.substring(4) : name;
+        StringBuilder sb = new StringBuilder("kof");
+        boolean cap = true;
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (c == '_') {
+                cap = true;
+                continue;
+            }
+            sb.append(cap ? Character.toUpperCase(c) : c);
+            cap = false;
+        }
+        return sb.toString();
+    }
+
     private boolean isPrintCall(KofCall kc) {
         if (!(kc.ownerType() instanceof Type.ClassType ct)) return false;
         return "java.io".equals(ct.packageName()) && "PrintStream".equals(ct.name())
@@ -1549,6 +1566,7 @@ class JsBackend implements Backend {
     private boolean isRuntimeOp(KofCall kc) {
         String name = kc.methodName();
         return name.startsWith("kof_json_") || name.startsWith("kof_io_")
+                || name.startsWith("kof_ui_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
@@ -1585,6 +1603,24 @@ class JsBackend implements Backend {
         if (name.equals("kof_ui_color_to_css")) {
             registerRuntime("kofUiColorToCss");
             stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofUiColorToCss"), List.of(args.get(0))));
+            return;
+        }
+        if (name.equals("kof_ui_window_new") || name.equals("kof_ui_label_new")
+                || name.equals("kof_ui_window_set_title") || name.equals("kof_ui_window_title")
+                || name.equals("kof_ui_window_bind") || name.equals("kof_ui_window_show")
+                || name.equals("kof_ui_window_close") || name.equals("kof_ui_label_set_text")
+                || name.equals("kof_ui_label_text") || name.equals("kof_ui_label_remove")) {
+            registerRuntime(capitalizeUiFn(name));
+            List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
+            if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
+                callArgs.add(0, receiver);
+            }
+            JsIr.JsExpression call = new JsIr.JsCall(
+                    new JsIr.JsIdentifier(capitalizeUiFn(name)), callArgs);
+            if (Type.isVoid(kc.returnType())) {
+                throw new StatementEnd(call);
+            }
+            stack.add(call);
             return;
         }
         if (name.equals("kof_now")) {
@@ -1786,6 +1822,83 @@ class JsBackend implements Backend {
                 console.log(x);
             }
 
+            export function kofUiWindowNew(title) {
+                if (typeof document === "undefined") {
+                    return -1;
+                }
+                const root = document.getElementById("kof-root");
+                if (root) {
+                    document.title = title;
+                    root.innerHTML = "";
+                }
+                return 1;
+            }
+
+            export function kofUiWindowSetTitle(window, title) {
+                if (typeof document !== "undefined") {
+                    document.title = title;
+                }
+            }
+
+            export function kofUiWindowTitle(window) {
+                return typeof document !== "undefined" ? document.title : "";
+            }
+
+            export function kofUiWindowBind(window, label) {
+                if (typeof document === "undefined") {
+                    return;
+                }
+                const root = document.getElementById("kof-root");
+                const node = window.__kofNodes && window.__kofNodes[label];
+                if (root && node) {
+                    root.appendChild(node);
+                }
+            }
+
+            export function kofUiWindowShow(window) {
+            }
+
+            export function kofUiWindowClose(window) {
+            }
+
+            export function kofUiLabelNew(text) {
+                if (typeof document === "undefined") {
+                    return -1;
+                }
+                const span = document.createElement("span");
+                span.textContent = text;
+                span.className = "kof-label";
+                if (typeof window.__kofNodes === "undefined") {
+                    window.__kofNodes = {};
+                }
+                const id = Object.keys(window.__kofNodes).length + 1;
+                window.__kofNodes[id] = span;
+                return id;
+            }
+
+            export function kofUiLabelSetText(label, text) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    window.__kofNodes[label].textContent = text;
+                }
+            }
+
+            export function kofUiLabelText(label) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    return window.__kofNodes[label].textContent;
+                }
+                return "";
+            }
+
+            export function kofUiLabelRemove(label) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[label]) {
+                    const node = window.__kofNodes[label];
+                    if (node.parentNode) {
+                        node.parentNode.removeChild(node);
+                    }
+                    delete window.__kofNodes[label];
+                }
+            }
+
             export function kofUiColorToCss(color) {
                 const r = (color >>> 24) & 0xFF;
                 const g = (color >>> 16) & 0xFF;
@@ -1975,6 +2088,30 @@ private void writeRuntime(Path outputDir) throws IOException {
         if (!Files.exists(node)) {
             Files.writeString(node, IO_RUNTIME);
         }
+    }
+
+    private void writeHtmlEntry(Path outputDir, String moduleName) throws IOException {
+        String entry = (moduleName.isEmpty() ? "Default" : moduleName.replace('.', '/')) + ".mjs";
+        String html = """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="utf-8">
+                  <title>Kof</title>
+                  <style>
+                    body { margin: 0; font-family: system-ui, sans-serif; }
+                    #kof-root { display: flex; flex-direction: column; gap: 8px;
+                                 padding: 16px; min-height: 100vh; box-sizing: border-box; }
+                    .kof-label { font-size: 16px; }
+                  </style>
+                </head>
+                <body>
+                  <div id="kof-root"></div>
+                  <script type="module" src="__ENTRY__"></script>
+                </body>
+                </html>
+                """.replace("__ENTRY__", entry);
+        Files.writeString(outputDir.resolve("index.html"), html);
     }
 
     private void writeSourceMap(IRModule module, Path outputDir, String fileName) throws IOException {

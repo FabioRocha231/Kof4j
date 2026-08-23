@@ -556,6 +556,14 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield KofUi.COLOR;
                 }
+                if (mc.receiver() == null && "Window".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.WINDOW;
+                }
+                if (mc.receiver() == null && "Label".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.LABEL;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) {
@@ -628,6 +636,7 @@ class SemanticAnalyzer {
                         && !"readFile".equals(mc.methodName()) && !"writeFile".equals(mc.methodName())
                         && !"super".equals(mc.methodName())
                         && !KofIo.isConstructor(mc.methodName())
+                        && !KofUi.isConstructor(mc.methodName())
                         && !KofWeb.isContextFunction(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
