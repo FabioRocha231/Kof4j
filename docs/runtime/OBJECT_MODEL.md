@@ -239,7 +239,11 @@ GETFIELD Point.name Ljava/lang/String;  # String name
 
 ---
 
-## 8. Herança (Futuro)
+> **Atualizado (0.0.5):** herança (F.3), virtual dispatch via vtable (F.4)
+> e dispatch de interfaces (F.5) estão implementados em JVM e Native.
+> O header real é de 16 bytes: type_id(4) + flags(4) + method_table_ptr(8).
+
+## 8. Herança (Histórico — implementada em F.3)
 
 Quando implementada:
 
@@ -262,7 +266,7 @@ Quando implementada:
 
 ---
 
-## 9. Virtual Dispatch (Futuro)
+## 9. Virtual Dispatch (Histórico — implementada em F.4)
 
 Quando implementado, cada classe possui uma vtable:
 
@@ -309,7 +313,7 @@ NÃO implementar GC nesta fase. Apenas garantir que o layout permite.
 |---------|-----|------------|
 | Object header | klass ptr + mark word (16 bytes) | type_id + flags (8 bytes) |
 | Field layout | Determinado pela JVM | Determinado pelo compilador |
-| Method dispatch | vtable em cada classe | Direct dispatch (futuro: vtable) |
+| Method dispatch | vtable em cada classe | vtable (implementado) |
 | String | java.lang.String (mutável internamente) | KofString (imutável) |
 | Array | Tipos nativos da JVM | KofArray (universal) |
 | GC | Generational, concurrent | Nenhum (futuro) |

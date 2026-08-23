@@ -1,6 +1,6 @@
 # 12 — Collections
 
-> **Status: planejado**
+> **Status: implementado**
 >
 > Kof não reimplementa collections. Kof usa as collections do Java diretamente.
 

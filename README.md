@@ -124,34 +124,46 @@ Kof não depende de Java como linguagem intermediária.
 
 # Estado Atual
 
-Kof está em desenvolvimento ativo — **Alpha 0.0.4** (`0.0.4-alpha`).
+Kof está em desenvolvimento ativo — **Alpha 0.0.5** (`0.0.5-alpha`).
 
-O compilador já possui uma fundação funcional.
+O compilador possui frontend próprio, type system, Kof IR e três backends.
 
 | Feature | JVM | Native | KofJS |
 |---------|-----|--------|-------|
 | println | ✅ | ✅ | ✅ |
 | variables | ✅ | ✅ | ✅ |
 | arithmetic | ✅ | ✅ | ✅ |
-| if/else | ✅ | ✅ | ✅ |
-| while | ✅ | ✅ | ✅ |
-| for | ✅ | ✅ | ✅ |
-| functions | ✅ | ✅ | ✅ |
+| if/else, if-expr | ✅ | ✅ | ✅ |
+| while, for, do-while, for-in | ✅ | ✅ | ✅ |
+| switch | ✅ | ✅ | ✅ |
+| functions (sem `fun`) | ✅ | ✅ | ✅ |
 | records | ✅ | ✅ | ✅ |
 | classes | ✅ | ✅ | ✅ |
-| constructors | ✅ | ✅ | ✅ |
-| methods | ✅ | ✅ | ✅ |
-| fields | ✅ | ✅ | ✅ |
-| field access | ✅ | ✅ | ✅ |
-| field assignment | ✅ | ✅ | ✅ |
-| JSON encode/decode | ✅ | ✅ | ✅ |
-| List\<T\> | ✅ | ✅ | ✅ |
+| constructors (`constructor(...)` + primary) | ✅ | ✅ | ✅ |
+| inheritance, interfaces, virtual dispatch | ✅ | ✅ | ✅ |
+| generics (erasure) | ✅ | ✅ | ✅ |
+| lambdas | ✅ | ✅ | ✅ |
+| exceptions (try/catch/finally) | ✅ | ✅ | ✅ |
+| assert | ✅ | ✅ | ✅ |
+| spawn (concorrência) | ✅ | CONC001 | — |
+| strings (concat `+`, `==`, API completa) | ✅ | ✅ | ✅ |
+| arrays | ✅ | ✅ | ✅ |
+| List\<T\>, listOf | ✅ | ✅ | ✅ |
+| JSON encode/decode (objetos no JVM) | ✅ | ✅ | ✅ |
 | kof.io (File, Path, Directory) | ✅ | ✅ | ✅ |
+| kof.time (`now()`) | ✅ | ✅ | ✅ |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
-(ECMAScript 2022+) executados na engine JS embarcada do próprio Kof — sem
-Node.js nem runtime externo. `kof build --target=js` / `kof run --target=js`.
+(ECMAScript 2022+) executados na engine JS embarcada (GraalJS — sem Node.js
+nem runtime externo). `kof build --target js` / `kof run --target js`.
 Status alpha: [docs/targets/KOFJS.md](docs/targets/KOFJS.md).
+
+**Concorrência**: `spawn tarefa()` / `spawn { ... }` — virtual threads na JVM,
+join implícito; Native reporta `CONC001` (gap documentado). Ver
+[docs/concurrency.md](docs/concurrency.md).
+
+**Testes**: `assert(cond, "msg")` + `kof test <file.kf|dir>` — PASS/FAIL por
+exit code. Ver [learn/23-testing.md](learn/23-testing.md).
 
 ---
 
@@ -189,11 +201,11 @@ externa de Java é necessária.**
 
 ```bash
 # Baixe o artefato do GitHub Releases e extraia:
-tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
 
-kof version        # kof 0.0.4-alpha
-kof info           # ambiente completo (JVM embutida, Tooling API 21, target)
+kof version        # kof 0.0.5-alpha
+kof info           # ambiente completo (JVM embutida, Tooling API 21, targets)
 ```
 
 Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) e
@@ -204,17 +216,18 @@ Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) e
 # CLI
 
 ```bash
-kof build <dir> [--target jvm|native] [--output <dir>]
-kof run <file.kf> [args...]
+kof build <dir> [--target jvm|native|js] [--output <dir>]
+kof run <file.kf> [--target jvm|native|js] [args...]
 kof serve <file.kf> [--port <port>] [--host <host>]
 kof check <file.kf|dir>
 kof test <file.kf|dir> [--target jvm|native]
 kof info [--json]
 kof lsp
+kof install <dir>
 kof version
 ```
 
-`kof test` e `kof fmt` são planejados (ver [docs/tooling/README.md](docs/tooling/README.md)).
+`kof fmt` é planejado (ver [docs/tooling/README.md](docs/tooling/README.md)).
 
 ---
 

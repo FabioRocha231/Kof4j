@@ -1,7 +1,7 @@
 # Estado Atual do Projeto Kof
 
 **Última atualização:** 22 de agosto de 2026
-**Versão:** 0.0.4-alpha
+**Versão:** 0.0.5-alpha
 
 ---
 
@@ -15,7 +15,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Fase F CONCLUÍDA**: String model, Array model, Inheritance, Virtual Dispatch, Interfaces, Exceptions, Memory (mmap, sem GC).
 
-**Pipeline 0.0.4 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
+**Pipeline 0.0.5 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
 
 ---
 
@@ -24,7 +24,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (292/292) |
+| `mvn test` | ✅ PASSA (381/381) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build --target jvm` | ✅ FUNCIONA |
 | `kof build --target native` | ✅ FUNCIONA |
@@ -190,7 +190,7 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 - Sealed types
 
 ### Backends
-- KofJS (Web) — planejado
+- KofJS — alpha funcional (GraalJS embutido)
 - KofScript — hoje = compilar para JVM e executar (`kof run`)
 
 ### Runtime
@@ -199,7 +199,7 @@ Handlers top-level (static), Content-Type automático, `--port`/`--host`, gracef
 - JSON de objetos no Native (JSN002 — diagnostic claro)
 
 ### Tooling
-- `kof test` (planejado — suite como parte da stdlib)
+- `kof test` (PASS/FAIL por exit code com `assert`)
 - REPL
 - `kof fmt` (planejado)
 
@@ -228,9 +228,12 @@ Source (.kf)
 
 | Métrica | Valor |
 |---------|-------|
-| Testes JUnit | 292 (todos passando) |
+| Testes JUnit | 381 (todos passando) |
 | E2E JVM | 29 |
-| E2E Native | 49 |
-| E2E JSON | 13 |
-| E2E Exceptions | 6 |
-| E2E Sintaxe de funções | 4 |
+| E2E Native | 50 |
+| E2E JS (KofJS) | 35 |
+| E2E JSON | 14 |
+| E2E Exceptions | 9 |
+| E2E HTTP | 8 |
+| E2E kof.io | 15 |
+| E2E Spawn/Assert/Lambda | 12 |

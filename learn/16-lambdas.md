@@ -1,6 +1,6 @@
 # 16 — Lambdas
 
-> **Status: parcial**
+> **Status: implementado (JVM + Native; sem capturas)**
 >
 > O parser reconhece lambda com sintaxe `{ body }`, mas sem parâmetros e sem geração de bytecode.
 

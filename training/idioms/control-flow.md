@@ -88,9 +88,14 @@ for (var n in nums) {
 
 ```kof
 switch (x) {
-    case 1 -> println("um")
-    case 2 -> println("dois")
-    default -> println("outro")
+    case 1:
+        println("um")
+        break
+    case 2:
+        println("dois")
+        break
+    default:
+        println("outro")
 }
 ```
 

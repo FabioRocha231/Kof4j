@@ -63,19 +63,20 @@ public interface Backend {
 Implementations:
 - `JvmBackend` - generates `.class` files via ASM
 - `NativeBackend` - generates ELF x86-64 via assembly + as + ld
+- `JsBackend` - generates ES Modules (ECMAScript 2022+), executed by the
+  embedded GraalJS engine (KofJsRunner)
 
 ### Target Enum
 
 ```java
 public enum Target {
     JVM,
-    NATIVE
+    NATIVE,
+    JS
 }
 ```
 
-Future targets:
-- `WEB` (KofJS)
-- `SCRIPT` (KofScript)
+`kof run`/`kof build --target js` executa JS sem Node.js (runtime embarcado).
 
 ## Type System
 
@@ -83,13 +84,13 @@ The type system supports:
 
 - Primitive types: `bool`, `byte`, `short`, `int`, `long`, `float`, `double`, `char`
 - Reference types: classes, interfaces, enums, records
-- Generic types: `List<T>`, `Map<K, V>` (future)
-- Type parameters: `<T>`, `<T extends Comparable<T>>` (future)
+- Generic types: `List<T>` (implemented, erasure); `Map<K, V>` (future)
+- Type parameters: `<T>` (implemented, erasure); bounds (future)
 - Wildcards: `?`, `? extends T`, `? super T` (future)
 - Arrays: `int[]`, `String[]`
 - Null types
 - Void type
-- Function types (future)
+- Function types: `FunctionType` (lambdas, implemented)
 
 ### Type Representation
 

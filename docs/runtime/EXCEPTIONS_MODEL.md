@@ -10,7 +10,9 @@
 Kof suporta `throw` e `try/catch/finally`. Exceções são tratadas de forma diferente nos dois backends:
 
 - **JVM**: Exceções são propagadas naturalmente pela JVM via `athrow`
-- **Native**: `throw` termina o processo via `kof_panic`
+- **Native**: unwinding real pela cadeia de frames (`kof_throw_string`); a
+  mensagem (String) é recuperada no catch. Exceção não capturada termina o
+  processo com a mensagem.
 
 ---
 

@@ -1,6 +1,6 @@
 # 18 — Concorrência
 
-> **Status: planejado**
+> **Status: implementado (JVM; Native CONC001)**
 >
 > Kof usa as capacidades de concorrência da JVM diretamente.
 

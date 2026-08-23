@@ -23,7 +23,7 @@ Planejado: `kof fmt` (formatter).
 Diagnóstico oficial do ambiente — para usuários e suporte:
 
 ```text
-Kof 0.0.4-alpha
+Kof 0.0.5-alpha
 Tooling API: 21
 OS: linux
 Arch: x86_64

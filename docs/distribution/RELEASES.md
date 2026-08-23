@@ -36,7 +36,7 @@ Executa:
 
 1. **test-and-bump** (Ubuntu):
    - `mvn clean test` — **gate**: nenhuma release é publicada com teste quebrado;
-   - lê `VERSION` (ex.: `0.0.4-alpha`), calcula a próxima (`0.0.5-alpha`),
+   - lê `VERSION` (ex.: `0.0.5-alpha`), calcula a próxima (`0.0.5-alpha`),
      roda `scripts/bump-version.sh`;
    - insere a seção do changelog no `CHANGELOG.md`;
    - commita e faz push do bump (`[skip ci]` para não re-disparar a pipeline).
@@ -66,9 +66,9 @@ Executa:
 ## Artefatos
 
 ```text
-kof-0.0.4-alpha-linux-x86_64.tar.gz
-kof-0.0.4-alpha-windows-x86_64.zip
-kof-0.0.4-alpha-macos-x86_64.tar.gz
+kof-0.0.5-alpha-linux-x86_64.tar.gz
+kof-0.0.5-alpha-windows-x86_64.zip
+kof-0.0.5-alpha-macos-x86_64.tar.gz
 SHA256SUMS
 ```
 

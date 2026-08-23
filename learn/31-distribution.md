@@ -5,7 +5,7 @@
 A partir do 0.0.4, o Kof se comporta como uma linguagem distribuível:
 
 ```text
-Kof 0.0.4-alpha
+Kof 0.0.5-alpha
         ├── Compiler
         ├── CLI
         ├── Runtime
@@ -74,8 +74,8 @@ runtime absorvem isso.
 ## Instalação
 
 ```bash
-tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
 kof info
 ```
 

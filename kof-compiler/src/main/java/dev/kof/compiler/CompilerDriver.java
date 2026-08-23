@@ -973,9 +973,7 @@ public class CompilerDriver {
                         ops.add(new KofDup());
                         List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
                         localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
-                        if (ctor != null) {
-                            ops.add(new KofCall(cs.type(), "<init>", ctor.parameterTypes(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
-                        }
+                        ops.add(new KofCall(cs.type(), "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                     } else {
                         IRLocalVariable lambdaVar = findLocalVar(mc.methodName(), locals);
                         if (lambdaVar != null && lambdaVar.type() instanceof Type.FunctionType lft) {

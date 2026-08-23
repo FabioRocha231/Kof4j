@@ -1,7 +1,14 @@
 # Web Architecture — `kof serve`
 
 **Data:** 22 de agosto de 2026
-**Status:** Arquitetura definida — protótipo mínimo pendente
+> **Atualizado (0.0.5):** `kof serve` está implementado — KofHttpServer
+> (thread pool, Content-Length-aware, query string, headers, JSON detection,
+> 404/500, graceful shutdown) + ReflectiveHandler (funções top-level
+> `handle(...)`, variantes 5/4/3/0 args + `get()`/`post()`...). 8 testes E2E.
+> A arquitetura abaixo é o desenho original; o modelo real é documentado no
+> status e nos testes.
+
+**Status:** Implementado (Fase H)
 
 ---
 
@@ -131,7 +138,7 @@ kof serve <file.kf> [--port <port>] [--host <host>]
 kof serve app.kf --port 8080
 
 # Produção (Native)
-kof serve app.kf --target native --port 8080
+kof serve app.kf --port 8080   # serve compila para JVM
 ```
 
 ---

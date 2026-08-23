@@ -161,9 +161,8 @@ ArrayObject:
 
 **Contrato:**
 - FUNCTION e STATIC são resolvidos em compile-time
-- INSTANCE é resolvido em compile-time (direct dispatch)
-- Virtual dispatch NÃO é implementado nesta fase
-- O object model DEVE permitir virtual dispatch futuro
+- INSTANCE usa virtual dispatch via vtable (método em `method_table_ptr`)
+- INTERFACE usa a mesma vtable (dispatch por interface, Fase F.5)
 
 **JVM:** JVM handle diretamente via vtable
 **Native:** Chamada direta via `call ClassName_methodName`
@@ -287,12 +286,13 @@ TypeTable:
 
 ---
 
+> **Atualizado (0.0.5):** virtual dispatch (vtable), exceptions reais
+> (JVM table + Native frame chain), generics por erasure e `spawn` (JVM)
+> foram implementados. Ainda fora: GC (Native), reflection, serialization.
+
 ## 8. NÃO incluído nesta ABI
 
-- Garbage collection (fase futura)
-- Virtual dispatch (fase futura)
-- Exceptions (fase futura)
-- Generics (fase futura)
-- Concorrência (fase futura)
-- Reflection (fase futura)
-- Serialization (fase futura)
+- Garbage collection (Native — memória devolvida ao SO no exit)
+- Reflection
+- Serialization
+- `spawn` no Native (CONC001 — planned)

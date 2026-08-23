@@ -51,7 +51,7 @@ Objetivos:
 - reutilização da mesma semântica da linguagem;
 - mesma aplicação podendo ser compilada para JVM ou Native.
 
-Estado atual: ✅ funcional (Fases E+F concluídas, 292/292 testes passam, JSON parity, exceptions reais no JVM)
+Estado atual: ✅ funcional (Fases E+F concluídas, 381/381 testes passam, JSON parity, exceptions reais no JVM)
 
 ### KofJS — Web
 
@@ -481,9 +481,9 @@ Estado atual: ❌ não implementado
   - kof_free (no-op, documentado) ✅
   - kof_memstats para debug ✅
   - MEMORY_MODEL.md documentado ✅
-- Interfaces (pendente)
-- Exceptions/Runtime Errors (pendente)
-- Memory Management (pendente)
+> **Atualizado (0.0.5):** interfaces (F.5), exceptions reais (F.6, JVM +
+> Native unwinding) e memory management (allocator com header, kof_free
+> funcional) estão implementados.
 
 ### Fase 1 — Core
 
@@ -505,12 +505,12 @@ Estado atual: ❌ não implementado
 
 - syscalls de rede no NativeRuntime (socket, bind, listen, accept, read, write, close) ✅;
 - `kof serve` command no CLI ✅;
-- HTTP server mínimo (single-threaded, JVM) ✅;
-- Request/Response model (HTTP parsing) ✅;
-- Path parameters (pendente);
-- JSON serialization (pendente);
-- Testes E2E JVM + Native;
-- Documentação (`docs/future/web/WEB_ARCHITECTURE.md`) ✅.
+- KofHttpServer (thread pool, Content-Length, query, headers, 404/500) ✅;
+- `kof serve` com handlers top-level (`handle(...)`) ✅;
+- JSON serialization (`json.encode`/`json.decode`) ✅;
+- 8 testes E2E in-process (sockets reais) ✅;
+- Documentação (`docs/http.md`) ✅;
+- Path parameters (pendente — routing explícito no handler).
 
 ### Fase 4 — Security
 
@@ -569,7 +569,7 @@ O Kof é uma plataforma distribuível, não apenas um JAR:
 - releases automáticas por push na `main` (testes → bump → package → GitHub Release);
 - artefatos multiplataforma + SHA256SUMS;
 - editor support oficial: grammar TextMate + LSP consumindo o frontend real;
-- `kof info`, `kof check`, `kof lsp` (test/fmt planejados).
+- `kof info`, `kof check`, `kof lsp`, `kof test` ✅; `kof fmt` planejado.
 
 Referências: `docs/distribution/`, `docs/tooling/`.
 

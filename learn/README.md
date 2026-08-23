@@ -14,7 +14,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 * Distribuição oficial (JDK embutido, tooling, editor support)
 * CLI: build, run, serve, check, info, lsp, version
 * kof.io: File, Path, Directory (JVM + Native)
-* 363+ testes passando
+* 381 testes passando
 
 ## Para quem é
 
@@ -103,19 +103,19 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 08 | Propriedades | ✅ |
 | 09 | Interfaces | ✅ |
 | 10 | Herança | ✅ |
-| 11 | Generics | Planejado |
-| 12 | Collections | Planejado |
+| 11 | Generics (erasure) | ✅ |
+| 12 | Collections (List<T>) | ✅ |
 | 13 | Nullability | Planejado |
-| 14 | Exceptions | ✅ Parcial |
+| 14 | Exceptions | ✅ (JVM + Native) |
 | 15 | Pattern Matching | Planejado |
-| 16 | Lambdas | Planejado |
-| 17 | Programação Funcional | Planejado |
-| 18 | Concorrência | Planejado |
+| 16 | Lambdas | ✅ (sem capturas) |
+| 17 | Programação Funcional | Parcial |
+| 18 | Concorrência (spawn) | ✅ (JVM; Native CONC001) |
 | 19 | Packages e Módulos | ✅ Parcial |
 | 20 | Annotations | Planejado |
-| 21 | Java Interop | ✅ Parcial |
+| 21 | Java Interop | Planejado |
 | 22 | JVM | ✅ |
-| 23 | Testes | ✅ Parcial |
+| 23 | Testes (kof test + assert) | ✅ |
 | 24 | Build Tools | ✅ |
 | 25 | Spring | Planejado |
 | 26 | Aplicação Real | Planejado |
@@ -128,43 +128,25 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM e Native.
 
-**Testes:** 292/292 passando
+**Testes:** 381/381 passando
 
-**O que funciona hoje:**
-- Lexer completo com 55+ keywords
-- Parser recursivo descendente funcional
-- Records com campos, construtor, accessors e toString
-- Declarações de classe com campos e métodos
-- Declarações de interface
-- Herança simples (extends)
-- Virtual dispatch (override)
-- Interfaces básicas
-- try/catch/finally
-- do-while
-- String concatenação
-- Array creation, access, length
-- Field initialization
-- Package e import declarations
-- CLI com comandos `build`, `run`, `version` e flag `--target`
-- Backend JVM via ASM — gera `.class` funcionais
-- Backend Nativo — gera ELF x86-64 via assembly + as + ld
-- Runtime nativo completo (allocation, strings, arrays, errors)
-
-**O que está em desenvolvimento:**
-- String methods (charAt, substring, contains)
-- Instanceof / type casting
-- Switch statements
-- Null safety
-- Standard library
-- Diagnostics detalhados
+**O que funciona hoje (0.0.5-alpha):**
+- Frontend completo (lexer, parser, type system, semântica)
+- Três backends: JVM (ASM), Native (ELF x86-64) e KofJS (GraalJS embutido)
+- Classes, records, herança, interfaces, virtual dispatch, generics (erasure)
+- Funções (sem `fun`), lambdas, if-expr, switch, for-in
+- Exceptions reais (JVM + Native), `assert`, `spawn` (JVM)
+- Strings (API completa), arrays, `List<T>`, JSON, kof.io, kof.time
+- CLI: `build, run, serve, check, test, info, lsp, install, version`
+- `kof serve` (KofHttpServer com thread pool), `kof test` (PASS/FAIL)
+- Distribuição oficial (Temurin 21 embutido, package, CI/release)
 
 **O que está planejado:**
-- Generics
-- Collections
-- Concorrência
-- HTTP / Database
-- KofJS (frontend web)
-- Tooling (LSP, formatter, etc.)
+- Null safety, pattern matching, annotations
+- Captura em lambdas, resultado de tarefa (`await`), `kof.concurrent.Queue`
+- `spawn` no Native, JSON de objetos no Native
+- Map/Set, `kof fmt`, hover/completion no LSP
+- Database, security, messaging
 
 ## Arquivos
 

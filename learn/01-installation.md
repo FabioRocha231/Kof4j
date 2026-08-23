@@ -6,7 +6,7 @@ O Kof é distribuído como uma plataforma autocontida. O pacote oficial
 inclui compilador, CLI, runtime, stdlib, tooling e um **OpenJDK embutido** —
 não é necessário instalar Java separadamente.
 
-1. Baixe o artefato do GitHub Releases (ex.: `kof-0.0.4-alpha-linux-x86_64.tar.gz`).
+1. Baixe o artefato do GitHub Releases (ex.: `kof-0.0.5-alpha-linux-x86_64.tar.gz`).
 2. Verifique a integridade:
 
    ```bash
@@ -16,8 +16,8 @@ não é necessário instalar Java separadamente.
 3. Extraia e adicione ao PATH:
 
    ```bash
-   tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-   export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+   tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+   export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
    ```
 
 4. Verifique:

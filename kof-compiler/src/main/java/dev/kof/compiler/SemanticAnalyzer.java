@@ -149,12 +149,22 @@ class SemanticAnalyzer {
                 defineMethodSymbol(method, cls.name(), classScope);
             }
         }
-        for (AstNode member : cls.members()) {
-            if (member instanceof ConstructorDeclarationNode ctor) {
-                analyzeConstructorBody(ctor);
-            } else if (member instanceof MethodDeclarationNode method) {
-                analyzeMethodBody(method);
+        for (int pass = 0; pass < 4; pass++) {
+            boolean changed = false;
+            for (AstNode member : cls.members()) {
+                if (member instanceof ConstructorDeclarationNode ctor) {
+                    analyzeConstructorBody(ctor);
+                } else if (member instanceof MethodDeclarationNode method) {
+                    SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+                    Type before = ms != null ? ms.returnType() : null;
+                    analyzeMethodBody(method);
+                    Type after = ms != null ? ms.returnType() : null;
+                    if (before != null && after != null && !before.equals(after)) {
+                        changed = true;
+                    }
+                }
             }
+            if (!changed) break;
         }
         currentScope = prevScope;
         currentClassName = prevClass;
@@ -162,6 +172,7 @@ class SemanticAnalyzer {
 
     private final java.util.IdentityHashMap<ConstructorDeclarationNode, SymbolTable> ctorScopes = new java.util.IdentityHashMap<>();
     private final java.util.IdentityHashMap<MethodDeclarationNode, SymbolTable> methodScopes = new java.util.IdentityHashMap<>();
+    private final java.util.IdentityHashMap<MethodDeclarationNode, SymbolTable.MethodSymbol> methodSymbols = new java.util.IdentityHashMap<>();
 
     private void defineConstructorSymbol(ConstructorDeclarationNode ctor, String className, SymbolTable classScope) {
         List<Type> paramTypes = new ArrayList<>();
@@ -201,6 +212,7 @@ class SemanticAnalyzer {
         SymbolTable.ClassSymbol cs = knownClasses.get(className);
         if (cs != null) cs.members().define(methodSym);
         methodScopes.put(method, methodScope);
+        methodSymbols.put(method, methodSym);
     }
 
     private void analyzeConstructorBody(ConstructorDeclarationNode ctor) {
@@ -220,6 +232,14 @@ class SemanticAnalyzer {
         currentScope = methodScope;
         analyzeBody(method.body(), methodScope, returnType);
         currentScope = prevScope;
+        if (Type.isVoid(returnType) && method.body().size() == 1
+                && method.body().getFirst() instanceof ReturnStmt ret && ret.value() != null) {
+            Type inferred = inferType(ret.value(), methodScope);
+            SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+            if (ms != null && !(inferred instanceof Type.UnknownType)) {
+                ms.setReturnType(inferred);
+            }
+        }
     }
 
     private void analyzeRecord(RecordDeclarationNode rec) {
@@ -252,10 +272,20 @@ class SemanticAnalyzer {
                 defineMethodSymbol(method, rec.name(), classScope);
             }
         }
-        for (AstNode member : rec.members()) {
-            if (member instanceof MethodDeclarationNode method) {
-                analyzeMethodBody(method);
+        for (int pass = 0; pass < 4; pass++) {
+            boolean changed = false;
+            for (AstNode member : rec.members()) {
+                if (member instanceof MethodDeclarationNode method) {
+                    SymbolTable.MethodSymbol ms = methodSymbols.get(method);
+                    Type before = ms != null ? ms.returnType() : null;
+                    analyzeMethodBody(method);
+                    Type after = ms != null ? ms.returnType() : null;
+                    if (before != null && after != null && !before.equals(after)) {
+                        changed = true;
+                    }
+                }
             }
+            if (!changed) break;
         }
         currentScope = prevScope;
         currentClassName = prevClass;

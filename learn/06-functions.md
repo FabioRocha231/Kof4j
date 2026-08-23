@@ -1,6 +1,6 @@
 # 06 — Funções
 
-> **Status: planejado**
+> **Status: implementado**
 >
 > O parser já suporta declaração de métodos em classes e records, mas funções de nível superior e closures ainda não foram implementadas.
 

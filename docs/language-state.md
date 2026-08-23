@@ -1,9 +1,9 @@
 # Estado Atual da Linguagem Kof
 
 **Data:** 22 de agosto de 2026
-**Versão:** 0.0.4-alpha
-**Testes:** 292/292 passando (incluindo execução real de binários nativos, JSON E2E e exceptions E2E)
-**Status:** Compilador funcional com backends JVM e Native, web server funcional, distribuição e tooling oficiais
+**Versão:** 0.0.5-alpha
+**Testes:** 381/381 passando (incluindo execução real de binários nativos, JSON E2E e exceptions E2E)
+**Status:** Compilador funcional com backends JVM, Native e KofJS; web server, distribuição e tooling oficiais
 
 ---
 

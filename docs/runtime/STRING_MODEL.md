@@ -119,7 +119,11 @@ kof_null_error() disponível para detecção futura.
 
 ## 8. Concatenação e Igualdade
 
-Runtime functions disponíveis mas syntax ainda não integrada no CompilerDriver.
+> **Atualizado (0.0.5):** a sintaxe está integrada — `+` concatena
+> (`kof_string_concat`) e `==`/`!=` comparam conteúdo (`kof_string_equals`)
+> em JVM e Native. A API completa (charAt, substring, contains, startsWith,
+> endsWith, indexOf, trim, toUpperCase, toLowerCase, replace, split) está
+> disponível.
 Operator `+` para strings requer detecção de tipo no CompilerDriver (futuro).
 
 ---

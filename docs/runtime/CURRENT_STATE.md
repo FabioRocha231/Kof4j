@@ -117,7 +117,7 @@ As funções de runtime nativas são geradas pelo `NativeRuntime.java` no compil
 1. **Heap allocation** — objetos e arrays são alocados no heap via `kof_alloc`
 2. **Header 8 bytes** — type_id (4) + flags (4) para objetos
 3. **Array header 16 bytes** — type_id (4) + flags (4) + length (4) + elem_size (4)
-4. **Direct dispatch** — sem virtual dispatch (futuro)
+4. **Virtual dispatch** — vtable por classe (Fase F.4); interfaces via vtable (F.5)
 5. **Errors fatais** — erros de runtime terminam o processo
 6. **UTF-8 strings** — imutáveis, com null terminator
 7. **Fields padded to 8 bytes** — alinhamento consistente
@@ -173,14 +173,14 @@ As funções de runtime nativas são geradas pelo `NativeRuntime.java` no compil
 
 | Feature | Estado | Motivo |
 |---------|--------|--------|
-| Generics | ❌ | Não implementado |
-| Collections | ❌ | Não implementado |
-| Static fields | ❌ | No-op |
-| Boxing/Unboxing | ❌ | valueOf no-op |
-| Type casting | ❌ | No-op |
-| instanceof | ❌ | Sempre false |
-| GC | ❌ | Memória não é liberada |
-| Default methods em interfaces | ❌ | Não implementado |
+| Generics | ✅ | Erasure (classes e funções) |
+| Collections | ✅ | `List<T>`, `listOf`, for-in |
+| Static fields | ⚠️ | Semântica limitada |
+| Boxing/Unboxing | ✅ | No-op nativo (slots 64-bit); JVM via valueOf |
+| Type casting | ✅ | `as` (no-op nativo, sem verificação) |
+| instanceof | ✅ | `kof_super_table` |
+| GC | ❌ | Memória devolvida ao SO no exit |
+| Default methods em interfaces | ⚠️ | Suporte parcial |
 
 ---
 

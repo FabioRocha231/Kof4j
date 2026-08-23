@@ -55,11 +55,12 @@ Kof IR (backend-agnostic)
 |---------|--------|
 | `Map`, `Set` | Planned |
 | `Option<T>` / null safety | Planned |
-| Async / concurrency | Planned |
+| `spawn` (tarefas concorrentes) | Implemented (JVM; Native CONC001) |
+| Lambdas + if-expr | Implemented |
 | Higher-order functions (`map`, `filter`) | Planned |
 | Lambda captures | Planned |
 | Pattern matching | Planned |
-| Primary constructors `class X(...)` | Unavailable — use `constructor(...)` |
+| Primary constructors `class X(...)` | Implemented (record-style desde 0.0.5) |
 | Array literals `{1, 2, 3}` | Unavailable — use `new Int[n]` |
 
 ## What Kof Is NOT

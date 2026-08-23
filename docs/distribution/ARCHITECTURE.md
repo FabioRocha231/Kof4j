@@ -1,6 +1,6 @@
 # Arquitetura de Distribuição do Kof
 
-**Versão:** 0.0.4-alpha
+**Versão:** 0.0.5-alpha
 
 O Kof não é apenas um compilador — é uma plataforma distribuível. A partir
 desta versão, o projeto trata a instalação como parte oficial do produto:
@@ -127,11 +127,11 @@ compilador/runtime, nunca exposta ao programador.
 
 ```bash
 # Linux / macOS
-tar -xzf kof-0.0.4-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.4-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
 
 # Windows
-# extraia o zip e adicione kof-0.0.4-alpha-windows-x86_64\bin ao PATH
+# extraia o zip e adicione kof-0.0.5-alpha-windows-x86_64\bin ao PATH
 ```
 
 ### Build de desenvolvimento
@@ -154,7 +154,7 @@ sha256sum -c SHA256SUMS
 Depois de instalar:
 
 ```bash
-kof version      # kof 0.0.4-alpha
+kof version      # kof 0.0.5-alpha
 kof info         # ambiente completo (JVM embutida aparece com "(embedded)")
 kof run hello.kf
 ```

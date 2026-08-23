@@ -42,8 +42,8 @@ var nomes = users.map(u -> u.name)
 // NÃO COMPILA — array literal não existe
 var nums = [1, 2, 3]
 
-// NÃO COMPILA — primary constructor não existe
-class User(String name)
+// OK — primary constructor existe (record-style, desde 0.0.5)
+class User(String name) { }
 
 // NÃO COMPILA — Option não existe
 var maybe = Option.of(x)

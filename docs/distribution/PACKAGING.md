@@ -34,11 +34,11 @@ kof-<version>-<os>-<arch>.zip      # Windows
 Exemplos reais:
 
 ```text
-kof-0.0.4-alpha-linux-x86_64.tar.gz
-kof-0.0.4-alpha-windows-x86_64.zip
-kof-0.0.4-alpha-macos-x86_64.tar.gz
-kof-0.0.4-alpha-linux-aarch64.tar.gz   # planejado
-kof-0.0.4-alpha-macos-aarch64.tar.gz   # planejado
+kof-0.0.5-alpha-linux-x86_64.tar.gz
+kof-0.0.5-alpha-windows-x86_64.zip
+kof-0.0.5-alpha-macos-x86_64.tar.gz
+kof-0.0.5-alpha-linux-aarch64.tar.gz   # planejado
+kof-0.0.5-alpha-macos-aarch64.tar.gz   # planejado
 ```
 
 ## 3. Matriz de plataformas

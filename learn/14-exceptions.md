@@ -1,6 +1,6 @@
 # 14 — Exceptions
 
-> **Status: parcial**
+> **Status: implementado (JVM real; Native unwinding)**
 >
 > O lexer reconhece `throw`, `try`, `catch`, `finally`. O parser suporta `throw` e `try/catch` parcialmente. A geração de bytecode para exceptions ainda não está implementada.
 

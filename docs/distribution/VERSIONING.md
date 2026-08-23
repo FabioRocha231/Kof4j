@@ -54,13 +54,13 @@ Enquanto o Kof estiver em Alpha, o release carrega explicitamente essa
 informação:
 
 ```text
-0.0.4-alpha
+0.0.5-alpha
 ```
 
 Regras:
 
-- `0.0.4-alpha` identifica o artefato, o GitHub Release e a tag
-  (`kof-0.0.4-alpha`);
+- `0.0.5-alpha` identifica o artefato, o GitHub Release e a tag
+  (`kof-0.0.5-alpha`);
 - a versão de componente (compiler/runtime/stdlib) é `0.0.4` — o sufixo
   `-alpha` pertence ao release;
 - nada é chamado de stable;
@@ -96,7 +96,7 @@ Enquanto em Alpha, **todo commit na `main` gera a próxima versão Alpha**
 (incremento de PATCH):
 
 ```text
-0.0.4-alpha → 0.0.5-alpha → 0.0.6-alpha → ...
+0.0.5-alpha → 0.0.5-alpha → 0.0.6-alpha → ...
 ```
 
 Regras de bom senso para o futuro:

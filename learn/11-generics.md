@@ -1,6 +1,6 @@
 # 11 — Generics
 
-> **Status: planejado**
+> **Status: implementado**
 >
 > O type system define `TypeVariable` e `WildcardType`, mas o parser e o lowering não suportam generics ainda.
 

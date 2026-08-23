@@ -1,65 +1,57 @@
 # Status do Projeto Kof
 
 **Última atualização:** 22 de agosto de 2026
-**Versão:** 0.0.4-alpha
+**Versão:** 0.0.5-alpha
 
 ---
 
 ## Build
 
 ```
-mvn clean package → PASSA
-mvn test → 375/375 PASSAM (JVM, Native, JSON, kof.io, spawn, KofJS via
-          GraalJS embutido)
-kof run → FUNCIONA
-kof build → FUNCIONA (--target jvm|native)
-kof serve → FUNCIONA (handlers top-level static, JSON, routing por ==)
-kof check → FUNCIONA
-kof test → FUNCIONA (PASS/FAIL por exit code, JVM + Native)
-kof info → FUNCIONA
-kof lsp → FUNCIONA (diagnostics via frontend real)
-scripts/package.sh → gera pacote oficial + SHA256SUMS
+mvn clean package    → PASSA
+mvn test             → 381/381 PASSAM (JVM + Native + KofJS E2E)
+kof build            → PASS (--target jvm|native|js)
+kof run              → PASS (jvm|native|js)
+kof serve            → PASS (KofHttpServer, thread pool, 404/500, JSON)
+kof check            → PASS
+kof test             → PASS (PASS/FAIL por exit code com assert)
+kof info             → PASS
+kof lsp              → PASS (diagnostics reais do frontend)
+kof install          → PASS
+tests/run-golden.sh  → 16/16 (8 casos × jvm+native)
+tests/run-integration.sh → 9/9 (CLI + serve + kof test)
+scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
 ```
 
 ---
 
-## kof.io — Filesystem API (implementado)
+## Infraestrutura 0.0.5 (distribuição)
 
-`File`, `Path` e `Directory` — uma API única para JVM e Native:
-
-- Path: `resolve`, `parent`, `fileName`, `extension`, `normalize`,
-  `isAbsolute`, `toAbsolute`.
-- File: `exists`, `isFile`, `isDirectory`, `readText`, `writeText`,
-  `appendText`, `readBytes`, `writeBytes`, `appendBytes`, `size`,
-  `delete`, `name`, `path` (+ formas estáticas `File.exists(p)` etc.).
-- Directory: `exists`, `create`, `createDirectories`, `list` (ordenado),
-  `delete`.
-- Texto: UTF-8 sempre. Bytes: `Int[]` (0-255).
-- Erros: Bool/`null`/`-1` no JVM; Native sem exceptions recuperáveis
-  (`readText` de arquivo inexistente encerra com erro — use `exists()`).
-- Native: syscalls POSIX (Linux x86-64); JVM: `java.nio.file`.
-- `IoE2ETest` 15/15 JVM+Native; multiplataforma no CI
-  (ubuntu/windows/macos; native roda apenas no Linux).
-- `for (var x in list)` — iteração sobre List/array.
-
-Referência: `docs/stdlib/IO.md`, `learn/34-file-system.md`.
-
----
-
-## Infraestrutura 0.0.4 (distribuição)
-
-- `VERSION` como fonte única de versão; `<revision>` no Maven; `KofVersion`
-  lendo `dev/kof/version.properties` empacotado; `scripts/bump-version.sh`.
-- CLI: `kof info [--json]`, `kof check`, `kof version` por fonte única.
-- `kof lsp` — Language Server mínimo consumindo o frontend real.
+- `VERSION` como fonte única; `<revision>` no Maven; `KofVersion` com
+  `version.properties`; `scripts/bump-version.sh`.
+- CLI: `build, run, serve, check, test, info, lsp, install, version`.
+- `kof lsp` — Language Server via stdio (initialize, didOpen/didChange/
+  didClose → publishDiagnostics do frontend real).
 - Launchers `bin/kof` (Unix) e `bin/kof.bat` (Windows) com JDK embutido
   (Temurin 21, Tooling API Level 21).
 - `scripts/package.sh` — layout oficial de distribuição, `--jdk` para JDK
   embutido, SHA256SUMS.
-- GitHub Actions: `ci.yml` (PR) e `release.yml` (main → teste → bump →
-  package 3 plataformas → changelog → GitHub Release).
-- Editor support: `editor/kof.tmLanguage.json` (grammar TextMate oficial).
-- Maven compilador com `compilerReuseStrategy=alwaysNew` (estabilidade sob JDK 25).
+- GitHub Actions: `ci.yml` (PR — testes, golden, integração, multiplatform)
+  e `release.yml` (main → testes → bump → package 3 plataformas → changelog
+  → GitHub Release).
+- Editor support: `editor/kof.tmLanguage.json` (grammar TextMate).
+
+---
+
+## Targets
+
+| Target | Backend | Execução | Status |
+|--------|---------|----------|--------|
+| `jvm` | `JvmBackend` (ASM) | bytecode V21, exception table, virtual threads | estável |
+| `native` | `NativeBackend` | ELF x86-64, syscalls, sem libc obrigatória | estável |
+| `js` | `JsBackend` + `KofJsRunner` | ES Modules (ECMAScript 2022+) via GraalJS embutido | alpha |
+
+O mesmo frontend e a mesma Kof IR alimentam os três backends.
 
 ---
 
@@ -73,149 +65,130 @@ String saudacao() { ... }            // retorno antes do nome
 despedida(): String { ... }          // retorno após os parâmetros
 void fazIsso() { ... }               // void explícito
 Bool positivo(Int x) = x > 0         // expression body
-int dobro(int x) { ... }             // primitivos em qualquer caixa
-class Calc {
-    Int value                        // campo
-    void reset() { ... }             // método void
-    Int getValue() { ... }           // método com retorno
-    constructor(String nome) { ... } // construtor por palavra-chave
-}
 ```
 
 ### Features implementadas
 
-| Feature | JVM | Native |
-|---------|-----|--------|
-| println / print | ✅ | ✅ |
-| variáveis, aritmética, bitwise | ✅ | ✅ |
-| if/else, while, for, do-while, break/continue | ✅ | ✅ |
-| switch | ✅ | ✅ |
-| funções (todas as formas de declaração) | ✅ | ✅ |
-| classes, campos, métodos, construtores | ✅ | ✅ |
-| `constructor` por palavra-chave | ✅ | ✅ |
-| records (com toString/equals/hashCode no JVM) | ✅ | ✅ |
-| herança, `super`, virtual dispatch, override | ✅ | ✅ |
-| interfaces + dispatch por interface | ✅ | ✅ |
-| generics por erasure (classes e funções) | ✅ | ✅ |
-| instanceof, cast (`as`) | ✅ | ✅ |
-| exceptions reais (try/catch/finally + exception table) | ✅ | ⚠️¹ |
-| strings (concat `+`, equals `==`, indexOf, trim, case, replace, split) | ✅ | ✅ |
-| arrays (`new Int[n]`, acesso, `.length`) | ✅ | ✅ |
-| `List<T>` (add, get, set, size, contains, isEmpty, remove, clear, listOf) | ✅ | ✅ |
-| JSON encode/decode (int, long, bool, string, list, array) | ✅ | ✅ |
-| JSON objetos/records (encode + decode) | ✅ | — |
-| literais `Int` estourados viram `Long` automaticamente | ✅ | ✅ |
+| Feature | JVM | Native | KofJS |
+|---------|-----|--------|-------|
+| println / print | ✅ | ✅ | ✅ |
+| variáveis, aritmética, bitwise, hex literals | ✅ | ✅ | ✅ |
+| if/else, if-expr | ✅ | ✅ | ✅ |
+| while, for, do-while, for-in, break/continue | ✅ | ✅ | ✅ |
+| switch | ✅ | ✅ | ✅ |
+| funções (todas as formas) | ✅ | ✅ | ✅ |
+| classes, campos, métodos | ✅ | ✅ | ✅ |
+| `constructor(...)` e primary `class X(...)` | ✅ | ✅ | ✅ |
+| records (toString/equals/hashCode) | ✅ | ✅ | ✅ |
+| herança, `super`, override, virtual dispatch | ✅ | ✅ | ✅ |
+| interfaces | ✅ | ✅ | ✅ |
+| generics por erasure | ✅ | ✅ | ✅ |
+| lambdas `(x: Int) -> expr` (sem capturas) | ✅ | ✅ | ✅ |
+| exceptions reais (try/catch/finally + unwinding) | ✅ | ✅ | ✅ |
+| `assert(cond[, msg])` | ✅ | ✅ | ✅ |
+| `spawn` (concorrência, join implícito) | ✅ | CONC001 | — |
+| strings (concat `+`, `==`, indexOf, trim, split...) | ✅ | ✅ | ✅ |
+| arrays | ✅ | ✅ | ✅ |
+| `List<T>`, `listOf` | ✅ | ✅ | ✅ |
+| JSON encode/decode (objetos/records no JVM) | ✅ | ✅ | ✅ |
+| kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
+| kof.time (`now()`) | ✅ | ✅ | ✅ |
+| `readLine()` | ✅ | ✅ | ✅ |
 
-¹ Native: `throw` encerra o processo (`kof_panic`); try/catch/finally compilam, mas exceções não são recuperáveis (limitado e documentado).
-
-### JSON
+### Concorrência (`spawn`)
 
 ```kof
-json.encode(42)                      // "42"
-json.encode(user)                    // {"name":"Mel","age":30} (objetos/records no JVM)
-json.encode(listOf(1, 2, 3))         // [1,2,3]
-var u = json.decode<User>("{\"name\": \"Ana\", \"age\": 25}")
-var l = json.decode<List<Int>>("[1, 2, 3]")
+spawn processarFila()
+spawn {
+    println("background")
+}
 ```
 
-- JVM: parser JSON completo (objetos, arrays, strings com escapes, números), encode/decode via reflection (classes e records).
-- Native: implementação em assembly (builder + decode posicional).
-- Diagnostics claros para combinações não suportadas:
-  - `JSN001` — Float/Double (ambos targets)
-  - `JSN002` — objetos no target Native
-  - `JSN003` — decode de arrays (use `List<Int>`)
-
-### Exceptions (JVM — reais)
-
-- `try`/`catch`/`finally` com exception table + StackMapTable.
-- `throw "mensagem"` é wrapped em `RuntimeException`; `catch (String e)` unwrap de volta.
-- `finally` roda nos caminhos normal, capturado e propagado (catch-all + rethrow).
-- Try aninhado com propagação para o try externo.
-- Native: `throw` → `kof_panic` (documentado como limitação).
+- JVM: virtual threads; o programa espera as tarefas (join implícito).
+- Native: `CONC001` (gap documentado — planned).
+- Zero API de plataforma exposta (Thread/Runnable são internos do runtime).
+- Ver: `docs/concurrency.md`.
 
 ### HTTP (`kof serve`)
 
 ```kof
-handle(String method, String path, String body): String {
+handle(String method, String path, String body, String query, String headers): String {
     if (path == "/hello") {
         return "{\"msg\": \"hi\"}"
     }
-    return "{\"msg\": \"not found\"}"
+    return null   // 404
 }
 ```
 
-- Funções top-level compilam para métodos static — dispatch por reflexão com
-  suporte a static (URLClassLoader sobre as classes compiladas).
-- Fallbacks: `handle()`, `get()`/`post()`/etc.
-- Content-Type automático: `application/json` quando o body começa com `{`/`[`.
-- `--port`, `--host`, graceful shutdown.
+- KofHttpServer: Content-Length-aware, query string, headers, JSON detection,
+  thread pool, graceful shutdown.
+- Handlers top-level (static): variantes 5/4/3/0 args + `get()`/`post()`...
+- Ver: `docs/http.md`.
+
+### Testes da linguagem
+
+```kof
+main() {
+    assert(2 + 2 == 4)
+    assert("kof" == "kof", "strings iguais")
+}
+```
+
+- `assert` lança quando falso → exit code 1.
+- `kof test <file.kf|dir> [--target jvm|native]` reporta PASS/FAIL.
+- Ver: `learn/23-testing.md`.
 
 ---
 
-## Testes (292/292 PASS)
+## Testes (381/381 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
-| CompilerDriverTest | 190 | compilação, semântica, fases F, isolamento arquitetural, IR |
-| NativeE2ETest | 49 | execução real de binários nativos |
+| CompilerDriverTest | 190 | compilação, semântica, fases, isolamento |
+| NativeE2ETest | 50 | execução real de binários nativos |
+| KofJsE2ETest | 35 | execução real JS (GraalJS) |
 | JvmE2ETest | 29 | execução real de bytecode JVM |
-| JsonE2ETest | 13 | JSON JVM + Native + diagnostics |
-| ExceptionsE2ETest | 6 | try/catch/finally executados no JVM |
-| FunctionSyntaxTest | 4 | todas as formas de declaração de função (JVM + Native) |
-| NativeDebugTest | 1 | harness de debug nativo |
+| IoE2ETest | 15 | kof.io multiplatform |
+| JsonE2ETest | 14 | JSON JVM + Native |
+| BackendParityTest | 10 | paridade JVM/Native/JS |
+| ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
+| KofHttpServerTest | 8 | serve engine (sockets reais) |
+| AssertE2ETest | 5 | assert JVM + Native |
+| FunctionSyntaxTest | 4 | formas de declaração de função |
+| LambdaE2ETest | 4 | lambdas + if-expr |
+| StdlibE2ETest | 4 | now/readFile/writeFile |
+| SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
+| NativeDebugTest | 1 | harness de debug |
+| **Total** | **381** | |
 
 ---
 
 ## Bugs Restantes (reais)
 
-1. GC não implementado no Native (`kof_free` é no-op; memória devolvida ao SO no exit)
-2. Exceptions no Native: `throw` = `kof_panic`, try/catch não recupera (compila, executa sequencialmente)
-3. JSON de objetos/records não suportado no Native (JSN002 — diagnostic claro)
-4. JSON Float/Double não suportado (JSN001 — diagnostic claro)
-5. `json.decode<Int[]>` não suportado (parser não aceita `[]` em type argument; JSN003 como rede)
-6. `LambdaExpr`/`IfExpr` parseados mas não lowerados (retornam UnknownType)
-7. `kof-runtime` é módulo Maven vazio (destino de runtime futura)
-8. `tests/golden` e `tests/integration` são esqueleto (sem casos reais)
-9. Script `tests/native/golden/test-hello.sh` desatualizado (referencia jar antigo)
+1. GC no Native (memória devolvida ao SO no exit)
+2. `spawn` no Native: CONC001 (gap documentado)
+3. JSON de objetos/records no Native: JSN002 (gap documentado)
+4. JSON Float/Double: JSN001 (gap documentado)
+5. Lambdas sem captura (planned)
+6. Resultado de tarefa (`await`/join explícito): planned
+7. `kof fmt`: planned
+8. Map/Set, Option/null safety, pattern matching: planned
 
 ---
 
 ## Próximos Passos
 
-### Fase H — HTTP (concluída ✅)
-- `KofHttpServer` (engine cru: Content-Length, query, headers, JSON detection, 404/500, thread pool, graceful shutdown)
-- `ReflectiveHandler` (funções top-level static: 5/4/3/0 args + get()/post()...; null = 404)
-- `kof serve` usando o engine novo (removido fallback "Hello from Kof!" e truncamento de 4096)
-- 8 testes E2E in-process com sockets reais
-
-### Fase I — Concurrency (design ✅)
-- `docs/future/CONCURRENCY.md`: semântica de tarefas, isolamento por valor, mapeamento por target (JVM virtual threads / Native scheduler / JS event loop)
-- Sintaxe ainda não escolhida — semântica primeiro
-
-### Fase J — Tooling (concluída ✅)
-- LSP validado (initialize + publishDiagnostics com diagnóstico real SEM011; corrigido bug de URI absoluta)
-- Editor grammar: `constructor`, `listOf`, `json` como builtins
-
-### Fase K — Tests (concluída ✅)
-- `tests/run-golden.sh`: 5 casos (hello, collections, exceptions, json, strings) × 2 targets = 10 checks
-- `tests/run-integration.sh`: CLI E2E (build jvm/native, run, check, serve /ping + 404) = 8 checks
-- Ambos no CI
-
-### Fase L — Distribution (validada ✅)
-- `scripts/package.sh` validado (layout dist + tar.gz + SHA256SUMS)
-- Launcher `bin/kof` do pacote executando programas
-
-### PRIORIDADE 2 — Standard Library (outro agente em progresso)
-- `kof.core`, `kof.collections`, `kof.io` (File/Path/Directory), `kof.time` (now), `kof.json`
-- Zero imports para operações fundamentais
-
-### kof.test — suite de testes como parte da stdlib
-- Testes unitários e de integração da própria linguagem (Kof testando Kof)
+- kof.test como stdlib completa (assert existe; evoluir para suite estruturada)
+- Resultado observável de tarefas (`await`), filas (`kof.concurrent.Queue`)
+- Scheduler nativo para `spawn`
+- `kof fmt`, hover/completion no LSP
+- Roadmap: `docs/roadmap.md`
 
 ---
 
 ## Roadmap de Longo Prazo
 
-- `docs/future/ROADMAP.md` com visão completa (fases A–Q).
-- Próximo grande marco: **aplicação web completa em Kof** (frontend, backend,
-  banco, auth, JSON, validação — lógica de negócio em pouquíssimos arquivos).
+- `docs/roadmap.md` com a visão completa.
+- Próximo grande marco: **aplicação web completa em Kof** (frontend via KofJS,
+  backend via kof serve, banco, auth, JSON — lógica de negócio em poucos
+  arquivos).

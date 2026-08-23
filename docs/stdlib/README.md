@@ -1,7 +1,12 @@
 # Standard Library — Proposta
 
 **Última atualização:** 21 de agosto de 2026
-**Status:** Proposta — NÃO implementado
+> **Atualizado (0.0.5):** implementado parcialmente — `kof.io`
+> (File/Path/Directory), `kof.json` (`json.encode`/`json.decode`),
+> `kof.time` (`now()`), `kof.concurrent` (`spawn`, JVM) e `kof.test`
+> (`assert` + `kof test`). A tabela abaixo é o plano completo.
+
+**Status:** Parcialmente implementado (0.0.5)
 
 ---
 
@@ -88,22 +93,26 @@ http.post("https://api.example.com/users", data)
 
 ### kof.concurrent
 
-Concorrência (futuro).
+Concorrência — `spawn` implementado (JVM, virtual threads).
 
+```kof
+spawn processarFila()
+spawn { ... }
 ```
-async { ... }
-await(promise)
-```
+
+`await`/resultado de tarefa: planejado. Ver `docs/concurrency.md`.
 
 ### kof.test
 
-Framework de testes (futuro).
+Testes — `assert(cond[, "msg"])` + `kof test <file.kf|dir>` implementados.
 
-```
-test "soma" {
-    assert add(2, 3) == 5
+```kof
+main() {
+    assert(2 + 2 == 4)
 }
 ```
+
+Suite estruturada (`test "soma" { ... }`): planejada.
 
 ---
 
@@ -111,12 +120,14 @@ test "soma" {
 
 | Módulo | Prioridade | Status |
 |--------|-----------|--------|
-| kof.core | Alta | Parcial (String ops) |
-| kof.io | Alta | Parcial (print/println) |
-| kof.web | Alta | Não implementado |
-| kof.http | Alta | Não implementado |
-| kof.json | Média | Não implementado |
-| kof.time | Média | Não implementado |
+| kof.core | Alta | Parcial (String ops, println, tipos) |
+| kof.io | Alta | Implementado (File/Path/Directory) |
+| kof.web | Alta | Planejado |
+| kof.http | Alta | Implementado (`kof serve` + KofHttpServer) |
+| kof.json | Média | Implementado (`json.encode`/`decode`) |
+| kof.time | Média | Implementado (`now()`) |
+| kof.concurrent | Alta | Parcial (`spawn` JVM) |
+| kof.test | Alta | Parcial (`assert` + `kof test`) |
 | kof.sql | Alta | Não implementado |
 | kof.concurrent | Média | Não implementado |
 | kof.test | Alta | Não implementado |
