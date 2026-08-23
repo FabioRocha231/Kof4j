@@ -14,6 +14,7 @@ public class CompilerDriver {
     private SemanticAnalyzer semanticAnalyzer;
     private Target target = Target.JVM;
     private DiagnosticCollector currentDiagnostics;
+    private String currentSourceName;
     private final java.util.IdentityHashMap<KofOperation, SourcePosition> currentDebugPositions =
             new java.util.IdentityHashMap<>();
     private final java.util.Deque<LabelId> breakLabels = new java.util.ArrayDeque<>();
@@ -27,6 +28,7 @@ public class CompilerDriver {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
         this.currentDiagnostics = diagnostics;
+        this.currentSourceName = sourceFile.getFileName() != null ? sourceFile.getFileName().toString() : null;
         try {
             String source = Files.readString(sourceFile);
             String fileName = sourceFile.getFileName().toString();
@@ -125,8 +127,7 @@ public class CompilerDriver {
                     AccessFlags.PUBLIC | AccessFlags.SUPER, List.of(), topLevelFunctions, List.of(), null, 0));
         }
         classes.addAll(syntheticClasses);
-        return new IRModule(moduleName, classes, imports, sourceFile.getFileName() != null
-                ? sourceFile.getFileName().toString() : null);
+        return new IRModule(moduleName, classes, imports, currentSourceName);
     }
 
     private final List<IRClass> syntheticClasses = new ArrayList<>();
@@ -747,7 +748,7 @@ public class CompilerDriver {
             case UnaryExpr ue -> {
                 Type operandType = inferExprType(ue.operand(), locals);
                 if ("++".equals(ue.operator()) || "--".equals(ue.operator())) {
-                    System.err.println("DBG emitIncrement op=" + ue.operator() + " operand=" + ue.operand());
+                    System.err.println("DBG emitIncrement op=" + ue.operator() + " operand-class=" + ue.operand().getClass().getName() + " operand=" + ue.operand().toString().substring(0, Math.min(200, ue.operand().toString().length())));
                     localIdx = emitIncrement(ue, operandType, ops, owner, localIdx, locals);
                     yield localIdx;
                 }
@@ -1766,22 +1767,29 @@ public class CompilerDriver {
                                    boolean prefix, KofBinaryOp op,
                                    List<KofOperation> ops, int localIdx,
                                    List<IRLocalVariable> locals) {
+        int recvTmp = localIdx++;
+        int valTmp = localIdx++;
+        locals.add(new IRLocalVariable(recvTmp, "#recv", ownerType));
+        locals.add(new IRLocalVariable(valTmp, "#inc", fieldType));
         ops.add(new KofLoadLocal(ownerType, 0));
+        ops.add(new KofStoreLocal(ownerType, recvTmp));
+        ops.add(new KofLoadLocal(ownerType, recvTmp));
         ops.add(new KofLoadField(ownerType, fieldName, fieldType));
-        int tmp = localIdx++;
-        locals.add(new IRLocalVariable(tmp, "#inc", fieldType));
-        ops.add(new KofStoreLocal(fieldType, tmp));
-        ops.add(new KofLoadLocal(fieldType, tmp));
+        ops.add(new KofStoreLocal(fieldType, valTmp));
+        ops.add(new KofLoadLocal(fieldType, valTmp));
         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
         ops.add(new KofBinary(op, fieldType));
         if (prefix) {
-            // [receiver, new] -> [new, receiver, new]
-            ops.add(new KofDupX1());
+            ops.add(new KofDup());
+            ops.add(new KofLoadLocal(ownerType, recvTmp));
             ops.add(new KofStoreField(ownerType, fieldName, fieldType));
         } else {
+            ops.add(new KofLoadLocal(ownerType, recvTmp));
             ops.add(new KofStoreField(ownerType, fieldName, fieldType));
-            ops.add(new KofLoadLocal(fieldType, tmp));
+            ops.add(new KofLoadLocal(fieldType, valTmp));
         }
+        return localIdx;
+    }
         return localIdx;
     }
 
