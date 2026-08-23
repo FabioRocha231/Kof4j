@@ -605,13 +605,30 @@ class JsBackend implements Backend {
             throw new IllegalStateException("KofJS: loop body label mismatch");
         }
         pos[0]++;
-        ctx.loops.add(new LoopCtx(startLabel, startLabel, cj2.falseLabel()));
+        // Detect the continue label before parsing the body: the back edge is
+        // the first Jump(start) after the body label, and the continue label
+        // is the label immediately before the update statements (for-loops).
+        LabelId continueLabel = startLabel;
+        for (int i = pos[0]; i < ctx.ops.size(); i++) {
+            if (ctx.ops.get(i) instanceof KofJump kj && kj.target().equals(startLabel)) {
+                for (int j = i - 1; j >= pos[0]; j--) {
+                    KofOperation op = ctx.ops.get(j);
+                    if (op instanceof KofLabel kl) {
+                        continueLabel = kl.label();
+                        break;
+                    }
+                    if (op instanceof KofJump || op instanceof KofConditionalJump) break;
+                }
+                break;
+            }
+        }
+        ctx.loops.add(new LoopCtx(startLabel, continueLabel, cj2.falseLabel()));
         List<JsIr.JsStatement> body = parseStatements(ctx, pos, Set.of(startLabel), new ArrayList<>());
         ctx.loops.remove(ctx.loops.size() - 1);
         // After the body: either Jump(start) (while) or Label(continue) + update + Jump(start) (for).
-        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel continueLabel
-                && !continueLabel.label().equals(startLabel)
-                && !continueLabel.label().equals(cj2.falseLabel())) {
+        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel nextLabel
+                && !nextLabel.label().equals(startLabel)
+                && !nextLabel.label().equals(cj2.falseLabel())) {
             pos[0]++;
             List<JsIr.JsStatement> update = new ArrayList<>();
             while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofJump)) {

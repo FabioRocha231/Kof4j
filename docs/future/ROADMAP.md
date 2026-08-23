@@ -82,7 +82,11 @@ A intenção é semelhante à filosofia do Flutter:
 - pouca verbosidade;
 - geração otimizada de HTML/CSS/JS.
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 alpha — pipeline `.kf → Kof IR → KofJS → .mjs` funcional com
+execução na engine JS embarcada do próprio Kof (sem Node.js). Classes,
+herança, List, String API, JSON, exceções, kof.time/kof.io e `kof run
+--target=js` funcionam. A plataforma web (HTML/CSS/JS, browser) é a próxima
+fase. Ver: [docs/targets/KOFJS.md](../targets/KOFJS.md).
 
 ### KofScript — Execução Direta
 

@@ -11,6 +11,15 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 
 ### Features
 
+  - KofJS backend (alpha) — same Kof IR lowered to ECMAScript 2022+ ESM modules
+  - embedded JS engine (GraalJS) — `kof run --target=js` executes without Node.js
+  - KofJS runtime layers — kof-runtime.mjs (core) + kof-runtime-io.mjs (platform via kof_platform)
+  - KofJS classes, records, inheritance, interfaces (type-level), generics erasure
+  - KofJS List, String API, arrays, JSON (encode/decode with class binding)
+  - KofJS exceptions (try/catch/finally), lambdas, if-expressions, source maps
+  - record-style class syntax — `class User(String name)` same semantics as record
+  - generic return types in function declarations (e.g. `List<Int> ints()`)
+  - KofJsE2ETest suite — .kf → .mjs → embedded engine → stdout/exit code
   - CLI platform commands — info, check, lsp, install
   - JVM backend correctness — records, Object methods, concat, comparisons
   - remove fun keyword — functions declared by name

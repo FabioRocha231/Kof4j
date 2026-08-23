@@ -128,25 +128,30 @@ Kof está em desenvolvimento ativo — **Alpha 0.0.4** (`0.0.4-alpha`).
 
 O compilador já possui uma fundação funcional.
 
-| Feature | JVM | Native |
-|---------|-----|--------|
-| println | ✅ | ✅ |
-| variables | ✅ | ✅ |
-| arithmetic | ✅ | ✅ |
-| if/else | ✅ | ✅ |
-| while | ✅ | ✅ |
-| for | ✅ | ✅ |
-| functions | ✅ | ✅ |
-| records | ✅ | ✅ |
-| classes | ✅ | ✅ |
-| constructors | ✅ | ✅ |
-| methods | ✅ | ✅ |
-| fields | ✅ | ✅ |
-| field access | ✅ | ✅ |
-| field assignment | ✅ | ✅ |
-| JSON encode/decode | ✅ | ✅ |
-| List\<T\> | ✅ | ✅ |
-| kof.io (File, Path, Directory) | ✅ | ✅ |
+| Feature | JVM | Native | KofJS |
+|---------|-----|--------|-------|
+| println | ✅ | ✅ | ✅ |
+| variables | ✅ | ✅ | ✅ |
+| arithmetic | ✅ | ✅ | ✅ |
+| if/else | ✅ | ✅ | ✅ |
+| while | ✅ | ✅ | ✅ |
+| for | ✅ | ✅ | ✅ |
+| functions | ✅ | ✅ | ✅ |
+| records | ✅ | ✅ | ✅ |
+| classes | ✅ | ✅ | ✅ |
+| constructors | ✅ | ✅ | ✅ |
+| methods | ✅ | ✅ | ✅ |
+| fields | ✅ | ✅ | ✅ |
+| field access | ✅ | ✅ | ✅ |
+| field assignment | ✅ | ✅ | ✅ |
+| JSON encode/decode | ✅ | ✅ | ✅ |
+| List\<T\> | ✅ | ✅ | ✅ |
+| kof.io (File, Path, Directory) | ✅ | ✅ | ✅ |
+
+**KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
+(ECMAScript 2022+) executados na engine JS embarcada do próprio Kof — sem
+Node.js nem runtime externo. `kof build --target=js` / `kof run --target=js`.
+Status alpha: [docs/targets/KOFJS.md](docs/targets/KOFJS.md).
 
 ---
 
