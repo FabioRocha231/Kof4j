@@ -604,6 +604,14 @@ estratégia.
 
 ---
 
+## 19.5 Kof Debugger (componente oficial de tooling)
+
+Debugging de primeira classe: o programador depura **código Kof**,
+independentemente do target. Fase 1 (DebugInfo na IR com source location
+por op) implementada; JVM LineNumberTable + SourceFile gerados; DAP e
+kof-debug planejados. Ver: `docs/debugger-architecture.md`,
+`docs/debugging.md`, `docs/debug-adapter.md`.
+
 ## 20. Princípios de Design
 
 1. Simplicidade primeiro.

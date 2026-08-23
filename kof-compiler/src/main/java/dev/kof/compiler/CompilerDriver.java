@@ -748,7 +748,7 @@ public class CompilerDriver {
             case UnaryExpr ue -> {
                 Type operandType = inferExprType(ue.operand(), locals);
                 if ("++".equals(ue.operator()) || "--".equals(ue.operator())) {
-                    System.err.println("DBG emitIncrement op=" + ue.operator() + " operand-class=" + ue.operand().getClass().getName() + " operand=" + ue.operand().toString().substring(0, Math.min(200, ue.operand().toString().length())));
+                    System.err.println("DBG emitIncrement op=" + ue.operator() + " prefix=" + ue.prefix() + " operand-class=" + ue.operand().getClass().getName() + " operand=" + ue.operand().toString().substring(0, Math.min(150, ue.operand().toString().length())));
                     localIdx = emitIncrement(ue, operandType, ops, owner, localIdx, locals);
                     yield localIdx;
                 }
@@ -770,6 +770,17 @@ public class CompilerDriver {
                     ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_line",
                             List.of(), BuiltinTypes.STRING, KofCallKind.FUNCTION));
                     yield localIdx;
+                }
+                if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())) {
+                    KofWeb.WebCall webCtx = KofWeb.contextCall(mc.methodName(), mc.arguments().size());
+                    if (webCtx != null) {
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofWeb.APP, webCtx.function(), webCtx.parameterTypes(),
+                                webCtx.returnType(), KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                 }
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
@@ -843,6 +854,13 @@ public class CompilerDriver {
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
+                    if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        KofWeb.WebCall appCall = KofWeb.appConstructor();
+                        ops.add(new KofCall(KofWeb.APP, appCall.function(), appCall.parameterTypes(),
+                                appCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofIo.isConstructor(rid.name())) {
                     KofIo.IoCall ioCall = KofIo.staticMethod(rid.name(), mc.methodName(), mc.arguments().size());
                     if (ioCall != null) {
@@ -856,6 +874,22 @@ public class CompilerDriver {
                 } else if (mc.receiver() != null) {
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofWeb.isAppType(recvType)) {
+                        List<Type> webArgTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
+                        KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
+                        if (webCall != null) {
+                            for (ExpressionNode arg : mc.arguments()) {
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
+                            List<Type> webParams = new ArrayList<>();
+                            webParams.add(BuiltinTypes.STRING);
+                            webParams.addAll(webCall.parameterTypes());
+                            ops.add(new KofCall(KofWeb.APP, webCall.function(), webParams,
+                                    webCall.returnType(), KofCallKind.FUNCTION));
+                        }
+                        yield localIdx;
+                    }
                     if (KofIo.isIoType(recvType)) {
                         if (KofIo.isIdentityMethod(mc.methodName())) {
                             yield localIdx;
@@ -1256,6 +1290,10 @@ public class CompilerDriver {
                         && mc.receiver() == null) {
                     yield BuiltinTypes.STRING;
                 }
+                if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())
+                        && KofWeb.contextCall(mc.methodName(), mc.arguments().size()) != null) {
+                    yield BuiltinTypes.STRING;
+                }
                 if ("writeFile".equals(mc.methodName()) && mc.receiver() == null) {
                     yield Type.PrimitiveType.INT;
                 }
@@ -1272,12 +1310,25 @@ public class CompilerDriver {
                     }
                     yield Type.UnknownType.UNKNOWN;
                 }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
+                    if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        yield KofWeb.APP;
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid2 && KofIo.isConstructor(rid2.name())) {
                     KofIo.IoCall ioCall = KofIo.staticMethod(rid2.name(), mc.methodName(), mc.arguments().size());
                     if (ioCall != null) yield ioCall.returnType();
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofWeb.isAppType(recvType)) {
+                        List<Type> webArgTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
+                        KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
+                        if (webCall != null) yield webCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (KofIo.isIoType(recvType)) {
                         KofIo.IoCall ioCall = KofIo.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
                         if (ioCall != null) yield ioCall.returnType();
@@ -1769,8 +1820,10 @@ public class CompilerDriver {
                                    List<IRLocalVariable> locals) {
         int recvTmp = localIdx++;
         int valTmp = localIdx++;
+        int newTmp = localIdx++;
         locals.add(new IRLocalVariable(recvTmp, "#recv", ownerType));
         locals.add(new IRLocalVariable(valTmp, "#inc", fieldType));
+        locals.add(new IRLocalVariable(newTmp, "#new", fieldType));
         ops.add(new KofLoadLocal(ownerType, 0));
         ops.add(new KofStoreLocal(ownerType, recvTmp));
         ops.add(new KofLoadLocal(ownerType, recvTmp));
@@ -1779,17 +1832,11 @@ public class CompilerDriver {
         ops.add(new KofLoadLocal(fieldType, valTmp));
         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
         ops.add(new KofBinary(op, fieldType));
-        if (prefix) {
-            ops.add(new KofDup());
-            ops.add(new KofLoadLocal(ownerType, recvTmp));
-            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
-        } else {
-            ops.add(new KofLoadLocal(ownerType, recvTmp));
-            ops.add(new KofStoreField(ownerType, fieldName, fieldType));
-            ops.add(new KofLoadLocal(fieldType, valTmp));
-        }
-        return localIdx;
-    }
+        ops.add(new KofStoreLocal(fieldType, newTmp));
+        ops.add(new KofLoadLocal(ownerType, recvTmp));
+        ops.add(new KofLoadLocal(fieldType, newTmp));
+        ops.add(new KofStoreField(ownerType, fieldName, fieldType));
+        ops.add(new KofLoadLocal(fieldType, prefix ? newTmp : valTmp));
         return localIdx;
     }
 
@@ -1934,6 +1981,14 @@ public class CompilerDriver {
             if (mc.receiver() != null && KofIo.instanceMethod(Type.UnknownType.UNKNOWN,
                     mc.methodName(), mc.arguments().size()) != null) {
                 return true;
+            }
+            if (mc.receiver() != null) {
+                List<Type> webArgTypes = new ArrayList<>();
+                for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, List.of()));
+                KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
+                if (webCall != null) {
+                    return !(webCall.returnType() instanceof Type.PrimitiveType pt && "void".equals(pt.name()));
+                }
             }
             if (mc.receiver() instanceof IdentifierExpr rid && KofIo.isConstructor(rid.name())
                     && KofIo.staticMethod(rid.name(), mc.methodName(), mc.arguments().size()) != null) {
