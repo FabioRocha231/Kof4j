@@ -44,16 +44,24 @@ class JsBackend implements Backend {
 
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
+        emit(module, outputDir, true);
+    }
+
+    @Override
+    public void emit(IRModule module, Path outputDir, boolean debugInfo) throws IOException {
         Files.createDirectories(outputDir);
         runtimeImports.clear();
         ioRuntimeImports.clear();
         JsIr.JsModule jsModule = lowerModule(module);
         String code = new JsEmitter().emit(jsModule);
         String fileName = moduleFileName(module.name());
+        String sourceMapUrl = debugInfo ? "//# sourceMappingURL=" + fileName + ".map\n" : "";
         Path outFile = outputDir.resolve(fileName);
-        Files.writeString(outFile, code + "//# sourceMappingURL=" + fileName + ".map\n");
+        Files.writeString(outFile, code + sourceMapUrl);
         writeRuntime(outputDir);
-        writeSourceMap(module, outputDir, fileName);
+        if (debugInfo) {
+            writeSourceMap(module, outputDir, fileName);
+        }
     }
 
     private static String moduleFileName(String moduleName) {
@@ -874,7 +882,8 @@ class JsBackend implements Backend {
             if (op instanceof KofStoreLocal sl) {
                 pos[0]++;
                 JsIr.JsStatement stmt = storeLocalStatement(ctx, sl, pop(stack));
-                if (stack.isEmpty() && !isCompilerTemp(ctx, sl.index())) {
+                boolean switchTemp = "#switch".equals(ctx.rawLocalNames.get(sl.index()));
+                if (stack.isEmpty() && (!isCompilerTemp(ctx, sl.index()) || switchTemp)) {
                     return finishExpressionStatement(preamble, preambleExprs, stmt);
                 }
                 // mid-expression store (++/-- temps, compiler temporaries)
@@ -1030,6 +1039,9 @@ class JsBackend implements Backend {
         List<JsIr.JsExpression> exprs = new ArrayList<>();
         for (int i = 0; i < stack.size() - 1; i++) {
             Object o = stack.get(i);
+            if (o instanceof JsIr.JsIdentifier id && "$kofOut".equals(id.name())) {
+                continue;
+            }
             exprs.add(o instanceof NewPending np
                     ? new JsIr.JsNew(new JsIr.JsIdentifier(np.typeName()), List.of())
                     : (JsIr.JsExpression) o);
@@ -1109,8 +1121,8 @@ class JsBackend implements Backend {
                 return;
             }
             String temp = ctx.freshTemp();
-            preambleExprs.add(new JsIr.JsAssignExpr(temp, top));
-            stack.add(new JsIr.JsIdentifier(temp));
+            stack.add(new JsIr.JsSequence(
+                    List.of(new JsIr.JsAssignExpr(temp, top)), new JsIr.JsIdentifier(temp)));
             stack.add(new JsIr.JsIdentifier(temp));
         } else if (op instanceof KofDupX1) {
             JsIr.JsExpression top = pop(stack);
@@ -1123,8 +1135,8 @@ class JsBackend implements Backend {
                 return;
             }
             String temp = ctx.freshTemp();
-            preambleExprs.add(new JsIr.JsAssignExpr(temp, top));
-            stack.add(new JsIr.JsIdentifier(temp));
+            stack.add(new JsIr.JsSequence(
+                    List.of(new JsIr.JsAssignExpr(temp, top)), new JsIr.JsIdentifier(temp)));
             stack.add(below);
             stack.add(new JsIr.JsIdentifier(temp));
         } else if (op instanceof KofDupX2) {
@@ -1140,8 +1152,8 @@ class JsBackend implements Backend {
                 return;
             }
             String temp = ctx.freshTemp();
-            preambleExprs.add(new JsIr.JsAssignExpr(temp, top));
-            stack.add(new JsIr.JsIdentifier(temp));
+            stack.add(new JsIr.JsSequence(
+                    List.of(new JsIr.JsAssignExpr(temp, top)), new JsIr.JsIdentifier(temp)));
             stack.add(bottom);
             stack.add(middle);
             stack.add(new JsIr.JsIdentifier(temp));

@@ -13,6 +13,8 @@ public class CompilerDriver {
     private CompilationUnitNode currentUnit;
     private SemanticAnalyzer semanticAnalyzer;
     private Target target = Target.JVM;
+    private boolean optimizeEnabled = false;
+    private boolean debugInfoEnabled = true;
     private DiagnosticCollector currentDiagnostics;
     private String currentSourceName;
     private final java.util.IdentityHashMap<KofOperation, SourcePosition> currentDebugPositions =
@@ -22,6 +24,18 @@ public class CompilerDriver {
 
     public CompilationResult compile(Path sourceFile, Path outputDir) {
         return compile(sourceFile, outputDir, Target.JVM);
+    }
+
+    /** Enable or disable IR optimization passes (enabled by default). */
+    public CompilerDriver setOptimizationEnabled(boolean enabled) {
+        this.optimizeEnabled = enabled;
+        return this;
+    }
+
+    /** Enable or disable debug metadata emission (line tables, source names). */
+    public CompilerDriver setDebugInfoEnabled(boolean enabled) {
+        this.debugInfoEnabled = enabled;
+        return this;
     }
 
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
@@ -55,9 +69,13 @@ public class CompilerDriver {
                 return new CompilationResult(false, diagnostics, outputDir);
             }
             currentModule = irModule;
+            if (optimizeEnabled) {
+                irModule = Optimizer.optimize(irModule);
+                currentModule = irModule;
+            }
             Files.createDirectories(outputDir);
             Backend backend = selectBackend(target);
-            backend.emit(irModule, outputDir);
+            backend.emit(irModule, outputDir, debugInfoEnabled);
             return new CompilationResult(true, diagnostics, outputDir);
         } catch (IOException e) {
             diagnostics.error(sourceFile.toString(), 0, 0, 0, "Error reading source file: " + e.getMessage(), "COMP001");
@@ -748,7 +766,6 @@ public class CompilerDriver {
             case UnaryExpr ue -> {
                 Type operandType = inferExprType(ue.operand(), locals);
                 if ("++".equals(ue.operator()) || "--".equals(ue.operator())) {
-                    System.err.println("DBG emitIncrement op=" + ue.operator() + " prefix=" + ue.prefix() + " operand-class=" + ue.operand().getClass().getName() + " operand=" + ue.operand().toString().substring(0, Math.min(150, ue.operand().toString().length())));
                     localIdx = emitIncrement(ue, operandType, ops, owner, localIdx, locals);
                     yield localIdx;
                 }
