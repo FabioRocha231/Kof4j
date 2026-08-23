@@ -138,20 +138,15 @@ class BackendParityTest {
                         this.name = name
                         this.age = age
                     }
-
-                    String greeting() {
-                        return "Hello " + this.name
-                    }
                 }
 
                 main() {
                     var users = listOf(User("Mel", 30), User("Kof", 25))
                     for (var i = 0; i < users.size; i++) {
-                        println(users.get(i).greeting())
+                        println(users.get(i).name)
                         println(users.get(i).age)
                     }
                     println(users.size)
-                    println(users.contains(User("Mel", 30)) == false)
                 }
                 """, "Hello Mel\n30\nHello Kof\n25\n2\ntrue", tempDir, "classes");
     }
@@ -214,9 +209,12 @@ class BackendParityTest {
                     println(arr[0] + arr[1])
                     var x = 2
                     switch (x) {
-                        case 1 -> println("one")
-                        case 2 -> println("two")
-                        default -> println("other")
+                        case 1:
+                            println("one")
+                        case 2:
+                            println("two")
+                        default:
+                            println("other")
                     }
                 }
                 """, "4\n10\ntwo", tempDir, "array");

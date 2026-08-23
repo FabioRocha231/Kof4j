@@ -258,7 +258,8 @@ class JsBackend implements Backend {
         List<JsIr.JsStatement> body = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
         if (pos[0] < ctx.ops.size()) {
             throw new IllegalStateException("KofJS: unconsumed ops in method "
-                    + ctx.kofClassName + "." + (ctx.methodName == null ? "?" : ctx.methodName));
+                    + ctx.kofClassName + "." + (ctx.methodName == null ? "?" : ctx.methodName)
+                    + " at " + ctx.ops.get(pos[0]));
         }
         if (!ctx.tempDecls.isEmpty()) {
             List<JsIr.JsStatement> withTemps = new ArrayList<>();

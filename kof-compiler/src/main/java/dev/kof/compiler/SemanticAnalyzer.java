@@ -369,6 +369,9 @@ class SemanticAnalyzer {
             case SpawnStmt ss -> {
                 if (ss.expression() != null) inferType(ss.expression(), scope);
             }
+            case AssertStmt asrt -> {
+                if (asrt.condition() != null) inferType(asrt.condition(), scope);
+            }
             default -> {}
         }
     }

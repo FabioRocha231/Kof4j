@@ -159,6 +159,14 @@ record ThrowStmt(SourcePosition position, ExpressionNode expression) implements 
 record SpawnStmt(SourcePosition position, ExpressionNode expression) implements StatementNode {
 }
 
+/**
+ * AssertStmt — assert(condition) or assert(condition, "message").
+ * Throws "assertion failed" (or the given message) when the condition
+ * is false. The failure exit code powers `kof test`.
+ */
+record AssertStmt(SourcePosition position, ExpressionNode condition, String message) implements StatementNode {
+}
+
 record BreakStmt(SourcePosition position) implements StatementNode {
 }
 

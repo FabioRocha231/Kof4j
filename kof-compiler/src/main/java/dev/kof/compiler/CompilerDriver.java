@@ -429,6 +429,32 @@ public class CompilerDriver {
                 ops.add(new KofThrow());
                 yield localIdx;
             }
+            case AssertStmt asrt -> {
+                localIdx = emitExpression(asrt.condition(), ops, owner, localIdx, locals);
+                LabelId okLabel = LabelId.create();
+                LabelId failLabel = LabelId.create();
+                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                ops.add(new KofConditionalJump(KofComparison.NE, okLabel, failLabel));
+                ops.add(new KofLabel(failLabel));
+                String message = asrt.message() != null ? asrt.message() : "assertion failed";
+                if (target == Target.JVM) {
+                    int tmp = localIdx++;
+                    locals.add(new IRLocalVariable(tmp, "#exc", BuiltinTypes.STRING));
+                    ops.add(new KofLoadLiteral(BuiltinTypes.STRING, message));
+                    ops.add(new KofStoreLocal(BuiltinTypes.STRING, tmp));
+                    Type runtimeExc = new Type.ClassType("java.lang", "RuntimeException", List.of());
+                    ops.add(new KofNewObject(runtimeExc, List.of(BuiltinTypes.STRING)));
+                    ops.add(new KofDup());
+                    ops.add(new KofLoadLocal(BuiltinTypes.STRING, tmp));
+                    ops.add(new KofCall(runtimeExc, "<init>", List.of(BuiltinTypes.STRING),
+                            Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                } else {
+                    ops.add(new KofLoadLiteral(BuiltinTypes.STRING, message));
+                }
+                ops.add(new KofThrow());
+                ops.add(new KofLabel(okLabel));
+                yield localIdx;
+            }
             case SpawnStmt ss -> {
                 if (target == Target.NATIVE) {
                     if (currentDiagnostics != null) {

@@ -50,6 +50,7 @@ class Lexer {
         KEYWORDS.put("catch", TokenType.CATCH);
         KEYWORDS.put("finally", TokenType.FINALLY);
         KEYWORDS.put("spawn", TokenType.SPAWN);
+        KEYWORDS.put("assert", TokenType.ASSERT);
         KEYWORDS.put("instanceof", TokenType.INSTANCEOF);
         KEYWORDS.put("var", TokenType.VAR);
         KEYWORDS.put("val", TokenType.VAL);

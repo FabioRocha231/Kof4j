@@ -505,6 +505,23 @@ class Parser {
             expectSemicolon();
             return new SpawnStmt(p, expr);
         }
+        if (check(TokenType.ASSERT)) {
+            SourcePosition p = pos();
+            advance();
+            expect(TokenType.LPAREN, "Expected '('", "PARSE011");
+            ExpressionNode condition = parseExpression();
+            String message = null;
+            if (check(TokenType.COMMA)) {
+                advance();
+                ExpressionNode msgExpr = parseExpression();
+                if (msgExpr instanceof LiteralExpr lit && lit.kind() == ConcreteLiteralKind.STRING) {
+                    message = lit.value();
+                }
+            }
+            expect(TokenType.RPAREN, "Expected ')'", "PARSE040");
+            expectSemicolon();
+            return new AssertStmt(p, condition, message);
+        }
         if (check(TokenType.TRY)) {
             return parseTryStatement();
         }
