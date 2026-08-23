@@ -346,7 +346,7 @@ class UiE2ETest {
                 tempDir.resolve("js").resolve("Default.mjs"), out,
                 new java.io.ByteArrayInputStream(new byte[0]), out);
         assertEquals(0, code, "JS run should succeed");
-        assertEquals("24\n1\nrgb(255, 0, 0)", out.toString().trim(), "label style binds on the JS target");
+        assertEquals("24\ntrue\nrgb(255, 0, 0)", out.toString().trim(), "label style binds on the JS target");
     }
 
     @Test
