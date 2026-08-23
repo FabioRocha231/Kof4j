@@ -168,6 +168,7 @@ final class KofSecurity {
             case "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt" -> target == Target.JVM;
             case "kof_sec_password_hash", "kof_sec_password_verify", "kof_sec_password_needs_rehash" ->
                     target == Target.JVM || target == Target.JS;
+            case "kof_sec_sha512" -> target != Target.NATIVE;
             case "kof_sec_csrf_token", "kof_sec_csrf_valid", "kof_sec_cors_allowed",
                     "kof_sec_csp_header", "kof_sec_hsts_header", "kof_sec_content_type_options_header",
                     "kof_sec_frame_header", "kof_sec_referrer_header",
@@ -183,6 +184,7 @@ final class KofSecurity {
         return switch (function) {
             case "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt" -> "SECN002";
             case "kof_sec_password_hash", "kof_sec_password_verify", "kof_sec_password_needs_rehash" -> "SECN001";
+            case "kof_sec_sha512" -> "SECN003";
             default -> "SECN000";
         };
     }

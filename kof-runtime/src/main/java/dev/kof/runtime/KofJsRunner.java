@@ -160,6 +160,41 @@ public final class KofJsRunner {
             }
         });
         platform.put("dirList", (ProxyExecutable) args -> dirList(args));
+        // kof.security platform primitives (docs/security.md §5)
+        platform.put("getenv", (ProxyExecutable) args ->
+                System.getenv(args[0].asString()));
+        platform.put("randomBytesHex", (ProxyExecutable) args -> {
+            int n = args[0].asInt();
+            byte[] buf = new byte[Math.max(0, Math.min(n, 4096))];
+            new java.security.SecureRandom().nextBytes(buf);
+            StringBuilder sb = new StringBuilder(buf.length * 2);
+            for (byte b : buf) sb.append(String.format("%02x", b));
+            return sb.toString();
+        });
+        platform.put("randomInt", (ProxyExecutable) args -> {
+            int bound = args[0].asInt();
+            return bound <= 0 ? 0 : new java.security.SecureRandom().nextInt(bound);
+        });
+        platform.put("pbkdf2Hex", (ProxyExecutable) args -> {
+            String password = args[0].asString();
+            String saltHex = args[1].asString();
+            int iterations = args[2].asInt();
+            byte[] salt = new byte[saltHex.length() / 2];
+            for (int i = 0; i < salt.length; i++) {
+                salt[i] = (byte) Integer.parseInt(saltHex.substring(i * 2, i * 2 + 2), 16);
+            }
+            try {
+                byte[] dk = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                        .generateSecret(new javax.crypto.spec.PBEKeySpec(
+                                password.toCharArray(), salt, iterations, 256))
+                        .getEncoded();
+                StringBuilder sb = new StringBuilder(dk.length * 2);
+                for (byte b : dk) sb.append(String.format("%02x", b));
+                return sb.toString();
+            } catch (Exception e) {
+                return null;
+            }
+        });
         bindings.putMember("kof_platform", ProxyObject.fromMap(platform));
     }
 

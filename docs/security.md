@@ -262,3 +262,70 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 4. Documentação (`docs/security.md`, `learn/`, `training/`).
 5. Auditoria contínua: `kof.config`, `kof.database`, `kof.messaging`,
    `kof.validation`, `kof.logging`, `kof.observability` (próximas etapas).
+
+---
+
+# 7. ESTADO DA IMPLEMENTAÇÃO (0.0.5)
+
+## 7.1 Implementado
+
+| API | JVM | Native | JS | Formato |
+|-----|-----|--------|----|---------|
+| `passwords.hash(password)` | ✅ PBKDF2-HMAC-SHA256 600k | ❌ SECN001 | ✅ PBKDF2 (platform-delegated) | `pbkdf2$sha256$600000$salt$hash` |
+| `passwords.verify(password, hash)` | ✅ constant-time | ❌ SECN001 | ✅ | |
+| `passwords.needsRehash(hash)` | ✅ | ❌ SECN001 | ✅ | |
+| `crypto.sha256(data)` | ✅ | ✅ (asm FIPS 180-4) | ✅ (JS puro) | hex |
+| `crypto.sha512(data)` | ✅ | ❌ SECN003 | ✅ (JS puro) | hex |
+| `crypto.hmacSha256(key, data)` | ✅ | ✅ (asm) | ✅ (JS puro) | hex |
+| `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ❌ SECN002 | ❌ SECN002 | `aesgcm$iv$ct` |
+| `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ❌ SECN002 | ❌ SECN002 | |
+| `crypto.randomHex(n)` | ✅ SecureRandom | ✅ getrandom | ✅ platform | hex |
+| `crypto.randomInt(bound)` | ✅ | ✅ getrandom + rejection | ✅ platform | |
+| `jwt.create(claims, secret[, ttl])` | ✅ HS256 + iat/exp | ❌ SECN001 (depende de PBKDF2? não — JWT depende de HMAC; falta apenas o binding) | ✅ | RFC 7519 HS256 |
+| `jwt.verify(token, secret[, iss, aud])` | ✅ (sig, exp, iss, aud) | ❌ | ✅ | alg fixado HS256 |
+| `jwt.secret()` | ✅ env `KOF_JWT_SECRET` ou gerado | ❌ | ✅ | 32 bytes hex |
+| `secrets.get(name[, fallback])` | ✅ env | ✅ `/proc/self/environ` | ✅ platform | |
+| `secrets.redact(value)` | ✅ | ✅ (asm) | ✅ | `abcd********wxyz` |
+| `security.constantTimeEquals(a, b)` | ✅ `MessageDigest.isEqual` | ✅ (asm) | ✅ | |
+| `security.randomHex` / `randomInt` | ✅ | ✅ | ✅ | |
+| `security.csrfToken/csrfValid` | ✅ (session-scoped) | ❌ | ❌ | |
+| `security.corsAllowed(origin, allowed)` | ✅ | ❌ | ❌ | |
+| `security.cspHeader/hstsHeader/contentTypeOptionsHeader/frameHeader/referrerHeader` | ✅ (valores prontos) | ❌ | ❌ | |
+| `auth.secret/token/authenticated/claims/user/hasRole/hasPermission` | ✅ (contexto web, Bearer JWT) | ❌ | ❌ | |
+
+## 7.2 Verificação cruzada
+
+Os valores de SHA-256/HMAC são idênticos entre JVM, Native e JS e batem com
+vetores de referência (FIPS 180-4, RFC 2104) — verificado por
+`KofSecurityTest` nos três targets.
+
+## 7.3 Testes
+
+`KofSecurityTest` (22 testes): hashing/verificação, senha errada, rehash,
+SHA-256/512 vetores, HMAC, constant-time, random, JWT (assinatura, expiração,
+issuer/audience, token malformado, confusão de algoritmo, claims não-objeto),
+AES-GCM (round trip, tamper, chave errada), secrets/redact, e diagnostics
+de target gap (SECN001/002/003). Casos adversariais incluídos (§18).
+
+## 7.4 Benchmarks
+
+`benchmarks/security/`: `password-hash`, `jwt`, `hash-speed`, `aes-gcm`
+(jvm/js conforme suporte).
+
+## 7.5 Gaps documentados
+
+- JWT no Native: falta apenas expor o binding (depende de HMAC asm — que
+  existe); planejado.
+- `passwords.*` no Native: PBKDF2 asm planejado.
+- SHA-512 asm: planejado (SECN003 hoje).
+- AES-GCM fora do JVM: primitiva com requisitos de constante de tempo;
+  planejado para Native via primitivas específicas.
+- `== null` com String no Native: `kof_string_equals` não trata null
+  (limitação pré-existente do backend).
+
+## 7.6 Correções de bugs descobertas durante a implementação
+
+| Bug | Correção |
+|-----|----------|
+| `while (longExpr < intLiteral)` gerava `LCMP` sobre [long, int] (stack underflow → Frame.merge crash) | shortcut de comparação agora faz widening dos operandos (`emitComparisonShortcut`) |
+| `crypto.randomInt` nativo retornava o quociente da divisão em vez do resto | `movl %edx, %eax` após `divl` |

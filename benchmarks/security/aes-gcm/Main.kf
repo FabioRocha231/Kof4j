@@ -1,0 +1,12 @@
+main() {
+    var key = crypto.randomHex(32)
+    var total = 0
+    for (var i = 0; i < 2000; i++) {
+        var ct = crypto.encryptAesGcm("payload-" + i, key)
+        var pt = crypto.decryptAesGcm(ct, key)
+        if (pt == "payload-" + i) {
+            total = total + 1
+        }
+    }
+    println(total)
+}

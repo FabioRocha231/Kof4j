@@ -463,34 +463,12 @@ public final class Optimizer {
             }
             out.add(op);
         }
-        List<KofOperation> out2 = new ArrayList<>(out.size());
-        for (KofOperation op : out) {
-            if (op instanceof KofLoadLocal ll && !out2.isEmpty()) {
-                KofOperation prev = out2.get(out2.size() - 1);
-                if (prev instanceof KofStoreLocal sl && sl.index() == ll.index()
-                        && sl.type().equals(ll.type())) {
-                    // store(slot); load(slot): the value survives on the stack
-                    // as dup; store(slot). This is NOT a no-op — the store must
-                    // keep initializing the slot for any later load of it.
-                    // Only single-slot types can use dup (long/double need
-                    // dup2, which is not part of the IR).
-                    if (!isWide(sl.type())) {
-                        positions.remove(prev);
-                        positions.remove(op);
-                        out2.set(out2.size() - 1, new KofDup());
-                        out2.add(prev);
-                        continue;
-                    }
-                }
-            }
-            out2.add(op);
-        }
-        return out2;
-    }
-
-    private static boolean isWide(Type type) {
-        return type instanceof Type.PrimitiveType pt
-                && ("long".equals(pt.name()) || "double".equals(pt.name()));
+        // NOTE: store(slot); load(slot) round trips are intentionally kept
+        // verbatim. Removing them (or rewriting them to dup; store) breaks
+        // slot initialization: a later load of the slot would read an
+        // uninitialized local (JVM VerifyError). Backends also pattern-match
+        // on the store/load pairs of compiler temporaries (#switch, #recv).
+        return out;
     }
 
     // ── Unreachable code elimination ──────────────────────────────────

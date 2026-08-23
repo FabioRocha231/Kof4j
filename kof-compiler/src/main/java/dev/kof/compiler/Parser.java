@@ -830,7 +830,14 @@ class Parser {
             if (check(TokenType.DOT)) {
                 advance();
                 String field = expectId("Expected field name", "PARSE039");
-                expr = new FieldAccessExpr(pos(), expr, field);
+                if (check(TokenType.LBRACE)) {
+                    // trailing lambda call: receiver.method { ... } — the
+                    // block is the final argument of the method call
+                    expr = new MethodCallExpr(pos(), expr, field, List.of(),
+                            List.of(new LambdaExpr(pos(), List.of(), parseBlock())));
+                } else {
+                    expr = new FieldAccessExpr(pos(), expr, field);
+                }
             } else if (check(TokenType.LBRACKET)) {
                 SourcePosition p = pos();
                 advance();

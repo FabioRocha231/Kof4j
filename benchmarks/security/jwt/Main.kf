@@ -1,0 +1,13 @@
+main() {
+    var secret = "kof-secret-key-12345"
+    var claims = "{\"sub\":\"u1\",\"roles\":[\"admin\"],\"iss\":\"kof\",\"aud\":\"api\"}"
+    var total = 0
+    for (var i = 0; i < 5000; i++) {
+        var token = jwt.create(claims, secret)
+        var payload = jwt.verify(token, secret, "kof", "api")
+        if (payload.length > 10) {
+            total = total + 1
+        }
+    }
+    println(total)
+}

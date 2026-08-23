@@ -103,21 +103,23 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_sec_hmac_sha256", "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt",
-                    "kof_sec_secret_get_default", "kof_sec_jwt_create", "kof_sec_jwt_verify",
-                    "kof_sec_cors_allowed" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+                    "kof_sec_secret_get_default", "kof_sec_jwt_create", "kof_sec_jwt_verify"
+                    -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_sec_jwt_create_ttl" -> "(Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;";
             case "kof_sec_jwt_verify_iss_aud"
                     -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_sec_random_hex" -> "(I)Ljava/lang/String;";
             case "kof_sec_random_int" -> "(I)I";
-            case "kof_sec_constant_time_equals", "kof_sec_password_verify",
-                    "kof_sec_password_needs_rehash", "kof_sec_csrf_valid" -> "(Ljava/lang/String;Ljava/lang/String;)I";
+            case "kof_sec_constant_time_equals", "kof_sec_password_verify", "kof_sec_cors_allowed"
+                    -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_sec_password_needs_rehash", "kof_sec_csrf_valid",
+                    "kof_sec_auth_secret", "kof_sec_auth_has_role", "kof_sec_auth_has_permission"
+                    -> "(Ljava/lang/String;)Z";
+            case "kof_sec_auth_authenticated" -> "()Z";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
                     "kof_sec_frame_header", "kof_sec_referrer_header", "kof_sec_auth_token",
                     "kof_sec_auth_claims" -> "()Ljava/lang/String;";
-            case "kof_sec_auth_secret", "kof_sec_auth_authenticated",
-                    "kof_sec_auth_has_role", "kof_sec_auth_has_permission" -> "(Ljava/lang/String;)I";
             default -> "(Ljava/lang/String;)Ljava/lang/Object;";
         };
     }

@@ -92,8 +92,8 @@ class KofWebE2ETest {
         serverProcess = pb.start();
         int attempt = 0;
         while (attempt < 40) {
-            String out = new String(serverProcess.getInputStream().readAllBytes());
-            if (!out.isEmpty()) {
+            if (!serverProcess.isAlive()) {
+                String out = new String(serverProcess.getInputStream().readAllBytes());
                 throw new IOException("server exited early: " + out);
             }
             try (Socket probe = new Socket()) {

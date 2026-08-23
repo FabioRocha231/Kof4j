@@ -391,6 +391,13 @@ class JvmBackend implements Backend {
             mv.visitLabel(debugStart);
         }
         int lastLine = -1;
+        if (debugInfoEnabled && "soma".equals(method.name())) {
+            System.err.println("[jvm] method soma ops:");
+            for (KofOperation op : ops) {
+                SourcePosition p = debugPositions.get(op);
+                System.err.println("[jvm]   " + op.getClass().getSimpleName() + " -> " + (p == null ? "null" : "line " + p.line()));
+            }
+        }
         for (KofOperation op : ops) {
             SourcePosition pos = debugPositions.get(op);
             if (pos != null && pos.line() != lastLine && debugInfoEnabled) {
@@ -609,7 +616,9 @@ class JvmBackend implements Backend {
             if ("kof_string_concat".equals(kc.methodName())) {
                 mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;", false);
             } else {
-                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+                // null-safe string equality (Objects.equals tolerates null)
+                mv.visitMethodInsn(INVOKESTATIC, "java/util/Objects", "equals",
+                        "(Ljava/lang/Object;Ljava/lang/Object;)Z", false);
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isList(kc.ownerType())) {
             Type elemType = listElementType(kc.ownerType());

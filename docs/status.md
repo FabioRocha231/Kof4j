@@ -60,7 +60,32 @@ scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
 | Chamadas via interface com retorno primitivo geravam descritor `Object` (`()Ljava/lang/Object` + `iadd` = bytecode inválido) | `analyzeInterface` agora define os symbols em `members()` (eram invisíveis ao `resolveInHierarchy`) |
 | `l.get(i)`/`l.remove(i)`/`l.size`/`l.contains(...)` como statement não emitiam `KofPop` → stack desbalanceado em merge points (Frame.merge crash / VerifyError) | `hasReturnValue` cobre métodos de List que deixam valor |
 | `if (long > long)` / `if (float > f)` / `if (double > d)` geravam `IF_ICMP` sobre não-ints (stack underflow) | `KofConditionalJump` ganhou `operandType`; JVM emite `LCMP`/`FCMPL`/`DCMPL` + jumps de 1 operando |
+| `while (longExpr < intLiteral)` gerava `LCMP` sobre [long, int] (stack underflow) | shortcut de comparação faz widening dos operandos (`emitComparisonShortcut`) |
 | JS: call com efeito descartada em statement com Pop (ex.: `users.remove(0)` silenciosamente não executava) | handler de `KofPop` no JsBackend preserva `JsCall`/`JsSequence` como statement |
+
+---
+
+## Segurança (kof.security, docs/security.md)
+
+- **`kof.security` implementado** (v1): `passwords`, `crypto`, `jwt`,
+  `secrets`, `security`, `auth` — secure by default, gaps de target com
+  diagnóstico claro em compile-time (SECN001/002/003).
+- **JVM**: PBKDF2-HMAC-SHA256 (600k iterações), SHA-256/512, HMAC, AES-GCM,
+  SecureRandom, JWT HS256 (sig/exp/iss/aud), env secrets, constant-time,
+  redaction, contexto web `auth.*` (Bearer JWT).
+- **Native**: SHA-256 e HMAC em assembly puro (x86-64, sem libc, FIPS 180-4 /
+  RFC 2104 — valores idênticos ao JVM), random via `getrandom`, secrets via
+  `/proc/self/environ`, constant-time, redaction.
+- **JS**: SHA-256/512 e HMAC em JS puro, PBKDF2 com delegação ao platform
+  (runner embarcado), JWT, secrets, constant-time.
+- **Testes**: `KofSecurityTest` — 22 testes (unit + E2E nos 3 targets +
+  adversariais: tamper, expiração, confusão de algoritmo, token malformado,
+  chave errada, issuer/audience).
+- **Benchmarks**: `benchmarks/security/` (password-hash, jwt, hash-speed,
+  aes-gcm).
+- **Docs**: `docs/security.md` (auditoria + matriz + arquitetura + estado),
+  `docs/stdlib.md`, `learn/36-security.md`, `training/language/security.md`,
+  `training/examples/security.kf`.
 
 ---
 

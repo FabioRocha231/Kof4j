@@ -161,7 +161,28 @@ class OptimizerTest {
                 new KofStoreLocal(Type.PrimitiveType.INT, 1),
                 new KofLoadLocal(Type.PrimitiveType.INT, 1),
                 new KofReturn(Type.PrimitiveType.INT)));
-        assertEquals(2, out.size());
+        // The first load;store round trip is a true no-op and is removed.
+        // The store;load round trip must NOT be removed: the slot is read
+        // later, so removing the store would leave it uninitialized
+        // (JVM VerifyError). It is kept verbatim.
+        assertEquals(4, out.size());
+        assertTrue(out.get(0) instanceof KofLoadLiteral);
+        assertTrue(out.get(1) instanceof KofStoreLocal);
+        assertTrue(out.get(2) instanceof KofLoadLocal);
+        assertTrue(out.get(3) instanceof KofReturn);
+    }
+
+    @Test
+    void keepsWideRoundTripStore() {
+        // long/double slots keep the store;load round trip verbatim too.
+        List<KofOperation> out = optimize(List.of(
+                KofLoadLiteral.ofLong(7L),
+                new KofStoreLocal(Type.PrimitiveType.LONG, 1),
+                new KofLoadLocal(Type.PrimitiveType.LONG, 1),
+                new KofReturn(Type.PrimitiveType.LONG)));
+        assertEquals(4, out.size());
+        assertTrue(out.get(1) instanceof KofStoreLocal);
+        assertTrue(out.get(2) instanceof KofLoadLocal);
     }
 
     @Test

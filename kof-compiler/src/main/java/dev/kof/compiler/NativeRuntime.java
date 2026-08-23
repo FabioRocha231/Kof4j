@@ -58,6 +58,7 @@ final class NativeRuntime {
         emitNetWrite(sb);
         emitNetClose(sb);
         emitInstanceof(sb);
+        emitSecurityFunctions(sb);
         return sb.toString();
     }
 
@@ -4026,6 +4027,874 @@ final class NativeRuntime {
             .Lkof_instanceof_null:
                 xorl %eax, %eax
                 ret
+            """);
+    }
+
+    /**
+     * kof.security for the Native target (docs/security.md §5).
+     *
+     * Implemented in raw x86-64 assembly (no libc): SHA-256, HMAC-SHA256,
+     * secure random via the getrandom syscall, constant-time comparison,
+     * redaction, and environment secrets via /proc/self/environ.
+     * Features not implemented on Native produce a compile-time diagnostic
+     * (SECN00x) — never silent divergence.
+     */
+    private static void emitSecurityFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .rodata
+            .balign 8
+            .Lsec_hex_chars: .ascii "0123456789abcdef"
+            .Lsec_sha256_k:
+                .long 0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5
+                .long 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5
+                .long 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3
+                .long 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174
+                .long 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc
+                .long 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da
+                .long 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7
+                .long 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967
+                .long 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13
+                .long 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85
+                .long 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3
+                .long 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070
+                .long 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5
+                .long 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3
+                .long 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208
+                .long 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+            .text
+
+            # kof_sec_sha256_internal(rdi=out32, rsi=src, rdx=len)
+            # SHA-256 over an in-memory buffer; writes 32 big-endian bytes.
+            .globl kof_sec_sha256_internal
+            .type kof_sec_sha256_internal, @function
+            kof_sec_sha256_internal:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $296, %rsp          # w[64]=256 + h[8]=32 + len(8) -> use 272..287 for w? layout below
+                movq %rdi, %r12          # out
+                movq %rsi, %r13          # src
+                movq %rdx, %r14          # len
+                movl $0x6a09e667, 0(%rsp)
+                movl $0xbb67ae85, 4(%rsp)
+                movl $0x3c6ef372, 8(%rsp)
+                movl $0xa54ff53a, 12(%rsp)
+                movl $0x510e527f, 16(%rsp)
+                movl $0x9b05688c, 20(%rsp)
+                movl $0x1f83d9ab, 24(%rsp)
+                movl $0x5be0cd19, 28(%rsp)
+                # w starts at 32(%rsp) — 256 bytes → ends at 288(%rsp)
+                # process full 64-byte blocks from src
+                xorq %r15, %r15          # offset
+            .Lsec_sha256_full_block:
+                movq %r14, %rax
+                subq %r15, %rax
+                cmpq $64, %rax
+                jl .Lsec_sha256_final_block
+                movq %rsp, %rdi
+                leaq (%r13,%r15), %rsi
+                movl $64, %edx
+                call kof_sec_sha256_block
+                addq $64, %r15
+                jmp .Lsec_sha256_full_block
+            .Lsec_sha256_final_block:
+                # rem = len - offset; build the final block(s) on the stack
+                movq %r14, %rax
+                subq %r15, %rax
+                movq %rax, %rcx          # rem
+                subq $128, %rsp
+                xorq %rdx, %rdx
+            .Lsec_sha256_copy_rem:
+                cmpq %rcx, %rdx
+                jge .Lsec_sha256_copy_done
+                leaq (%r13,%r15), %rsi
+                movb (%rsi,%rdx), %al
+                movb %al, (%rsp,%rdx)
+                incq %rdx
+                jmp .Lsec_sha256_copy_rem
+            .Lsec_sha256_copy_done:
+                movb $0x80, (%rsp,%rcx)
+                movq %rcx, %r15          # rem (offset no longer needed)
+                movq %rcx, %rdx
+                incq %rdx
+            .Lsec_sha256_zero_pad:
+                cmpq $128, %rdx
+                jge .Lsec_sha256_zero_done
+                movb $0, (%rsp,%rdx)
+                incq %rdx
+                jmp .Lsec_sha256_zero_pad
+            .Lsec_sha256_zero_done:
+                movq %r15, %rax
+                addq $9, %rax
+                cmpq $64, %rax
+                jg .Lsec_sha256_len_in_second
+                movq %r14, %rax
+                shlq $3, %rax
+                bswapq %rax
+                movq %rax, 56(%rsp)
+                leaq 128(%rsp), %rdi
+                movq %rsp, %rsi
+                movl $64, %edx
+                call kof_sec_sha256_block
+                jmp .Lsec_sha256_final_done
+            .Lsec_sha256_len_in_second:
+                movq %r14, %rax
+                shlq $3, %rax
+                bswapq %rax
+                movq %rax, 120(%rsp)
+                leaq 128(%rsp), %rdi
+                movq %rsp, %rsi
+                movl $64, %edx
+                call kof_sec_sha256_block
+                leaq 64(%rsp), %rsi
+                leaq 128(%rsp), %rdi
+                movl $64, %edx
+                call kof_sec_sha256_block
+            .Lsec_sha256_final_done:
+                addq $128, %rsp
+                jmp .Lsec_sha256_finish
+            .Lsec_sha256_finish:
+                # write h0..h7 big-endian to out
+                xorq %rcx, %rcx
+            .Lsec_sha256_out:
+                cmpq $8, %rcx
+                jge .Lsec_sha256_ret
+                movl (%rsp,%rcx,4), %eax
+                bswapl %eax
+                movl %eax, (%r12,%rcx,4)
+                incq %rcx
+                jmp .Lsec_sha256_out
+            .Lsec_sha256_ret:
+                addq $296, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_sha256_block(rdi=h[8] uint32, rsi=block64)
+            .globl kof_sec_sha256_block
+            .type kof_sec_sha256_block, @function
+            kof_sec_sha256_block:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $272, %rsp          # w[64] = 256 + scratch 8 + h 8
+                movq %rdi, 264(%rsp)     # h saved on the stack
+                movq %rdi, %r12          # h (also used as scratch; reloaded at the end)
+                movq %rsi, %r13          # block
+                xorq %rcx, %rcx
+            .Lsec_w_load:
+                cmpq $16, %rcx
+                jge .Lsec_w_load_done
+                movl (%r13,%rcx,4), %eax
+                bswapl %eax
+                movl %eax, (%rsp,%rcx,4)
+                incq %rcx
+                jmp .Lsec_w_load
+            .Lsec_w_load_done:
+                movq $16, %rcx
+            .Lsec_w_extend:
+                cmpq $64, %rcx
+                jge .Lsec_w_extend_done
+                # s0 = ror7(w[i-15]) ^ ror18 ^ shr3
+                movl -60(%rsp,%rcx,4), %eax
+                movl %eax, %edx
+                movl %eax, %ebx
+                roll $25, %eax           # ror 7
+                roll $14, %edx           # ror 18
+                shrl $3, %ebx
+                xorl %edx, %eax
+                xorl %ebx, %eax
+                # s1 = ror17(w[i-2]) ^ ror19 ^ shr10
+                movl -8(%rsp,%rcx,4), %edx
+                movl %edx, %ebx
+                movl %edx, %r14d
+                roll $15, %edx           # ror 17
+                roll $13, %ebx           # ror 19
+                shrl $10, %r14d
+                xorl %ebx, %edx
+                xorl %r14d, %edx
+                movl -64(%rsp,%rcx,4), %r14d   # w[i-16]
+                addl %eax, %r14d
+                addl -28(%rsp,%rcx,4), %r14d   # + w[i-7]
+                addl %edx, %r14d
+                movl %r14d, (%rsp,%rcx,4)
+                incq %rcx
+                jmp .Lsec_w_extend
+            .Lsec_w_extend_done:
+                movl 0(%r12), %eax       # a
+                movl 4(%r12), %ebx       # b
+                movl 8(%r12), %ecx       # c
+                movl 12(%r12), %edx      # d
+                movl 16(%r12), %r8d      # e
+                movl 20(%r12), %r9d      # f
+                movl 24(%r12), %r10d     # g
+                movl 28(%r12), %r11d     # h
+                movq $0, %r14            # round index
+            .Lsec_round:
+                cmpq $64, %r14
+                jge .Lsec_round_done
+                # S1(e) -> 256(%rsp)
+                movl %r8d, %r15d
+                movl %r8d, %r12d
+                roll $26, %r15d          # ror 6
+                roll $21, %r12d          # ror 11
+                xorl %r12d, %r15d
+                movl %r8d, %r12d
+                roll $7, %r12d           # ror 25
+                xorl %r12d, %r15d
+                movl %r15d, 256(%rsp)
+                # ch = (e & f) ^ (~e & g) -> r15d
+                movl %r8d, %r15d
+                andl %r9d, %r15d
+                movl %r8d, %r12d
+                notl %r12d
+                andl %r10d, %r12d
+                xorl %r12d, %r15d
+                # t1 = h + S1 + ch + K[i] + w[i] -> r13d
+                leaq .Lsec_sha256_k(%rip), %r13
+                movl (%r13,%r14,4), %r13d
+                addl (%rsp,%r14,4), %r13d
+                addl 256(%rsp), %r13d    # + S1
+                addl %r15d, %r13d        # + ch
+                addl %r11d, %r13d        # + h
+                # S0(a) -> 256(%rsp)
+                movl %eax, %r15d
+                movl %eax, %r12d
+                roll $30, %r15d          # ror 2
+                roll $19, %r12d          # ror 13
+                xorl %r12d, %r15d
+                movl %eax, %r12d
+                roll $10, %r12d          # ror 22
+                xorl %r12d, %r15d
+                movl %r15d, 256(%rsp)
+                # maj = (a&b)^(a&c)^(b&c) -> r15d
+                movl %eax, %r15d
+                andl %ebx, %r15d
+                movl %eax, %r12d
+                andl %ecx, %r12d
+                xorl %r12d, %r15d
+                movl %ebx, %r12d
+                andl %ecx, %r12d
+                xorl %r12d, %r15d
+                # t2 = S0 + maj -> 256(%rsp)
+                addl 256(%rsp), %r15d
+                movl %r15d, 256(%rsp)
+                # shift: h=g, g=f, f=e, e=d+t1, d=c, c=b, b=a, a=t1+t2
+                movl %r10d, %r11d
+                movl %r9d, %r10d
+                movl %r8d, %r9d
+                movl %edx, %r8d
+                addl %r13d, %r8d         # e = d + t1
+                movl %ecx, %edx
+                movl %ebx, %ecx
+                movl %eax, %ebx
+                movl %r13d, %eax
+                addl 256(%rsp), %eax     # a = t1 + t2
+                incq %r14
+                jmp .Lsec_round
+            .Lsec_round_done:
+                movq 264(%rsp), %r12
+                addl %eax, 0(%r12)
+                addl %ebx, 4(%r12)
+                addl %ecx, 8(%r12)
+                addl %edx, 12(%r12)
+                addl %r8d, 16(%r12)
+                addl %r9d, 20(%r12)
+                addl %r10d, 24(%r12)
+                addl %r11d, 28(%r12)
+                addq $272, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_sha256(rdi=string) → hex string
+            .globl kof_sec_sha256
+            .type kof_sec_sha256, @function
+            kof_sec_sha256:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                subq $32, %rsp
+                movq %rsp, %rdi
+                movq %rbx, %rsi
+                addq $24, %rsi           # payload
+                movslq %r12d, %rdx
+                call kof_sec_sha256_internal
+                # build hex string: 24 + 64 + 1
+                movl $89, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $64, 16(%r13)
+                movl $0, 20(%r13)
+                xorq %rcx, %rcx
+            .Lsec_sha256_hex:
+                cmpq $32, %rcx
+                jge .Lsec_sha256_hex_done
+                movzbl (%rsp,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r13,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r13,%rcx,2)
+                incq %rcx
+                jmp .Lsec_sha256_hex
+            .Lsec_sha256_hex_done:
+                movb $0, 88(%r13)
+                movq %r13, %rax
+                addq $32, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_hmac_sha256(rdi=key, rsi=data) → hex string
+            # HMAC-SHA256: H((K^opad) || H((K^ipad) || data)) with K padded to 64
+            .globl kof_sec_hmac_sha256
+            .type kof_sec_hmac_sha256, @function
+            kof_sec_hmac_sha256:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # key
+                movq %rsi, %r12          # data
+                subq $576, %rsp          # k64(64) + inner(64+datalen up to 448) + out(32) + scratch
+                movq %rbx, %r13
+                movl 16(%rbx), %r13d     # key len
+                # build k64 in 0..63(%rsp): key bytes (or hash if keylen>64)
+                cmpl $64, %r13d
+                jg .Lsec_hmac_key_hash
+                xorq %rcx, %rcx
+            .Lsec_hmac_key_copy:
+                cmpl %r13d, %ecx
+                jge .Lsec_hmac_key_copy_done
+                movb 24(%rbx,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_copy
+            .Lsec_hmac_key_copy_done:
+                movq %r13, %rcx
+            .Lsec_hmac_key_zero:
+                cmpq $64, %rcx
+                jge .Lsec_hmac_key_done
+                movb $0, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_zero
+            .Lsec_hmac_key_done:
+                jmp .Lsec_hmac_key_ready
+            .Lsec_hmac_key_hash:
+                leaq 512(%rsp), %rdi     # out
+                movq %rbx, %rsi
+                addq $24, %rsi
+                movslq %r13d, %rdx
+                call kof_sec_sha256_internal
+                xorq %rcx, %rcx
+            .Lsec_hmac_key_hash_copy:
+                cmpq $32, %rcx
+                jge .Lsec_hmac_key_hash_done
+                movb 512(%rsp,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_hash_copy
+            .Lsec_hmac_key_hash_done:
+                movq $32, %rcx
+            .Lsec_hmac_key_hash_zero:
+                cmpq $64, %rcx
+                jge .Lsec_hmac_key_ready
+                movb $0, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lsec_hmac_key_hash_zero
+            .Lsec_hmac_key_ready:
+                # inner input: ipad(64) at 64(%rsp) + data at 128(%rsp)
+                movq %r12, %r14
+                movl 16(%r12), %r14d     # data len
+                movl $63, %ecx
+            .Lsec_hmac_ipad:
+                movb (%rsp,%rcx), %al
+                xorb $0x36, %al
+                movb %al, 64(%rsp,%rcx)
+                decq %rcx
+                jns .Lsec_hmac_ipad
+            .Lsec_hmac_ipad_done:
+                movq %r14, %rcx
+                decq %rcx
+            .Lsec_hmac_data_copy:
+                testq %rcx, %rcx
+                js .Lsec_hmac_data_copy_done
+                movb 24(%r12,%rcx), %al
+                movb %al, 128(%rsp,%rcx)
+                decq %rcx
+                jmp .Lsec_hmac_data_copy
+            .Lsec_hmac_data_copy_done:
+                # inner = sha256(64+data at 64(%rsp)) → 544(%rsp)
+                leaq 544(%rsp), %rdi
+                leaq 64(%rsp), %rsi
+                movq %r14, %rdx
+                addq $64, %rdx
+                call kof_sec_sha256_internal
+                # outer input: opad(64) + inner(32) → 64(%rsp)
+                movl $63, %ecx
+            .Lsec_hmac_opad:
+                movb (%rsp,%rcx), %al
+                xorb $0x5c, %al
+                movb %al, 64(%rsp,%rcx)
+                decq %rcx
+                jns .Lsec_hmac_opad
+            .Lsec_hmac_opad_done:
+                movl $31, %ecx
+            .Lsec_hmac_outer_copy:
+                movb 544(%rsp,%rcx), %al
+                movb %al, 128(%rsp,%rcx)
+                decq %rcx
+                jns .Lsec_hmac_outer_copy
+            .Lsec_hmac_outer_done:
+                # mac = sha256(64+32 at 64(%rsp)) → 512(%rsp)
+                leaq 512(%rsp), %rdi
+                leaq 64(%rsp), %rsi
+                movq $96, %rdx
+                call kof_sec_sha256_internal
+                # build hex string (24 + 64 + 1)
+                movl $89, %edi
+                call kof_alloc
+                movq %rax, %r15
+                movl $1, 0(%r15)
+                movl $0, 4(%r15)
+                movq $0, 8(%r15)
+                movl $64, 16(%r15)
+                movl $0, 20(%r15)
+                xorq %rcx, %rcx
+            .Lsec_hmac_hex:
+                cmpq $32, %rcx
+                jge .Lsec_hmac_hex_done
+                movzbl 512(%rsp,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r15,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r15,%rcx,2)
+                incq %rcx
+                jmp .Lsec_hmac_hex
+            .Lsec_hmac_hex_done:
+                movb $0, 88(%r15)
+                movq %r15, %rax
+                addq $576, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_constant_time_equals(rdi=a, rsi=b) → 1/0
+            .globl kof_sec_constant_time_equals
+            .type kof_sec_constant_time_equals, @function
+            kof_sec_constant_time_equals:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                movl 16(%r12), %ecx
+                cmpl %ecx, %r13d
+                je .Lsec_cte_len_ok
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_cte_len_ok:
+                movl %r13d, %ecx
+                xorl %eax, %eax
+            .Lsec_cte_loop:
+                testl %ecx, %ecx
+                jle .Lsec_cte_done
+                movzbl 23(%rbx,%rcx), %edx
+                movzbl 23(%r12,%rcx), %r15d
+                xorl %r15d, %edx
+                orl %edx, %eax
+                decq %rcx
+                jmp .Lsec_cte_loop
+            .Lsec_cte_done:
+                testl %eax, %eax
+                setz %al
+                movzbl %al, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_random_hex(rdi=nbytes) → hex string via getrandom
+            .globl kof_sec_random_hex
+            .type kof_sec_random_hex, @function
+            kof_sec_random_hex:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx          # nbytes
+                # alloc n + 24 + 1
+                leaq 25(%rbx), %rdi
+                call kof_alloc
+                movq %rax, %r12
+                movl $1, 0(%r12)
+                movl $0, 4(%r12)
+                movq $0, 8(%r12)
+                leal (%rbx,%rbx), %eax
+                movl %eax, 16(%r12)
+                movl $0, 20(%r12)
+                # getrandom(buf, nbytes, 0)
+                movq %r12, %rdi
+                addq $24, %rdi
+                movq %rbx, %rsi
+                xorq %rdx, %rdx
+                movq $318, %rax
+                syscall
+                testq %rax, %rax
+                js .Lsec_random_fail
+                # hex encode nbytes at 24(%r12) into 24..24+2n
+                movq %rbx, %rcx
+                decq %rcx
+            .Lsec_random_hex_loop:
+                testq %rcx, %rcx
+                jl .Lsec_random_hex_done
+                movzbl 24(%r12,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r12,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r12,%rcx,2)
+                decq %rcx
+                jmp .Lsec_random_hex_loop
+            .Lsec_random_hex_done:
+                movb $0, 24(%r12,%rbx,2)
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_random_fail:
+                movq $0, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_random_int(rdi=bound) → secure random int in [0, bound)
+            .globl kof_sec_random_int
+            .type kof_sec_random_int, @function
+            kof_sec_random_int:
+                pushq %rbx
+                movq %rdi, %rbx
+                testq %rbx, %rbx
+                jg .Lsec_random_int_ok
+                xorl %eax, %eax
+                popq %rbx
+                ret
+            .Lsec_random_int_ok:
+                # rejection sampling: 32-bit value < bound * (2^32 / bound)
+                movl %ebx, %r10d
+                xorl %r9d, %r9d
+                movl $1, %r11d
+                # range = (2^32 / bound) * bound
+                movl $0xffffffff, %eax
+                xorl %edx, %edx
+                divl %ebx              # eax = 2^32/bound
+                movl %eax, %r9d
+                imull %ebx, %r9d       # range
+                subq $4, %rsp
+            .Lsec_random_int_retry:
+                movq %rsp, %rdi
+                movq $4, %rsi
+                xorq %rdx, %rdx
+                movq $318, %rax
+                syscall
+                testq %rax, %rax
+                js .Lsec_random_int_fail
+                movl (%rsp), %eax
+                cmpl %r9d, %eax
+                jae .Lsec_random_int_retry
+                xorl %edx, %edx
+                divl %ebx
+                movl %edx, %eax
+                addq $4, %rsp
+                popq %rbx
+                ret
+            .Lsec_random_int_fail:
+                addq $4, %rsp
+                xorl %eax, %eax
+                popq %rbx
+                ret
+
+            # kof_sec_redact(rdi=value) → masked string
+            .globl kof_sec_redact
+            .type kof_sec_redact, @function
+            kof_sec_redact:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                cmpl $8, %r12d
+                jg .Lsec_redact_long
+                # return "********"
+                movl $32, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $8, 16(%r13)
+                movl $0, 20(%r13)
+                movq $0x2a2a2a2a2a2a2a2a, %rax
+                movq %rax, 24(%r13)
+                movb $0, 32(%r13)
+                movq %r13, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_redact_long:
+                # first4 + "********" + last4: total 16 chars
+                movl $40, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $16, 16(%r13)
+                movl $0, 20(%r13)
+                movq $0x2a2a2a2a2a2a2a2a, %rax
+                movq %rax, 28(%r13)
+                movb 24(%rbx), %al
+                movb %al, 24(%r13)
+                movb 25(%rbx), %al
+                movb %al, 25(%r13)
+                movb 26(%rbx), %al
+                movb %al, 26(%r13)
+                movb 27(%rbx), %al
+                movb %al, 27(%r13)
+                movl %r12d, %r14d
+                movl %r12d, %eax
+                subl $4, %eax
+                movl %eax, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 36(%r13)
+                movl %r12d, %r14d
+                subl $3, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 37(%r13)
+                movl %r12d, %r14d
+                subl $2, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 38(%r13)
+                movl %r12d, %r14d
+                subl $1, %r14d
+                movb 24(%rbx,%r14), %al
+                movb %al, 39(%r13)
+                movb $0, 40(%r13)
+                movq %r13, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_secret_get(rdi=name) → value or 0 (null)
+            # reads /proc/self/environ via syscalls (no libc)
+            .globl kof_sec_secret_get
+            .type kof_sec_secret_get, @function
+            kof_sec_secret_get:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # name
+                subq $65536, %rsp
+                # open("/proc/self/environ", O_RDONLY)
+                leaq .Lsec_environ_path(%rip), %rdi
+                xorq %rsi, %rsi
+                xorq %rdx, %rdx
+                movq $2, %rax
+                syscall
+                testq %rax, %rax
+                js .Lsec_secret_open_fail
+                movq %rax, %r12          # fd
+                movq %r12, %rdi
+                movq %rsp, %rsi
+                movq $65536, %rdx
+                xorq %rax, %rax
+                syscall
+                movq %rax, %r13          # bytes read
+                # close
+                movq %r12, %rdi
+                movq $3, %rax
+                syscall
+                testq %r13, %r13
+                jle .Lsec_secret_open_fail
+                # scan entries: NAME=VALUE NUL-separated
+                xorq %r14, %r14          # entry start
+            .Lsec_secret_scan:
+                cmpq %r13, %r14
+                jge .Lsec_secret_not_found
+                # find '=' in this entry
+                movq %r14, %rcx
+            .Lsec_secret_find_eq:
+                cmpq %r13, %rcx
+                jge .Lsec_secret_next
+                movb (%rsp,%rcx), %al
+                cmpb $0x3d, %al          # '='
+                je .Lsec_secret_eq_found
+                cmpb $0, %al
+                je .Lsec_secret_next
+                incq %rcx
+                jmp .Lsec_secret_find_eq
+            .Lsec_secret_eq_found:
+                # name length = rcx - r14; compare with name
+                movq %rcx, %r15
+                subq %r14, %r15
+                movl 16(%rbx), %r8d
+                movslq %r8d, %r8
+                cmpq %r15, %r8
+                jne .Lsec_secret_next
+                # compare bytes
+                xorq %rdx, %rdx
+            .Lsec_secret_cmp:
+                cmpq %r15, %rdx
+                jge .Lsec_secret_match
+                leaq (%rsp,%r14), %rsi
+                movb (%rsi,%rdx), %al
+                movb 24(%rbx,%rdx), %cl
+                cmpb %cl, %al
+                jne .Lsec_secret_next
+                incq %rdx
+                jmp .Lsec_secret_cmp
+            .Lsec_secret_match:
+                # value = bytes after '=' until NUL
+                movq %rcx, %r15          # '=' position
+                incq %r15
+                movq %r15, %r14
+            .Lsec_secret_val_end:
+                cmpq %r13, %r14
+                jge .Lsec_secret_val_done
+                cmpb $0, (%rsp,%r14)
+                je .Lsec_secret_val_done
+                incq %r14
+                jmp .Lsec_secret_val_end
+            .Lsec_secret_val_done:
+                movq %r14, %r13
+                subq %r15, %r13          # value len
+                leaq 25(%r13), %rdi
+                call kof_alloc
+                movq %rax, %r12
+                movl $1, 0(%r12)
+                movl $0, 4(%r12)
+                movq $0, 8(%r12)
+                movl %r13d, 16(%r12)
+                movl $0, 20(%r12)
+                xorq %rcx, %rcx
+            .Lsec_secret_val_copy:
+                cmpq %r13, %rcx
+                jge .Lsec_secret_val_copy_done
+                leaq (%rsp,%r15), %r14
+                movb (%r14,%rcx), %al
+                movb %al, 24(%r12,%rcx)
+                incq %rcx
+                jmp .Lsec_secret_val_copy
+            .Lsec_secret_val_copy_done:
+                movb $0, 24(%r12,%r13)
+                movq %r12, %rax
+                addq $65536, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_secret_next:
+                # advance to next entry (past NUL)
+                movq %r14, %rcx
+            .Lsec_secret_skip:
+                cmpq %r13, %rcx
+                jge .Lsec_secret_not_found
+                cmpb $0, (%rsp,%rcx)
+                je .Lsec_secret_skip_done
+                incq %rcx
+                jmp .Lsec_secret_skip
+            .Lsec_secret_skip_done:
+                incq %rcx
+                movq %rcx, %r14
+                jmp .Lsec_secret_scan
+            .Lsec_secret_not_found:
+                addq $65536, %rsp
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lsec_secret_open_fail:
+                addq $65536, %rsp
+                xorl %eax, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_secret_get_default(rdi=name, rsi=fallback) → value or fallback
+            .globl kof_sec_secret_get_default
+            .type kof_sec_secret_get_default, @function
+            kof_sec_secret_get_default:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx          # name
+                movq %rsi, %r12          # fallback (callee-saved; rsi is clobbered)
+                call kof_sec_secret_get
+                testq %rax, %rax
+                jnz .Lsec_secret_default_done
+                movq %r12, %rax
+            .Lsec_secret_default_done:
+                popq %r12
+                popq %rbx
+                ret
+
+            .Lsec_environ_path:
+                .asciz "/proc/self/environ"
             """);
     }
 }

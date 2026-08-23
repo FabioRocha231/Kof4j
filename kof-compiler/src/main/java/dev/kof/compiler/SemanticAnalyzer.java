@@ -524,6 +524,19 @@ class SemanticAnalyzer {
                 yield operandType;
             }
             case MethodCallExpr mc -> {
+                if (mc.receiver() == null && knownClasses.containsKey(mc.methodName())) {
+                    // Implicit construction: ClassName(args) without `new`.
+                    // User classes take precedence over builtin helpers with
+                    // the same name (e.g. KofUi's Color).
+                    SymbolTable.ClassSymbol ctorClass = knownClasses.get(mc.methodName());
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    SymbolTable.Symbol ctorSym = ctorClass.members().resolve("<init>");
+                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctor) {
+                        resolvedMethods.put(mc, new SymbolTable.MethodSymbol("<init>", mc.methodName(),
+                                ctor.type(), ctor.parameterTypes(), ctor.accessFlags(), SymbolTable.DispatchKind.STATIC));
+                    }
+                    yield new Type.ClassType(ctorClass.packageName(), ctorClass.name(), List.of());
+                }
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.VOID;

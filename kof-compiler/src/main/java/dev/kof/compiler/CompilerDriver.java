@@ -326,8 +326,7 @@ private Target target = Target.JVM;
                 LabelId endLabel = LabelId.create();
                 LabelId thenLabel = LabelId.create();
                 if (ifStmt.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
-                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    localIdx = emitComparisonShortcut(bin, ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), thenLabel, elseLabel));
                 } else {
                     localIdx = emitExpression(ifStmt.condition(), ops, owner, localIdx, locals);
@@ -350,8 +349,7 @@ private Target target = Target.JVM;
                 LabelId bodyLabel = LabelId.create();
                 ops.add(new KofLabel(startLabel));
                 if (ws.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
-                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    localIdx = emitComparisonShortcut(bin, ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), bodyLabel, endLabel));
                 } else {
                     localIdx = emitExpression(ws.condition(), ops, owner, localIdx, locals);
@@ -378,8 +376,7 @@ private Target target = Target.JVM;
                 breakLabels.pop();
                 continueLabels.pop();
                 if (dws.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
-                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    localIdx = emitComparisonShortcut(bin, ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), startLabel, endLabel));
                 } else {
                     localIdx = emitExpression(dws.condition(), ops, owner, localIdx, locals);
@@ -398,8 +395,7 @@ private Target target = Target.JVM;
                 ops.add(new KofLabel(startLabel));
                 if (fs.condition() != null) {
                     if (fs.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
-                        localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                        localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                        localIdx = emitComparisonShortcut(bin, ops, owner, localIdx, locals);
                         ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), bodyLabel, endLabel));
                     } else {
                         localIdx = emitExpression(fs.condition(), ops, owner, localIdx, locals);
@@ -709,6 +705,15 @@ private Target target = Target.JVM;
                             ops.add(new KofLoadLocal(cs.type(), 0));
                             ops.add(new KofLoadField(cs.type(), ie.name(), fs.type()));
                             yield localIdx;
+                        } else if (fieldSym instanceof SymbolTable.MethodSymbol ms
+                                && ms.parameterTypes().isEmpty()) {
+                            // Record/class-with-primary-constructor: the
+                            // accessor method (kind()) shares the component
+                            // field name (kind); a bare identifier refers to
+                            // the field, not the accessor call.
+                            ops.add(new KofLoadLocal(cs.type(), 0));
+                            ops.add(new KofLoadField(cs.type(), ie.name(), ms.returnType()));
+                            yield localIdx;
                         }
                     }
                 }
@@ -814,6 +819,26 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case MethodCallExpr mc -> {
+                // User-defined classes take precedence over builtin helpers
+                // with the same name: ClassName(args) is implicit construction.
+                SymbolTable.ClassSymbol userCtor = semanticAnalyzer != null
+                        ? semanticAnalyzer.getClass(mc.methodName()) : null;
+                if (mc.receiver() == null && userCtor != null) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    SymbolTable.ConstructorSymbol ctor = null;
+                    SymbolTable.Symbol ctorSym = userCtor.members().resolve("<init>");
+                    if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
+                    ops.add(new KofNewObject(userCtor.type(), argTypes));
+                    ops.add(new KofDup());
+                    List<Type> ctorParamTypes = (ctor != null
+                            && ctor.parameterTypes().size() == mc.arguments().size())
+                            ? ctor.parameterTypes() : argTypes;
+                    localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
+                    ops.add(new KofCall(userCtor.type(), "<init>", ctorParamTypes,
+                            Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                    yield localIdx;
+                }
                 if (mc.receiver() == null && "now".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                     ops.add(new KofCall(new Type.ClassType("kof", "time", List.of()), "kof_now",
                             List.of(), Type.PrimitiveType.LONG, KofCallKind.FUNCTION));
@@ -1209,7 +1234,10 @@ private Target target = Target.JVM;
                         String className = owner.substring(owner.lastIndexOf('/') + 1);
                         SymbolTable.Symbol fieldSym = semanticAnalyzer != null
                                 ? resolveFieldInHierarchy(className, ie.name()) : null;
-                        if (fieldSym != null) {
+                        if (fieldSym != null
+                                && (fieldSym instanceof SymbolTable.FieldSymbol
+                                || (fieldSym instanceof SymbolTable.MethodSymbol ms
+                                        && ms.parameterTypes().isEmpty()))) {
                             Type ownerType = ownerTypeFromInternal(owner);
                             ops.add(new KofLoadLocal(ownerType, 0));
                             localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
@@ -1374,8 +1402,7 @@ private Target target = Target.JVM;
                 LabelId elseLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
                 if (ie.condition() instanceof BinaryExpr bin && isComparisonShortcut(bin, locals)) {
-                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
-                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    localIdx = emitComparisonShortcut(bin, ops, owner, localIdx, locals);
                     ops.add(new KofConditionalJump(mapComparison(bin.operator()), comparisonOperandType(bin, locals), thenLabel, elseLabel));
                 } else {
                     localIdx = emitExpression(ie.condition(), ops, owner, localIdx, locals);
@@ -1446,6 +1473,10 @@ private Target target = Target.JVM;
                 yield leftType;
             }
             case MethodCallExpr mc -> {
+                if (mc.receiver() == null && semanticAnalyzer != null
+                        && semanticAnalyzer.getClass(mc.methodName()) != null) {
+                    yield semanticAnalyzer.getClass(mc.methodName()).type();
+                }
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
                 if ("now".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
                     yield Type.PrimitiveType.LONG;
@@ -2298,6 +2329,21 @@ private Target target = Target.JVM;
         return Type.PrimitiveType.INT;
     }
 
+    /**
+     * Emits both operands of a comparison-shortcut condition, widening each
+     * to the common numeric type (e.g. `longExpr < 2000` must widen the
+     * literal before the compare).
+     */
+    private int emitComparisonShortcut(BinaryExpr bin, List<KofOperation> ops, String owner,
+                                       int localIdx, List<IRLocalVariable> locals) {
+        Type common = comparisonOperandType(bin, locals);
+        localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+        emitWideningIfNeeded(ops, inferExprType(bin.left(), locals), common);
+        localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+        emitWideningIfNeeded(ops, inferExprType(bin.right(), locals), common);
+        return localIdx;
+    }
+
     private KofComparison mapComparison(String op) {
         return switch (op) {
             case ">" -> KofComparison.GT;
@@ -2429,6 +2475,14 @@ private Target target = Target.JVM;
             methods.add(new IRMethod(comp.name(), compType, List.of(), AccessFlags.PUBLIC, List.of(),
                     List.of(new IRBasicBlock(0, body)),
                     List.of(new IRLocalVariable(0, "this", ownerType))));
+        }
+        for (AstNode member : rec.members()) {
+            if (member instanceof MethodDeclarationNode method) {
+                methods.add(lowerMethod(method, internalName, false, List.of()));
+            } else if (member instanceof ConstructorDeclarationNode ctor) {
+                methods.add(lowerConstructor(ctor, internalName, "java/lang/Record",
+                        List.of(), fields, java.util.Map.of()));
+            }
         }
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
     }
