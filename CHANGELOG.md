@@ -119,6 +119,69 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 
   - official TextMate grammar and editor/LSP documentation
 
+## [0.0.7-alpha] - 2026-08-23
+
+### Features
+
+  - kof.time and kof.io stdlib primitives with JVM+Native parity
+  - add support for string length and charAt methods in NativeBackend
+  - implement standard library functions for time and I/O operations
+  - add JvmJsonRuntime for JSON handling in JVM backend
+  - native exception unwinding — real try/catch/finally on x86-64
+  - lambda expressions and if-expressions with real lowering
+  - real native memory management — allocator header, functional kof_free, live memstats
+  - CLI platform commands — info, check, lsp, install
+  - JVM backend correctness — records, Object methods, concat, comparisons
+  - remove fun keyword — functions declared by name
+  - JSON parity JVM+Native — object/record encode-decode, long, arrays, field inference
+  - List rich API — contains, isEmpty, remove, clear, listOf (JVM + Native parity)
+  - native string API parity — indexOf, trim, toUpperCase/toLowerCase, replace, equalsIgnoreCase, split
+  - enhance parsing and execution for generic calls and string operations in JVM backend
+  - enhance JSON encoding/decoding with improved parameter handling and type inference
+  - add JSON support with encoding and decoding functions
+  - List<T> builtin collection (native + JVM)
+  - implement Kof list operations in JVM backend and native runtime
+  - add Kof List type support and associated runtime functions
+  - generics with erasure (classes, functions, type args)
+  - add support for type parameters in symbol table
+  - add support for type parameters in function and class declarations
+  - strengthen compile-time type checking
+  - constructors in native backend, skip implicit Object super() call
+  - add break/continue, fix if/while/for control flow, comparison expressions
+  - add .balign directive for method table alignment in NativeBackend and NativeRuntime
+  - enhance Kof language type system with type IDs and instanceof support
+  - implement switch statement and case handling in Kof language
+  - enhance Kof language documentation with comprehensive references, examples, and common patterns
+  - add support for do-while statements and enhance type system
+  - Complete Phase F implementation with runtime, object model, exceptions, and memory management
+  - Add logging for assembly generation and error handling in NativeBackend
+  - Phase C+D+E - complete compiler with native backend
+
+### Bugfixes
+
+  - centralize primitive names, reject lambdas with a clear diagnostic
+  - native JSON long parity + array element stride
+  - JVM backend execution parity — if/else, strings, generics erasure boxing, records, interfaces, access flags, bitwise ops, long arithmetic
+  - switch case fall-through, SUB operand order, function call typing
+  - resolve native SIGSEGV and complete string/object ABI
+
+### Documentation
+
+  - update local build instructions with lib/kof.jar workaround
+  - align learning and training corpus with 0.0.4-alpha
+  - distribution, packaging, versioning and state aligned with 0.0.4-alpha
+  - atualizar status, architecture, actual-state, README
+
+### Build
+
+  - bump version to 0.0.6-alpha [skip ci]
+  - bump version to 0.0.5-alpha [skip ci]
+  - centralized versioning, official launchers and packaging
+
+### Tooling
+
+  - official TextMate grammar and editor/LSP documentation
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
