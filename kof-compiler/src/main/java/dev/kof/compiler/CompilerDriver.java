@@ -508,7 +508,7 @@ private Target target = Target.JVM;
                 LabelId okLabel = LabelId.create();
                 LabelId failLabel = LabelId.create();
                 ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
-                ops.add(new KofConditionalJump(KofComparison.NE, okLabel, failLabel));
+                ops.add(new KofConditionalJump(KofComparison.NE, failLabel, okLabel));
                 ops.add(new KofLabel(failLabel));
                 String message = asrt.message() != null ? asrt.message() : "assertion failed";
                 if (target == Target.JVM) {
@@ -944,7 +944,21 @@ private Target target = Target.JVM;
                             yield localIdx;
                         }
                         localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
-                        ops.add(new KofCall(targetType, jsonDecodeFunction(targetType), List.of(BuiltinTypes.STRING),
+                        String decodeFn = jsonDecodeFunction(targetType);
+                        List<Type> decodeParams = List.of(BuiltinTypes.STRING);
+                        if (BuiltinTypes.isList(targetType)
+                                && listElementType(targetType) instanceof Type.ClassType ect
+                                && !BuiltinTypes.isString(ect)) {
+                            // decode<List<T>> where T is a user class: bind
+                            // each element to T (the element type survives the
+                            // generic erasure through the type system).
+                            decodeFn = "kof_json_decode_object_list";
+                            decodeParams = List.of(BuiltinTypes.STRING, BuiltinTypes.STRING);
+                            String className = ect.packageName().isEmpty()
+                                    ? ect.name() : ect.packageName() + "." + ect.name();
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, className));
+                        }
+                        ops.add(new KofCall(targetType, decodeFn, decodeParams,
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;

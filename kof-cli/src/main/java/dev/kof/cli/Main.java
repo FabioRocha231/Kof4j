@@ -104,21 +104,24 @@ public final class Main {
         executeProcess(javaArgs, tempDir);
     }
 
+    private static Process servedProcess;
+
     private static void executeProcess(List<String> command, Path tempDir) {
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.inheritIO();
             Process p = pb.start();
+            servedProcess = p;
             int exitCode = p.waitFor();
-            cleanup(tempDir);
+            if (tempDir != null) cleanup(tempDir);
             System.exit(exitCode);
         } catch (IOException e) {
             System.err.println("failed to execute: " + e.getMessage());
-            cleanup(tempDir);
+            if (tempDir != null) cleanup(tempDir);
             System.exit(1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            cleanup(tempDir);
+            if (tempDir != null) cleanup(tempDir);
             System.exit(1);
         }
     }
@@ -546,6 +549,26 @@ private static void build(String[] args) {
 
         try {
             Class<?> handlerClass = Class.forName(className, true, handlerLoader);
+            boolean hasMain = false;
+            try {
+                handlerClass.getMethod("main", String[].class);
+                hasMain = true;
+            } catch (NoSuchMethodException ignored) {
+            }
+            if (hasMain) {
+                // Kof-native web app (web.app() + app.listen()): the program
+                // runs its own server. Legacy handle(...) apps have no main.
+                handlerLoader.close();
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    System.out.println("\nkof serve shutting down...");
+                    if (servedProcess != null && servedProcess.isAlive()) {
+                        servedProcess.destroy();
+                    }
+                    cleanup(tempDir);
+                }));
+                executeProcess(List.of(javaExecutable(), "-cp", tempDir.toString(), className), tempDir);
+                return;
+            }
             dev.kof.compiler.KofHttpServer server = new dev.kof.compiler.KofHttpServer(
                     dev.kof.compiler.ReflectiveHandler.forClass(handlerClass));
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {

@@ -524,6 +524,18 @@ class SemanticAnalyzer {
                 yield operandType;
             }
             case MethodCallExpr mc -> {
+                if (mc.receiver() == null && "listOf".equals(mc.methodName())) {
+                    // listOf(...) keeps its element type: List<T> must survive
+                    // the whole pipeline (for-in, get, method resolution).
+                    Type elemType = Type.UnknownType.UNKNOWN;
+                    if (!mc.typeArguments().isEmpty()) {
+                        elemType = resolveType(mc.typeArguments().get(0), scope);
+                    } else if (!mc.arguments().isEmpty()) {
+                        elemType = inferType(mc.arguments().get(0), scope);
+                    }
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield new Type.ClassType("kof", "List", List.of(elemType));
+                }
                 if (mc.receiver() == null && knownClasses.containsKey(mc.methodName())) {
                     // Implicit construction: ClassName(args) without `new`.
                     // User classes take precedence over builtin helpers with

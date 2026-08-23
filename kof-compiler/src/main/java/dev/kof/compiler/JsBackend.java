@@ -1371,6 +1371,12 @@ class JsBackend implements Backend {
             handleConstructorCall(stack, kc);
             return;
         }
+        if (kc.methodName().startsWith("kof_web_")) {
+            // The Kof-native web stack is JVM-first; the JS target reports the
+            // gap explicitly instead of miscompiling the IR (WEB001).
+            throw new IllegalStateException(
+                    "kof.web is not supported on the js target yet (WEB001)");
+        }
         boolean hasReceiver = kc.kind() == KofCallKind.INSTANCE || kc.kind() == KofCallKind.INTERFACE;
         List<JsIr.JsExpression> args = new ArrayList<>();
         for (int i = 0; i < kc.parameterTypes().size(); i++) {

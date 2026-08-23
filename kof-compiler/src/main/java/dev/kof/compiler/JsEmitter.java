@@ -218,7 +218,11 @@ final class JsEmitter {
         if (e instanceof JsIr.JsIdentifier i) return i.name();
         if (e instanceof JsIr.JsThis) return "this";
         if (e instanceof JsIr.JsBinary b) return "(" + expr(b.left()) + " " + b.operator() + " " + expr(b.right()) + ")";
-        if (e instanceof JsIr.JsUnary u) return "(" + u.operator() + expr(u.operand()) + ")";
+        if (e instanceof JsIr.JsUnary u) {
+            String op = u.operator();
+            if ("typeof".equals(op)) return "(typeof " + expr(u.operand()) + ")";
+            return "(" + op + expr(u.operand()) + ")";
+        }
         if (e instanceof JsIr.JsCall c) {
             StringBuilder args = new StringBuilder();
             for (int i = 0; i < c.arguments().size(); i++) {
@@ -263,6 +267,9 @@ final class JsEmitter {
         }
         if (e instanceof JsIr.JsInstanceOf io) return "(" + expr(io.operand()) + " instanceof " + io.typeName() + ")";
         if (e instanceof JsIr.JsAssignExpr ae) return "(" + ae.target() + " = " + expr(ae.value()) + ")";
+        if (e instanceof JsIr.JsArrow ar) {
+            return "(" + String.join(", ", ar.parameters()) + ") => " + expr(ar.body());
+        }
         throw new IllegalStateException("unknown JS expression: " + e);
     }
 

@@ -65,6 +65,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_json_decode_string" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_json_decode_int_list", "kof_json_decode_string_list", "kof_json_decode_list"
                     -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_json_decode_object_list" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_now" -> "()J";
             case "kof_read_line" -> "()Ljava/lang/String;";
             case "kof_read_file" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -130,6 +131,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_json_decode_long", "kof_now" -> "J";
             case "kof_json_decode_int_list", "kof_json_decode_string_list", "kof_json_decode_list"
                     -> "Ljava/util/ArrayList;";
+            case "kof_json_decode_object_list" -> "Ljava/util/ArrayList;";
             case "kof_json_decode_string", "kof_read_line", "kof_read_file" -> "Ljava/lang/String;";
             case "kof_write_file" -> "I";
             case "kof_io_file_exists", "kof_io_file_is_file", "kof_io_file_is_dir",
@@ -345,6 +347,17 @@ static boolean hasRuntimeFn(String methodName) {
                     Object parsed = kof_json_parse(json);
                     if (parsed instanceof ArrayList<?> l) return new ArrayList<Object>(l);
                     return new ArrayList<Object>();
+                }
+
+                public static ArrayList<Object> kof_json_decode_object_list(String json, String className)
+                        throws Exception {
+                    Object parsed = kof_json_parse(json);
+                    ArrayList<Object> result = new ArrayList<>();
+                    if (parsed instanceof List<?> l) {
+                        Class<?> type = Class.forName(className);
+                        for (Object e : l) result.add(kof_json_bind(type, e));
+                    }
+                    return result;
                 }
 
                 public static Object kof_json_decode_object(String json, Class<?> type) throws Exception {

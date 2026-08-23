@@ -152,4 +152,7 @@ final class JsIr {
 
     record JsAssignExpr(String target, JsExpression value) implements JsExpression {
     }
+
+    record JsArrow(List<String> parameters, JsExpression body) implements JsExpression {
+    }
 }

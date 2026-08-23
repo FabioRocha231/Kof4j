@@ -575,6 +575,10 @@ class Parser {
             advance();
             return new ReturnStmt(p, null);
         }
+        if (check(TokenType.RBRACE) || atEnd()) {
+            // bare return: `return` followed by the end of the block
+            return new ReturnStmt(p, null);
+        }
         ExpressionNode value = parseExpression();
         expectSemicolon();
         return new ReturnStmt(p, value);
@@ -729,6 +733,11 @@ class Parser {
         String type = "var";
         if (check(TokenType.VAR, TokenType.VAL)) {
             advance();
+            if (check(TokenType.COLON)) {
+                // var name: Type = value — explicit type annotation
+                advance();
+                type = parseTypeRef();
+            }
         } else {
             type = parseTypeRef();
         }
