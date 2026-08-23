@@ -485,6 +485,16 @@ class SemanticAnalyzer {
                         checkArgTypes(mc.methodName(), argTypes, lft.parameterTypes());
                         yield lft.returnType();
                     }
+                    if (currentClassName != null && !currentClassName.isEmpty()) {
+                        SymbolTable.Symbol m = resolveInHierarchy(currentClassName, mc.methodName());
+                        if (m instanceof SymbolTable.MethodSymbol ms) {
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                            checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
+                            resolvedMethods.put(mc, ms);
+                            yield ms.returnType();
+                        }
+                    }
                 }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())

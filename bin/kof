@@ -36,5 +36,8 @@ if [ -z "$JAVA" ]; then
     exit 1
 fi
 
-exec "$JAVA" -Dkof.install.dir="$KOF_HOME" -Dkof.embedded.jdk="$EMBEDDED" \
+# KofJS embeds a JavaScript engine (GraalJS/Truffle) in the Kof process;
+# quiet the JDK warnings it emits when it initializes on stock JDKs.
+exec "$JAVA" --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow \
+    -Dkof.install.dir="$KOF_HOME" -Dkof.embedded.jdk="$EMBEDDED" \
     -jar "$JAR" "$@"

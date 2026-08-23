@@ -949,6 +949,17 @@ public class CompilerDriver {
                             yield localIdx;
                         }
                     }
+                    SymbolTable.MethodSymbol selfMethod = semanticAnalyzer != null
+                            ? semanticAnalyzer.getResolvedMethod(mc) : null;
+                    if (selfMethod != null) {
+                        Type ownerType = ownerTypeFromInternal(selfMethod.ownerClass());
+                        ops.add(new KofLoadLocal(ownerType, 0));
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), selfMethod.parameterTypes(),
+                                ops, owner, localIdx, locals);
+                        ops.add(new KofCall(ownerType, mc.methodName(), selfMethod.parameterTypes(),
+                                selfMethod.returnType(), KofCallKind.INSTANCE));
+                        yield localIdx;
+                    }
                     SymbolTable.ClassSymbol cs = semanticAnalyzer != null ? semanticAnalyzer.getClass(mc.methodName()) : null;
                     if (cs != null) {
                         List<Type> argTypes = new ArrayList<>();

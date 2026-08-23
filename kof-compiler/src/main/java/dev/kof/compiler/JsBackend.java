@@ -1303,10 +1303,6 @@ class JsBackend implements Backend {
         if (value instanceof Float f) return Float.toString(f);
         if (value instanceof Double d) return Double.toString(d);
         if (value instanceof Boolean b) return b ? "1" : "0";
-        if (value instanceof Integer i && i < 0) {
-            // print negative 32-bit values as unsigned hex (e.g. ARGB colors)
-            return "0x" + Integer.toHexString(i);
-        }
         return String.valueOf(value);
     }
 
