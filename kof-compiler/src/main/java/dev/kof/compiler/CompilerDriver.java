@@ -1624,8 +1624,26 @@ private Target target = Target.JVM;
                         if (listFn != null) {
                             List<Type> argTypes = new ArrayList<>();
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                             Type elemType = listElementType(recvType);
+                            // listOf() with no type argument produces
+                            // List<Unknown>; the first add() pins the element
+                            // type on the local so later get() calls are
+                            // typed (records, classes) instead of Object.
+                            if ("kof_list_add".equals(listFn)
+                                    && Type.UnknownType.UNKNOWN.equals(elemType)
+                                    && !argTypes.isEmpty()
+                                    && !(argTypes.get(0) instanceof Type.UnknownType)
+                                    && mc.receiver() instanceof IdentifierExpr rid) {
+                                for (int li = 0; li < locals.size(); li++) {
+                                    IRLocalVariable lv = locals.get(li);
+                                    if (lv.name().equals(rid.name())) {
+                                        locals.set(li, new IRLocalVariable(lv.index(), lv.name(),
+                                                new Type.ClassType("kof", "List", List.of(argTypes.get(0)))));
+                                        break;
+                                    }
+                                }
+                            }
+                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                             Type retType = switch (listFn) {
                                 case "kof_list_add", "kof_list_set", "kof_list_clear" -> Type.PrimitiveType.VOID;
                                 case "kof_list_contains", "kof_list_is_empty" -> Type.PrimitiveType.BOOL;
@@ -1654,7 +1672,8 @@ private Target target = Target.JVM;
                         methodReturnType = resolvedMethod.returnType();
                         methodParamTypes = resolvedMethod.parameterTypes();
                     } else if (BuiltinTypes.isString(recvType)) {
-                        StringMethodSig sig = stringMethodSignature(mc.methodName(), mc.arguments().size());
+                        StringMethodSig sig = stringMethodSignature(mc.methodName(), mc.arguments().size(),
+                                methodParamTypes);
                         if (sig != null) {
                             methodReturnType = sig.returnType();
                             methodParamTypes = sig.parameterTypes();
@@ -2668,6 +2687,10 @@ private Target target = Target.JVM;
     }
 
     private StringMethodSig stringMethodSignature(String name, int argCount) {
+        return stringMethodSignature(name, argCount, List.of());
+    }
+
+    private StringMethodSig stringMethodSignature(String name, int argCount, List<Type> argTypes) {
         Type str = BuiltinTypes.STRING;
         Type INT = Type.PrimitiveType.INT;
         Type BOOL = Type.PrimitiveType.BOOL;
@@ -2691,11 +2714,26 @@ private Target target = Target.JVM;
             case "concat" -> argCount == 1 ? new StringMethodSig(str, List.of(str)) : null;
             case "trim" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
             case "toUpperCase", "toLowerCase" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
-            case "replace" -> argCount == 2 ? new StringMethodSig(str, List.of(CHAR, CHAR)) : null;
+            case "replace" -> argCount == 2 ? replaceSignature(argTypes, str, CHAR, charSeq) : null;
             case "split" -> argCount == 1 ? new StringMethodSig(strArray, List.of(str))
                     : argCount == 2 ? new StringMethodSig(strArray, List.of(str, INT)) : null;
             default -> null;
         };
+    }
+
+    /**
+     * String.replace(a, b): with two String arguments the call must target
+     * Java's replace(CharSequence, CharSequence); with two characters (Kof
+     * Ints) it targets replace(char, char). The overload is resolved by the
+     * argument types — a previous version always picked (char, char), which
+     * pushed Strings onto a (C, C) descriptor (VerifyError on the JVM).
+     */
+    private StringMethodSig replaceSignature(List<Type> argTypes, Type str, Type CHAR, Type charSeq) {
+        boolean stringArgs = argTypes.size() == 2
+                && BuiltinTypes.isString(argTypes.get(0)) && BuiltinTypes.isString(argTypes.get(1));
+        return stringArgs
+                ? new StringMethodSig(str, List.of(charSeq, charSeq))
+                : new StringMethodSig(str, List.of(CHAR, CHAR));
     }
 
     private void boxPrimitive(List<KofOperation> ops, Type type) {
@@ -2758,6 +2796,7 @@ private Target target = Target.JVM;
                 SymbolTable.Symbol fieldSym = resolveFieldInHierarchy(className, ie.name());
                 if (fieldSym instanceof SymbolTable.FieldSymbol fs) {
                     Type ownerType = ownerTypeFromInternal(owner);
+                    ops.add(new KofLoadLocal(ownerType, 0));
                     localIdx = emitFieldIncrement(ownerType, ie.name(), fs.type(), prefix, op,
                             ops, localIdx, locals);
                     return localIdx;
@@ -2828,7 +2867,6 @@ private Target target = Target.JVM;
         locals.add(new IRLocalVariable(recvTmp, "#recv", ownerType));
         locals.add(new IRLocalVariable(valTmp, "#inc", fieldType));
         locals.add(new IRLocalVariable(newTmp, "#new", fieldType));
-        ops.add(new KofLoadLocal(ownerType, 0));
         ops.add(new KofStoreLocal(ownerType, recvTmp));
         ops.add(new KofLoadLocal(ownerType, recvTmp));
         ops.add(new KofLoadField(ownerType, fieldName, fieldType));
@@ -3232,6 +3270,8 @@ private Target target = Target.JVM;
                 methods.add(lowerMethod(method, internalName, false, cls.typeParameters()));
             } else if (member instanceof ConstructorDeclarationNode ctor) {
                 methods.add(lowerConstructor(ctor, internalName, superName, cls.typeParameters(), fields, fieldInits));
+                methods.addAll(lowerConstructorDefaults(ctor, internalName, superName,
+                        cls.typeParameters(), fields, fieldInits));
             }
         }
         if (!methods.stream().anyMatch(m -> m.name().equals("<init>"))) {
@@ -3362,6 +3402,63 @@ private Target target = Target.JVM;
         currentDebugPositions.clear();
         return new IRMethod(method.name(), returnType, paramTypes, access, method.thrownExceptions(),
                 body, locals, debugInfo);
+    }
+
+    /**
+     * Default parameter values on constructors: for each trailing default, a
+     * wrapper <init> with fewer parameters evaluates the default expressions
+     * and delegates to the canonical constructor — the same semantics as
+     * lowerFunctionDefaults for functions.
+     */
+    private List<IRMethod> lowerConstructorDefaults(ConstructorDeclarationNode ctor, String owner,
+                                                    String superName, List<String> typeParams,
+                                                    List<IRField> fields,
+                                                    java.util.Map<String, ExpressionNode> fieldInits) {
+        List<IRMethod> wrappers = new ArrayList<>();
+        List<FormalParameterNode> params = ctor.parameters();
+        if (params.isEmpty() || params.stream().noneMatch(p -> p.defaultExpression() != null)) {
+            return wrappers;
+        }
+        int n = params.size();
+        int firstDefault = n;
+        for (int i = 0; i < n; i++) {
+            if (params.get(i).defaultExpression() != null) {
+                firstDefault = i;
+                break;
+            }
+        }
+        if (firstDefault == n) return wrappers;
+        List<Type> canonicalTypes = new ArrayList<>();
+        for (FormalParameterNode p : params) canonicalTypes.add(resolveWithTypeParams(p.type(), typeParams));
+        Type ownerType = ownerTypeFromInternal(owner);
+        Type superType = ownerTypeFromInternal(superName);
+        for (int drop = 1; drop <= n - firstDefault; drop++) {
+            int paramCount = n - drop;
+            List<Type> paramTypes = canonicalTypes.subList(0, paramCount);
+            List<IRLocalVariable> locals = new ArrayList<>();
+            locals.add(new IRLocalVariable(0, "this", ownerType));
+            List<KofOperation> ops = new ArrayList<>();
+            // No super()/field inits here: the canonical <init> performs
+            // them; the wrapper only supplies the default arguments.
+            ops.add(new KofLoadLocal(ownerType, 0));
+            int localIdx = 1;
+            for (int i = 0; i < paramCount; i++) {
+                locals.add(new IRLocalVariable(localIdx, params.get(i).name(), paramTypes.get(i)));
+                ops.add(new KofLoadLocal(paramTypes.get(i), localIdx));
+                localIdx++;
+            }
+            for (int i = paramCount; i < n; i++) {
+                localIdx = emitExpression(params.get(i).defaultExpression(), ops, owner,
+                        localIdx, locals);
+            }
+            ops.add(new KofCall(ownerType, "<init>", canonicalTypes, Type.PrimitiveType.VOID,
+                    KofCallKind.CONSTRUCTOR));
+            ops.add(new KofReturnVoid());
+            wrappers.add(new IRMethod("<init>", Type.PrimitiveType.VOID, paramTypes,
+                    computeAccess(ctor.modifiers()), ctor.thrownExceptions(),
+                    List.of(new IRBasicBlock(0, ops)), locals));
+        }
+        return wrappers;
     }
 
     private IRMethod lowerConstructor(ConstructorDeclarationNode ctor, String owner, String superName,

@@ -180,9 +180,22 @@ class JsBackend implements Backend {
                     field.initialValue() != null ? literalText(field.initialValue()) : null, isStatic));
         }
         List<JsIr.JsFunction> methods = new ArrayList<>();
+        IRMethod canonicalCtor = null;
+        for (IRMethod method : clazz.methods()) {
+            if ("<init>".equals(method.name())
+                    && (canonicalCtor == null
+                    || method.parameterTypes().size() > canonicalCtor.parameterTypes().size())) {
+                canonicalCtor = method;
+            }
+        }
         for (IRMethod method : clazz.methods()) {
             if ("<init>".equals(method.name())) {
-                methods.add(lowerConstructor(clazz, method));
+                // A JS class can only have one constructor: the canonical
+                // (max-arity) one is emitted. Default-parameter wrapper
+                // constructors only exist for the JVM/Native backends.
+                if (method == canonicalCtor) {
+                    methods.add(lowerConstructor(clazz, method));
+                }
             } else {
                 boolean isStatic = (method.accessFlags() & AccessFlags.STATIC) != 0;
                 methods.add(lowerFunction(method, clazz, isStatic));
@@ -1745,14 +1758,21 @@ class JsBackend implements Backend {
                     "===",
                     new JsIr.JsCall(new JsIr.JsMember(args.get(0), "toUpperCase"), List.of())));
             case "replace" -> {
-                // Kof replace(char, char) replaces all occurrences; JS replace
-                // only the first, so lower through split/join.
-                JsIr.JsExpression from = new JsIr.JsCall(
-                        new JsIr.JsMember(new JsIr.JsIdentifier("String"), "fromCharCode"),
-                        List.of(args.get(0)));
-                JsIr.JsExpression to = new JsIr.JsCall(
-                        new JsIr.JsMember(new JsIr.JsIdentifier("String"), "fromCharCode"),
-                        List.of(args.get(1)));
+                // Kof replace replaces all occurrences; JS replace only the
+                // first, so lower through split/join. With two String
+                // arguments the args are used as-is; with two characters
+                // (Kof Ints) they are converted with String.fromCharCode.
+                Type first = !kc.parameterTypes().isEmpty() ? kc.parameterTypes().get(0) : null;
+                boolean charArgs = first instanceof Type.PrimitiveType pt
+                        && "char".equals(Type.canonicalPrimitiveName(pt.name()));
+                JsIr.JsExpression from = charArgs
+                        ? new JsIr.JsCall(new JsIr.JsMember(new JsIr.JsIdentifier("String"), "fromCharCode"),
+                                List.of(args.get(0)))
+                        : args.get(0);
+                JsIr.JsExpression to = charArgs
+                        ? new JsIr.JsCall(new JsIr.JsMember(new JsIr.JsIdentifier("String"), "fromCharCode"),
+                                List.of(args.get(1)))
+                        : args.get(1);
                 stack.add(new JsIr.JsCall(
                         new JsIr.JsMember(
                                 new JsIr.JsCall(new JsIr.JsMember(receiver, "split"), List.of(from)),

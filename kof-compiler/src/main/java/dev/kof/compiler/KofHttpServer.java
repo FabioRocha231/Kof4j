@@ -86,7 +86,9 @@ public final class KofHttpServer {
         try (client) {
             InputStream in = client.getInputStream();
             OutputStream out = client.getOutputStream();
+            System.err.println("[dbg] antes readRequest");
             Request request = readRequest(in);
+            System.err.println("[dbg] depois readRequest body=[" + request.body() + "]");
             String raw = dispatch(request);
             out.write(raw.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -121,7 +123,8 @@ public final class KofHttpServer {
                 }
             }
         }
-        while (body.length() < contentLength) {
+        while (body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length < contentLength) {
+            System.err.println("[dbg] loop lendo... body.length=" + body.length() + " bytes=" + body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length + " contentLength=" + contentLength);
             int n = in.read(buffer);
             if (n == -1) break;
             body.append(new String(buffer, 0, n, StandardCharsets.UTF_8));
