@@ -91,6 +91,7 @@ final class KofUi {
                 case "bind" -> argCount == 1 ? new UiCall("kof_ui_window_bind", Type.PrimitiveType.VOID, List.of(INT)) : null;
                 case "show" -> argCount == 0 ? new UiCall("kof_ui_window_show", Type.PrimitiveType.VOID, List.of()) : null;
                 case "close" -> argCount == 0 ? new UiCall("kof_ui_window_close", Type.PrimitiveType.VOID, List.of()) : null;
+                case "size" -> argCount == 2 ? new UiCall("kof_ui_window_set_size", Type.PrimitiveType.VOID, List.of(INT, INT)) : null;
                 default -> null;
             };
         }

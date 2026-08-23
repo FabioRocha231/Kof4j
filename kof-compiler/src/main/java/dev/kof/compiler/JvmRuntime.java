@@ -97,6 +97,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_ui_window_set_title", "kof_ui_label_set_text", "kof_ui_button_set_text",
                     "kof_ui_input_set_text" -> "(ILjava/lang/String;)V";
             case "kof_ui_window_bind", "kof_ui_view_bind" -> "(II)V";
+            case "kof_ui_window_set_size" -> "(III)V";
             case "kof_ui_column_new", "kof_ui_row_new" -> "(Ljava/util/ArrayList;)I";
             case "kof_ui_view_new" -> "(I)I";
             case "kof_ui_style_new" -> "(IIII)I";
@@ -602,6 +603,9 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 public static void kof_ui_window_close(int window) {
+                }
+
+                public static void kof_ui_window_set_size(int window, int width, int height) {
                 }
 
                 public static void kof_ui_window_set_theme(int window, int theme) {

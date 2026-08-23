@@ -522,9 +522,22 @@ class SemanticAnalyzer {
                 yield targetType;
             }
             case BinaryExpr bin -> {
-                Type leftType = inferType(bin.left(), scope);
-                Type rightType = inferType(bin.right(), scope);
-                yield inferBinaryResultType(bin.operator(), leftType, rightType);
+                // Left-associative chains (huge string concatenations in
+                // generated UIs, editors) are iterated instead of recursed:
+                // deep chains would overflow the compiler's own stack.
+                java.util.List<BinaryExpr> chain = new ArrayList<>();
+                ExpressionNode cursor = bin;
+                while (cursor instanceof BinaryExpr be) {
+                    chain.add(be);
+                    cursor = be.left();
+                }
+                Type accType = inferType(cursor, scope);
+                for (int ci = chain.size() - 1; ci >= 0; ci--) {
+                    BinaryExpr be = chain.get(ci);
+                    Type rightType = inferType(be.right(), scope);
+                    accType = inferBinaryResultType(be.operator(), accType, rightType);
+                }
+                yield accType;
             }
             case UnaryExpr ue -> {
                 Type operandType = inferType(ue.operand(), scope);
@@ -1025,8 +1038,13 @@ class SemanticAnalyzer {
                 for (ExpressionNode arg : mc.arguments()) resolveInExpression(arg);
             }
             case BinaryExpr bin -> {
-                resolveInExpression(bin.left());
-                resolveInExpression(bin.right());
+                // iterate the left-associative chain (huge concat trees)
+                ExpressionNode cur = bin;
+                while (cur instanceof BinaryExpr be) {
+                    resolveInExpression(be.right());
+                    cur = be.left();
+                }
+                resolveInExpression(cur);
             }
             case UnaryExpr ue -> resolveInExpression(ue.operand());
             case AssignmentExpr ae -> {
