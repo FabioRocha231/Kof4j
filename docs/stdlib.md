@@ -52,7 +52,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.security` | ✅ (v1) | passwords, crypto, jwt, secrets, auth, security — ver `docs/security.md` |
 | `kof.concurrent` | ✅ | `spawn` (virtual threads) — JVM; Native CONC001 |
 | `kof.test` | ✅ | `kof test`, `assert` |
-| `kof.cli` | ✅ | `kof build/run/serve/check/test/bench/profile/inspect/lsp/install` |
+| `kof.cli` | ✅ | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` (inclui o debugger DAP) |
 | `kof.metrics` | 🟡 | `kof bench`/`kof profile` (tooling) |
 | `kof.rest` | ⏳ | planejado |
 | `kof.database` | ⏳ | planejado (SQL-first, sem ORM pesado) |
@@ -81,13 +81,40 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 
 ---
 
-# 5. PRÓXIMAS ETAPAS
+# 5. AUDITORIA DO ECOSSISTEMA
 
-1. `kof.config` (env + arquivo + profiles).
-2. `kof.database` (JDBC idiomático + migrations).
-3. `kof.validation`.
-4. `kof.logging` + `kof.observability` (health checks, metrics runtime).
-5. `kof.messaging`.
-6. JWT/passwords no Native (HMAC asm já existe; falta o binding).
-7. SHA-512 no Native.
-8. Auditoria contínua: docs/security.md §2 (matriz do ecossistema Spring).
+A matriz completa de cobertura (inventário, gaps, dependências,
+arquitetura, prioridade e estratégia) vive em **`docs/ecosystem-coverage.md`**
+— resultado da auditoria da stdlib contra as capacidades de uma
+plataforma moderna (checklist derivado do ecossistema Spring, usado como
+matriz de capacidades, não como especificação de API).
+
+Resumo executivo (0.0.5-alpha):
+
+| Categoria | Estado |
+|-----------|--------|
+| core/collections/io/time/json | DONE (3 targets) |
+| security (crypto, jwt, secrets, auth web) | DONE (JVM; parcial Native/JS) |
+| web server (`web.app()`) | DONE (JVM) |
+| concurrency (`spawn`) | DONE (JVM) |
+| test (`assert`, `kof test`) | PARTIAL (suíte estruturada planejada) |
+| observability | PARTIAL (tooling bench/profile) |
+| database, http client, config, validation, messaging, scheduling, sessions, rate limiting, TLS | PLANNED (gaps P0-P2) |
+
+# 6. PRÓXIMAS ETAPAS
+
+1. G7 — diagnóstico de target completo no security/web (erros de link →
+   SECN00x claros).
+2. G6 — `kof.test` estruturado (`test "nome" { }` + suites).
+3. G3 — `kof.config` (env + arquivo + profiles + typed).
+4. G2 — `kof.http` client (get/post, headers, JSON, timeout).
+5. G1 — `kof.database` (JDBC idiomático: connect/query/transaction,
+   prepared statements, pools, migrations).
+6. G4 — `kof.validation`.
+7. G5 — `kof.observability` (health, metrics, logging estruturado).
+8. G8 — `kof.time.sleep` + scheduler básico.
+9. G10 — security no Native (jwt, passwords, sha512, aesgcm).
+10. G9 — rate limiting, sessions, API keys.
+11. G12 — TLS/HTTPS no servidor web.
+
+Prioridades e estratégia completas: `docs/ecosystem-coverage.md` §7-§8.

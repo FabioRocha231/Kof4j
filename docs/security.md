@@ -322,6 +322,12 @@ de target gap (SECN001/002/003). Casos adversariais incluídos (§18).
   planejado para Native via primitivas específicas.
 - `== null` com String no Native: `kof_string_equals` não trata null
   (limitação pré-existente do backend).
+- **Diagnósticos de target incompletos**: `jwt.*`, `auth.*`, `csrf`,
+  `cors` e os headers de segurança não têm entrada explícita em
+  `KofSecurity.supportedOn` para Native/JS (default `true`) → hoje um
+  programa que os usa no Native falha no link com símbolo indefinido em
+  vez de um diagnóstico SECN00x claro. Item **G7** da auditoria
+  (`docs/ecosystem-coverage.md` §4) — prioridade P0.
 
 ## 7.6 Correções de bugs descobertas durante a implementação
 

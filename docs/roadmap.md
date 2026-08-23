@@ -198,7 +198,24 @@ security {
 }
 ```
 
-Estado atual: ❌ não implementado
+Estado atual: ✅ implementado (v1, docs/security.md)
+
+**Implementado (0.0.5):**
+- `kof.security` com API idiomática: `passwords`, `crypto`, `jwt`,
+  `secrets`, `security`, `auth`.
+- Password hashing PBKDF2-HMAC-SHA256 (600k iterações, salt, constant-time,
+  formato versionado).
+- Crypto: SHA-256/512, HMAC, AES-GCM, random seguro — JVM, Native (asm) e JS.
+- JWT HS256 (alg fixo — sem confusão de algoritmo), exp/iss/aud.
+- Secrets por env + redação para logs; comparison constant-time.
+- Web auth middleware (`auth.authenticated()`, `auth.hasRole(...)`).
+- Gaps de target com diagnóstico claro (SECN001/002/003).
+
+**Pendente:**
+- OAuth2/OIDC client (arquitetura preparada em docs/security.md §2.3);
+- sessions / rate limiting / audit logging;
+- JWT e passwords no Native (dependem do binding — HMAC asm já existe);
+- integração com database (planejado).
 
 ---
 
@@ -517,6 +534,13 @@ Estado atual: ❌ não implementado
 - auth / authorization / JWT / OAuth/OIDC;
 - sessions / policies / rate limiting;
 - security defaults / audit.
+
+> Auditoria do ecossistema: a matriz de cobertura, gaps (G1-G12),
+> prioridades e estratégia vivem em `docs/ecosystem-coverage.md`.
+> Ordem de implementação P0: diagnóstico de target (G7) → `kof.test`
+> estruturado (G6) → `kof.config` (G3) → `kof.http` client (G2) →
+> `kof.database` (G1) → validation (G4) → observability (G5) →
+> scheduling (G8) → security Native (G10) → web security (G9, G12).
 
 ### Fase 5 — KofJS
 
