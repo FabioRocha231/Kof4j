@@ -170,7 +170,12 @@ api "/users" {
 }
 ```
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 parcial — HTTP/rotas (`kof.web`), JSON, configuração
+(`kof.config`), logging (`kof.log`), segurança (`kof.security`) e
+concorrência (`spawn`) implementados. Faltam: WebSocket/SSE, HTTP client,
+RPC, eventos/filas/pub-sub, cache, métricas/tracing, health checks,
+validation e scheduling. Ver `docs/plan-spring-independence.md` (Fases
+5-14).
 
 ---
 

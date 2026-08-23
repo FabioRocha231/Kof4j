@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 486 testes (486/486 PASS)
+mvn test             → 491 testes (491/491 PASS)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -148,7 +148,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | herança, `super`, override, virtual dispatch | ✅ | ✅ | ✅ |
 | interfaces | ✅ | ✅ | ✅ |
 | generics por erasure | ✅ | ✅ | ✅ |
-| lambdas `(x: Int) -> expr` (sem capturas) | ✅ | ✅ | ✅ |
+| lambdas `(x: Int) -> expr` + capturas | ✅ | ✅ | ✅ |
 | exceptions reais (try/catch/finally + unwinding) | ✅ | ✅ | ✅ |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ |
 | `spawn` (concorrência, join implícito) | ✅ | CONC001 | — |
@@ -276,7 +276,7 @@ main() {
 
 ---
 
-## Testes (486/486 PASS)
+## Testes (491/491 PASS)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -304,7 +304,7 @@ main() {
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **486** | |
+| **Total** | **491** | |
 
 ---
 
@@ -325,9 +325,11 @@ plataforma vazando para a linguagem.
 | `List<User>` + for-in tipado | ✅ |
 | `++`/`--` em campos | ✅ |
 | `return` nu em void | ✅ |
-| args CLI (`main(args)`) | planejado |
+| lambdas com capturas | ✅ (sem testes dedicados ainda) |
+| args CLI (`main(args)`) | ✅ |
+| default parameters | ✅ |
 | módulos multi-arquivo | planejado |
-| `Process` API | planejado |
+| `Process` API | ✅ (`kof.process` + `kof_process_run`) |
 
 Ver as guidelines completas no todo da sessão.
 

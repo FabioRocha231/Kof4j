@@ -91,14 +91,19 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_args_list" -> "([Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
-            case "kof_ui_window_new", "kof_ui_label_new", "kof_ui_button_new" -> "(Ljava/lang/String;)I";
+            case "kof_ui_window_new", "kof_ui_label_new", "kof_ui_button_new", "kof_ui_input_new"
+                    -> "(Ljava/lang/String;)I";
             case "kof_ui_button_new_action" -> "(Ljava/lang/String;Ljava/lang/Object;)I";
-            case "kof_ui_window_set_title", "kof_ui_label_set_text", "kof_ui_button_set_text"
-                    -> "(ILjava/lang/String;)V";
-            case "kof_ui_window_bind" -> "(II)V";
-            case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text" -> "(I)Ljava/lang/String;";
-            case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove"
-                    -> "(I)V";
+            case "kof_ui_window_set_title", "kof_ui_label_set_text", "kof_ui_button_set_text",
+                    "kof_ui_input_set_text" -> "(ILjava/lang/String;)V";
+            case "kof_ui_window_bind", "kof_ui_view_bind" -> "(II)V";
+            case "kof_ui_column_new", "kof_ui_row_new" -> "(Ljava/util/ArrayList;)I";
+            case "kof_ui_view_new" -> "(I)I";
+            case "kof_ui_style_new" -> "(IIII)I";
+            case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
+                    -> "(I)Ljava/lang/String;";
+            case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
+                    "kof_ui_input_remove", "kof_ui_view_remove" -> "(I)V";
             case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_web_app_new" -> "()Ljava/lang/String;";
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
@@ -623,6 +628,42 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 public static void kof_ui_button_remove(int button) {
+                }
+
+                public static int kof_ui_input_new(String text) {
+                    return 1;
+                }
+
+                public static void kof_ui_input_set_text(int input, String text) {
+                }
+
+                public static String kof_ui_input_text(int input) {
+                    return "";
+                }
+
+                public static void kof_ui_input_remove(int input) {
+                }
+
+                public static int kof_ui_column_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_row_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_view_new(int style) {
+                    return 1;
+                }
+
+                public static int kof_ui_style_new(int background, int foreground, int padding, int radius) {
+                    return 1;
+                }
+
+                public static void kof_ui_view_bind(int view, int child) {
+                }
+
+                public static void kof_ui_view_remove(int view) {
                 }
 
                 public static String kof_ui_color_to_css(int color) {

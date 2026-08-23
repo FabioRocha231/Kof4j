@@ -602,6 +602,23 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield KofUi.BUTTON;
                 }
+                if (mc.receiver() == null && "Input".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.INPUT;
+                }
+                if (mc.receiver() == null && ("Column".equals(mc.methodName()) || "Row".equals(mc.methodName()))
+                        && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield "Column".equals(mc.methodName()) ? KofUi.COLUMN : KofUi.ROW;
+                }
+                if (mc.receiver() == null && "View".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.VIEW;
+                }
+                if (mc.receiver() == null && "Style".equals(mc.methodName()) && mc.arguments().size() == 4) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.STYLE;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) {

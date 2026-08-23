@@ -1847,12 +1847,17 @@ class JsBackend implements Backend {
         }
         if (name.equals("kof_ui_window_new") || name.equals("kof_ui_label_new")
                 || name.equals("kof_ui_button_new") || name.equals("kof_ui_button_new_action")
+                || name.equals("kof_ui_input_new") || name.equals("kof_ui_column_new")
+                || name.equals("kof_ui_row_new") || name.equals("kof_ui_view_new")
+                || name.equals("kof_ui_style_new") || name.equals("kof_ui_view_bind")
                 || name.equals("kof_ui_window_set_title") || name.equals("kof_ui_window_title")
                 || name.equals("kof_ui_window_bind") || name.equals("kof_ui_window_show")
                 || name.equals("kof_ui_window_close") || name.equals("kof_ui_label_set_text")
                 || name.equals("kof_ui_label_text") || name.equals("kof_ui_label_remove")
                 || name.equals("kof_ui_button_set_text") || name.equals("kof_ui_button_text")
-                || name.equals("kof_ui_button_remove")) {
+                || name.equals("kof_ui_button_remove") || name.equals("kof_ui_input_set_text")
+                || name.equals("kof_ui_input_text") || name.equals("kof_ui_input_remove")
+                || name.equals("kof_ui_view_remove")) {
             registerRuntime(capitalizeUiFn(name));
             List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
             if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
@@ -2314,6 +2319,127 @@ class JsBackend implements Backend {
                     if (window.__kofActions) {
                         delete window.__kofActions[button];
                     }
+                }
+            }
+
+            export function kofUiInputNew(text) {
+                const id = kofUiCreateNode("input", "kof-input");
+                if (id < 0) {
+                    return -1;
+                }
+                const node = window.__kofNodes[id];
+                node.type = "text";
+                node.value = text;
+                return id;
+            }
+
+            export function kofUiInputSetText(input, text) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[input]) {
+                    window.__kofNodes[input].value = text;
+                }
+            }
+
+            export function kofUiInputText(input) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[input]) {
+                    return window.__kofNodes[input].value;
+                }
+                return "";
+            }
+
+            export function kofUiInputRemove(input) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[input]) {
+                    const node = window.__kofNodes[input];
+                    if (node.parentNode) {
+                        node.parentNode.removeChild(node);
+                    }
+                    delete window.__kofNodes[input];
+                }
+            }
+
+            export function kofUiColumnNew(ids) {
+                const id = kofUiCreateNode("div", "kof-column");
+                if (id < 0) {
+                    return -1;
+                }
+                const node = window.__kofNodes[id];
+                if (ids) {
+                    for (const childId of ids) {
+                        const child = window.__kofNodes[childId];
+                        if (child) {
+                            node.appendChild(child);
+                        }
+                    }
+                }
+                return id;
+            }
+
+            export function kofUiRowNew(ids) {
+                const id = kofUiCreateNode("div", "kof-row");
+                if (id < 0) {
+                    return -1;
+                }
+                const node = window.__kofNodes[id];
+                if (ids) {
+                    for (const childId of ids) {
+                        const child = window.__kofNodes[childId];
+                        if (child) {
+                            node.appendChild(child);
+                        }
+                    }
+                }
+                return id;
+            }
+
+            export function kofUiStyleNew(background, foreground, padding, radius) {
+                if (typeof document === "undefined") {
+                    return -1;
+                }
+                window.__kofStyles = window.__kofStyles || {};
+                const id = Object.keys(window.__kofStyles).length + 1;
+                window.__kofStyles[id] = { background: background, foreground: foreground,
+                        padding: padding, radius: radius };
+                return id;
+            }
+
+            export function kofUiViewNew(style) {
+                const id = kofUiCreateNode("div", "kof-view");
+                if (id < 0) {
+                    return -1;
+                }
+                const s = window.__kofStyles && window.__kofStyles[style];
+                const node = window.__kofNodes[id];
+                if (s) {
+                    const css = node.style;
+                    if (s.background !== 0) {
+                        css.backgroundColor = kofUiColorToCss(s.background);
+                    }
+                    if (s.foreground !== 0) {
+                        css.color = kofUiColorToCss(s.foreground);
+                    }
+                    if (s.padding > 0) {
+                        css.padding = s.padding + "px";
+                    }
+                    if (s.radius > 0) {
+                        css.borderRadius = s.radius + "px";
+                    }
+                }
+                return id;
+            }
+
+            export function kofUiViewBind(view, child) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[view]
+                        && window.__kofNodes[child]) {
+                    window.__kofNodes[view].appendChild(window.__kofNodes[child]);
+                }
+            }
+
+            export function kofUiViewRemove(view) {
+                if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[view]) {
+                    const node = window.__kofNodes[view];
+                    if (node.parentNode) {
+                        node.parentNode.removeChild(node);
+                    }
+                    delete window.__kofNodes[view];
                 }
             }
 
@@ -3033,6 +3159,21 @@ private void writeRuntime(Path outputDir) throws IOException {
                       font-size: 13px; line-height: 1.5; color: var(--output);
                       white-space: pre-wrap; word-break: break-word;
                     }
+                    .kof-button {
+                      font-size: 13px; padding: 6px 14px; cursor: pointer;
+                      background: var(--panel); color: var(--fg);
+                      border: 1px solid var(--border); border-radius: 6px;
+                    }
+                    .kof-button:hover { background: var(--hover); }
+                    .kof-input {
+                      font-size: 13px; padding: 6px 10px; width: 100%;
+                      background: var(--panel); color: var(--fg);
+                      border: 1px solid var(--border); border-radius: 6px;
+                      font-family: inherit;
+                    }
+                    .kof-column { display: flex; flex-direction: column; gap: 8px; }
+                    .kof-row { display: flex; flex-direction: row; gap: 8px; align-items: center; }
+                    .kof-view { box-sizing: border-box; }
                     #kof-status {
                       background: var(--panel); border-top: 1px solid var(--border);
                       color: var(--dim); font-size: 11px; padding: 4px 14px;

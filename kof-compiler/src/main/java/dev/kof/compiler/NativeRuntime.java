@@ -3892,6 +3892,33 @@ final class NativeRuntime {
                 jmp kof_io_make_string
             kof_ui_button_remove:
                 ret
+            kof_ui_input_new:
+                movl $1, %eax
+                ret
+            kof_ui_input_set_text:
+                ret
+            kof_ui_input_text:
+                leaq .Lui_empty(%rip), %rdi
+                xorq %rsi, %rsi
+                jmp kof_io_make_string
+            kof_ui_input_remove:
+                ret
+            kof_ui_column_new:
+                movl $1, %eax
+                ret
+            kof_ui_row_new:
+                movl $1, %eax
+                ret
+            kof_ui_view_new:
+                movl $1, %eax
+                ret
+            kof_ui_style_new:
+                movl $1, %eax
+                ret
+            kof_ui_view_bind:
+                ret
+            kof_ui_view_remove:
+                ret
             """);
     }
 

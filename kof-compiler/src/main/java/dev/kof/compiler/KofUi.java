@@ -22,21 +22,34 @@ final class KofUi {
     static final Type THEME = new Type.ClassType("kof.ui", "Theme", List.of());
     static final Type LABEL = new Type.ClassType("kof.ui", "Label", List.of());
     static final Type BUTTON = new Type.ClassType("kof.ui", "Button", List.of());
+    static final Type INPUT = new Type.ClassType("kof.ui", "Input", List.of());
+    static final Type COLUMN = new Type.ClassType("kof.ui", "Column", List.of());
+    static final Type ROW = new Type.ClassType("kof.ui", "Row", List.of());
+    static final Type VIEW = new Type.ClassType("kof.ui", "View", List.of());
+    static final Type STYLE = new Type.ClassType("kof.ui", "Style", List.of());
     static final Type WINDOW = new Type.ClassType("kof.ui", "Window", List.of());
 
     static boolean isColor(Type t) { return COLOR.equals(t); }
     static boolean isTheme(Type t) { return THEME.equals(t); }
     static boolean isLabel(Type t) { return LABEL.equals(t); }
     static boolean isButton(Type t) { return BUTTON.equals(t); }
+    static boolean isInput(Type t) { return INPUT.equals(t); }
+    static boolean isColumn(Type t) { return COLUMN.equals(t); }
+    static boolean isRow(Type t) { return ROW.equals(t); }
+    static boolean isView(Type t) { return VIEW.equals(t); }
+    static boolean isStyle(Type t) { return STYLE.equals(t); }
     static boolean isWindow(Type t) { return WINDOW.equals(t); }
 
     static boolean isUiType(Type t) {
-        return isColor(t) || isTheme(t) || isLabel(t) || isButton(t) || isWindow(t);
+        return isColor(t) || isTheme(t) || isLabel(t) || isButton(t) || isInput(t)
+                || isColumn(t) || isRow(t) || isView(t) || isStyle(t) || isWindow(t);
     }
 
     static boolean isConstructor(String name) {
         return "Color".equals(name) || "Theme".equals(name)
-                || "Label".equals(name) || "Button".equals(name) || "Window".equals(name);
+                || "Label".equals(name) || "Button".equals(name) || "Input".equals(name)
+                || "Column".equals(name) || "Row".equals(name) || "View".equals(name)
+                || "Style".equals(name) || "Window".equals(name);
     }
 
     static Type constructorType(String name) {
@@ -106,6 +119,21 @@ final class KofUi {
                 case "text" -> argCount == 0 ? new UiCall("kof_ui_button_text", STR, List.of()) : null;
                 case "setText" -> argCount == 1 ? new UiCall("kof_ui_button_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
                 case "remove" -> argCount == 0 ? new UiCall("kof_ui_button_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isInput(receiver)) {
+            return switch (name) {
+                case "text" -> argCount == 0 ? new UiCall("kof_ui_input_text", STR, List.of()) : null;
+                case "setText" -> argCount == 1 ? new UiCall("kof_ui_input_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_input_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isView(receiver)) {
+            return switch (name) {
+                case "bind" -> argCount == 1 ? new UiCall("kof_ui_view_bind", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_view_remove", Type.PrimitiveType.VOID, List.of()) : null;
                 default -> null;
             };
         }

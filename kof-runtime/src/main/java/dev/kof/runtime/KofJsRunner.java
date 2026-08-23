@@ -118,6 +118,10 @@ public final class KofJsRunner {
                 + "                 padding: 16px; min-height: 100vh; box-sizing: border-box; }\n"
                 + "    .kof-label { font-size: 16px; }\n"
                 + "    .kof-button { font-size: 16px; padding: 8px 16px; cursor: pointer; }\n"
+                + "    .kof-input { font-size: 16px; padding: 6px 10px; }\n"
+                + "    .kof-column { display: flex; flex-direction: column; gap: 8px; }\n"
+                + "    .kof-row { display: flex; flex-direction: row; gap: 8px; align-items: center; }\n"
+                + "    .kof-view { box-sizing: border-box; }\n"
                 + "  </style>\n</head>\n<body>\n  <div id=\"kof-root\"></div>\n"
                 + "  <script type=\"module\" src=\"" + entry + "\"></script>\n</body>\n</html>\n";
         Files.writeString(appDir.resolve("index.html"), page);

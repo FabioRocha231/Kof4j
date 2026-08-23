@@ -69,6 +69,12 @@ class JvmBackend implements Backend {
                 default -> "java/lang/Integer";
             };
         }
+        // kof.ui handles (Color, Theme, Label, Button, Input, Column, Row,
+        // View, Style, Window) are Int values on every target; on the JVM
+        // they must be boxed when stored in Object slots (e.g. List<Label>).
+        if (dev.kof.compiler.KofUi.isUiType(primitive)) {
+            return "java/lang/Integer";
+        }
         return null;
     }
 
@@ -631,7 +637,7 @@ class JvmBackend implements Backend {
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
-                    if (!isPrimitiveType(elemType)) {
+                    if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType)) {
                         mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(
                                 elemType instanceof Type.ClassType ct ? ct.packageName() : "",
                                 elemType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object"));

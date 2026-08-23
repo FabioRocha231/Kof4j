@@ -255,4 +255,67 @@ class UiE2ETest {
         assertEquals(0, code, "JS run should succeed");
         assertEquals("5\n6", out.toString().trim(), "static stores on the JS target");
     }
+
+    @Test
+    void inputBindings(@TempDir Path tempDir) throws IOException {
+        String program = """
+            main() {
+                var i = Input("digite aqui")
+                println(i.text)
+                i.text = "preenchido"
+                println(i.text)
+                i.remove()
+            }
+            """;
+        Path src = tempDir.resolve("input.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "");
+        runNative(src, tempDir.resolve("native"), "");
+
+        Path srcJs = tempDir.resolve("input-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int code = dev.kof.runtime.KofJsRunner.run(
+                tempDir.resolve("js").resolve("Default.mjs"), out,
+                new java.io.ByteArrayInputStream(new byte[0]), out);
+        assertEquals(0, code, "JS run should succeed");
+        assertEquals("digite aqui\npreenchido", out.toString().trim(), "input binds on the JS target");
+    }
+
+    @Test
+    void layoutContainers(@TempDir Path tempDir) throws IOException {
+        String program = """
+            main() {
+                var l1 = Label("a")
+                var l2 = Label("b")
+                var col = Column(listOf(l1, l2))
+                var row = Row(listOf(l1, l2))
+                var style = Style(Palette.black, Palette.white, 16, 8)
+                var view = View(style)
+                view.bind(col)
+                view.bind(row)
+                var w = Window("Layout")
+                w.bind(view)
+                w.show()
+            }
+            """;
+        Path src = tempDir.resolve("layout.kf");
+        Files.writeString(src, program);
+        runJvm(src, tempDir.resolve("jvm"), "");
+        runNative(src, tempDir.resolve("native"), "");
+
+        Path srcJs = tempDir.resolve("layout-js.kf");
+        Files.writeString(srcJs, program);
+        CompilationResult js = driver.compile(srcJs, tempDir.resolve("js"), Target.JS);
+        assertTrue(js.success(), "JS compilation should succeed: " + js.diagnostics().getDiagnostics());
+        String html = dev.kof.runtime.KofJsRunner.runCaptureHtml(
+                tempDir.resolve("js").resolve("Default.mjs"), new java.io.ByteArrayOutputStream(),
+                new java.io.ByteArrayInputStream(new byte[0]), new java.io.ByteArrayOutputStream());
+        assertNotNull(html, "window HTML should be captured");
+        assertTrue(html.contains("kof-column"), "column div rendered");
+        assertTrue(html.contains("kof-row"), "row div rendered");
+        assertTrue(html.contains("kof-view"), "view div rendered");
+    }
 }

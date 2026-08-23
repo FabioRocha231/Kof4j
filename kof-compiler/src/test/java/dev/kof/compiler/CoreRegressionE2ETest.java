@@ -278,6 +278,44 @@ class CoreRegressionE2ETest {
                 """, "hello Mel\nhello world\n15\n12", tempDir, "b8");
     }
 
+    // F2 — main(args: List<String>) receives the program arguments (JVM)
+    @Test
+    void mainArgsList(@TempDir Path tempDir) throws IOException {
+        Path src = tempDir.resolve("Main.kf");
+        Files.writeString(src, """
+                main(args: List<String>) {
+                    println(args.size)
+                    println(args.get(0))
+                }
+                """);
+        Path outJvm = tempDir.resolve("out");
+        CompilationResult rjvm = driver.compile(src, outJvm, Target.JVM);
+        assertTrue(rjvm.success(), "JVM compile failed: " + rjvm.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-cp", outJvm.toString(),
+                    "Default.Main", "arquivo.txt", "segundo");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            assertEquals(0, p.waitFor(), "JVM exit code, output: " + output);
+            assertEquals("2\narquivo.txt", output);
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
+    }
+
+    // F4 — process.run abstracts the OS process on every backend
+    @Test
+    void processRun(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var p = process.run("echo", "hello", "world")
+                    println(p.stdout.trim())
+                    println(p.exitCode)
+                }
+                """, "hello world\n0", tempDir, "f4-process");
+    }
+
     // user classes extendable with explicit constructors still work
     @Test
     void explicitConstructorStillWorks(@TempDir Path tempDir) throws IOException {
