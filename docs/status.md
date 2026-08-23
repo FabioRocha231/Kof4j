@@ -9,8 +9,7 @@
 
 ```
 mvn clean package → PASSA
-mvn test → 357/357 PASSAM fora do KofJS (9 falhas em KofJsE2ETest —
-          backend JS em desenvolvimento por outro agente; depende do
+mvn test → 375/375 PASSAM (JVM, Native, JSON, kof.io, spawn, KofJS via
           GraalJS embutido)
 kof run → FUNCIONA
 kof build → FUNCIONA (--target jvm|native)
