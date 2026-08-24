@@ -325,6 +325,77 @@ class AndroidInteropE2ETest {
     }
 
     @Test
+    void androidProjectGeneration(@TempDir Path tempDir) throws IOException {
+        // app UI padrão SEM MainActivity declarada: o host embutido
+        // (dev/kof/android-host.kf, escrito EM KOF) é compilado junto
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                var w = Window("Contador")
+                var label = Label("contagem: 0")
+                w.bind(label)
+                w.show()
+            }
+            """);
+
+        CompilerDriver cpDriver = new CompilerDriver();
+        cpDriver.setExternalClasspath(java.util.List.of(Path.of("src/test/resources/android/fake-sdk.jar")));
+        CompilationResult result = cpDriver.compile(source, tempDir.resolve("proj"), Target.ANDROID);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+
+        Path proj = tempDir.resolve("proj");
+        assertTrue(Files.exists(proj.resolve("pom.xml")), "pom.xml do pipeline");
+        assertTrue(Files.exists(proj.resolve("src/main/AndroidManifest.xml")));
+        assertTrue(Files.exists(proj.resolve("libs/kof-app.jar")), "jar com bytecode Kof");
+        assertTrue(Files.exists(proj.resolve("src/main/assets/kof/Default.mjs")), "KofJS p/ WebView");
+        assertTrue(Files.exists(proj.resolve("src/main/assets/kof/index.html")));
+
+        // FILOSOFIA: ZERO Java/Kotlin/Gradle no projeto gerado
+        try (var walk = Files.walk(proj)) {
+            long offenders = walk.filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.endsWith(".java") || n.endsWith(".kt")
+                                || n.endsWith(".kts") || n.endsWith(".gradle");
+                    }).count();
+            assertEquals(0, offenders, "nenhum arquivo Java/Kotlin/Gradle permitido");
+        }
+
+        // o host Activity EM KOF está no jar (compilado pelo mesmo frontend)
+        try (var zip = new java.util.zip.ZipFile(proj.resolve("libs/kof-app.jar").toFile())) {
+            assertNotNull(zip.getEntry("MainActivity.class"),
+                    "MainActivity compilada do android-host.kf deve estar no jar");
+            assertNotNull(zip.getEntry("Default/Main.class"), "programa no jar");
+        }
+
+        // pom é só cola do SDK: NENHUMA <dependencies>
+        String pom = Files.readString(proj.resolve("pom.xml"));
+        assertFalse(pom.contains("<dependencies>"), "dependências são geridas pelo Kof, não pelo pom");
+
+        // manifest aponta a Activity sintetizada
+        String manifest = Files.readString(proj.resolve("src/main/AndroidManifest.xml"));
+        assertTrue(manifest.contains(".MainActivity"));
+    }
+
+    @Test
+    void androidTargetRejectsSpawn(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            tarefa() {
+                println("trabalho")
+            }
+            main() {
+                spawn tarefa()
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.ANDROID);
+        assertFalse(result.success(), "spawn não compila no Android (sem virtual threads no ART)");
+        boolean hasAnd001 = result.diagnostics().getDiagnostics().stream()
+                .anyMatch(d -> "AND001".equals(d.code()));
+        assertTrue(hasAnd001, "gap deve ser AND001: " + result.diagnostics().getDiagnostics());
+    }
+
+    @Test
     void superMethodCallOnJsTarget(@TempDir Path tempDir) throws IOException {
         // super.metodo() também no KofJS — dispatch nativo do `super` JS
         Path source = tempDir.resolve("Main.kf");

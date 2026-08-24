@@ -96,15 +96,15 @@ public final class Main {
             return;
         }
 
-        // Target android: a compilação já gerou o projeto Gradle; não há o
+        // Target android: a compilação já gerou o projeto Maven; não há o
         // que executar no desktop — orientar o próximo passo
         if (target == Target.ANDROID) {
             System.out.println("Android project generated (temp): " + tempDir);
             System.out.println("For a persistent project use:");
             System.out.println("  kof build <dir> --target android --output <projeto>");
-            System.out.println("Then:");
-            System.out.println("  gradle assembleDebug   # APK em app/build/outputs/apk/debug/");
-            System.out.println("  gradle installDebug    # instala em dispositivo/emulador");
+            System.out.println("Then (ANDROID_HOME apontando pro SDK):");
+            System.out.println("  mvn verify              # APK em target/kof-app.apk");
+            System.out.println("  adb install target/kof-app.apk");
             return;
         }
 
