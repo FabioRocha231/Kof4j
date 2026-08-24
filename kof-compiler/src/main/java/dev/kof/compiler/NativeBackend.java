@@ -18,6 +18,7 @@ public class NativeBackend implements Backend {
     private Type lastPushedType = Type.UnknownType.UNKNOWN;
     private IRClass currentClass = null;
     private boolean usesDb = false;
+    private boolean usesMysql = false;
     private final Map<String, String> functionMangleMap = new HashMap<>();
     private final Map<String, ClassLayout> layoutCache = new HashMap<>();
     private Map<String, IRClass> allClassesMap = new HashMap<>();
@@ -90,9 +91,15 @@ public class NativeBackend implements Backend {
         for (IRClass clazz : module.classes()) {
             for (IRMethod method : clazz.methods()) {
                 for (IRBasicBlock block : method.basicBlocks()) {
-                    for (KofOperation op : block.operations()) {
+                    List<KofOperation> ops = block.operations();
+                    for (int i = 0; i < ops.size(); i++) {
+                        KofOperation op = ops.get(i);
                         if (op instanceof KofCall kc && kc.methodName().startsWith("kof_db_")) {
                             usesDb = true;
+                            if (kc.methodName().equals("kof_db_connect")
+                                    || kc.methodName().equals("kof_db_connect2")) {
+                                usesMysql |= connectsToMysql(i, ops);
+                            }
                         }
                     }
                 }
@@ -928,6 +935,20 @@ public class NativeBackend implements Backend {
         sb.append("    syscall\n");
     }
 
+    /** Detecta o protocolo do URL de conexão quando é um literal em
+     *  compile-time (intenção conhecida pelo compilador): mysql/mariadb
+     *  exigem a lib do cliente no link; sqlite, não. URLs dinâmicos
+     *  linkam as duas (default conservador). */
+    private boolean connectsToMysql(int callIndex, List<KofOperation> ops) {
+        for (int j = callIndex - 1; j >= 0 && j >= callIndex - 8; j--) {
+            if (ops.get(j) instanceof KofLoadLiteral lit && lit.value() instanceof String url) {
+                String u = url.toLowerCase();
+                return !u.startsWith("sqlite:");
+            }
+        }
+        return true;
+    }
+
     private void assemble(Path asmFile, Path binFile) throws IOException {
         Path objFile = asmFile.resolveSibling(asmFile.getFileName() + ".o");
         System.err.println("NativeBackend: assembling " + asmFile);
@@ -942,10 +963,19 @@ public class NativeBackend implements Backend {
             // lib direto — sem JDBC driver, sem headers (padrão kof-webview).
             String os = System.getProperty("os.name", "").toLowerCase();
             if (os.contains("linux")) {
-                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString(),
-                        "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2",
-                        "--as-needed",
-                        "-lc", "-l:libsqlite3.so.0", "-l:libmariadb.so.3"}, "ld");
+                String[] extra = usesMysql
+                        ? new String[]{"-l:libsqlite3.so.0", "-l:libmariadb.so.3"}
+                        : new String[]{"-l:libsqlite3.so.0"};
+                String[] cmd = new String[7 + extra.length];
+                cmd[0] = "ld";
+                cmd[1] = "-o";
+                cmd[2] = binFile.toString();
+                cmd[3] = objFile.toString();
+                cmd[4] = "-dynamic-linker";
+                cmd[5] = "/lib64/ld-linux-x86-64.so.2";
+                cmd[6] = "-lc";
+                System.arraycopy(extra, 0, cmd, 7, extra.length);
+                runCommand(cmd, "ld");
             } else {
                 runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
             }
