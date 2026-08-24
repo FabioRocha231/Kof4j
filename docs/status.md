@@ -474,6 +474,13 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 11. Web: target `js` reporta WEB001; target `native` sem servidor web
 12. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
     feito; falta handshake completo, query e prepared statements)
+13. `kof_sec_secret_get` no Native: segfault quando a env var procurada
+    EXISTE (retorna ok/hang quando ausente) — bug pré-existente da infra
+    de secrets; o `kof.log` nativo usa scan próprio de environ e não é
+    afetado. Investigar e corrigir com teste E2E dedicado.
+14. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
+    inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time.
+    Fechar exige backend SSE + formatação double→string.
 
 ---
 
