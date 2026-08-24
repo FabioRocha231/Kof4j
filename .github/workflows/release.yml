@@ -142,45 +142,40 @@ jobs:
             dist/SHA256SUMS
 
   release:
-    name: GitHub Release
+    name: GitHub Release (${{ matrix.target }})
     needs: [test-and-bump, package]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+          - target: windows-x86_64
+          - target: macos-arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download artifact (${{ matrix.target }})
         uses: actions/download-artifact@v4
         with:
+          name: kof-${{ matrix.target }}
           path: release-artifacts
-          merge-multiple: true
 
       - name: Prepare changelog
         run: |
           VERSION=$(cat VERSION)
           scripts/changelog.sh > /tmp/changelog-section.md
-          { echo "# Kof $VERSION"; echo ""; cat /tmp/changelog-section.md; } > release-notes.md
+          { echo "# Kof $VERSION (${{ matrix.target }})"; echo ""; cat /tmp/changelog-section.md; } > release-notes.md
           cat release-notes.md
 
-      - name: Compute checksums (single combined file)
-        run: |
-          cd release-artifacts
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum *.tar.gz *.zip > SHA256SUMS
-          else
-            shasum -a 256 *.tar.gz *.zip > SHA256SUMS
-          fi
-          cat SHA256SUMS
-
-      - name: Create GitHub Release
+      - name: Create GitHub Release (${{ matrix.target }})
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: kof-${{ needs.test-and-bump.outputs.version }}
-          name: Kof ${{ needs.test-and-bump.outputs.version }}
+          tag_name: kof-${{ needs.test-and-bump.outputs.version }}-${{ matrix.target }}
+          name: Kof ${{ needs.test-and-bump.outputs.version }} (${{ matrix.target }})
           body_path: release-notes.md
-          files: |
-            release-artifacts/*.tar.gz
-            release-artifacts/*.zip
+          files: release-artifacts/*
             release-artifacts/SHA256SUMS
