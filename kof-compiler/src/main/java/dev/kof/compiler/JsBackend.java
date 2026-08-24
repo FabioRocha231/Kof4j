@@ -492,6 +492,10 @@ class JsBackend implements Backend {
                 exits.add(kj.target());
                 return out;
             }
+            if (op instanceof KofTryEnd) {
+                // fim da região do try — o dono (parseTryStatement) consome
+                return out;
+            }
             out.addAll(parseStatement(ctx, pos));
         }
         return out;
@@ -890,7 +894,11 @@ class JsBackend implements Backend {
         }
         pos[0]++;
         List<JsIr.JsStatement> finallyBody = List.of();
-        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel) {
+        // o label do finally é uma label nova da região do try — nunca um
+        // label do loop (ex.: o destino do catch no fim do try dentro de um
+        // for tem o continue label como próximo — não é um finally)
+        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel finallyStart
+                && !ctx.isLoopLabel(finallyStart.label())) {
             pos[0]++;
             List<LabelId> exits = new ArrayList<>();
             finallyBody = parseStatements(ctx, pos, Set.of(), exits);
