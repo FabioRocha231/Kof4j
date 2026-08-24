@@ -33,6 +33,10 @@ public final class Main {
 
     private static void run(String[] args) {
         if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]"); return; }
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]");
+            return;
+        }
         Path file = Path.of(args[1]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
 
@@ -145,7 +149,11 @@ public final class Main {
     }
 
 private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]");
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]");
+            return;
+        } return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         Path out = Path.of("build/classes");
@@ -406,6 +414,10 @@ private static void build(String[] args) {
 
     private static void check(String[] args) {
         if (args.length < 2) { System.err.println("usage: kof check <file.kf|dir>"); System.exit(1); return; }
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof check <file.kf|dir>");
+            return;
+        }
         Path src = Path.of(args[1]);
         if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
         List<Path> files = Files.isDirectory(src) ? collect(src) : List.of(src);
@@ -503,7 +515,11 @@ private static void build(String[] args) {
     }
 
     private static void serve(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof serve <file.kf> [--port <port>] [--host <host>]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof serve <file.kf> [--port <port>] [--host <host>]");
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof serve <file.kf> [--port <port>] [--host <host>]");
+            return;
+        } return; }
         Path file = Path.of(args[1]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
 

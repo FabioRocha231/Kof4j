@@ -19,6 +19,21 @@
 # package build stays fast.
 set -euo pipefail
 
+# Descoberta portátil do Python (OBS-006): o Windows pode expor apenas o
+# launcher `py` (sem `python3`/`python` no PATH).
+PYTHON=""
+for cand in "python3" "python" "py -3"; do
+    if command -v ${cand%% *} >/dev/null 2>&1; then
+        PYTHON="$cand"
+        break
+    fi
+done
+if [ -z "$PYTHON" ]; then
+    echo "package: python3/py not found — required for ZIP handling" >&2
+    exit 1
+fi
+py() { $PYTHON "$@"; }
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="$(cat "$ROOT/VERSION")"
 OUT="${OUTPUT_DIR:-$ROOT/dist}"
@@ -112,7 +127,7 @@ if [ "$WITH_JDK" = true ]; then
                     # — converter com cygpath (Git Bash) antes de extrair
                     TMP_WIN="$(cygpath -w "$TMP_JDK" 2>/dev/null || echo "$TMP_JDK")"
                     JDK_WIN="$(cygpath -w "$DIST_DIR/jdk" 2>/dev/null || echo "$DIST_DIR/jdk")"
-                    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$TMP_WIN" "$JDK_WIN"
+                    py -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$TMP_WIN" "$JDK_WIN"
                     SUB="$(ls -d "$DIST_DIR"/jdk/jdk-* 2>/dev/null | head -1 || true)"
                     if [ -n "$SUB" ] && [ "$SUB" != "$DIST_DIR/jdk" ]; then
                         mv "$SUB"/* "$DIST_DIR/jdk/"
@@ -144,7 +159,7 @@ if [ "$OS" = windows ]; then
     if command -v zip >/dev/null 2>&1; then
         zip -qr "$DIST_NAME.zip" "$DIST_NAME"
     else
-        python3 -c "import zipfile,sys,os; z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.join(r,f)) for r,d,fs in os.walk(sys.argv[2]) for f in fs]; z.close()" "$DIST_NAME.zip" "$DIST_NAME"
+        py -c "import zipfile,sys,os; z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.join(r,f)) for r,d,fs in os.walk(sys.argv[2]) for f in fs]; z.close()" "$DIST_NAME.zip" "$DIST_NAME"
     fi
     ARCHIVE="$DIST_NAME.zip"
 else

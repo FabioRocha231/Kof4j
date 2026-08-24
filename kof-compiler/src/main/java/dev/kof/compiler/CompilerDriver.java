@@ -1074,6 +1074,24 @@ private Target target = Target.JVM;
                             && isNumeric(accType) && isNumeric(rightType);
                     if ((isArithmetic || isNumericComparison)
                             && isNumeric(accType) && isNumeric(rightType)) {
+                        // OBS-009: divisão (ou resto) por zero constante é
+                        // detectada em compile-time — o compilador conhece a
+                        // intenção; o usuário não vê o ArithmeticException do
+                        // JVM.
+                        if (("/".equals(be.operator()) || "%".equals(be.operator()))
+                                && be.right() instanceof LiteralExpr lit
+                                && isZeroLiteral(lit)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(be.position() != null ? be.position().file() : "",
+                                        be.position() != null ? be.position().line() : 0,
+                                        be.position() != null ? be.position().column() : 0,
+                                        0,
+                                        "division by zero: constant " + be.operator()
+                                                + " by zero is not allowed",
+                                        "ARITH001");
+                            }
+                            yield localIdx;
+                        }
                         Type commonType = commonNumericType(accType, rightType);
                         emitWideningIfNeeded(ops, accType, commonType);
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
@@ -2510,6 +2528,10 @@ private Target target = Target.JVM;
                     if (Type.isString(recvType)) {
                         String mn = mc.methodName();
                         if ("charAt".equals(mn)) yield Type.PrimitiveType.CHAR;
+                        if ("toInt".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("toLong".equals(mn)) yield Type.PrimitiveType.LONG;
+                        if ("toDouble".equals(mn)) yield Type.PrimitiveType.DOUBLE;
+                        if ("toFloat".equals(mn)) yield Type.PrimitiveType.FLOAT;
                         if ("length".equals(mn) || "indexOf".equals(mn) || "compareTo".equals(mn)) yield Type.PrimitiveType.INT;
                         if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn)
                                 || "equals".equals(mn) || "equalsIgnoreCase".equals(mn)) {
@@ -2786,6 +2808,18 @@ private Target target = Target.JVM;
         if (conv != null) {
             ops.add(new KofUnary(conv, from));
         }
+    }
+
+    private static boolean isZeroLiteral(LiteralExpr lit) {
+        if (lit.value() == null) return false;
+        String v = lit.value().trim();
+        boolean zero = "0".equals(v) || "-0".equals(v)
+                || "0.0".equals(v) || "-0.0".equals(v) || "0.00".equals(v);
+        return switch (lit.kind()) {
+            case ConcreteLiteralKind.INT, ConcreteLiteralKind.LONG -> zero;
+            case ConcreteLiteralKind.FLOAT, ConcreteLiteralKind.DOUBLE -> zero;
+            default -> false;
+        };
     }
 
     private Type boxedTypeFor(Type primitive) {
