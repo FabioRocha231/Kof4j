@@ -296,6 +296,7 @@ main() {
 | KofLogE2ETest | 10 | kof.log: níveis, stderr, off, JSON estruturado, correlation ID, LOG001 |
 | JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
 | KofDbE2ETest | 7 | kof.db: JDBC, query<T>, transaction, rollback, DB001 |
+| KofOrmE2ETest | 8 | kof.orm: entity, create/save/find/all/where/delete/count/migrate, unique, PK não-numérica, ORM001/ORM002 |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |

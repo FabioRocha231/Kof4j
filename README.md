@@ -161,6 +161,7 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.config (arquivo > env > profile, typed) | ✅ | CONF001 | CONF001 |
 | kof.log (níveis, off, JSON estruturado, requestId) | ✅ | LOG001 | LOG001 |
 | kof.db (JDBC, query tipada, `transaction {}`) | ✅ | DB001 | DB001 |
+| kof.orm (`entity`, create/save/find/all/where/delete/count/migrate) | ✅ | ORM001 | ORM001 |
 | JSON Float/Double + arrays (`json.decode<Int[]>`) | ✅ | — | — |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
