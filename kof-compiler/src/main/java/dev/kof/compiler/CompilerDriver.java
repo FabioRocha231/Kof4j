@@ -1241,6 +1241,9 @@ private Target target = Target.JVM;
                             yield localIdx;
                         }
                         Type commonType = commonNumericType(accType, rightType);
+                        if (!fpSupportedOnNative(commonType, be.position())) {
+                            yield localIdx;
+                        }
                         emitWideningIfNeeded(ops, accType, commonType);
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
                         emitWideningIfNeeded(ops, rightType, commonType);
@@ -1248,6 +1251,14 @@ private Target target = Target.JVM;
                         accType = commonType;
                     } else if ("+".equals(be.operator())
                             && (Type.isString(accType) || Type.isString(rightType))) {
+                        // concatenação com float/double no Native formataria
+                        // os bits como inteiro — diagnóstico em vez de lixo
+                        if ((Type.isString(accType) && isFloatingPoint(rightType))
+                                || (Type.isString(rightType) && isFloatingPoint(accType))) {
+                            fpSupportedOnNative(isFloatingPoint(rightType) ? rightType : accType,
+                                    be.position());
+                            yield localIdx;
+                        }
                         if (!Type.isString(accType) && isPrimitiveType(accType)) boxPrimitive(ops, accType);
                         ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
                                 List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
@@ -1474,6 +1485,10 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (("print".equals(mc.methodName()) || "println".equals(mc.methodName())) && mc.arguments().size() == 1) {
+                    Type printedType = inferExprType(mc.arguments().get(0), locals);
+                    if (!fpSupportedOnNative(printedType, mc.position())) {
+                        yield localIdx;
+                    }
                     ops.add(new KofGetStatic(
                             new Type.ClassType("java.lang", "System", List.of()),
                             "out", new Type.ClassType("java.io", "PrintStream", List.of())));
@@ -3416,6 +3431,36 @@ private Target target = Target.JVM;
         return ">".equals(op) || "<".equals(op) || ">=".equals(op) || "<=".equals(op) || "==".equals(op) || "!=".equals(op);
     }
 
+    /**
+     * FLT001: no Native, float/double ainda não têm aritmética SSE nem
+     * formatação real (os bits vivem na pilha como inteiros). Operações de
+     * ponto flutuante viram diagnóstico em compile-time — nunca resultado
+     * silenciosamente errado. JSON já tem o próprio código (JSN001).
+     */
+    private boolean fpSupportedOnNative(Type type, SourcePosition pos) {
+        if (target != Target.NATIVE || type == null) return true;
+        if (!(type instanceof Type.PrimitiveType pt)) return true;
+        String name = pt.name();
+        if ("float".equals(name) || "double".equals(name)) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error(pos != null ? pos.file() : "",
+                        pos != null ? pos.line() : 0,
+                        pos != null ? pos.column() : 0,
+                        0,
+                        "floating-point arithmetic/printing is not supported on the Native target yet"
+                                + " (use Int/Long for now)",
+                        "FLT001");
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean isFloatingPoint(Type type) {
+        return type instanceof Type.PrimitiveType pt
+                && ("float".equals(pt.name()) || "double".equals(pt.name()));
+    }
+
     private int jsonListTag(Type elemType) {
         if (BuiltinTypes.isString(elemType)) return 1;
         if (elemType instanceof Type.PrimitiveType pt && "bool".equals(pt.name())) return 2;
@@ -3581,6 +3626,9 @@ private Target target = Target.JVM;
     private int emitComparisonShortcut(BinaryExpr bin, List<KofOperation> ops, String owner,
                                        int localIdx, List<IRLocalVariable> locals) {
         Type common = comparisonOperandType(bin, locals);
+        if (!fpSupportedOnNative(common, bin.position())) {
+            return localIdx;
+        }
         localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
         emitWideningIfNeeded(ops, inferExprType(bin.left(), locals), common);
         localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
