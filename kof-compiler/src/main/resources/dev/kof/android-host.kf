@@ -1,0 +1,30 @@
+// ─────────────────────────────────────────────────────────────────
+// Host sintetizado do target kof-android — escrito EM KOF.
+//
+// O usuário nunca escreve Activity: a intenção continua sendo
+// `Window("...")` dentro de main(). Este arquivo é mecanismo do
+// target e é compilado junto com o programa pelo PRÓPRIO compilador
+// Kof — não existe nenhum arquivo Java no projeto gerado.
+//
+// Se o programa declarar sua própria MainActivity (em Kof, extendendo
+// android.app.Activity), esta versão embutida é ignorada.
+// ─────────────────────────────────────────────────────────────────
+
+import android.app.Activity
+import android.os.Bundle
+import android.webkit.WebView
+
+class MainActivity extends Activity {
+
+    Void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState)
+
+        var web = new WebView(this)
+        web.getSettings().setJavaScriptEnabled(true)
+        web.getSettings().setDomStorageEnabled(true)
+        web.getSettings().setAllowFileAccess(true)
+
+        setContentView(web)
+        web.loadUrl("file:///android_asset/kof/index.html")
+    }
+}

@@ -10,22 +10,21 @@ import java.util.zip.ZipOutputStream;
 /**
  * AndroidProjectWriter — Fase 1 do target kof-android (ver
  * docs/targets/KOFANDROID.md): transforma a saída do backend JVM num
- * projeto Maven pronto para `mvn verify`.
+ * APK de debug pronto para `mvn verify`.
  *
  * Layout gerado em outputDir:
  *
- *   pom.xml                                              (orquestra aapt2/d8/apksigner)
+ *   pom.xml                                              (pipeline aapt2/d8/apksigner)
  *   src/main/AndroidManifest.xml
- *   src/main/java/dev/kof/app/MainActivity.java          (host WebView)
- *   src/main/assets/kof/                                 (saída KofJS)
- *   libs/kof-app.jar                                     (bytecode das classes Kof)
+ *   src/main/assets/kof/                                 (saída KofJS p/ WebView)
+ *   libs/kof-app.jar                                     (bytecode: programa + host Activity EM KOF)
+ *   README.txt
  *
- * O código do usuário é 100% Kof. Os únicos artefatos não-Kof são o
- * mínimo irreduzível de mecanismo da plataforma: o manifesto XML e a
- * Activity host (Java) — nunca Kotlin, nunca Gradle.
- *
- * Nada aqui executa código do usuário: o pipeline chama os binários do
- * SDK (build-tools) e o d8 converte o jar para dex.
+ * FILOSOFIA: o código do usuário é 100% Kof — inclusive a host
+ * Activity (dev/kof/android-host.kf, compilada junto pelo mesmo
+ * frontend). ZERO Java, ZERO Kotlin, ZERO Gradle no projeto gerado;
+ * dependências são resolvidas pelo Kof (ExternalClasspath), nunca por
+ * arquivo de build — o pom é só cola dos binários oficiais do SDK.
  */
 final class AndroidProjectWriter {
 
@@ -53,10 +52,9 @@ final class AndroidProjectWriter {
         Files.createDirectories(libs);
         writeJar(outputDir, libs.resolve("kof-app.jar"));
 
-        // 3. pom.xml + host Activity + manifesto
+        // 3. pom.xml (cola do pipeline SDK, sem dependências) + manifesto
         writePom(outputDir);
         writeManifest(outputDir);
-        writeMainActivity(outputDir);
 
         // 4. instruções honestas na raiz — sem mágica
         Files.writeString(outputDir.resolve("README.txt"), """
@@ -74,8 +72,10 @@ final class AndroidProjectWriter {
                     adb install target/kof-app.apk
 
                 - A UI (kof.ui) renderiza via WebView carregando assets/kof/.
-                - Classes Kof que extendem componentes android.* vão no jar;
-                  use android.jar no ExternalClasspath da compilação.
+                - O código é 100%% Kof: a host Activity (dev/kof/android-host.kf)
+                  foi compilada junto pelo próprio compilador — nada de Java.
+                - Dependências são geridas pelo Kof (ExternalClasspath);
+                  o pom.xml NÃO declara dependências.
                 """.formatted(BUILD_TOOLS, API_LEVEL, APP_PACKAGE));
     }
 
@@ -243,7 +243,10 @@ final class AndroidProjectWriter {
         Files.createDirectories(manifest.getParent());
         Files.writeString(manifest, """
                 <?xml version="1.0" encoding="utf-8"?>
-                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                <!-- Manifesto = dados da plataforma; o CÓDIGO (host Activity)
+                     é Kof compilado em libs/kof-app.jar -->
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+                    package="%s">
 
                     <application
                         android:label="%s"
@@ -260,50 +263,7 @@ final class AndroidProjectWriter {
                     </application>
 
                 </manifest>
-                """.formatted(APP_LABEL));
+                """.formatted(APP_PACKAGE, APP_LABEL));
     }
 
-    /**
-     * Host sintetizado: um WebView fullscreen carregando os assets KofJS.
-     * O usuário nunca escreve Activity — a intenção continua sendo
-     * `Window("...")`; este arquivo é mecanismo do target.
-     */
-    private void writeMainActivity(Path out) throws IOException {
-        Path java = out.resolve("src/main/java/" + APP_PACKAGE.replace('.', '/') + "/MainActivity.java");
-        Files.createDirectories(java.getParent());
-        Files.writeString(java, """
-                package %s;
-
-                import android.app.Activity;
-                import android.os.Bundle;
-                import android.webkit.WebSettings;
-                import android.webkit.WebView;
-
-                public class MainActivity extends Activity {
-                    private WebView webView;
-
-                    @Override
-                    public void onCreate(Bundle savedInstanceState) {
-                        super.onCreate(savedInstanceState);
-                        webView = new WebView(this);
-                        WebSettings settings = webView.getSettings();
-                        settings.setJavaScriptEnabled(true);
-                        settings.setDomStorageEnabled(true);
-                        settings.setAllowFileAccess(true);
-                        // ES modules vindo de file:// exigem as duas flags
-                        // abaixo (deprecated mas sem dependência externa)
-                        settings.setAllowFileAccessFromFileURLs(true);
-                        settings.setAllowUniversalAccessFromFileURLs(true);
-                        setContentView(webView);
-                        webView.loadUrl("file:///android_asset/kof/index.html");
-                    }
-
-                    @Override
-                    protected void onDestroy() {
-                        if (webView != null) webView.destroy();
-                        super.onDestroy();
-                    }
-                }
-                """.formatted(APP_PACKAGE));
-    }
 }

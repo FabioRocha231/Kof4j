@@ -137,7 +137,11 @@ private Target target = Target.JVM;
                 return new CompilationResult(false, diagnostics, outputDir);
             }
             unit = desugarTests(unit);
+            if (target == Target.ANDROID) {
+                unit = appendAndroidHostIfNeeded(unit);
+            }
             semanticAnalyzer = new SemanticAnalyzer();
+            semanticAnalyzer.setExternalTypes(externalClasspath);
             semanticAnalyzer.analyze(unit, diagnostics);
             if (diagnostics.hasErrors()) {
                 return new CompilationResult(false, diagnostics, outputDir);
@@ -178,6 +182,39 @@ private Target target = Target.JVM;
         }
     }
 
+    /**
+     * Target android: se o programa não declarou a própria MainActivity
+     * (em Kof), injeta o host WebView embutido — escrito EM KOF, compilado
+     * pelo mesmo frontend. Nenhum arquivo Java é gerado.
+     */
+    private CompilationUnitNode appendAndroidHostIfNeeded(CompilationUnitNode unit) {
+        boolean userHasHost = unit.declarations().stream()
+                .anyMatch(d -> d instanceof TypeDeclarationNode t && "MainActivity".equals(t.name()));
+        if (userHasHost) return unit;
+        try (var in = CompilerDriver.class.getResourceAsStream("/dev/kof/android-host.kf")) {
+            String hostSource = in != null
+                    ? new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    : Files.readString(Path.of("src/main/resources/dev/kof/android-host.kf"));
+            DiagnosticCollector silent = new DiagnosticCollector();
+            Lexer lexer = new Lexer(hostSource, "android-host.kf", silent);
+            Parser parser = new Parser(lexer.tokenize(), silent, "android-host.kf");
+            CompilationUnitNode hostUnit = parser.parse();
+            List<String> imports = new ArrayList<>(unit.imports());
+            for (String imp : hostUnit.imports()) {
+                if (!imports.contains(imp)) imports.add(imp);
+            }
+            List<AstNode> decls = new ArrayList<>(unit.declarations());
+            decls.addAll(hostUnit.declarations());
+            return new CompilationUnitNode(unit.position(), unit.packageName(), imports, decls);
+        } catch (IOException e) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "android host could not be loaded: " + e.getMessage(), "AND004");
+            }
+            return unit;
+        }
+    }
+
     private Backend selectBackend(Target target) {
         return switch (target) {
             case JVM -> new JvmBackend();
@@ -191,6 +228,9 @@ private Target target = Target.JVM;
 
     private Type toType(String typeName) {
         if ("List".equals(typeName) || "ArrayList".equals(typeName)) return BuiltinTypes.LIST;
+        // tipos simples declarados em import ("import android.webkit.WebView")
+        Type viaImports = qualifyViaImports(typeName);
+        if (viaImports != null) return viaImports;
         // tipos qualificados (android.os.Bundle): pacote vai no packageName
         // para o descritor JVM sair com barras (Landroid/os/Bundle;)
         int lastDot = typeName.lastIndexOf('.');
@@ -199,6 +239,19 @@ private Target target = Target.JVM;
                     typeName.substring(lastDot + 1), List.of());
         }
         return Type.of(typeName);
+    }
+
+    /** Espelho driver-side do qualifyViaImports do SemanticAnalyzer. */
+    private Type qualifyViaImports(String name) {
+        if (name.contains(".") || name.contains("<") || name.endsWith("[]")) return null;
+        if (currentUnit == null) return null;
+        for (String imp : currentUnit.imports()) {
+            if (!imp.endsWith("*") && imp.endsWith("." + name)) {
+                String pkg = imp.substring(0, imp.lastIndexOf('.'));
+                return new Type.ClassType(pkg, name, List.of());
+            }
+        }
+        return null;
     }
 
     /** Nome JVM da entidade: as classes top-level do programa ficam sem
@@ -2526,9 +2579,28 @@ private Target target = Target.JVM;
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
                 ops.add(new KofNewObject(type, argTypes));
                 ops.add(new KofDup());
-                List<Type> ctorParamTypes = (resolvedCtor != null
-                        && resolvedCtor.parameterTypes().size() == ne.arguments().size())
-                        ? resolvedCtor.parameterTypes() : argTypes;
+                List<Type> ctorParamTypes;
+                if (resolvedCtor != null
+                        && resolvedCtor.parameterTypes().size() == ne.arguments().size()) {
+                    ctorParamTypes = resolvedCtor.parameterTypes();
+                } else if (type instanceof Type.ClassType ct && !ct.packageName().isEmpty()
+                        && externalClasspath != null
+                        && externalClasspath.knows(ct.internalName())) {
+                    // construtor de classe externa: descritor exato do classpath
+                    ExternalClasspath.MethodSignature extCtor =
+                            externalClasspath.resolveConstructor(ct.internalName(), ne.arguments().size());
+                    if (extCtor != null) {
+                        List<Type> formal = new ArrayList<>();
+                        for (String d : extCtor.parameterDescriptors()) {
+                            formal.add(ExternalClasspath.typeFromDescriptor(d));
+                        }
+                        ctorParamTypes = formal;
+                    } else {
+                        ctorParamTypes = argTypes;
+                    }
+                } else {
+                    ctorParamTypes = argTypes;
+                }
                 localIdx = emitArgumentsWithFormalTypes(ne.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                 ops.add(new KofCall(type, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
@@ -2568,6 +2640,21 @@ private Target target = Target.JVM;
                     ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
                     ops.add(new KofLoadField(superType, fa.fieldName(), fieldType));
                     yield localIdx;
+                }
+                {
+                    // campo de classe EXTERNA: owner e tipo vêm do classpath
+                    Type extRecv = inferExprType(fa.receiver(), locals);
+                    if (extRecv instanceof Type.ClassType ect && !ect.packageName().isEmpty()
+                            && externalClasspath != null
+                            && externalClasspath.knows(ect.internalName())) {
+                        String desc = externalClasspath.resolveFieldType(ect.internalName(), fa.fieldName());
+                        if (desc != null) {
+                            localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                            ops.add(new KofLoadField(ect, fa.fieldName(),
+                                    ExternalClasspath.typeFromDescriptor(desc)));
+                            yield localIdx;
+                        }
+                    }
                 }
                 Type faType = inferExprType(fa.receiver(), locals);
                 if (KofProcess.isResult(faType) && KofProcess.isField(fa.fieldName())) {

@@ -10,6 +10,36 @@ class SemanticAnalyzer {
 
     private SymbolTable currentScope;
     private CompilationUnitNode currentUnit;
+
+    /** Classpath externo (android.jar etc.) para resolver membros de classes fora da IR. */
+    private ExternalClasspath externalTypes;
+
+    void setExternalTypes(ExternalClasspath cp) {
+        this.externalTypes = cp;
+    }
+
+    private boolean isExternal(Type.ClassType ct) {
+        return externalTypes != null && !ct.packageName().isEmpty()
+                && externalTypes.knows(ct.internalName());
+    }
+
+    /**
+     * Nome simples declarado em import vira tipo qualificado
+     * ("import android.webkit.WebView" → ClassType("android.webkit","WebView")).
+     * Sem isso, tipos de classes externas saem sem pacote e o descritor
+     * JVM quebra.
+     */
+    private Type qualifyViaImports(String name) {
+        if (name.contains(".") || name.contains("<") || name.endsWith("[]")) return null;
+        if (currentUnit == null) return null;
+        for (String imp : currentUnit.imports()) {
+            if (!imp.endsWith("*") && imp.endsWith("." + name)) {
+                String pkg = imp.substring(0, imp.lastIndexOf('.'));
+                return new Type.ClassType(pkg, name, List.of());
+            }
+        }
+        return null;
+    }
     private final Map<String, SymbolTable.ClassSymbol> knownClasses = new HashMap<>();
     private final java.util.Set<String> interfaceNames = new java.util.HashSet<>();
     private final Map<ExpressionNode, Type> expressionTypes = new IdentityHashMap<>();
@@ -138,6 +168,8 @@ class SemanticAnalyzer {
     private Type resolveType(String name, SymbolTable scope) {
         SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
         if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
+        Type viaImports = qualifyViaImports(name);
+        if (viaImports != null) return viaImports;
         return qualifiedType(Type.of(name));
     }
 
@@ -409,7 +441,8 @@ class SemanticAnalyzer {
             case VarDeclStmt vds -> {
                 Type varType;
                 if (vds.type() != null && !vds.type().isEmpty() && !"var".equals(vds.type())) {
-                    varType = Type.of(vds.type());
+                    Type viaImports = qualifyViaImports(vds.type());
+                    varType = viaImports != null ? viaImports : Type.of(vds.type());
                 } else if (vds.initializer() != null) {
                     varType = inferType(vds.initializer(), scope);
                 } else {
@@ -823,6 +856,24 @@ class SemanticAnalyzer {
                             checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
                             yield ms.returnType();
                         }
+                        // receiver de classe EXTERNA (android.* etc.): assinatura
+                        // vem do classpath — sem isso o lowering emitiria
+                        // invokevirtual com owner vazio
+                        if (isExternal(ct)) {
+                            ExternalClasspath.MethodSignature sig = externalTypes.resolveMethod(
+                                    ct.internalName(), mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> params = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    params.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                Type ret = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                                resolvedMethods.put(mc, new SymbolTable.MethodSymbol(mc.methodName(),
+                                        ct.internalName(), ret, params, 1,
+                                        SymbolTable.DispatchKind.INSTANCE));
+                                yield ret;
+                            }
+                        }
                     }
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.UnknownType.UNKNOWN;
@@ -843,6 +894,27 @@ class SemanticAnalyzer {
                             checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
                             resolvedMethods.put(mc, ms);
                             yield ms.returnType();
+                        }
+                        // chamada implícita (this) herdada de SUPERCLASSE
+                        // EXTERNA: setContentView(...) dentro da Activity Kof
+                        SymbolTable.ClassSymbol self = knownClasses.get(currentClassName);
+                        String superName = self != null ? self.superClass() : null;
+                        if (superName != null && externalTypes != null && !"Object".equals(superName)) {
+                            String superInternal = superName.contains(".")
+                                    ? superName.replace('.', '/') : superName;
+                            ExternalClasspath.MethodSignature sig = externalTypes.resolveMethod(
+                                    superInternal, mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> params = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    params.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                Type ret = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                                resolvedMethods.put(mc, new SymbolTable.MethodSymbol(mc.methodName(),
+                                        superInternal, ret, params, 1,
+                                        SymbolTable.DispatchKind.INSTANCE));
+                                yield ret;
+                            }
                         }
                     }
                 }
@@ -934,6 +1006,12 @@ class SemanticAnalyzer {
                 if (recvType instanceof Type.ClassType ct) {
                     SymbolTable.Symbol field = resolveInHierarchy(ct.name(), fa.fieldName());
                     if (field != null) yield field.type();
+                    if (isExternal(ct)) {
+                        String desc = externalTypes.resolveFieldType(ct.internalName(), fa.fieldName());
+                        if (desc != null) {
+                            yield ExternalClasspath.typeFromDescriptor(desc);
+                        }
+                    }
                 }
                 yield Type.UnknownType.UNKNOWN;
             }

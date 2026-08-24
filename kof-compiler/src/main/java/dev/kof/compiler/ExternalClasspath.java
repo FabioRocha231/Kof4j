@@ -139,6 +139,59 @@ final class ExternalClasspath {
         return null;
     }
 
+    /** Classe externa presente nos entries (por nome interno)? */
+    public synchronized boolean knows(String internalName) {
+        return loaded && internalName != null && classBytes.containsKey(internalName);
+    }
+
+    /**
+     * Construtor da classe externa com a aridade dada ("<init>").
+     */
+    public synchronized MethodSignature resolveConstructor(String ownerInternalName,
+                                                           int argumentCount) {
+        return resolveMethod(ownerInternalName, "<init>", argumentCount);
+    }
+
+    /**
+     * Campo declarado (ou herdado) numa classe externa. Retorna o
+     * descritor do tipo do campo, ou null se não existir.
+     */
+    public synchronized String resolveFieldType(String ownerInternalName, String fieldName) {
+        if (!loaded || ownerInternalName == null) return null;
+        String direct = findFieldDeclared(ownerInternalName, fieldName, 0);
+        if (direct != null) return direct;
+        String sup = superclassOf(ownerInternalName);
+        int hops = 0;
+        while (sup != null && !sup.equals("java/lang/Object") && hops++ < 32) {
+            String inherited = findFieldDeclared(sup, fieldName, 0);
+            if (inherited != null) return inherited;
+            sup = superclassOf(sup);
+        }
+        return null;
+    }
+
+    private String findFieldDeclared(String internalName, String fieldName, int depth) {
+        if (depth > 64) return null;
+        byte[] bytes = classBytes.get(internalName);
+        if (bytes == null) return null;
+        final String[] hit = new String[1];
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public org.objectweb.asm.FieldVisitor visitField(int access, String name,
+                                                                 String descriptor,
+                                                                 String signature, Object value) {
+                    if (name.equals(fieldName) && hit[0] == null) hit[0] = descriptor;
+                    return null;
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+            return hit[0];
+        } catch (Exception e) {
+            loadWarnings.add("class " + internalName + " could not be parsed: " + e.getMessage());
+            return null;
+        }
+    }
+
     private MethodSignature findDeclared(String internalName, String methodName,
                                          int argumentCount, int recursionDepth) {
         if (recursionDepth > 64) return null;

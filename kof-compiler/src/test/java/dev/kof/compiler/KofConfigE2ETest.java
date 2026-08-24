@@ -150,18 +150,31 @@ class KofConfigE2ETest {
     }
 
     @Test
-    void nativeAndJsReportConf001(@TempDir Path tempDir) throws IOException {
+    void nativeRunsConfigAndJsReportsConf001(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Config.kf");
         Files.writeString(source, """
                 main() {
                     println(config.int("server.port", 8080))
                 }
                 """);
+        // Native: config implementado em asm (kof_config_lookup) — roda de verdade
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("CONF001"),
-                nativeResult.diagnostics().getDiagnostics().toString());
-
+        assertTrue(nativeResult.success(), "" + nativeResult.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("native-out/Default/Main");
+        assertTrue(Files.exists(bin), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit: " + output);
+            assertTrue(output.contains("8080"), "Native output: " + output);
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+        // JS: ainda reporta CONF001
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
         assertFalse(jsResult.success());
         assertTrue(jsResult.diagnostics().getDiagnostics().toString().contains("CONF001"),

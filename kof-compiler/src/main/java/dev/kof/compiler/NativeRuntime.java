@@ -3387,17 +3387,22 @@ final class NativeRuntime {
                 cmpq %r15, %rdx
                 jne .Lcff_valskip
                 xorq %rdx, %rdx
+                pushq %rcx                   # salva o offset do '=' (rcx e scratch do loop)
             .Lcff_cmpline:
                 cmpq %r15, %rdx
-                jge .Lcff_foundkey
+                jge .Lcff_matched
                 movzbl (%rsp,%r9), %eax
                 movzbl (%r13,%rdx), %ecx
                 cmpl %ecx, %eax
-                jne .Lcff_valskip
+                jne .Lcff_keyfail
                 incq %rdx
                 incq %r9
                 jmp .Lcff_cmpline
-            .Lcff_foundkey:
+            .Lcff_keyfail:
+                popq %rcx                    # rebalanceia e vai para a proxima linha
+                jmp .Lcff_valskip
+            .Lcff_matched:
+                popq %rcx                    # recupera o offset do '='
                 leaq 1(%rcx), %rsi           # vs = '=' + 1
             .Lcff_vtls:
                 cmpq %r10, %rsi
