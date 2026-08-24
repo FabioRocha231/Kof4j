@@ -118,6 +118,13 @@ if [ "$WITH_JDK" = true ]; then
             rm -rf "$DIST_DIR/jdk/Contents"
         fi
         rm -f "$TMP_JDK"
+        # Verificação explícita: o JDK embarcado tem que existir com o
+        # layout esperado — nunca engolir falha de extração (Windows).
+        if [ ! -x "$DIST_DIR/jdk/bin/java" ] && [ ! -f "$DIST_DIR/jdk/bin/java.exe" ]; then
+            echo "package: ERROR — embedded JDK extraction failed (jdk/bin/java[.exe] not found)" >&2
+            find "$DIST_DIR/jdk" -maxdepth 2 2>/dev/null | head -15 >&2
+            exit 1
+        fi
         echo "package: embedded JDK ready at jdk/"
     fi
 fi
