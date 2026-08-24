@@ -944,6 +944,7 @@ public class NativeBackend implements Backend {
             if (os.contains("linux")) {
                 runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString(),
                         "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2",
+                        "--as-needed",
                         "-lc", "-l:libsqlite3.so.0", "-l:libmariadb.so.3"}, "ld");
             } else {
                 runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
