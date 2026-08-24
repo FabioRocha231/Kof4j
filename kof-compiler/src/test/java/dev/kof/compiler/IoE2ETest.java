@@ -27,7 +27,8 @@ class IoE2ETest {
                     "-Dstdout.encoding=UTF-8", "-cp", outDir.toString(), "Default.Main");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
             assertEquals(expected, output, "Unexpected output");
@@ -47,7 +48,8 @@ class IoE2ETest {
             ProcessBuilder pb = new ProcessBuilder(binFile.toString());
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
             assertEquals(expected, output, "Unexpected output");

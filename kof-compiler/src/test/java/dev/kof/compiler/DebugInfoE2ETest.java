@@ -65,7 +65,8 @@ class DebugInfoE2ETest {
             ProcessBuilder pb = new ProcessBuilder(bin.toString());
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Native should run");
             assertEquals("42", output);
@@ -79,7 +80,8 @@ class DebugInfoE2ETest {
             ProcessBuilder pb = new ProcessBuilder("javap", "-v", classFile.toString());
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String out = new String(p.getInputStream().readAllBytes());
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             p.waitFor();
             return out;
         } catch (InterruptedException e) {

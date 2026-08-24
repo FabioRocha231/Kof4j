@@ -26,7 +26,8 @@ class CoreRegressionE2ETest {
             ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             assertEquals(0, p.waitFor(), "JVM exit code, output: " + output);
             return output;
         } catch (InterruptedException e) {
@@ -296,7 +297,8 @@ class CoreRegressionE2ETest {
                     "Default.Main", "arquivo.txt", "segundo");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             assertEquals(0, p.waitFor(), "JVM exit code, output: " + output);
             assertEquals("2\narquivo.txt", output);
         } catch (InterruptedException e) {

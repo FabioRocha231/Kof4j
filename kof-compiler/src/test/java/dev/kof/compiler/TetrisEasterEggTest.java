@@ -41,7 +41,8 @@ class TetrisEasterEggTest {
                 stdin.write("q\n".getBytes());
                 stdin.flush();
             }
-            String output = new String(p.getInputStream().readAllBytes());
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0");
             assertTrue(output.contains("kof.tetris"), "Output should contain the tetris banner");
