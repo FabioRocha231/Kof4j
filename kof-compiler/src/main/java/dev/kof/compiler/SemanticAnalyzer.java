@@ -664,6 +664,27 @@ class SemanticAnalyzer {
                     }
                 }
                 if (mc.receiver() != null) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && "super".equals(rid.name())) {
+                        // super.method(args): resolve against the superclass
+                        // hierarchy of the enclosing class. The resolved symbol
+                        // is intentionally NOT registered in resolvedMethods —
+                        // lowering emits a non-virtual SUPER call.
+                        String superName = "Object";
+                        if (currentClassName != null) {
+                            SymbolTable.ClassSymbol self = knownClasses.get(currentClassName);
+                            if (self != null && self.superClass() != null && !"Object".equals(self.superClass())) {
+                                superName = self.superClass();
+                            }
+                        }
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        SymbolTable.Symbol m = resolveInHierarchy(superName, mc.methodName());
+                        if (m instanceof SymbolTable.MethodSymbol ms) {
+                            checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
+                            yield ms.returnType();
+                        }
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     Type recvType = inferType(mc.receiver(), scope);
                     if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();

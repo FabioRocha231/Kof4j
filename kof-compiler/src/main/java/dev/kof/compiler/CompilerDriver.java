@@ -82,6 +82,26 @@ private Target target = Target.JVM;
         return this;
     }
 
+    /**
+     * Classpath externo (.jar/.aar/diretórios) fornecido pelo build tool
+     * (Gradle no Android). Usado para resolver assinaturas de métodos de
+     * superclasses externas — o INVOKESPECIAL de super.metodo() exige o
+     * descritor exato declarado na classe externa.
+     */
+    private final ExternalClasspath externalClasspath = new ExternalClasspath();
+
+    public CompilerDriver setExternalClasspath(java.util.List<Path> entries) {
+        try {
+            externalClasspath.setEntries(entries);
+        } catch (java.io.IOException e) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "external classpath could not be read: " + e.getMessage(), "CP001");
+            }
+        }
+        return this;
+    }
+
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
@@ -1869,6 +1889,66 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 } else if (mc.receiver() != null) {
+                    if (mc.receiver() instanceof IdentifierExpr sid && "super".equals(sid.name())
+                            && !owner.isEmpty()) {
+                        // super.method(args): non-virtual call to the
+                        // superclass implementation — lowered to
+                        // INVOKESPECIAL on the direct superclass (JVM).
+                        if (target == Target.NATIVE && currentDiagnostics != null) {
+                            SourcePosition p = mc.position();
+                            currentDiagnostics.error(p != null ? p.file() : "",
+                                    p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                    "super." + mc.methodName()
+                                            + "() is not supported on the native target yet (SUP001)",
+                                    "SUP001");
+                            yield localIdx;
+                        }
+                        String superInternal = findSuperClass(owner);
+                        if (superInternal == null) superInternal = "java/lang/Object";
+                        // nomes declarados com pontos (android.view.View)
+                        // viram nome interno JVM para resolução e emissão
+                        superInternal = superInternal.replace('.', '/');
+                        Type superType = ownerTypeFromInternal(superInternal);
+                        SymbolTable.MethodSymbol superMethod = null;
+                        if (semanticAnalyzer != null) {
+                            String superSimple = superInternal.substring(superInternal.lastIndexOf('/') + 1);
+                            SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(superSimple, mc.methodName());
+                            if (s instanceof SymbolTable.MethodSymbol ms) superMethod = ms;
+                        }
+                        List<Type> paramTypes;
+                        Type returnType;
+                        ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
+                        ExternalClasspath.MethodSignature extSig = null;
+                        if (superMethod == null && osig == null && externalClasspath != null) {
+                            extSig = externalClasspath.resolveMethod(superInternal, mc.methodName(),
+                                    mc.arguments().size());
+                        }
+                        if (superMethod != null
+                                && superMethod.parameterTypes().size() == mc.arguments().size()) {
+                            paramTypes = superMethod.parameterTypes();
+                            returnType = superMethod.returnType();
+                        } else if (osig != null) {
+                            paramTypes = osig.parameterTypes();
+                            returnType = osig.returnType();
+                        } else if (extSig != null) {
+                            // assinatura real lida do classpath externo — o
+                            // descritor emitido casa com a classe externa
+                            List<Type> formal = new ArrayList<>();
+                            for (String d : extSig.parameterDescriptors()) {
+                                formal.add(ExternalClasspath.typeFromDescriptor(d));
+                            }
+                            paramTypes = formal;
+                            returnType = ExternalClasspath.typeFromDescriptor(extSig.returnDescriptor());
+                        } else {
+                            paramTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) paramTypes.add(inferExprType(arg, locals));
+                            returnType = inferExprType(mc, locals);
+                        }
+                        ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), paramTypes, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(superType, mc.methodName(), paramTypes, returnType, KofCallKind.SUPER));
+                        yield localIdx;
+                    }
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
                     if (KofUi.isUiType(recvType)) {
@@ -2054,24 +2134,26 @@ private Target target = Target.JVM;
                         }
                     }
                 } else {
-                    if ("super".equals(mc.methodName()) && semanticAnalyzer != null) {
+                    if ("super".equals(mc.methodName()) && semanticAnalyzer != null && !owner.isEmpty()) {
+                        // super(args): explicit superclass constructor call.
+                        // Classes without extends still honor it (Object).
                         String superName = findSuperClass(owner);
-                        if (superName != null) {
-                            Type superType = ownerTypeFromInternal(superName);
-                            SymbolTable.ClassSymbol superCs = semanticAnalyzer.getClass(superName.substring(superName.lastIndexOf('/') + 1));
-                            SymbolTable.ConstructorSymbol ctor = null;
-                            if (superCs != null) {
-                                SymbolTable.Symbol ctorSym = superCs.members().resolve("<init>");
-                                if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
-                            }
-                            List<Type> argTypes = new ArrayList<>();
-                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                            ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
-                            List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
-                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
-                            ops.add(new KofCall(superType, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
-                            yield localIdx;
+                        if (superName == null) superName = "java/lang/Object";
+                        Type superType = ownerTypeFromInternal(superName);
+                        SymbolTable.ClassSymbol superCs = semanticAnalyzer.getClass(
+                                superName.substring(superName.lastIndexOf('/') + 1));
+                        SymbolTable.ConstructorSymbol ctor = null;
+                        if (superCs != null) {
+                            SymbolTable.Symbol ctorSym = superCs.members().resolve("<init>");
+                            if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
                         }
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                        ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
+                        List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(superType, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                        yield localIdx;
                     }
                     SymbolTable.MethodSymbol selfMethod = semanticAnalyzer != null
                             ? semanticAnalyzer.getResolvedMethod(mc) : null;
@@ -3736,7 +3818,8 @@ private Target target = Target.JVM;
         if (!methods.stream().anyMatch(m -> m.name().equals("<init>"))) {
             methods.add(0, generateDefaultConstructor(internalName, superName, fields, fieldInits));
         }
-        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
+        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
+                typeId, lowerAnnotations(cls.annotations()));
     }
 
     private IRClass lowerInterface(InterfaceDeclarationNode iface, String packageName, int typeId) {
@@ -3749,7 +3832,8 @@ private Target target = Target.JVM;
             if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, true, List.of()));
             else if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field, List.of()));
         }
-        return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null, typeId);
+        return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null,
+                typeId, lowerAnnotations(iface.annotations()));
     }
 
     private IRClass lowerRecord(RecordDeclarationNode rec, String packageName, int typeId) {
@@ -3783,7 +3867,8 @@ private Target target = Target.JVM;
                         List.of(), fields, java.util.Map.of()));
             }
         }
-        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
+        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
+                typeId, lowerAnnotations(rec.annotations()));
     }
 
     private Type resolveWithTypeParams(String typeName, List<String> typeParams) {
@@ -3805,7 +3890,51 @@ private Target target = Target.JVM;
                 default -> null;
             };
         }
-        return new IRField(field.name(), fieldType, computeAccess(field.modifiers()), initVal);
+        return new IRField(field.name(), fieldType, computeAccess(field.modifiers()), initVal,
+                lowerAnnotations(field.annotations()));
+    }
+
+    /**
+     * Converte annotations do AST para a IR: nome resolvido para o formato
+     * interno JVM e valores já constantes (o parser só aceita literais).
+     */
+    private List<IRAnnotation> lowerAnnotations(List<AnnotationNode> annos) {
+        if (annos == null || annos.isEmpty()) return List.of();
+        List<IRAnnotation> out = new ArrayList<>();
+        for (AnnotationNode anno : annos) {
+            java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+            for (AnnotationPair pair : anno.pairs()) {
+                String key = pair.key() != null ? pair.key()
+                        : (anno.pairs().size() == 1 ? "value" : null);
+                if (key != null) values.put(key, pair.value());
+            }
+            out.add(new IRAnnotation(resolveAnnotationInternalName(anno.name()), values));
+        }
+        return out;
+    }
+
+    /**
+     * Resolve o nome da annotation para o formato interno JVM. Nomes
+     * qualificados vão direto; simples usam imports do arquivo; os de
+     * java.lang são embutidos; senão assume-se a própria classe local.
+     */
+    private String resolveAnnotationInternalName(String name) {
+        if (name.contains(".")) return name.replace('.', '/');
+        switch (name) {
+            case "Override": return "java/lang/Override";
+            case "Deprecated": return "java/lang/Deprecated";
+            case "FunctionalInterface": return "java/lang/FunctionalInterface";
+            case "SafeVarargs": return "java/lang/SafeVarargs";
+            case "SuppressWarnings": return "java/lang/SuppressWarnings";
+        }
+        if (currentUnit != null) {
+            for (String imp : currentUnit.imports()) {
+                if (!"*.kof".equals(imp) && imp.endsWith("." + name)) {
+                    return imp.replace('.', '/');
+                }
+            }
+        }
+        return name;
     }
 
     private IRMethod lowerMethod(MethodDeclarationNode method, String owner, boolean isInterface, List<String> typeParams) {
@@ -3860,7 +3989,20 @@ private Target target = Target.JVM;
                 : new KofDebugInfo(new java.util.HashMap<>(currentDebugPositions));
         currentDebugPositions.clear();
         return new IRMethod(method.name(), returnType, paramTypes, access, method.thrownExceptions(),
-                body, locals, debugInfo);
+                body, locals, debugInfo,
+                lowerAnnotations(method.annotations()), lowerParameterAnnotations(method.parameters()));
+    }
+
+    /** Annotations por parâmetro, alinhadas à ordem de parameterTypes. */
+    private List<List<IRAnnotation>> lowerParameterAnnotations(List<FormalParameterNode> params) {
+        List<List<IRAnnotation>> out = new ArrayList<>();
+        boolean any = false;
+        for (FormalParameterNode p : params) {
+            List<IRAnnotation> annos = lowerAnnotations(p.annotations());
+            if (!annos.isEmpty()) any = true;
+            out.add(annos);
+        }
+        return any ? out : List.of();
     }
 
     /**
@@ -3956,7 +4098,8 @@ private Target target = Target.JVM;
         for (StatementNode stmt : ctor.body()) localIdx = emitStatement(stmt, ops, owner, localIdx, localVars, Type.PrimitiveType.VOID);
         ops.add(new KofReturnVoid());
         return new IRMethod("<init>", Type.PrimitiveType.VOID, paramTypes, access, ctor.thrownExceptions(),
-                List.of(new IRBasicBlock(0, ops)), localVars);
+                List.of(new IRBasicBlock(0, ops)), localVars, KofDebugInfo.EMPTY,
+                lowerAnnotations(ctor.annotations()), lowerParameterAnnotations(ctor.parameters()));
     }
 
     private IRMethod generateDefaultConstructor(String owner, String superName, List<IRField> fields,

@@ -340,6 +340,65 @@ class KofOrmE2ETest {
         }
     }
 
+    private static boolean tcpOpen(String host, int port) {
+        try (java.net.Socket s = new java.net.Socket(host, port)) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Test
+    void mariadbCrud(@TempDir Path tempDir) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(tcpOpen("localhost", 3306),
+                "MariaDB not reachable (start it: docker run -d -p 3306:3306 -e MARIADB_ROOT_PASSWORD=kof mariadb:11)");
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:mariadb://localhost:3306/kof_test_" + System.nanoTime() + "?user=root&password=kof&allowMultiQueries=true&createDatabaseIfNotExist=true\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.saveAll<User>(db, new List<User>())\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    orm.save(db, User(0, \"Ana\", \"ana@kof.dev\", 25))\n"
+                + "                    var mel = orm.find<User>(db, 1)\n"
+                + "                    println(mel.name)\n"
+                + "                    println(orm.count<User>(db))\n"
+                + "                    var velhos = orm.where<User>(db, \"age\", \">\", 26)\n"
+                + "                    println(velhos.size)\n"
+                + "                    orm.deleteAll<User>(db)\n"
+                + "                    println(orm.count<User>(db))\n"
+                + "                    db.close(db)\n"
+                + "                }\n"
+                + "                ");
+        runJvmWithExtra(source, tempDir.resolve("out"), findDriverJar("mariadb", "MariaDB"), "Mel\n2\n1\n0");
+    }
+
+    @Test
+    void postgresCrud(@TempDir Path tempDir) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(tcpOpen("localhost", 5432),
+                "PostgreSQL not reachable (start it: docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=kof postgres)");
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
++ "                    var db = db.connect(\"jdbc:postgresql://localhost:5432/kof_test?user=postgres&password=kof\")\n"
++ "                    db.execute(db, \"DROP TABLE IF EXISTS \\\"user\\\"\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.saveAll<User>(db, new List<User>())\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    orm.save(db, User(0, \"Ana\", \"ana@kof.dev\", 25))\n"
+                + "                    var mel = orm.find<User>(db, 1)\n"
+                + "                    println(mel.name)\n"
+                + "                    println(orm.count<User>(db))\n"
+                + "                    var velhos = orm.where<User>(db, \"age\", \">\", 26)\n"
+                + "                    println(velhos.size)\n"
+                + "                    orm.deleteAll<User>(db)\n"
+                + "                    println(orm.count<User>(db))\n"
+                + "                    db.close(db)\n"
+                + "                }\n"
+                + "                ");
+        runJvmWithExtra(source, tempDir.resolve("out"), findDriverJar("postgresql", "PostgreSQL"), "Mel\n2\n1\n0");
+    }
+
     private static String mongoClasspath() {
         StringBuilder cp = new StringBuilder();
         String classpath = System.getProperty("java.class.path");

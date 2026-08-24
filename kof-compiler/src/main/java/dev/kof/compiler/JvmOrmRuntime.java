@@ -49,6 +49,7 @@ final class JvmOrmRuntime {
                 }
 
                 private static String kof_orm_dialect(String id) throws Exception {
+                    if (kof_mongo_id(id)) return "mongo";
                     String product = kof_db_conn(id).getMetaData().getDatabaseProductName().toLowerCase();
                     if (product.contains("mysql") || product.contains("mariadb")) return "mysql";
                     if (product.contains("postgresql")) return "postgres";
@@ -76,9 +77,12 @@ final class JvmOrmRuntime {
                     };
                 }
 
-                private static String kof_orm_q(String ident) {
+                private static String kof_orm_q(String ident, String dialect) {
                     // identificadores sempre quotados — nomes de entidades
                     // podem ser palavras reservadas do SQL (ex.: user)
+                    if ("mysql".equals(dialect)) {
+                        return "`" + ident + "`";
+                    }
                     return "\\"" + ident + "\\"";
                 }
 
@@ -96,14 +100,14 @@ final class JvmOrmRuntime {
                     }
                     java.util.List<OrmField> fields = kof_orm_schema(schema);
                     String dialect = kof_orm_dialect(id);
-                    StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS ").append(kof_orm_q(table)).append(" (");
+                    StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS ").append(kof_orm_q(table, dialect)).append(" (");
                     for (int i = 0; i < fields.size(); i++) {
                         if (i > 0) ddl.append(", ");
                         OrmField f = fields.get(i);
                         if (f.generated) {
-                            ddl.append(kof_orm_q(f.name)).append(' ').append(kof_orm_pk_ddl(dialect));
+                            ddl.append(kof_orm_q(f.name, dialect)).append(' ').append(kof_orm_pk_ddl(dialect));
                         } else {
-                            ddl.append(kof_orm_q(f.name)).append(' ').append(kof_orm_sql_type(f.type, dialect));
+                            ddl.append(kof_orm_q(f.name, dialect)).append(' ').append(kof_orm_sql_type(f.type, dialect));
                             if (f.unique) ddl.append(" UNIQUE");
                         }
                     }
@@ -145,7 +149,8 @@ final class JvmOrmRuntime {
                 }
 
                 public static Object kof_orm_save(String id, Object obj, String table, String schema) throws Exception {
-                    java.util.List<OrmField> fields = kof_orm_schema(schema);
+
+                    String dialect = kof_orm_dialect(id);                    java.util.List<OrmField> fields = kof_orm_schema(schema);
                     int pkIndex = kof_orm_pkIndex(fields);
                     java.lang.reflect.RecordComponent[] comps = obj.getClass().getRecordComponents();
                     Object[] values = new Object[comps.length];
@@ -177,12 +182,12 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         for (int i = 0; i < fields.size(); i++) {
                             if (i == pkIndex) continue;
                             if (cols.length() > 0) { cols.append(", "); marks.append(", "); }
-                            cols.append(kof_orm_q(fields.get(i).name));
+                            cols.append(kof_orm_q(fields.get(i).name, dialect));
                             marks.append('?');
                             binds.add(values[i]);
                         }
                         try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                                "INSERT INTO " + kof_orm_q(table) + " (" + cols + ") VALUES (" + marks + ")",
+                                "INSERT INTO " + kof_orm_q(table, dialect) + " (" + cols + ") VALUES (" + marks + ")",
                                 java.sql.Statement.RETURN_GENERATED_KEYS)) {
                             for (int i = 0; i < binds.size(); i++) ps.setObject(i + 1, binds.get(i));
                             ps.executeUpdate();
@@ -200,13 +205,13 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                     for (int i = 0; i < fields.size(); i++) {
                         if (i == pkIndex) continue;
                         if (sets.length() > 0) sets.append(", ");
-                        sets.append(kof_orm_q(fields.get(i).name)).append(" = ?");
+                        sets.append(kof_orm_q(fields.get(i).name, dialect)).append(" = ?");
                         binds.add(values[i]);
                     }
                     binds.add(pk);
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                            "UPDATE " + kof_orm_q(table) + " SET " + sets + " WHERE "
-                                    + kof_orm_q(fields.get(pkIndex).name) + " = ?")) {
+                            "UPDATE " + kof_orm_q(table, dialect) + " SET " + sets + " WHERE "
+                                    + kof_orm_q(fields.get(pkIndex).name, dialect) + " = ?")) {
                         for (int i = 0; i < binds.size(); i++) ps.setObject(i + 1, binds.get(i));
                         if (ps.executeUpdate() > 0) {
                             return obj;
@@ -218,12 +223,12 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                     java.util.List<Object> insertBinds = new java.util.ArrayList<>();
                     for (int i = 0; i < fields.size(); i++) {
                         if (cols.length() > 0) { cols.append(", "); marks.append(", "); }
-                        cols.append(kof_orm_q(fields.get(i).name));
+                        cols.append(kof_orm_q(fields.get(i).name, dialect));
                         marks.append('?');
                         insertBinds.add(values[i]);
                     }
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                            "INSERT INTO " + kof_orm_q(table) + " (" + cols + ") VALUES (" + marks + ")")) {
+                            "INSERT INTO " + kof_orm_q(table, dialect) + " (" + cols + ") VALUES (" + marks + ")")) {
                         for (int i = 0; i < insertBinds.size(); i++) ps.setObject(i + 1, insertBinds.get(i));
                         ps.executeUpdate();
                     }
@@ -233,11 +238,24 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                 private static Object kof_orm_newInstance(Class<?> type, Object[] values) throws Exception {
                     java.lang.reflect.Constructor<?> ctor = type.getDeclaredConstructors()[0];
                     ctor.setAccessible(true);
+                    // o reflection não faz widening: o generated key do
+                    // MariaDB/MySQL vem como BigDecimal — normaliza para
+                    // o tipo declarado (long/int)
+                    java.lang.Class<?>[] params = ctor.getParameterTypes();
+                    for (int i = 0; i < values.length && i < params.length; i++) {
+                        if (values[i] == null) continue;
+                        if (params[i] == long.class && values[i] instanceof Number) {
+                            values[i] = ((Number) values[i]).longValue();
+                        } else if (params[i] == int.class && values[i] instanceof Number) {
+                            values[i] = ((Number) values[i]).intValue();
+                        }
+                    }
                     return ctor.newInstance(values);
                 }
 
                 public static Object kof_orm_find(String id, Object key, String table, String schema, String className) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq("_id", key);
                         Object iter = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass()).invoke(coll, filter);
@@ -248,15 +266,16 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                     java.util.List<OrmField> fields = kof_orm_schema(schema);
                     String pk = fields.get(kof_orm_pkIndex(fields)).name;
                     java.util.ArrayList<Object> rows = kof_db_query1(id,
-                            "SELECT * FROM " + kof_orm_q(table) + " WHERE " + kof_orm_q(pk) + " = ?", key, className);
+                            "SELECT * FROM " + kof_orm_q(table, dialect) + " WHERE " + kof_orm_q(pk, dialect) + " = ?", key, className);
                     return rows.isEmpty() ? null : rows.get(0);
                 }
 
                 public static java.util.ArrayList<Object> kof_orm_all(String id, String table, String schema, String className) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         return kof_mongo_query_all(id, table, className);
                     }
-                    return kof_db_query0(id, "SELECT * FROM " + kof_orm_q(table), className);
+                    return kof_db_query0(id, "SELECT * FROM " + kof_orm_q(table, dialect), className);
                 }
 
                 private static java.util.ArrayList<Object> kof_mongo_query_all(String id, String table, String className) throws Exception {
@@ -275,7 +294,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                 }
 
                 public static java.util.ArrayList<Object> kof_orm_where(String id, String field, Object value, String table, String schema, String className) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq(field, value);
                         Object iter = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass()).invoke(coll, filter);
@@ -290,18 +310,19 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         }
                         return out;
                     }
-                    return kof_db_query1(id, "SELECT * FROM " + kof_orm_q(table) + " WHERE "
-                            + kof_orm_q(field) + " = ?", value, className);
+                    return kof_db_query1(id, "SELECT * FROM " + kof_orm_q(table, dialect) + " WHERE "
+                            + kof_orm_q(field, dialect) + " = ?", value, className);
                 }
 
                 public static long kof_orm_count(String id, String table, String schema) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object n = kof_mongo_method(coll.getClass(), "countDocuments", 0).invoke(coll);
                         return ((Number) n).longValue();
                     }
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                            "SELECT COUNT(*) FROM " + kof_orm_q(table))) {
+                            "SELECT COUNT(*) FROM " + kof_orm_q(table, dialect))) {
                         try (java.sql.ResultSet rs = ps.executeQuery()) {
                             return rs.next() ? rs.getLong(1) : 0L;
                         }
@@ -309,14 +330,15 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                 }
 
                 public static boolean kof_orm_migrate(String id, String name, String sql) throws Exception {
-                    // tabela de histórico — uma migração roda uma única vez
+
+                    String dialect = kof_orm_dialect(id);                    // tabela de histórico — uma migração roda uma única vez
                     kof_db_execute(id, "CREATE TABLE IF NOT EXISTS "
-                            + kof_orm_q("kof_migrations") + " ("
-                            + kof_orm_q("name") + " VARCHAR(255) PRIMARY KEY, "
-                            + kof_orm_q("applied_at") + " BIGINT)");
+                            + kof_orm_q("kof_migrations", dialect) + " ("
+                            + kof_orm_q("name", dialect) + " VARCHAR(255) PRIMARY KEY, "
+                            + kof_orm_q("applied_at", dialect) + " BIGINT)");
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                            "SELECT COUNT(*) FROM " + kof_orm_q("kof_migrations")
-                                    + " WHERE " + kof_orm_q("name") + " = ?")) {
+                            "SELECT COUNT(*) FROM " + kof_orm_q("kof_migrations", dialect)
+                                    + " WHERE " + kof_orm_q("name", dialect) + " = ?")) {
                         ps.setString(1, name);
                         try (java.sql.ResultSet rs = ps.executeQuery()) {
                             if (rs.next() && rs.getLong(1) > 0) {
@@ -328,8 +350,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         return false;
                     }
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                            "INSERT INTO " + kof_orm_q("kof_migrations") + " ("
-                                    + kof_orm_q("name") + ", " + kof_orm_q("applied_at") + ") VALUES (?, ?)")) {
+                            "INSERT INTO " + kof_orm_q("kof_migrations", dialect) + " ("
+                                    + kof_orm_q("name", dialect) + ", " + kof_orm_q("applied_at", dialect) + ") VALUES (?, ?)")) {
                         ps.setString(1, name);
                         ps.setLong(2, System.currentTimeMillis());
                         ps.executeUpdate();
@@ -338,7 +360,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                 }
 
                 public static boolean kof_orm_delete(String id, Object key, String table, String schema) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq("_id", key);
                         Object r = kof_mongo_method(coll.getClass(), "deleteOne", 1, filter.getClass()).invoke(coll, filter);
@@ -346,13 +369,14 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                     }
                     java.util.List<OrmField> fields = kof_orm_schema(schema);
                     String pk = fields.get(kof_orm_pkIndex(fields)).name;
-                    return kof_db_execute1(id, "DELETE FROM " + kof_orm_q(table) + " WHERE "
-                            + kof_orm_q(pk) + " = ?", key) >= 0;
+                    return kof_db_execute1(id, "DELETE FROM " + kof_orm_q(table, dialect) + " WHERE "
+                            + kof_orm_q(pk, dialect) + " = ?", key) >= 0;
                 }
 
                 public static long kof_orm_count_where(String id, String field, Object value,
                         String table, String schema) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq(field, value);
                         Object n = kof_mongo_method(coll.getClass(), "countDocuments", 1,
@@ -360,8 +384,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         return ((Number) n).longValue();
                     }
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
-                            "SELECT COUNT(*) FROM " + kof_orm_q(table) + " WHERE "
-                                    + kof_orm_q(field) + " = ?")) {
+                            "SELECT COUNT(*) FROM " + kof_orm_q(table, dialect) + " WHERE "
+                                    + kof_orm_q(field, dialect) + " = ?")) {
                         ps.setObject(1, value);
                         try (java.sql.ResultSet rs = ps.executeQuery()) {
                             return rs.next() ? rs.getLong(1) : 0L;
@@ -370,14 +394,15 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                 }
 
                 public static boolean kof_orm_delete_all(String id, String table, String schema) throws Exception {
-                    if (kof_mongo_id(id)) {
+
+                    String dialect = kof_orm_dialect(id);                    if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object r = kof_mongo_method(coll.getClass(), "deleteMany", 1,
                                 kof_mongo_eq("_id", "").getClass().getInterfaces()[0]).invoke(coll,
                                 kof_mongo_empty_filter());
                         return ((Number) kof_mongo_method(r.getClass(), "getDeletedCount", 0).invoke(r)).longValue() > 0;
                     }
-                    return kof_db_execute(id, "DELETE FROM " + kof_orm_q(table)) >= 0;
+                    return kof_db_execute(id, "DELETE FROM " + kof_orm_q(table, dialect)) >= 0;
                 }
 
                 private static Object kof_mongo_empty_filter() throws Exception {
@@ -387,7 +412,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
 
                 public static java.util.ArrayList<Object> kof_orm_where_op(String id, String field, String op,
                         Object value, String table, String schema, String className) throws Exception {
-                    // whitelist: o operador é um literal do usuário, nunca
+
+                    String dialect = kof_orm_dialect(id);                    // whitelist: o operador é um literal do usuário, nunca
                     // concatenado direto no SQL
                     String sqlOp = switch (op) {
                         case ">", "<", ">=", "<=", "!=", "LIKE" -> op;
@@ -407,8 +433,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         }
                         return out;
                     }
-                    return kof_db_query1(id, "SELECT * FROM " + kof_orm_q(table) + " WHERE "
-                            + kof_orm_q(field) + " " + sqlOp + " ?", value, className);
+                    return kof_db_query1(id, "SELECT * FROM " + kof_orm_q(table, dialect) + " WHERE "
+                            + kof_orm_q(field, dialect) + " " + sqlOp + " ?", value, className);
                 }
 
                 public static boolean kof_orm_save_all(String id, java.util.List<?> items, String table, String schema)
@@ -423,7 +449,8 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
 
                 public static java.util.ArrayList<Object> kof_orm_page(String id, Object limit, Object offset,
                         String table, String schema, String className) throws Exception {
-                    int lim = ((Number) limit).intValue();
+
+                    String dialect = kof_orm_dialect(id);                    int lim = ((Number) limit).intValue();
                     int off = ((Number) offset).intValue();
                     if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
@@ -439,7 +466,7 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         }
                         return out;
                     }
-                    return kof_db_query2(id, "SELECT * FROM " + kof_orm_q(table)
+                    return kof_db_query2(id, "SELECT * FROM " + kof_orm_q(table, dialect)
                             + " LIMIT ? OFFSET ?", lim, off, className);
                 }
 
