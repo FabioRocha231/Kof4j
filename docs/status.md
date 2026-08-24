@@ -215,7 +215,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | classes, campos, métodos | ✅ | ✅ | ✅ |
 | `constructor(...)` e primary `class X(...)` | ✅ | ✅ | ✅ |
 | records (toString/equals/hashCode) | ✅ | ✅ | ✅ |
-| herança, `super`, override, virtual dispatch | ✅ | ✅ | ✅ |
+| herança, `super`, override, virtual dispatch | ✅ | ✅* | ✅ | Native: `super.metodo()` = SUP001 |
 | interfaces | ✅ | ✅ | ✅ |
 | generics por erasure | ✅ | ✅ | ✅ |
 | lambdas `(x: Int) -> expr` + capturas | ✅ | ✅ | ✅ |
@@ -231,7 +231,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 | kof.config (env, arquivos, profiles, typed) | ✅ | CONF001 | CONF001 |
-| kof.log (`log.info/warn/error/debug`) | ✅ | LOG001 | LOG001 |
+| kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
 | kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite; MySQL WIP) | DB001 |
 | kof.orm (entity, CRUD, where, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
@@ -331,8 +331,10 @@ log.error("failed: " + message)
 
 - Formato `timestamp LEVEL mensagem`; info/debug → stdout, warn/error →
   stderr; nível via `KOF_LOG_LEVEL` (debug < info < warn < error < off).
-- Funciona dentro de handlers web; Native/JS reportam `LOG001`;
-  docs: `docs/stdlib-logging.md` (`KofLogE2ETest`, 7 E2E).
+- Funciona dentro de handlers web. **Native**: implementação asm própria
+  (data civil Hinnant, env scan próprio) — timestamp UTC e `KOF_LOG_JSON`
+  sem efeito por enquanto; JS reporta `LOG001`. Docs: `docs/stdlib-logging.md`
+  (`KofLogE2ETest` 10 JVM + `NativeLogE2ETest` 7).
 
 ### Testes da linguagem (G6 — suíte estruturada)
 
@@ -378,7 +380,8 @@ main() { /* ignorado pelo kof test */ }
 | CoreRegressionE2ETest | 14 | regressões de feedback de uso real (BOM, toInt, ARITH001...) |
 | BackendParityTest | 10 | paridade JVM/Native/JS |
 | KofOrmE2ETest | 10 | kof.orm: entity, CRUD, where, migrate, unique, PK não-numérica, MongoDB E2E, ORM001/ORM002 |
-| KofLogE2ETest | 10 | kof.log: níveis, stderr, off, JSON estruturado, correlation ID, LOG001 |
+| KofLogE2ETest | 10 | kof.log JVM: níveis, stderr, off, JSON estruturado, correlation ID |
+| NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofDbE2ETest | 8 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |

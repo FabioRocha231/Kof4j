@@ -159,7 +159,7 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 | kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
 | kof.config (arquivo > env > profile, typed) | ✅ | CONF001 | CONF001 |
-| kof.log (níveis, off, JSON estruturado, requestId) | ✅ | LOG001 | LOG001 |
+| kof.log (níveis, off, JSON estruturado, requestId) | ✅ | ✅ (asm; UTC) | LOG001 |
 | kof.db (JDBC, query tipada, `transaction {}`) | ✅ | ✅ (SQLite nativo; MySQL WIP) | DB001 |
 | kof.orm (`entity`, CRUD, where c/ operadores, saveAll, page, deleteAll, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
 | String.toInt/toLong/toDouble/toFloat | ✅ | ✅ | ✅ |

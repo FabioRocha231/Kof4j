@@ -253,7 +253,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | metrics (runtime API) | `PARTIAL` (tooling `kof bench/profile`) | y | y | – | Bench | performance.md |
 | health checks / readiness / liveness | `PLANNED` | — | — | — | — | — |
 | tracing / OpenTelemetry | `PLANNED` | — | — | — | — | — |
-| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | – LOG001 | – LOG001 | KofLogE2ETest | — |
+| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | y (asm, UTC) | – LOG001 | KofLogE2ETest, NativeLogE2ETest | — |
 | correlation IDs / request IDs | `PLANNED` | — | — | — | — | — |
 | request IDs | `PLANNED` | — | — | — | — | — |
 | profiling / runtime diagnostics | `PARTIAL` (`kof profile`) | y | y | – | — | performance.md |
@@ -324,7 +324,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | G2 | **HTTP client** inexistente | integrações, testes, frontend | `kof.http` client (get/post/put/delete, headers, JSON, timeout) |
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (JVM; arquivo > env > profile > default, typed `str/int/long/bool`); falta Native/JS (CONFIG001) | — | estender targets (P0/G10) |
 | G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
-| G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM, LOG001 outros); faltam health checks, metrics e request IDs | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
+| G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM + Native asm; LOG001 só no JS); faltam health checks, metrics e request IDs no Native/JS | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
 | G6 | ~~**kof.test estruturado** inexistente~~ — ✅ **implementado**: `test "nome" { }` nos 3 targets; runner sintetizado em compile-time; PASS/FAIL por nome + exit code (`StructuredTestE2ETest`) | testes como cidadãos de primeira classe | próximo: suites nomeadas por diretório, timeouts, fixtures |
 | G7 | ~~**Diagnósticos de target incompletos no security/web**~~ — ✅ **fechado**: `jwt.*` com entrada explícita (SECN004 no Native); `csrf/cors/auth/headers` já cobertos; WEB001 emitido para web.app() e métodos de app fora do JVM | viola "nunca silencioso" | manter: toda função nova entra em `supportedOn` no mesmo PR |
 | G8 | **Scheduling** inexistente (nem `sleep`) | jobs periódicos | `kof.time.sleep`, scheduler |
