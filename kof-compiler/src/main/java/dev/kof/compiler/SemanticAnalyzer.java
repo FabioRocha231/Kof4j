@@ -697,7 +697,7 @@ class SemanticAnalyzer {
                                 yield argTypes.get(argTypes.size() - 1);
                             }
                             if (typed && !mc.typeArguments().isEmpty()) {
-                                if ("all".equals(mc.methodName())) {
+                                if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())) {
                                     yield new Type.ClassType("kof", "List",
                                             List.of(resolveType(mc.typeArguments().get(0), scope)));
                                 }

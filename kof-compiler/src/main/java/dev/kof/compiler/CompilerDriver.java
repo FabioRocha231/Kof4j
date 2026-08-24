@@ -1438,7 +1438,8 @@ private Target target = Target.JVM;
                             yield localIdx;
                         }
                         List<EntityFieldNode> fields = entityName == null ? null : entitySchemas.get(entityName);
-                        if (fields == null) {
+                        boolean needsEntity = !"migrate".equals(mc.methodName());
+                        if (needsEntity && fields == null) {
                             if (currentDiagnostics != null) {
                                 currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                         mc.position() != null ? mc.position().line() : 0,
@@ -1461,19 +1462,23 @@ private Target target = Target.JVM;
                         }
                         // literais do schema (conhecidos em compile-time):
                         // table, schema, [className]
-                        String table = KofOrm.tableName(entityName);
-                        String schema = KofOrm.schemaString(fields);
+                        boolean isMigrate = "migrate".equals(mc.methodName());
+                        String table = entityName == null ? "" : KofOrm.tableName(entityName);
+                        String schema = entityName == null ? "" : KofOrm.schemaString(fields);
                         boolean needsClassName = "find".equals(mc.methodName())
-                                || "all".equals(mc.methodName());
-                        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, table));
-                        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, schema));
+                                || "all".equals(mc.methodName())
+                                || "where".equals(mc.methodName());
+                        List<Type> params = new ArrayList<>(ormCall.parameterTypes());
+                        if (!isMigrate) {
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, table));
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, schema));
+                            params.add(BuiltinTypes.STRING); // table
+                            params.add(BuiltinTypes.STRING); // schema
+                        }
                         if (needsClassName) {
                             ops.add(new KofLoadLiteral(BuiltinTypes.STRING, classNameFor(entityName)));
+                            params.add(BuiltinTypes.STRING); // className
                         }
-                        List<Type> params = new ArrayList<>(ormCall.parameterTypes());
-                        params.add(BuiltinTypes.STRING); // table
-                        params.add(BuiltinTypes.STRING); // schema
-                        if (needsClassName) params.add(BuiltinTypes.STRING); // className
                         Type retType = ormCall.returnType();
                         if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
                             retType = argTypes.get(argTypes.size() - 1);
@@ -2423,7 +2428,7 @@ private Target target = Target.JVM;
                             yield argTypes.get(argTypes.size() - 1);
                         }
                         if (typed && !mc.typeArguments().isEmpty()) {
-                            if ("all".equals(mc.methodName())) {
+                            if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())) {
                                 yield new Type.ClassType("kof", "List",
                                         List.of(toType(mc.typeArguments().get(0))));
                             }

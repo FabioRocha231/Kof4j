@@ -143,6 +143,41 @@ class KofOrmE2ETest {
     }
 
     @Test
+    void whereFiltersByField(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:orm6;DB_CLOSE_DELAY=-1\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    orm.save(db, User(0, \"Ana\", \"ana@kof.dev\", 25))\n"
+                + "                    var adultos = orm.where<User>(db, \"age\", 30)\n"
+                + "                    println(adultos.size)\n"
+                + "                    println(adultos.get(0).name)\n"
+                + "                    db.close(db)\n"
+                + "                }\n"
+                + "                ");
+        runJvm(source, tempDir.resolve("out"), "1\nMel");
+    }
+
+    @Test
+    void migrateAppliesOnce(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:orm7;DB_CLOSE_DELAY=-1\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.migrate(db, \"add_city\", \"ALTER TABLE \\\"user\\\" ADD COLUMN city VARCHAR(255)\")\n"
+                + "                    orm.migrate(db, \"add_city\", \"ALTER TABLE \\\"user\\\" ADD COLUMN city VARCHAR(255)\")\n"
+                + "                    orm.migrate(db, \"v2\", \"ALTER TABLE \\\"user\\\" ADD COLUMN country VARCHAR(255)\")\n"
+                + "                    println(\"ok\")\n"
+                + "                    db.close(db)\n"
+                + "                }\n"
+                + "                ");
+        runJvm(source, tempDir.resolve("out"), "ok");
+    }
+
+    @Test
     void nativeAndJsReportOrm001(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, ENTITY_SRC + """

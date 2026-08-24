@@ -154,8 +154,10 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_orm_save" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
             case "kof_orm_find" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
             case "kof_orm_all" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_where" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_orm_delete" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Z";
             case "kof_orm_count" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J";
+            case "kof_orm_migrate" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -219,8 +221,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_db_close", "kof_db_transaction" -> "V";
             case "kof_db_execute", "kof_db_execute1", "kof_db_execute2", "kof_db_execute3", "kof_db_execute4" -> "I";
             case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4",
-                    "kof_orm_all" -> "Ljava/util/ArrayList;";
-            case "kof_orm_create", "kof_orm_delete" -> "Z";
+                    "kof_orm_all", "kof_orm_where" -> "Ljava/util/ArrayList;";
+            case "kof_orm_create", "kof_orm_delete", "kof_orm_migrate" -> "Z";
             case "kof_orm_save", "kof_orm_find" -> "Ljava/lang/Object;";
             case "kof_orm_count" -> "J";
              case "kof_web_port" -> "I";
@@ -1876,6 +1878,11 @@ static boolean hasRuntimeFn(String methodName) {
                     return kof_db_query0(id, "SELECT * FROM " + kof_orm_q(table), className);
                 }
 
+                public static java.util.ArrayList<Object> kof_orm_where(String id, String field, Object value, String table, String schema, String className) throws Exception {
+                    return kof_db_query1(id, "SELECT * FROM " + kof_orm_q(table) + " WHERE "
+                            + kof_orm_q(field) + " = ?", value, className);
+                }
+
                 public static long kof_orm_count(String id, String table, String schema) throws Exception {
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
                             "SELECT COUNT(*) FROM " + kof_orm_q(table))) {
@@ -1883,6 +1890,35 @@ static boolean hasRuntimeFn(String methodName) {
                             return rs.next() ? rs.getLong(1) : 0L;
                         }
                     }
+                }
+
+                public static boolean kof_orm_migrate(String id, String name, String sql) throws Exception {
+                    // tabela de histórico — uma migração roda uma única vez
+                    kof_db_execute(id, "CREATE TABLE IF NOT EXISTS "
+                            + kof_orm_q("kof_migrations") + " ("
+                            + kof_orm_q("name") + " VARCHAR(255) PRIMARY KEY, "
+                            + kof_orm_q("applied_at") + " BIGINT)");
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                            "SELECT COUNT(*) FROM " + kof_orm_q("kof_migrations")
+                                    + " WHERE " + kof_orm_q("name") + " = ?")) {
+                        ps.setString(1, name);
+                        try (java.sql.ResultSet rs = ps.executeQuery()) {
+                            if (rs.next() && rs.getLong(1) > 0) {
+                                return true; // já aplicada
+                            }
+                        }
+                    }
+                    if (kof_db_execute(id, sql) < 0) {
+                        return false;
+                    }
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                            "INSERT INTO " + kof_orm_q("kof_migrations") + " ("
+                                    + kof_orm_q("name") + ", " + kof_orm_q("applied_at") + ") VALUES (?, ?)")) {
+                        ps.setString(1, name);
+                        ps.setLong(2, System.currentTimeMillis());
+                        ps.executeUpdate();
+                    }
+                    return true;
                 }
 
                 public static boolean kof_orm_delete(String id, Object key, String table, String schema) throws Exception {

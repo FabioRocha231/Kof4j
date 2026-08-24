@@ -78,6 +78,13 @@ final class KofOrm {
             case "count" -> typed && argTypes.size() == 1
                     ? new OrmCall("kof_orm_count", Type.PrimitiveType.LONG, List.of(STR), entityName, true)
                     : null;
+            case "where" -> typed && argTypes.size() == 3
+                    ? new OrmCall("kof_orm_where", new Type.ClassType("kof", "List", List.of(STR)),
+                    List.of(STR, STR, OBJ), entityName, true)
+                    : null;
+            case "migrate" -> argTypes.size() == 3
+                    ? new OrmCall("kof_orm_migrate", BOOL, List.of(STR, STR, STR), entityName, false)
+                    : null;
             default -> null;
         };
     }
