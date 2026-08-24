@@ -41,9 +41,11 @@ final class KofDb {
         return "db".equals(name);
     }
 
-    /** kof.db é JVM-only por ora; native e JS reportam DB001. */
+    /** kof.db: JVM via JDBC; NATIVE via link direto de client libs (sem
+     *  driver) — SQLite primeiro (libsqlite3.so.0), depois mysql/oracle.
+     *  JS reporta DB001. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM;
+        return target == Target.JVM || target == Target.NATIVE;
     }
 
     static String gapCode() {

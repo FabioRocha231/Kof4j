@@ -496,6 +496,7 @@ class SemanticAnalyzer {
                         && !KofDb.isDbNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
+                        && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
                         && !knownClasses.containsKey(ie.name())) {
@@ -688,6 +689,15 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
                         if (secCall != null) yield secCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                        KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
+                                mc.arguments().size());
+                        if (tetrisCall != null) {
+                            for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                            yield tetrisCall.returnType();
+                        }
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())

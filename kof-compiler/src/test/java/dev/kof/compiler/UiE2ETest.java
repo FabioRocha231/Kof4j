@@ -29,7 +29,8 @@ class UiE2ETest {
             ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
             assertEquals(expected, output, "Unexpected output");
@@ -49,7 +50,8 @@ class UiE2ETest {
             ProcessBuilder pb = new ProcessBuilder(binFile.toString());
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
             assertEquals(expected, output, "Unexpected output");
@@ -151,7 +153,8 @@ class UiE2ETest {
                     "Default.Main", "hello", "world");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             assertEquals(0, p.waitFor(), "Exit code should be 0");
             assertEquals("2\nhello", output, "args should reach main");
         } catch (InterruptedException e) {

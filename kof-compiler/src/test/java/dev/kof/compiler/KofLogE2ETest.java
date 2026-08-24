@@ -50,7 +50,8 @@ class KofLogE2ETest {
                 for (var e : extraEnv.entrySet()) pb.environment().put(e.getKey(), e.getValue());
             }
             Process p = pb.start();
-            String stdout = new String(p.getInputStream().readAllBytes());
+            String stdout = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             String stderr = new String(p.getErrorStream().readAllBytes());
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0, stderr: '" + stderr + "'");

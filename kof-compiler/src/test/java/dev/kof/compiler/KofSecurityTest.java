@@ -265,7 +265,8 @@ class KofSecurityTest {
         try {
             Process p = new ProcessBuilder(System.getProperty("java.home") + "/bin/java",
                     "-cp", outDir.toString(), "Default.Main").redirectErrorStream(true).start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             assertEquals(0, p.waitFor(), "exit code, output: " + output);
             assertEquals("true", output, "HOME must be readable via secrets.get");
         } catch (InterruptedException e) {
@@ -396,7 +397,8 @@ class KofSecurityTest {
         try {
             Process p = new ProcessBuilder(System.getProperty("java.home") + "/bin/java",
                     "-cp", outDir.toString(), "Default.Main").redirectErrorStream(true).start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "JVM exit code, output: " + output);
             if (expected != null) assertEquals(expected, output, "JVM output");
@@ -415,7 +417,8 @@ class KofSecurityTest {
         Path bin = outDir.resolve("Default/Main");
         try {
             Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Native exit code, output: " + output);
             if (expected != null) assertEquals(expected, output, "Native output");

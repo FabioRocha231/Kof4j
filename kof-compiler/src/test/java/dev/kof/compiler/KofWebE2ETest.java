@@ -96,7 +96,8 @@ class KofWebE2ETest {
         int attempt = 0;
         while (attempt < 40) {
             if (!serverProcess.isAlive()) {
-                String out = new String(serverProcess.getInputStream().readAllBytes());
+                String out = new String(serverProcess.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
                 throw new IOException("server exited early: " + out);
             }
             try (Socket probe = new Socket()) {

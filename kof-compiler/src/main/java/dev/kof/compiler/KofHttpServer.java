@@ -86,7 +86,9 @@ public final class KofHttpServer {
         try (client) {
             InputStream in = client.getInputStream();
             OutputStream out = client.getOutputStream();
+            System.err.println("[dbg] antes readRequest");
             Request request = readRequest(in);
+            System.err.println("[dbg] depois readRequest body=[" + request.body() + "]");
             String raw = dispatch(request);
             out.write(raw.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -121,7 +123,8 @@ public final class KofHttpServer {
                 }
             }
         }
-        while (body.length() < contentLength) {
+        while (body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length < contentLength) {
+            System.err.println("[dbg] loop lendo... body.length=" + body.length() + " bytes=" + body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length + " contentLength=" + contentLength);
             int n = in.read(buffer);
             if (n == -1) break;
             body.append(new String(buffer, 0, n, StandardCharsets.UTF_8));
@@ -164,6 +167,13 @@ public final class KofHttpServer {
         String trimmed = body.trim();
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             contentType = "application/json; charset=utf-8";
+        } else if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+            contentType = "text/html; charset=utf-8";
+        } else if (trimmed.startsWith("<style") || trimmed.startsWith(":root") || trimmed.startsWith("body {")) {
+            contentType = "text/css; charset=utf-8";
+        } else if (trimmed.startsWith("var ") || trimmed.startsWith("function ")
+                || trimmed.startsWith("document.") || trimmed.startsWith("async ")) {
+            contentType = "application/javascript; charset=utf-8";
         }
         return "HTTP/1.1 " + status + " " + statusText + "\r\n"
                 + "Content-Type: " + contentType + "\r\n"
