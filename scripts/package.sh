@@ -108,7 +108,11 @@ if [ "$WITH_JDK" = true ]; then
         mkdir -p "$DIST_DIR/jdk"
         case "$JDK_EXT" in
             tar.gz) tar -xzf "$TMP_JDK" -C "$DIST_DIR/jdk" --strip-components=1 ;;
-            zip)    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('$DIST_DIR/jdk')" "$TMP_JDK"
+            zip)    # o Python no Windows não entende paths MSYS (/d/a/...)
+                    # — converter com cygpath (Git Bash) antes de extrair
+                    TMP_WIN="$(cygpath -w "$TMP_JDK" 2>/dev/null || echo "$TMP_JDK")"
+                    JDK_WIN="$(cygpath -w "$DIST_DIR/jdk" 2>/dev/null || echo "$DIST_DIR/jdk")"
+                    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$TMP_WIN" "$JDK_WIN"
                     SUB="$(ls -d "$DIST_DIR"/jdk/jdk-* 2>/dev/null | head -1 || true)"
                     if [ -n "$SUB" ] && [ "$SUB" != "$DIST_DIR/jdk" ]; then
                         mv "$SUB"/* "$DIST_DIR/jdk/"
