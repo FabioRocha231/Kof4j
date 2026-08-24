@@ -132,7 +132,6 @@ final class JvmOrmRuntime {
                             }
                             if (compatible) {
                                 m.setAccessible(true);
-                                System.err.println("[mongo-method] " + name + " -> " + m);
                                 return m;
                             }
                             fallback = m;
