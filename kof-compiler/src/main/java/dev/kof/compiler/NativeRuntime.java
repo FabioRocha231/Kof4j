@@ -1618,6 +1618,22 @@ final class NativeRuntime {
             .globl kof_string_equals
             .type kof_string_equals, @function
             kof_string_equals:
+                # null-safe: comparar String com null compara ponteiros
+                testq %rdi, %rdi
+                jz .Lkof_streq_nulla
+                testq %rsi, %rsi
+                jnz .Lkof_streq_body
+                xorl %eax, %eax          # a != null, b == null
+                ret
+            .Lkof_streq_nulla:
+                testq %rsi, %rsi
+                jnz .Lkof_streq_nullb
+                movl $1, %eax            # ambas nulas
+                ret
+            .Lkof_streq_nullb:
+                xorl %eax, %eax          # a == null, b != null
+                ret
+            .Lkof_streq_body:
                 pushq %rbx
                 pushq %r12
                 pushq %r13
@@ -3227,14 +3243,15 @@ final class NativeRuntime {
                 cmpq %r10, %r9
                 jge .Lceg_match
                 movzbl (%rbx,%r9), %eax
-                movzbl (%rsp,%r9), %ecx
+                movzbl (%r8,%r9), %ecx      # entrada corrente (r8 = rsp + r14)
                 cmpl %ecx, %eax
                 jne .Lceg_next
                 incq %r9
                 jmp .Lceg_cmpname
             .Lceg_match:
                 leaq 1(%rcx), %rdi           # valor = depois do '='
-                movq %r15, %rsi              # vallen
+                movq %r15, %rsi
+                subq %rdi, %rsi              # vallen = fim - inicio do valor
                 call kof_string_from_literal
                 jmp .Lceg_exit
             .Lceg_next:

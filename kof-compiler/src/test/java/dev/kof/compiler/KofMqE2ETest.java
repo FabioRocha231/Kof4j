@@ -44,34 +44,28 @@ class KofMqE2ETest {
     void publishDeliversToSubscribers(@TempDir Path tempDir) throws IOException {
         runJvm(tempDir, """
                 main() {
-                    var got = ""
-                    var h = msg -> {
-                        got = msg
-                    }
-                    mq.subscribe("order.created", h)
+                    mq.subscribe("order.created", (msg) -> {
+                        println("pedido: " + msg)
+                    })
                     mq.publish("order.created", "12345")
-                    println(got)
                     mq.publish("order.created", "67890")
-                    println(got)
                 }
-                """, "12345\n67890");
+                """, "pedido: 12345\npedido: 67890");
     }
 
     @Test
     void unsubscribeStopsDelivery(@TempDir Path tempDir) throws IOException {
         runJvm(tempDir, """
                 main() {
-                    var got = ""
-                    var h = msg -> {
-                        got = msg
+                    var h = (msg) -> {
+                        println("got:" + msg)
                     }
                     mq.subscribe("topic", h)
                     mq.publish("topic", "one")
                     mq.unsubscribe("topic", h)
                     mq.publish("topic", "two")
-                    println(got)
                 }
-                """, "one");
+                """, "got:one");
     }
 
     @Test
