@@ -156,7 +156,19 @@ class JvmBackend implements Backend {
         Path classFile = outputDir.resolve(clazz.name() + ".class");
         Files.createDirectories(classFile.getParent());
 
-        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+        // getCommonSuperClass consultaria Class.forName; classes externas
+        // (android.* etc.) não estão no classpath da compilação — o merge
+        // conservador para java/lang/Object mantém o compile vivo
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
+            @Override
+            protected String getCommonSuperClass(String type1, String type2) {
+                try {
+                    return super.getCommonSuperClass(type1, type2);
+                } catch (Exception e) {
+                    return "java/lang/Object";
+                }
+            }
+        };
         String superName = clazz.superName() != null ? clazz.superName() : "java/lang/Object";
         cw.visit(V21, clazz.accessFlags(), clazz.name(), clazz.signature(),
                 superName, clazz.interfaces().toArray(new String[0]));

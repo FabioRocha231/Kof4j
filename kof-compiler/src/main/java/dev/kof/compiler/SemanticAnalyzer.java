@@ -530,6 +530,8 @@ class SemanticAnalyzer {
                         && !KofOrm.isOrmNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
+                        && !KofHttp.isHttpNamespace(ie.name())
+                        && !KofMq.isMqNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
@@ -765,6 +767,20 @@ class SemanticAnalyzer {
                         if (cfgCall != null) yield cfgCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
+                        if (httpCall != null) yield httpCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
+                        if (mqCall != null) yield mqCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -829,6 +845,13 @@ class SemanticAnalyzer {
                             yield ms.returnType();
                         }
                     }
+                }
+                if (mc.receiver() == null
+                        && ("super".equals(mc.methodName()) || "this".equals(mc.methodName()))) {
+                    // super(args) / this(args): chamadas de construtor —
+                    // válidas apenas dentro do corpo de um construtor
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield Type.PrimitiveType.VOID;
                 }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())

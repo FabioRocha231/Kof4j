@@ -90,6 +90,10 @@ class Parser {
         return v == ParseError.INSTANCE;
     }
 
+    private boolean isNumericKind(Class<?> k) {
+        return k == Integer.class || k == Long.class || k == Float.class || k == Double.class;
+    }
+
     /**
      * Valor constante de annotation: literal, array {v1, v2} de literais
      * ou identificador simples. Identificadores não-constantes produzem
@@ -99,13 +103,31 @@ class Parser {
         if (check(TokenType.LBRACE)) {
             advance();
             List<Object> items = new ArrayList<>();
+            Class<?> elementKind = null;
+            boolean mixed = false;
             if (!check(TokenType.RBRACE)) {
                 do {
                     Object v = parseAnnotationValue();
-                    if (!isParseError(v)) items.add(v);
+                    if (!isParseError(v)) {
+                        // JVM exige tipo único no array: {1, "a"} é bytecode
+                        // inválido — diagnosticado aqui, não emitido
+                        Class<?> kind = v != null ? v.getClass() : null;
+                        if (kind == Integer.class && elementKind == null) kind = Integer.class;
+                        if (elementKind == null) {
+                            elementKind = kind;
+                        } else if (kind != null && !kind.equals(elementKind)
+                                && !(isNumericKind(kind) && isNumericKind(elementKind))) {
+                            mixed = true;
+                        }
+                        items.add(v);
+                    }
                 } while (check(TokenType.COMMA) && !advance().is(TokenType.EOF));
             }
             expect(TokenType.RBRACE, "Expected '}' after annotation array", "PARSE082");
+            if (mixed) {
+                error("Annotation array values must have the same type", "ANNOT002");
+                return ParseError.INSTANCE;
+            }
             return items;
         }
         if (check(TokenType.STRING_LITERAL) || check(TokenType.INT_LITERAL) || check(TokenType.LONG_LITERAL)

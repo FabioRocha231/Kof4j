@@ -39,9 +39,9 @@ final class KofConfig {
         return "config".equals(name);
     }
 
-    /** kof.config is JVM-only for now; native and JS report CONF001. */
+    /** kof.config: JVM + Native (asm próprio); JS reporta CONF001. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM;
+        return target == Target.JVM || target == Target.NATIVE;
     }
 
     record ConfigCall(String function, Type returnType, List<Type> parameterTypes) {}
