@@ -264,7 +264,14 @@ sql """
 
 Princípio: "Abstração quando ajuda, SQL quando precisa."
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 parcial — **nível 0-2 e 4 implementados** (`kof.db` +
+`kof.orm`, ver `docs/future/DATABASE_VISION.md`): conexão idiomática
+(JDBC no JVM; SQLite nativo via `.so`; MySQL nativo WIP), SQL com prepared
+statements, transactions, `entity` declarativo em compile-time, CRUD
+(`create/save/find/all/where/delete/count`), `orm.where` por campo,
+migrations versionadas (`kof_migrations`) e MongoDB (driver oficial).
+Faltam: query DSL tipada (`User.query { where age > 18 }`), connection
+pooling, kof.db/kof.orm fora do JVM (DB001/ORM001), NoSQL além do MongoDB.
 
 ---
 
@@ -400,7 +407,9 @@ Estado atual: ✅ JVM funcional, Native funcional
 
 APIs nativas para log, metric, trace, health, audit. Integração com OpenTelemetry.
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 parcial — `kof.log` com níveis, JSON estruturado e
+correlation ID no JVM (LOG001 fora dele). Faltam métricas, tracing,
+health checks e integração OpenTelemetry.
 
 ---
 
@@ -415,7 +424,11 @@ kof-security / kof-concurrency / kof-io / kof-ui
 
 Mas NÃO criar dezenas de módulos prematuramente. Primeiro definir contratos, tipos e arquitetura.
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 em progresso — já existem como namespaces da stdlib:
+`kof.web`, `kof.io`, `kof.time`, `kof.config` (JVM), `kof.log` (JVM),
+`kof.security` (3 targets), `kof.db` + `kof.orm` (JVM; SQLite nativo),
+`kof.process`, `kof.ui`. A organização em módulos separados virá depois dos
+contratos estabilizarem.
 
 ---
 
@@ -532,7 +545,8 @@ Estado atual: ❌ não implementado
 - JSON serialization (`json.encode`/`json.decode`) ✅;
 - 8 testes E2E in-process (sockets reais) ✅;
 - Documentação (`docs/http.md`) ✅;
-- Path parameters (pendente — routing explícito no handler).
+- Path parameters (`:id`), query, headers, middleware `app.use` ✅
+  (stack `web.app()` — Fase 1 do plano Spring independence).
 
 ### Fase 4 — Security
 

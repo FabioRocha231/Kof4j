@@ -847,9 +847,15 @@ static boolean hasRuntimeFn(String methodName) {
 
                 // ── kof.io ─────────────────────────────────────────
 
+                private static final java.io.BufferedReader KOF_STDIN =
+                        new java.io.BufferedReader(new java.io.InputStreamReader(System.in));
+
                 public static String kof_read_line() {
+                    // BufferedReader compartilhado: criar um por chamada
+                    // perdia o buffer entre leituras (OBS: readLine repetido
+                    // retornava null após a primeira linha).
                     try {
-                        return new java.io.BufferedReader(new java.io.InputStreamReader(System.in)).readLine();
+                        return KOF_STDIN.readLine();
                     } catch (java.io.IOException e) {
                         return null;
                     }

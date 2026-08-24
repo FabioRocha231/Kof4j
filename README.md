@@ -124,7 +124,7 @@ Kof não depende de Java como linguagem intermediária.
 
 # Estado Atual
 
-Kof está em desenvolvimento ativo — **Alpha 0.0.5** (`0.0.5-alpha`).
+Kof está em desenvolvimento ativo — **Alpha 0.0.14** (`0.0.14-alpha`).
 
 O compilador possui frontend próprio, type system, Kof IR e três backends.
 
@@ -160,8 +160,9 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
 | kof.config (arquivo > env > profile, typed) | ✅ | CONF001 | CONF001 |
 | kof.log (níveis, off, JSON estruturado, requestId) | ✅ | LOG001 | LOG001 |
-| kof.db (JDBC, query tipada, `transaction {}`) | ✅ | DB001 | DB001 |
-| kof.orm (`entity`, create/save/find/all/where/delete/count/migrate) | ✅ | ORM001 | ORM001 |
+| kof.db (JDBC, query tipada, `transaction {}`) | ✅ | ✅ (SQLite nativo; MySQL WIP) | DB001 |
+| kof.orm (`entity`, CRUD, where, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
+| String.toInt/toLong/toDouble/toFloat | ✅ | ✅ | ✅ |
 | JSON Float/Double + arrays (`json.decode<Int[]>`) | ✅ | — | — |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
@@ -182,7 +183,8 @@ disconnect). Ver [docs/debugging.md](docs/debugging.md).
 
 **Auditoria do ecossistema**: matriz de cobertura da stdlib (inventário,
 gaps G1-G12, prioridade e estratégia) em
-[docs/ecosystem-coverage.md](docs/ecosystem-coverage.md).
+[docs/ecosystem-coverage.md](docs/ecosystem-coverage.md). Plano de evolução
+para plataforma completa: [docs/plan-platform-completion.md](docs/plan-platform-completion.md).
 
 ---
 
@@ -315,10 +317,10 @@ externa de Java é necessária.**
 
 ```bash
 # Baixe o artefato do GitHub Releases e extraia:
-tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.14-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.14-alpha-linux-x86_64/bin:$PATH"
 
-kof version        # kof 0.0.5-alpha
+kof version        # kof 0.0.14-alpha
 kof info           # ambiente completo (JVM embutida, Tooling API 21, targets)
 ```
 

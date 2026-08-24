@@ -1,7 +1,7 @@
 # Status do Projeto Kof
 
-**Última atualização:** 23 de agosto de 2026
-**Versão:** 0.0.5-alpha
+**Última atualização:** 24 de agosto de 2026
+**Versão:** 0.0.14-alpha
 
 ---
 
@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 513 testes (513/513 PASS)
+mvn test             → 527 testes (todos PASS; +1 skip condicional)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -43,7 +43,7 @@ scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
   Compila → executa → valida stdout contra `expected.txt` → mede tempo
   (mediana) e RSS (Linux, `/usr/bin/time -v`) → compara baseline →
   sinaliza `PERFORMANCE REGRESSION`.
-- **Estrutura `benchmarks/`**: 33 benchmarks em 16 categorias (micro,
+- **Estrutura `benchmarks/`**: 37 benchmarks em 17 categorias (micro,
   algorithms, collections, strings, math, objects, inheritance, interfaces,
   generics, json, io, concurrency, startup, memory, stress, applications).
 - **Baselines**: `benchmarks/baselines/<target>-<version>.json` (33 jvm,
@@ -87,6 +87,69 @@ scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
 - **Docs**: `docs/security.md` (auditoria + matriz + arquitetura + estado),
   `docs/stdlib.md`, `learn/36-security.md`, `training/language/security.md`,
   `training/examples/security.kf`.
+
+---
+
+## Database + ORM (kof.db / kof.orm)
+
+### kof.db — persistência como parte da linguagem
+
+```kof
+main() {
+    var db = db.connect("jdbc:h2:mem:app;DB_CLOSE_DELAY=-1")
+    db.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR)")
+    var rows = db.query("SELECT * FROM users WHERE id = ?", 1)
+    transaction {
+        db.execute("INSERT INTO users VALUES (1, 'Mel')")
+        db.execute("UPDATE users SET name = 'Melissa' WHERE id = 1")
+    }
+    db.close(db)
+}
+```
+
+- **JVM**: JDBC idiomático (`db.connect`, `db.execute`, `db.query`,
+  `query<T>` tipado por record/entity, credentials opcionais,
+  `transaction {}` com commit/rollback real).
+- **Native**: SQLite via link direto da `.so` (sem driver JDBC) — roundtrip
+  E2E real (`nativeSqliteRoundtrip`). MySQL/MariaDB via wire protocol sobre
+  sockets nativos em progresso (auth scramble SHA-1 implementado).
+- **JS**: reporta `DB001` (gap documentado).
+- DSNs: `jdbc:*` (JVM), `sqlite:` (JVM/Native), `mongodb://` (ORM).
+
+### kof.orm — o ORM da própria linguagem
+
+```kof
+entity User {
+    id: Long generated
+    name: String
+    email: String unique
+    age: Int
+}
+
+main() {
+    var db = db.connect("jdbc:h2:mem:app;DB_CLOSE_DELAY=-1")
+    orm.create<User>(db)                                  // DDL do schema
+    orm.save(db, User(0, "Mel", "mel@kof.dev", 30))       // insert/update
+    var u = orm.find<User>(db, 1)                         // PK
+    var adultos = orm.where<User>(db, "age", 30)          // query por campo
+    println(orm.count<User>(db))
+    orm.delete<User>(db, 1)
+    orm.migrate(db, "add-phone", "ALTER TABLE user ADD phone VARCHAR")
+}
+```
+
+- Schema declarado na linguagem (`entity`) — o compilador conhece campos,
+  tipos e constraints em compile-time (nunca reflection para descobrir
+  schema); `generated`, `unique`, PK não-numérica.
+- Backends SQL: H2/SQLite/MySQL via JDBC (JVM).
+- **MongoDB**: `save/find/all/where/delete/count` sobre o driver oficial via
+  reflexão compatível (`Bson`/`Class`, sem ClientSession); teste E2E com
+  container real (`docker run -d -p 27017:27017 mongo:7`, skip condicional).
+- Migrations versionadas: tabela `kof_migrations`, cada migração roda uma vez.
+- Native/JS reportam `ORM001`.
+- Testes: `KofDbE2ETest` (8), `KofOrmE2ETest` (10).
+- Docs: `docs/future/DATABASE_VISION.md` (níveis 0-2 e 4 implementados;
+  nível 3 = query DSL tipada é o próximo).
 
 ---
 
@@ -163,6 +226,9 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.config (env, arquivos, profiles, typed) | ✅ | CONF001 | CONF001 |
 | kof.log (`log.info/warn/error/debug`) | ✅ | LOG001 | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
+| kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite; MySQL WIP) | DB001 |
+| kof.orm (entity, CRUD, where, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
+| String.toInt/toLong/toDouble/toFloat | ✅ | ✅ | ✅ |
 | kof.ui (Color, Palette, Theme, Window) | ✅ | ✅ (JS render) | ✅ |
 | default parameters em funções | ✅ | ✅ | ✅ |
 | `readLine()` | ✅ | ✅ | ✅ |
@@ -276,7 +342,7 @@ main() {
 
 ---
 
-## Testes (513/513 PASS)
+## Testes (527/528 — 1 skip condicional)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -286,28 +352,32 @@ main() {
 | KofJsE2ETest | 35 | execução real JS (GraalJS) |
 | JvmE2ETest | 29 | execução real de bytecode JVM |
 | IoE2ETest | 15 | kof.io multiplatform |
+| UiE2ETest | 14 | kof.ui: widgets, estilo, bindings, múltiplas janelas |
 | JsonE2ETest | 14 | JSON JVM + Native |
+| CoreRegressionE2ETest | 14 | regressões de feedback de uso real (BOM, toInt, ARITH001...) |
 | BackendParityTest | 10 | paridade JVM/Native/JS |
-| ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
-| KofHttpServerTest | 8 | serve engine (sockets reais) |
-| KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
-| KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
-| KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
+| KofOrmE2ETest | 10 | kof.orm: entity, CRUD, where, migrate, unique, PK não-numérica, MongoDB E2E, ORM001/ORM002 |
 | KofLogE2ETest | 10 | kof.log: níveis, stderr, off, JSON estruturado, correlation ID, LOG001 |
+| ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
+| KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
+| KofDbE2ETest | 8 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
+| KofHttpServerTest | 8 | serve engine (sockets reais) |
+| KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
+| KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
 | JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
-| KofDbE2ETest | 7 | kof.db: JDBC, query<T>, transaction, rollback, DB001 |
-| KofOrmE2ETest | 8 | kof.orm: entity, create/save/find/all/where/delete/count/migrate, unique, PK não-numérica, ORM001/ORM002 |
+| IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
+| IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
+| WindowE2ETest | 3 | Window: size, close-to-exit |
 | SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
-| IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
-| IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
+| TetrisEasterEggTest | 3 | registro easter egg oculto |
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
-| NativeDebugTest* | 5 | harnesses de debug |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| **Total** | **513** | |
+| NativeDebugTest* | 5 | harnesses de debug |
+| **Total** | **527** (+1 skip condicional — MongoDB sem container) | |
 
 ---
 
@@ -377,12 +447,15 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 9. Map/Set, Option/null safety, pattern matching: planned
 10. Web: status codes/headers customizados por handler (planned)
 11. Web: target `js` reporta WEB001; target `native` sem servidor web
+12. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
+    feito; falta handshake completo, query e prepared statements)
 
 ---
 
 ## Próximos Passos
 
-- Database + transactions nativos (JDBC por interop) — Fase 5
+- ~~Database + transactions~~ — ✅ kof.db nível 0 (JDBC JVM + SQLite nativo);
+  falta query DSL tipada (nível 3 da DATABASE_VISION) e MySQL nativo completo
 - Validation + scheduling + events nativos — Fase 8
 - DI nativa + lifecycle (`application { onStart/onShutdown }`) — Fase 9
 - Aplicação web completa em Kof sem Spring (teste obrigatório) — Fase 12
@@ -391,7 +464,8 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - Resultado observável de tarefas (`await`), filas (`kof.concurrent.Queue`)
 - Scheduler nativo para `spawn`
 - `kof fmt`, hover/completion no LSP
-- Roadmap: `docs/roadmap.md`; plano de execução: `docs/plan-spring-independence.md`
+- Roadmap: `docs/roadmap.md`; plano de execução: `docs/plan-spring-independence.md`;
+  **plano de plataforma completa: `docs/plan-platform-completion.md`**
 
 ---
 

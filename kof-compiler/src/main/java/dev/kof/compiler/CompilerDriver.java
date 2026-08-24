@@ -1831,6 +1831,15 @@ private Target target = Target.JVM;
                             methodReturnType = sig.returnType();
                             methodParamTypes = sig.parameterTypes();
                         }
+                    } else if (isPrimitiveType(recvType) && "toString".equals(mc.methodName())
+                            && mc.arguments().isEmpty()) {
+                        // primitivo.toString(): o primitivo não tem classe —
+                        // boxar e converter (String.valueOf) em vez de gerar
+                        // um owner vazio no bytecode (ClassFormatError)
+                        boxPrimitive(ops, recvType);
+                        ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+                        yield localIdx;
                     } else {
                         ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
                         if (osig != null) {

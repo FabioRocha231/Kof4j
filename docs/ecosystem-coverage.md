@@ -134,7 +134,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | validation | `PLANNED` (`kof.validation`) | — | — | — | — | stdlib.md |
 | scheduling | `PLANNED` | — | — | — | — | roadmap.md |
 | caching | `PLANNED` | — | — | — | — | roadmap.md |
-| transactions | `PLANNED` (com kof.database) | — | — | — | — | future/DATABASE_VISION.md |
+| transactions | ✅ `transaction {}` (JVM; commit/rollback real) | y | – DB001 | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
 | resource management | `PARTIAL` (try/finally real) | y | y | — | ExceptionsE2ETest | language-state.md |
 | profiles/environments | `PARTIAL` (profile file + env; o resto em kof.config) | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | — |
 
@@ -165,13 +165,15 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| SQL / JDBC | `PLANNED` (`kof.database`, SQL-first) | — | — | — | — | future/DATABASE_VISION.md |
-| `db.connect/query/transaction` | `PLANNED` | — | — | — | — | future/DATABASE_VISION.md |
-| prepared statements | `PLANNED` | — | — | — | — | — |
+| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` | y | y (SQLite; MySQL WIP) | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
+| `db.connect/query/transaction` | ✅ (+ `query<T>` tipado) | y | y | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
+| prepared statements | ✅ (binds `?`) | y | y | – DB001 | KofDbE2ETest | — |
 | connection pools | `PLANNED` | — | — | — | — | — |
-| migrations | `PLANNED` | — | — | — | — | — |
-| repositories | `PLANNED` (sem ORM obrigatório) | — | — | — | — | — |
-| mapping | `PARTIAL` (json binding por reflexão) | y | – | y | JsonE2ETest | — |
+| migrations | ✅ `orm.migrate` versionado (`kof_migrations`) | y | – ORM001 | – ORM001 | KofOrmE2ETest | future/DATABASE_VISION.md |
+| repositories/ORM | ✅ `kof.orm`: `entity` + create/save/find/all/where/delete/count | y | – ORM001 | – ORM001 | KofOrmE2ETest | future/DATABASE_VISION.md |
+| NoSQL (MongoDB) | ✅ driver oficial via reflexão compatível | y | — | — | KofOrmE2ETest (E2E, skip condicional) | future/DATABASE_VISION.md |
+| mapping | ✅ entity → linha/documento por schema de compile-time | y | – | y | JsonE2ETest, KofOrmE2ETest | — |
+| query DSL tipada (`User.query { where ... }`) | `PLANNED` (nível 3 da visão) | — | — | — | — | future/DATABASE_VISION.md |
 | pagination | `PLANNED` | — | — | — | — | — |
 | PostgreSQL / MySQL / SQLite / MongoDB / Redis | `PLANNED` (adapters) | — | — | — | — | — |
 | transactions | `PLANNED` | — | — | — | — | — |
@@ -318,7 +320,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | # | Gap | Impacto | Local proposto |
 |---|-----|---------|----------------|
-| G1 | **Database/SQL** inexistente (nem JDBC, nem SQL) | apps reais sem persistência | `kof.database` (SQL-first, prepared statements, transactions, pools, migrations) |
+| G1 | ~~**Database/SQL** inexistente~~ — ✅ **nível 0 implementado**: `kof.db` (JDBC JVM, SQLite nativo, MySQL WIP) + `kof.orm` (entity, CRUD, where, migrate, MongoDB) | apps reais com persistência no JVM/Native-SQLite | próximo: query DSL tipada, pools, kof.db fora do JVM |
 | G2 | **HTTP client** inexistente | integrações, testes, frontend | `kof.http` client (get/post/put/delete, headers, JSON, timeout) |
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (JVM; arquivo > env > profile > default, typed `str/int/long/bool`); falta Native/JS (CONFIG001) | — | estender targets (P0/G10) |
 | G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
@@ -415,8 +417,9 @@ Princípios mantidos:
 2. G6 — `kof.test` estruturado (`test "nome" { }` + suites).
 3. ~~G3~~ — `kof.config` ✅ (JVM); estender a Native/JS (CONFIG001) com G10.
 4. G2 — `kof.http` client.
-5. G1 — `kof.database` (JDBC idiomático: connect/query/transaction,
-   prepared statements, pools, migrations).
+5. ~~G1~~ — ✅ `kof.db` + `kof.orm` nível 0 (JDBC idiomático, SQLite nativo,
+   transactions, entity, migrations, MongoDB); próximo: query DSL tipada,
+   pools, portabilidade Native/JS (DB001/ORM001).
 6. G4 — `kof.validation`.
 7. G5 — `kof.observability` (health, metrics; o logging básico já existe
    via `kof.log`).

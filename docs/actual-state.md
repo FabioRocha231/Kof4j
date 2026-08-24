@@ -1,7 +1,7 @@
 # Estado Atual do Projeto Kof
 
-**Última atualização:** 22 de agosto de 2026
-**Versão:** 0.0.5-alpha
+**Última atualização:** 24 de agosto de 2026
+**Versão:** 0.0.14-alpha
 
 ---
 
@@ -9,13 +9,15 @@
 
 Kof é uma linguagem compilada para múltiplos targets (JVM, Native, Web, Script).
 
-O projeto possui um **frontend completo** (lexer + parser + AST + symbol table + semantic + type checking), uma **IR backend-agnóstica** e **dois backends funcionais**: JVM (bytecode via ASM) e Native (ELF x86-64, syscalls, sem libc obrigatória).
+O projeto possui um **frontend completo** (lexer + parser + AST + symbol table + semantic + type checking), uma **IR backend-agnóstica** e **três backends funcionais**: JVM (bytecode via ASM), Native (ELF x86-64, syscalls, sem libc obrigatória) e KofJS (ES Modules na engine GraalJS embarcada).
 
 **Fases C, D, E CONCLUÍDAS**: Type System, IR generalizada, NativeBackend ELF.
 
 **Fase F CONCLUÍDA**: String model, Array model, Inheritance, Virtual Dispatch, Interfaces, Exceptions, Memory (mmap, sem GC).
 
 **Pipeline 0.0.5 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
+
+**Plataforma 0.0.7-0.0.14**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol WIP), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001 (divisão por zero constante em compile-time), tolerância a BOM UTF-8.
 
 ---
 
@@ -24,12 +26,16 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (490/490) |
+| `mvn test` | ✅ PASSA (527; +1 skip condicional) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build --target jvm` | ✅ FUNCIONA |
 | `kof build --target native` | ✅ FUNCIONA |
+| `kof build --target js` | ✅ FUNCIONA |
 | `kof serve` | ✅ FUNCIONA |
 | `kof check` | ✅ FUNCIONA |
+| `kof test` | ✅ FUNCIONA |
+| `kof bench` | ✅ FUNCIONA (37 benchmarks, baseline+regressão) |
+| `kof debug` | ✅ FUNCIONA (DAP MVP, target JVM) |
 | `kof info` | ✅ FUNCIONA |
 | `kof lsp` | ✅ FUNCIONA |
 | `kof install` | ✅ FUNCIONA |
@@ -142,8 +148,45 @@ log.info("servindo na porta 8080")               // debug/info/warn/error, níve
 ```
 
 `kof.config` (typed: str/int/long/bool, env/has) e `kof.log` (níveis, off,
-warn→stderr) — JVM; Native/JS reportam CONFIG001/LOG001. Testes:
-`KofConfigE2ETest` (8), `KofLogE2ETest` (7).
+warn→stderr) — JVM; Native/JS reportam CONFIG001/LOG001. Logging
+estruturado em JSON com correlation ID no JVM. Testes:
+`KofConfigE2ETest` (8), `KofLogE2ETest` (10).
+
+### kof.db e kof.orm — persistência nativa
+
+```kf
+entity User {
+    id: Long generated
+    name: String
+    email: String unique
+}
+
+main() {
+    var db = db.connect("jdbc:h2:mem:app;DB_CLOSE_DELAY=-1")
+    orm.create<User>(db)
+    orm.save(db, User(0, "Mel", "mel@kof.dev"))
+    var u = orm.find<User>(db, 1)
+}
+```
+
+- `kof.db`: JDBC idiomático (connect/execute/query/query<T>/transaction) no
+  JVM; **SQLite nativo** via link direto da `.so`; MySQL/MariaDB por wire
+  protocol sobre sockets nativos (WIP); JS reporta DB001.
+- `kof.orm`: schema na linguagem (`entity`, compile-time), CRUD completo
+  (`create/save/find/all/where/delete/count`), migrations versionadas
+  (`orm.migrate`), constraints (`generated`, `unique`), PK não-numérica.
+  **MongoDB** suportado (driver oficial via reflexão compatível). Native/JS
+  reportam ORM001.
+- Testes: `KofDbE2ETest` (8), `KofOrmE2ETest` (10, incluindo MongoDB E2E).
+- Ver `docs/future/DATABASE_VISION.md`.
+
+### Feedback de uso real (kof-calculator-lab)
+
+- UTF-8 BOM inicial tolerado pelo Lexer (editores Windows).
+- `String.toInt()/toLong()/toDouble()/toFloat()` como funções do runtime.
+- ARITH001: divisão/resto por zero **constante** rejeitada em compile-time
+  (inteiros; float/double produzem Infinity/NaN e não são diagnosticados).
+- `--help` nos subcomandos `kof run/build/serve/check`.
 
 ### kof.ui (plataforma de UI)
 
@@ -250,7 +293,7 @@ handles no-ops.
 - Sealed types
 
 ### Backends
-- KofJS — funcional (while(true), try/finally, switch, incrementos, listOf, decode de objetos — com parity JVM/Native/JS nos testes E2E)
+- KofJS — funcional (while(true), try/finally, switch, incrementos, listOf, decode de objetos — com parity JVM/Native/JS nos testes E2E); UI via webview nativo
 - KofScript — hoje = compilar para JVM e executar (`kof run`)
 
 ### Runtime
@@ -265,15 +308,21 @@ handles no-ops.
   (SECN003), AES-GCM fora do JVM (SECN002), e diagnósticos de target
   completos para jwt/auth/csrf/cors/headers (gap G7 da auditoria).
 
+### Database (docs/future/DATABASE_VISION.md)
+- Nível 0 (conexão + SQL), 2 (ORM básico) e 4 (migrations) implementados.
+- Pendente: nível 1 (query DSL tipada `User.query { where ... }`), connection
+  pooling, MySQL nativo completo (wire protocol WIP), kof.db/kof.orm fora do
+  JVM (DB001/ORM001).
+
 ### Plataforma (gaps da auditoria — docs/ecosystem-coverage.md §4)
-- Database/SQL (G1), HTTP client (G2), validation (G4), health/metrics
-  (G5), suíte estruturada de testes (G6), scheduling (G8), rate
-  limiting/sessions/API keys (G9), TLS/HTTPS (G12).
+- HTTP client (G2), validation (G4), health/metrics (G5), suíte estruturada
+  de testes (G6), scheduling (G8), rate limiting/sessions/API keys (G9),
+  TLS/HTTPS (G12).
+- ~~Database/SQL (G1)~~ — ✅ nível 0 do kof.db/kof.orm implementado.
 - `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001.
 
 ### Tooling
-- `kof test` (PASS/FAIL por exit code com `assert`; suíte estruturada
-  `test "nome" { }` planejada)
+- Suíte estruturada `test "nome" { }` (hoje: PASS/FAIL por exit code com `assert`)
 - REPL
 - `kof fmt` (planejado)
 
@@ -302,12 +351,14 @@ Source (.kf)
 
 | Métrica | Valor |
 |---------|-------|
-| Testes JUnit | 490 (todos passando) |
+| Testes JUnit | 527 (+1 skip condicional) |
 | E2E JVM | 29 |
 | E2E Native | 50 |
 | E2E JS (KofJS) | 35 |
-| E2E JSON | 14 |
+| E2E JSON | 14 + 7 (completo) |
 | E2E Exceptions | 9 |
-| E2E HTTP | 8 |
+| E2E HTTP/Web | 8 + 9 |
 | E2E kof.io | 15 |
-| E2E Spawn/Assert/Lambda | 12 |
+| E2E UI | 14 + 3 (Window) |
+| E2E kof.db / kof.orm | 8 + 10 |
+| Benchmarks | 37 em 17 categorias |
