@@ -1,7 +1,9 @@
 # Database Vision — Persistência como Parte da Linguagem
 
-**Última atualização:** 21 de agosto de 2026
-**Status:** Análise arquitetural — NÃO implementado
+**Última atualização:** 24 de agosto de 2026
+**Status:** Nível 0 implementado (`kof.db` — JDBC idiomático no JVM, SQLite
+nativo via `libsqlite3` direto, MySQL/MariaDB wire protocol em andamento);
+níveis 1-4 (entity, queries tipadas, migrations) seguem esta visão.
 
 ---
 
@@ -168,6 +170,40 @@ migration "add_phone_to_users" {
     add Column("phone", String) to User
 }
 ```
+
+---
+
+---
+
+# Nível 0 — Implementado (kof.db)
+
+```kof
+var db = db.connect("jdbc:h2:mem:test")     // JVM: JDBC idiomático
+db.execute(db, "create table users(id int, name varchar)")
+db.execute(db, "insert into users values (?, ?)", 1, "Mel")
+var rows = db.query<User>(db, "select * from users where id = ?", 1)
+transaction {
+    db.execute(db, "insert into users values (2, 'Kof')")
+}
+db.close(db)
+```
+
+- **JVM:** `connect(url)` / `connect(url, user, pass)`, `execute` (0-4 binds),
+  `query<T>` (0-4 binds, mapping de records), `transaction { }` (commit/
+  rollback), `close`.
+- **Native:** SQLite via link direto de `libsqlite3.so.0` (sem JDBC driver) —
+  `db.connect("sqlite:/path.db")`, execute/query tipado, roundtrip testado.
+- **Native MySQL/MariaDB:** wire protocol próprio (handshake, scramble
+  SHA-1, lenenc, execução de queries) sobre sockets nativos — em andamento
+  (sem teste E2E contra servidor real).
+- **JS:** `DB001` (diagnóstico claro em compile-time).
+- Testes: `KofDbE2ETest` (8). O link nativo inclui a lib do MySQL apenas
+  quando o programa a usa (URL literal detectado em compile-time).
+
+Limitações conhecidas do nível 0: bind máximo de 4 parâmetros; sem
+connection pooling (cada `connect` abre conexão própria); sem timeouts/
+retries/observability; `db.execute(db, ...)` exige o receiver como primeiro
+argumento (a API idiomática será `db.execute(sql, binds...)`).
 
 ---
 
