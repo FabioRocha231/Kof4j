@@ -116,7 +116,7 @@ class NativeConfigE2ETest {
                 throw new RuntimeException(e);
             }
         });
-        assertEquals("do cwd\n3000\n1", out);
+        assertEquals("do cwd\n3000\ntrue", out);
     }
 
     @Test
