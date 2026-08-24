@@ -9,6 +9,7 @@ import org.objectweb.asm.Opcodes;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -338,8 +339,14 @@ class AndroidInteropE2ETest {
             }
             """);
 
+        Path sdkJar = tempDir.resolve("fake-sdk.jar");
+        try (InputStream in = AndroidInteropE2ETest.class.getResourceAsStream("/android/fake-sdk.jar")) {
+            assertNotNull(in, "fake-sdk.jar deve estar em src/test/resources/android/");
+            Files.copy(in, sdkJar);
+        }
+
         CompilerDriver cpDriver = new CompilerDriver();
-        cpDriver.setExternalClasspath(java.util.List.of(Path.of("src/test/resources/android/fake-sdk.jar")));
+        cpDriver.setExternalClasspath(List.of(sdkJar));
         CompilationResult result = cpDriver.compile(source, tempDir.resolve("proj"), Target.ANDROID);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
 
