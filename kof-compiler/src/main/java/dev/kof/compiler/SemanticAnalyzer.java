@@ -575,6 +575,7 @@ class SemanticAnalyzer {
                         && !KofSecurity.isSecurityNamespace(ie.name())
                         && !KofHttp.isHttpNamespace(ie.name())
                         && !KofMq.isMqNamespace(ie.name())
+                        && !KofTime.isTimeNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
@@ -726,6 +727,30 @@ class SemanticAnalyzer {
                     }
                 }
                 if (mc.receiver() != null) {
+                    // Nome de CLASSE EXTERNA como receiver: Button.inflate(...)
+                    // — resolve pelo classpath antes dos namespaces builtin
+                    // (Button também é widget do kof.ui; o import decide)
+                    if (mc.receiver() instanceof IdentifierExpr rid) {
+                        Type q = qualifyViaImports(rid.name());
+                        if (q == null && rid.name().contains(".")) {
+                            q = qualifiedType(Type.of(rid.name()));
+                        }
+                        if (q instanceof Type.ClassType qt && isExternal(qt)) {
+                            ExternalClasspath.MethodSignature sig = externalTypes.resolveMethod(
+                                    qt.internalName(), mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> params = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    params.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                Type ret = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                                resolvedMethods.put(mc, new SymbolTable.MethodSymbol(mc.methodName(),
+                                        qt.internalName(), ret, params, 1,
+                                        SymbolTable.DispatchKind.STATIC));
+                                yield ret;
+                            }
+                        }
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && "super".equals(rid.name())) {
                         // super.method(args): resolve against the superclass
                         // hierarchy of the enclosing class. The resolved symbol
@@ -822,6 +847,13 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
                         if (mqCall != null) yield mqCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofTime.isTimeNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofTime.TimeCall timeCall = KofTime.staticCall(mc.methodName(), argTypes);
+                        if (timeCall != null) yield timeCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofSecurity.isSecurityNamespace(rid.name())) {
@@ -1216,6 +1248,11 @@ class SemanticAnalyzer {
             int fw = primitiveWidth(fp);
             int tw = primitiveWidth(tp);
             return fw <= tw;
+        }
+        if (from instanceof Type.FunctionType && to instanceof Type.ClassType) {
+            // lambda → interface funcional externa (SAM conversion): a
+            // compatibilidade real (aridade/tipos) é validada na emissão
+            return true;
         }
         if (to instanceof Type.ClassType) {
             return from instanceof Type.ClassType;

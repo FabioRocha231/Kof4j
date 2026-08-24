@@ -30,8 +30,9 @@ import java.util.zip.ZipFile;
  */
 final class ExternalClasspath {
 
-    /** Assinatura resolvida: descritores formais de params e retorno. */
-    record MethodSignature(List<String> parameterDescriptors, String returnDescriptor) {
+    /** Assinatura resolvida: descritores formais de params, retorno e flags. */
+    record MethodSignature(List<String> parameterDescriptors, String returnDescriptor,
+                           boolean isStatic, boolean ownerIsInterface) {
     }
 
     private final Map<String, byte[]> classBytes = new HashMap<>();
@@ -144,6 +145,86 @@ final class ExternalClasspath {
         return loaded && internalName != null && classBytes.containsKey(internalName);
     }
 
+    /** A classe externa é interface? */
+    public synchronized boolean isInterface(String internalName) {
+        byte[] bytes = internalName != null ? classBytes.get(internalName) : null;
+        if (bytes == null) return false;
+        boolean[] iface = new boolean[1];
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public void visit(int version, int access, String name, String signature,
+                                  String superName, String[] interfaces) {
+                    iface[0] = (access & org.objectweb.asm.Opcodes.ACC_INTERFACE) != 0;
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+        } catch (Exception e) {
+            return false;
+        }
+        return iface[0];
+    }
+
+    /** Método abstrato único de uma interface externa (SAM), ou null. */
+    public synchronized Sam resolveSam(String internalName) {
+        if (!isInterface(internalName)) return null;
+        List<Sam> found = new ArrayList<>();
+        collectAbstractMethods(internalName, found, 0);
+        // desce na cadeia de superinterfaces se necessário
+        int hops = 0;
+        String sup = firstSuperinterface(internalName);
+        while (found.isEmpty() && sup != null && hops++ < 32) {
+            collectAbstractMethods(sup, found, 0);
+            sup = firstSuperinterface(sup);
+        }
+        return found.size() == 1 ? found.get(0) : null;
+    }
+
+    private void collectAbstractMethods(String internalName, List<Sam> out, int depth) {
+        if (depth > 32) return;
+        byte[] bytes = classBytes.get(internalName);
+        if (bytes == null) return;
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                 String signature, String[] exceptions) {
+                    boolean isAbstract = (access & org.objectweb.asm.Opcodes.ACC_ABSTRACT) != 0;
+                    boolean isStatic = (access & org.objectweb.asm.Opcodes.ACC_STATIC) != 0;
+                    if (isAbstract && !isStatic) {
+                        out.add(new Sam(name,
+                                toSignature(descriptor, false, true)));
+                    }
+                    return null;
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+        } catch (Exception e) {
+            // bytecode ilegível: trata como sem métodos
+        }
+    }
+
+    /** Primeira superinterface da interface externa presente nos entries. */
+    private String firstSuperinterface(String internalName) {
+        final String[] first = new String[1];
+        byte[] bytes = classBytes.get(internalName);
+        if (bytes == null) return null;
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public void visit(int version, int access, String name, String signature,
+                                  String superName, String[] interfaces) {
+                    if (interfaces != null && interfaces.length > 0) first[0] = interfaces[0];
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+        } catch (Exception e) {
+            return null;
+        }
+        return first[0] != null && classBytes.containsKey(first[0]) ? first[0] : null;
+    }
+
+    /** Método abstrato único (SAM) de uma interface externa. */
+    public record Sam(String methodName, MethodSignature signature) {
+    }
+
     /** Superclasse declarada da classe externa (nome interno), ou null. */
     public synchronized String superClassOf(String internalName) {
         return superclassOf(internalName);
@@ -205,7 +286,14 @@ final class ExternalClasspath {
         try {
             ClassReader reader = new ClassReader(bytes);
             MethodSignature[] hit = new MethodSignature[1];
+            boolean[] iface = new boolean[1];
             reader.accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public void visit(int version, int access, String name, String signature,
+                                  String superName, String[] interfaces) {
+                    iface[0] = (access & org.objectweb.asm.Opcodes.ACC_INTERFACE) != 0;
+                }
+
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                  String signature, String[] exceptions) {
@@ -213,7 +301,9 @@ final class ExternalClasspath {
                             && org.objectweb.asm.Type.getMethodType(descriptor)
                                     .getArgumentTypes().length == argumentCount
                             && hit[0] == null) {
-                        hit[0] = toSignature(descriptor);
+                        hit[0] = toSignature(descriptor,
+                                (access & org.objectweb.asm.Opcodes.ACC_STATIC) != 0,
+                                iface[0]);
                     }
                     return null;
                 }
@@ -246,13 +336,15 @@ final class ExternalClasspath {
         }
     }
 
-    private static MethodSignature toSignature(String methodDescriptor) {
+    private static MethodSignature toSignature(String methodDescriptor, boolean isStatic,
+                                                boolean ownerIsInterface) {
         org.objectweb.asm.Type[] args =
                 org.objectweb.asm.Type.getMethodType(methodDescriptor).getArgumentTypes();
         List<String> params = new ArrayList<>();
         for (org.objectweb.asm.Type t : args) params.add(t.getDescriptor());
         return new MethodSignature(params,
-                org.objectweb.asm.Type.getMethodType(methodDescriptor).getReturnType().getDescriptor());
+                org.objectweb.asm.Type.getMethodType(methodDescriptor).getReturnType().getDescriptor(),
+                isStatic, ownerIsInterface);
     }
 
     /**

@@ -403,6 +403,87 @@ class AndroidInteropE2ETest {
     }
 
     @Test
+    void samConversionLambdaToExternalInterface(@TempDir Path tempDir) throws IOException {
+        // lambda → interface funcional externa: setOnClickListener((v) -> ...)
+        // gera classe sintética que IMPLEMENTA OnClickListener
+        Path sdkJar = tempDir.resolve("fake-sdk.jar");
+        try (InputStream in = AndroidInteropE2ETest.class.getResourceAsStream("/android/fake-sdk.jar")) {
+            assertNotNull(in);
+            Files.copy(in, sdkJar);
+        }
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            import android.widget.Button
+
+            main() {
+                var b = new Button(null)
+                var total = 42
+                b.setOnClickListener((v) -> println("clicou"))
+                b.setOnLongClickListener((v, n) -> println("long " + n))
+            }
+            """);
+
+        CompilerDriver cpDriver = new CompilerDriver();
+        cpDriver.setExternalClasspath(List.of(sdkJar));
+        CompilationResult result = cpDriver.compile(source, tempDir.resolve("out"), Target.ANDROID);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+
+        Path out = tempDir.resolve("out");
+        assertTrue(Files.exists(out.resolve("SamOnClickListener_1.class")),
+                "adapter SAM para OnClickListener deve ser gerado");
+        assertTrue(Files.exists(out.resolve("SamOnLongClickListener_2.class")),
+                "adapter SAM para OnLongClickListener deve ser gerado");
+
+        byte[] bytes = Files.readAllBytes(out.resolve("SamOnClickListener_1.class"));
+        ClassReader reader = new ClassReader(bytes);
+        String[] iface = new String[1];
+        List<String> methods = new ArrayList<>();
+        reader.accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public void visit(int version, int access, String name, String signature,
+                              String superName, String[] interfaces) {
+                if (interfaces != null && interfaces.length > 0) iface[0] = interfaces[0];
+            }
+
+            @Override
+            public org.objectweb.asm.MethodVisitor visitMethod(int access, String name,
+                                                               String desc, String signature,
+                                                               String[] exceptions) {
+                methods.add(name + desc);
+                return null;
+            }
+        }, 0);
+        assertEquals("android/view/OnClickListener", iface[0],
+                "adapter deve IMPLEMENTAR a interface externa");
+        assertTrue(methods.contains("onClick(Landroid/view/View;)V"),
+                "método SAM com assinatura real: " + methods);
+
+        // o call site passa o adapter onde a interface é esperada
+        byte[] mainBytes = Files.readAllBytes(out.resolve("Default").resolve("Main.class"));
+        List<String> calls = new ArrayList<>();
+        new ClassReader(mainBytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public org.objectweb.asm.MethodVisitor visitMethod(int access, String name,
+                                                               String desc, String signature,
+                                                               String[] exceptions) {
+                return new org.objectweb.asm.MethodVisitor(Opcodes.ASM9) {
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String mName,
+                                                String mDesc, boolean isItf) {
+                        if ("setOnClickListener".equals(mName) || "setOnLongClickListener".equals(mName)) {
+                            calls.add(mName + mDesc);
+                        }
+                    }
+                };
+            }
+        }, 0);
+        assertTrue(calls.contains("setOnClickListener(Landroid/view/OnClickListener;)V"),
+                "dispatch com descritor exato: " + calls);
+        assertTrue(calls.contains("setOnLongClickListener(Landroid/view/OnLongClickListener;)V"),
+                "dispatch com descritor exato: " + calls);
+    }
+
+    @Test
     void superMethodCallOnJsTarget(@TempDir Path tempDir) throws IOException {
         // super.metodo() também no KofJS — dispatch nativo do `super` JS
         Path source = tempDir.resolve("Main.kf");

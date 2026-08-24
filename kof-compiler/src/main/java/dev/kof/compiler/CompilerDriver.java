@@ -1320,12 +1320,24 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
                     Type targetType = Type.UnknownType.UNKNOWN;
                     if (bin.right() instanceof IdentifierExpr ie) {
-                        targetType = Type.of(ie.name());
+                        // toType resolve imports ("View" + import → android.view.View)
+                        targetType = toType(ie.name());
                     }
                     if ("instanceof".equals(bin.operator())) {
                         ops.add(new KofInstanceOf(targetType));
                     } else {
                         ops.add(new KofCheckCast(targetType));
+                        // o resultado do cast tem o tipo alvo — o próximo
+                        // acesso (campo/método) precisa enxergá-lo
+                        if (bin.left() instanceof IdentifierExpr lie && !Type.isUnknown(targetType)) {
+                            for (int li = locals.size() - 1; li >= 0; li--) {
+                                if (locals.get(li).name().equals(lie.name())) {
+                                    locals.set(li, new IRLocalVariable(locals.get(li).index(),
+                                            lie.name(), targetType));
+                                    break;
+                                }
+                            }
+                        }
                     }
                     yield localIdx;
                 }
@@ -1636,6 +1648,31 @@ private Target target = Target.JVM;
                             mc.methodName(), List.of(BuiltinTypes.STRING),
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                        && qualifyViaImports(rid.name()) instanceof Type.ClassType extQ
+                        && !extQ.packageName().isEmpty()
+                        && externalClasspath != null
+                        && externalClasspath.knows(extQ.internalName())
+                        && externalClasspath.resolveMethod(extQ.internalName(), mc.methodName(),
+                                mc.arguments().size()) != null) {
+                    // Nome de CLASSE EXTERNA como receiver: Button.inflate(...)
+                    // estático, interface externa ou instância — resolve pelo
+                    // classpath ANTES dos namespaces builtin (Button também é
+                    // widget do kof.ui; o import decide). Local sombreia.
+                    ExternalClasspath.MethodSignature extSig = externalClasspath.resolveMethod(
+                            extQ.internalName(), mc.methodName(), mc.arguments().size());
+                    List<Type> extFormal = new ArrayList<>();
+                    for (String d : extSig.parameterDescriptors()) {
+                        extFormal.add(ExternalClasspath.typeFromDescriptor(d));
+                    }
+                    Type extRet = ExternalClasspath.typeFromDescriptor(extSig.returnDescriptor());
+                    localIdx = emitArgumentsWithFormalTypes(mc.arguments(), extFormal,
+                            ops, owner, localIdx, locals);
+                    KofCallKind extKind = extSig.isStatic() ? KofCallKind.STATIC
+                            : (extSig.ownerIsInterface() ? KofCallKind.INTERFACE
+                            : KofCallKind.INSTANCE);
+                    ops.add(new KofCall(extQ, mc.methodName(), extFormal, extRet, extKind));
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                             && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName()) && mc.arguments().size() == 1) {
                         Type argType = inferExprType(mc.arguments().get(0), locals);
@@ -1903,6 +1940,32 @@ private Target target = Target.JVM;
                         }
                         ops.add(new KofCall(KofHttp.HTTP, httpCall.function(), httpCall.parameterTypes(),
                                 httpCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofTime.isTimeNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofTime.TimeCall timeCall = KofTime.staticCall(mc.methodName(), argTypes);
+                    if (timeCall != null) {
+                        if (!KofTime.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (TIME001)",
+                                        "TIME001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofTime.TIME, timeCall.function(), timeCall.parameterTypes(),
+                                timeCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
@@ -2588,6 +2651,13 @@ private Target target = Target.JVM;
                     if (recvType instanceof Type.ClassType ct) {
                         SymbolTable.Symbol fs = resolveFieldInHierarchy(ct.name(), fa.fieldName());
                         if (fs != null) fieldType = fs.type();
+                        else if (!ct.packageName().isEmpty() && externalClasspath != null
+                                && externalClasspath.knows(ct.internalName())) {
+                            // campo de classe externa: descritor real do classpath
+                            String desc = externalClasspath.resolveFieldType(
+                                    ct.internalName(), fa.fieldName());
+                            if (desc != null) fieldType = ExternalClasspath.typeFromDescriptor(desc);
+                        }
                     }
                     ops.add(new KofStoreField(recvType, fa.fieldName(), fieldType));
                     yield localIdx;
@@ -2904,7 +2974,15 @@ private Target target = Target.JVM;
                         continue;
                     }
                     if ("as".equals(be.operator())) {
-                        leftType = rightType;
+                        // "x as Tipo": o tipo alvo passa pelo toType (imports)
+                        if (be.right() instanceof IdentifierExpr rie
+                                && rightType instanceof Type.UnknownType) {
+                            Type q = toType(rie.name());
+                            if (!(q instanceof Type.UnknownType)) leftType = q;
+                            else leftType = rightType;
+                        } else {
+                            leftType = rightType;
+                        }
                         continue;
                     }
                     if (isComparisonOp(be.operator())) {
@@ -3014,6 +3092,13 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
                     if (mqCall != null) yield mqCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofTime.isTimeNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofTime.TimeCall timeCall = KofTime.staticCall(mc.methodName(), argTypes);
+                    if (timeCall != null) yield timeCall.returnType();
                     yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
@@ -3475,9 +3560,20 @@ private Target target = Target.JVM;
                                              List<KofOperation> ops, String owner, int localIdx,
                                              List<IRLocalVariable> locals) {
         for (int i = 0; i < args.size(); i++) {
+            Type formal = i < formalTypes.size() ? formalTypes.get(i) : null;
+            // SAM conversion: lambda → interface funcional externa
+            // (setOnClickListener(v -> ...) com OnClickListener no classpath)
+            if (args.get(i) instanceof LambdaExpr le && formal instanceof Type.ClassType ct
+                    && !ct.packageName().isEmpty() && externalClasspath != null
+                    && externalClasspath.isInterface(ct.internalName())) {
+                ExternalClasspath.Sam sam = externalClasspath.resolveSam(ct.internalName());
+                if (sam != null) {
+                    localIdx = emitSamAdapter(le, ct, sam, ops, owner, localIdx, locals);
+                    continue;
+                }
+            }
             localIdx = emitExpression(args.get(i), ops, owner, localIdx, locals);
             Type argType = inferExprType(args.get(i), locals);
-            Type formal = i < formalTypes.size() ? formalTypes.get(i) : null;
             if (formal != null && formal instanceof Type.PrimitiveType fpt
                     && argType instanceof Type.PrimitiveType apt
                     && !BuiltinTypes.isString(formal)) {
@@ -3489,6 +3585,136 @@ private Target target = Target.JVM;
             }
         }
         return localIdx;
+    }
+
+    private final java.util.IdentityHashMap<LambdaExpr, String> samAdapterNames =
+            new java.util.IdentityHashMap<>();
+
+    /**
+     * Gera (uma vez por lambda) a classe sintética que IMPLEMENTA a
+     * interface externa: o método SAM contém o corpo da lambda e as
+     * capturas viram campos finais + construtor — o mesmo modelo das
+     * lambdas nativas. Emite NEW+DUP+capturas+&lt;init&gt; na pilha.
+     */
+    private int emitSamAdapter(LambdaExpr le, Type.ClassType iface, ExternalClasspath.Sam sam,
+                               List<KofOperation> ops, String owner, int localIdx,
+                               List<IRLocalVariable> locals) {
+        List<IRLocalVariable> captures = collectCaptures(le, locals);
+        String className = samAdapterNames.computeIfAbsent(le,
+                k -> "Sam" + iface.name().replace('.', '_') + "_" + (++lambdaCounter));
+
+        List<Type> samParamTypes = new ArrayList<>();
+        for (String d : sam.signature().parameterDescriptors()) {
+            samParamTypes.add(ExternalClasspath.typeFromDescriptor(d));
+        }
+        Type samReturn = ExternalClasspath.typeFromDescriptor(sam.signature().returnDescriptor());
+
+        if (le.parameters().size() != samParamTypes.size() && currentDiagnostics != null) {
+            SourcePosition p = le.position();
+            currentDiagnostics.error(p != null ? p.file() : "",
+                    p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                    "SAM mismatch: lambda has " + le.parameters().size()
+                            + " parameter(s) but " + iface.name() + "." + sam.methodName()
+                            + " needs " + samParamTypes.size(),
+                    "SAM001");
+        }
+
+        if (!samAdapterNames.containsValue(className) || !syntheticExists(className)) {
+            buildSyntheticAdapter(className, iface.internalName(), sam.methodName(),
+                    samParamTypes, samReturn, le, captures);
+        }
+
+        Type adapterType = new Type.ClassType("", className, List.of());
+        List<Type> captureTypes = new ArrayList<>();
+        for (IRLocalVariable cap : captures) captureTypes.add(cap.type());
+        ops.add(new KofNewObject(adapterType, captureTypes));
+        ops.add(new KofDup());
+        for (IRLocalVariable cap : captures) {
+            ops.add(new KofLoadLocal(cap.type(), cap.index()));
+        }
+        ops.add(new KofCall(adapterType, "<init>", captureTypes,
+                Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+        return localIdx;
+    }
+
+    private boolean syntheticExists(String name) {
+        for (IRClass c : syntheticClasses) {
+            if (c.name().equals(name)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Corpo do adapter: mesmo esqueleto de lambdaClass, mas implementa a
+     * interface externa e o método tem o nome/assinatura do SAM. Os params
+     * da lambda são ligados POSICIONALMENTE aos params do SAM.
+     */
+    private void buildSyntheticAdapter(String className, String ifaceInternal, String samName,
+                                       List<Type> samParamTypes, Type samReturnType,
+                                       LambdaExpr le, List<IRLocalVariable> captures) {
+        Type ownerType = new Type.ClassType("", className, List.of());
+        List<FormalParameterNode> params = le.parameters();
+
+        List<IRField> fields = new ArrayList<>();
+        List<Type> captureTypes = new ArrayList<>();
+        for (IRLocalVariable cap : captures) {
+            fields.add(new IRField(cap.name(), cap.type(),
+                    AccessFlags.PRIVATE | AccessFlags.FINAL, null));
+            captureTypes.add(cap.type());
+        }
+
+        // invoke(): copia capturas pra locais e chama o método SAM real,
+        // que contém o corpo da lambda
+        List<KofOperation> ctorOps = new ArrayList<>();
+        List<IRLocalVariable> ctorLocals = new ArrayList<>();
+        ctorLocals.add(new IRLocalVariable(0, "this", ownerType));
+        int cidx = 1;
+        for (IRLocalVariable cap : captures) {
+            ctorOps.add(new KofLoadLocal(ownerType, 0));
+            ctorOps.add(new KofLoadLocal(cap.type(), cidx));
+            ctorOps.add(new KofStoreField(ownerType, cap.name(), cap.type()));
+            ctorLocals.add(new IRLocalVariable(cidx, cap.name(), cap.type()));
+            cidx += isDoubleWidth(cap.type()) ? 2 : 1;
+        }
+        ctorOps.add(new KofReturnVoid());
+        IRMethod ctor = new IRMethod("<init>", Type.PrimitiveType.VOID, captureTypes,
+                AccessFlags.PUBLIC, List.of(),
+                List.of(new IRBasicBlock(0, ctorOps)), ctorLocals);
+
+        // método SAM: this + capturas nos primeiros slots + params do SAM
+        List<KofOperation> bodyOps = new ArrayList<>();
+        List<IRLocalVariable> bodyLocals = new ArrayList<>();
+        bodyLocals.add(new IRLocalVariable(0, "this", ownerType));
+        int bidx = 1;
+        for (IRLocalVariable cap : captures) {
+            bodyOps.add(new KofLoadLocal(ownerType, 0));
+            bodyOps.add(new KofLoadField(ownerType, cap.name(), cap.type()));
+            bodyOps.add(new KofStoreLocal(cap.type(), bidx));
+            bodyLocals.add(new IRLocalVariable(bidx, cap.name(), cap.type()));
+            bidx += isDoubleWidth(cap.type()) ? 2 : 1;
+        }
+        for (int i = 0; i < params.size() && i < samParamTypes.size(); i++) {
+            bodyLocals.add(new IRLocalVariable(bidx, params.get(i).name(), samParamTypes.get(i)));
+            bidx += isDoubleWidth(samParamTypes.get(i)) ? 2 : 1;
+        }
+        int localEnd = bidx;
+        for (StatementNode stmt : le.body()) {
+            localEnd = emitStatement(stmt, bodyOps, className, localEnd, bodyLocals, samReturnType);
+        }
+        KofOperation last = bodyOps.isEmpty() ? null : bodyOps.get(bodyOps.size() - 1);
+        if (last == null || !(last instanceof KofReturn || last instanceof KofReturnVoid)) {
+            if (Type.isVoid(samReturnType)) bodyOps.add(new KofReturnVoid());
+            else bodyOps.add(new KofReturn(samReturnType));
+        }
+        IRMethod samMethod = new IRMethod(samName, samReturnType, samParamTypes,
+                AccessFlags.PUBLIC, List.of(),
+                List.of(new IRBasicBlock(0, bodyOps)), bodyLocals);
+
+        IRClass cls = new IRClass(className, "java/lang/Object",
+                List.of(ifaceInternal),
+                AccessFlags.PUBLIC | AccessFlags.SUPER | AccessFlags.FINAL,
+                fields, List.of(samMethod, ctor), List.of(), null, 300 + lambdaCounter);
+        syntheticClasses.add(cls);
     }
 
     private record StringMethodSig(Type returnType, List<Type> parameterTypes) {}
