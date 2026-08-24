@@ -344,14 +344,40 @@ kof version
 
 ---
 
-# Construindo
+---
+
+# Compilando e instalando a partir do source
+
+**Requisitos:** JDK 21+ (Temurin recomendado — é a Tooling API baseline) e
+Maven 3.9+. Para o target `native`: `as`/`ld` (binutils). O target `js` não
+exige nada externo (GraalJS embarcado no jar).
 
 ```bash
+# 1. Compilar tudo (compilador, runtime, CLI com GraalJS embarcado)
 mvn clean package -DskipTests
+
+# 2. Rodar a suíte completa (JVM + Native + KofJS E2E)
+mvn test
+
+# 3. Usar direto do source (dev build, java do sistema)
 mkdir -p lib
-cp kof-cli/target/kof-cli-*.jar lib/kof.jar
+cp kof-cli/target/kof-cli-$(cat VERSION).jar lib/kof.jar
+bin/kof version
 bin/kof info
+
+# 4. Instalar num prefixo (instalação local completa)
+bin/kof install ~/.kof
+export PATH="$HOME/.kof/bin:$PATH"
+kof version
+
+# 5. Empacotar a distribuição oficial (com OpenJDK 21 embutido)
+scripts/package.sh --jdk      # gera dist/kof-<versão>-<os>-<arch>.tar.gz
 ```
+
+O `kof install <dir>` copia o `kof.jar` para `<dir>/lib/` e gera o launcher
+`<dir>/bin/kof` (usa o JDK embutido de `<dir>/jdk/` quando presente; senão o
+`java` do sistema). O `scripts/package.sh --jdk` baixa o Temurin 21 do
+Adoptium e monta o layout completo de distribuição.
 
 Versionamento centralizado em `VERSION` — ver
 [docs/distribution/VERSIONING.md](docs/distribution/VERSIONING.md).
