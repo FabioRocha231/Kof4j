@@ -6416,8 +6416,6 @@ final class NativeRuntime {
                 jge .Lsec_secret_match
                 leaq (%rsp,%r14), %rsi
                 movb (%rsi,%rdx), %al
-                movb leaq (%rsp,%r14), %rsi
-                movb (%rsi,%rdx), %al
                 movb 24(%rbx,%rdx), %cl
                 cmpb %cl, %al
                 jne .Lsec_secret_next

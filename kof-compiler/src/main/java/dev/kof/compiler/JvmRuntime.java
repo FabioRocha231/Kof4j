@@ -927,7 +927,12 @@ static boolean hasRuntimeFn(String methodName) {
                 // ── kof.io — File / Path / Directory ──────────────
 
                 private static java.nio.file.Path p(String path) {
-                    return java.nio.file.Path.of(path);
+                    return java.nio.file.Path.of(path.replace('\\\\', '/'));
+                }
+
+                /** Caminho canônico Kof: separador sempre '/' (multiplataforma). */
+                private static String s(java.nio.file.Path path) {
+                    return path.toString().replace('\\\\', '/');
                 }
 
                 public static int kof_io_file_exists(String path) {
@@ -1023,16 +1028,16 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static String kof_io_file_name(String path) {
                     java.nio.file.Path pp = p(path).getFileName();
-                    return pp == null ? path : pp.toString();
+                    return pp == null ? path.replace('\\\\', '/') : s(pp);
                 }
 
                 public static String kof_io_path_resolve(String base, String child) {
-                    return p(base).resolve(child).toString();
+                    return s(p(base).resolve(child));
                 }
 
                 public static String kof_io_path_parent(String path) {
                     java.nio.file.Path pp = p(path).getParent();
-                    return pp == null ? null : pp.toString();
+                    return pp == null ? null : s(pp);
                 }
 
                 public static String kof_io_path_file_name(String path) {
@@ -1046,7 +1051,7 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 public static String kof_io_path_normalize(String path) {
-                    String n = p(path).normalize().toString();
+                    String n = s(p(path).normalize());
                     return n.isEmpty() ? "." : n;
                 }
 
@@ -1055,7 +1060,7 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 public static String kof_io_path_to_absolute(String path) {
-                    return p(path).toAbsolutePath().toString();
+                    return s(p(path).toAbsolutePath());
                 }
 
                 public static int kof_io_dir_create(String path) {

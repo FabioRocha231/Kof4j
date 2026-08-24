@@ -23,7 +23,8 @@ class IoE2ETest {
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
         try {
-            ProcessBuilder pb = new ProcessBuilder("java", "-cp", outDir.toString(), "Default.Main");
+            ProcessBuilder pb = new ProcessBuilder("java", "-Dfile.encoding=UTF-8",
+                    "-Dstdout.encoding=UTF-8", "-cp", outDir.toString(), "Default.Main");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             String output = new String(p.getInputStream().readAllBytes()).trim();
