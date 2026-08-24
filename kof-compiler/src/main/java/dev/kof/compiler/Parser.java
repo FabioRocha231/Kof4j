@@ -28,13 +28,27 @@ class Parser {
         List<String> imports = parseImports();
         List<AstNode> declarations = new ArrayList<>();
         while (!atEnd()) {
-            if (check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType()) {
+            if (check(TokenType.IDENTIFIER) && "test".equals(peek().value()) && checkNext(TokenType.STRING_LITERAL)) {
+                declarations.add(parseTestDeclaration());
+            } else if (check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType()) {
                 declarations.add(parseFunctionDeclaration(List.of()));
             } else {
                 declarations.add(parseTypeDeclaration());
             }
         }
         return new CompilationUnitNode(pos0, packageName, imports, List.copyOf(declarations));
+    }
+
+    /**
+     * `test "nome" { ... }` — corpo analisado como bloco de statements;
+     * o lowering transforma cada teste numa função void sem argumentos.
+     */
+    private TestDeclarationNode parseTestDeclaration() {
+        SourcePosition p = pos();
+        advance(); // consome 'test'
+        Token nameToken = expect(TokenType.STRING_LITERAL, "Expected test name string", "PARSE010");
+        List<StatementNode> body = parseBlock();
+        return new TestDeclarationNode(p, nameToken.value(), body);
     }
 
     private FunctionDeclarationNode parseFunctionDeclaration(List<String> mods) {

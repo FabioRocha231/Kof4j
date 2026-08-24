@@ -126,8 +126,24 @@ class SemanticAnalyzer {
             case EntityDeclarationNode ent -> analyzeEntity(ent);
             case InterfaceDeclarationNode iface -> analyzeInterface(iface);
             case FunctionDeclarationNode func -> analyzeFunction(func);
+            case TestDeclarationNode test -> analyzeTest(test);
             default -> {}
         }
+    }
+
+    /**
+     * `test "nome" { ... }` — corpo void sem parâmetros; assert falho
+     * propaga como exceção e marca o teste como falho.
+     */
+    private void analyzeTest(TestDeclarationNode test) {
+        String prevFunction = currentFunctionName;
+        currentFunctionName = "test \"" + test.name() + "\"";
+        SymbolTable testScope = currentScope.enterScope();
+        SymbolTable prevScope = currentScope;
+        currentScope = testScope;
+        analyzeBody(test.body(), testScope, Type.PrimitiveType.VOID);
+        currentScope = prevScope;
+        currentFunctionName = prevFunction;
     }
 
     private boolean isLocalName(String name, SymbolTable scope) {

@@ -16,6 +16,15 @@ record FunctionDeclarationNode(SourcePosition position, List<String> modifiers, 
                                List<StatementNode> body) implements AstNode {
 }
 
+/**
+ * Bloco `test "nome" { ... }` — um caso de teste da suíte estruturada do
+ * Kof (G6). O corpo roda isolado; assert falho = teste falho. O compilador
+ * conhece os testes em compile-time (nunca reflection).
+ */
+record TestDeclarationNode(SourcePosition position, String name,
+                           List<StatementNode> body) implements AstNode {
+}
+
 sealed interface TypeDeclarationNode extends AstNode {
     String name();
     List<String> modifiers();

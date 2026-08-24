@@ -30,6 +30,31 @@ private Target target = Target.JVM;
         return compile(sourceFile, outputDir, Target.JVM);
     }
 
+    /** Um caso `test "nome" { }` descoberto em compile-time. */
+    public record TestInfo(String name, String functionName) {
+    }
+
+    /** Testes descobertos na última compilação (ordem de declaração). */
+    public java.util.List<TestInfo> discoveredTests() {
+        return List.copyOf(discoveredTests);
+    }
+
+    /**
+     * Compila em modo harness de testes: cada `test "nome" { }` vira uma
+     * função void (`kof_test_N`) e o main do programa é substituído por um
+     * runner sintetizado que executa os testes isolados por try/catch,
+     * imprime PASS/FAIL por nome e sai com código != 0 quando há falha.
+     * O main original é ignorado (como cargo test).
+     */
+    public CompilationResult compileForTests(Path sourceFile, Path outputDir, Target target) {
+        this.testHarnessMode = true;
+        try {
+            return compile(sourceFile, outputDir, target);
+        } finally {
+            this.testHarnessMode = false;
+        }
+    }
+
     /** Enable or disable IR optimization passes (enabled by default). */
     public CompilerDriver setOptimizationEnabled(boolean enabled) {
         this.optimizeEnabled = enabled;
@@ -166,7 +191,34 @@ private Target target = Target.JVM;
         List<IRMethod> topLevelFunctions = new ArrayList<>();
         String moduleName = unit.packageName().isEmpty() ? "Default" : unit.packageName().replace('.', '/');
         int nextTypeId = 10;
+
+        // G6: descobrir os testes antes de baixar — o runner sintetizado
+        // precisa da lista completa (nomes na ordem de declaração).
+        discoveredTests.clear();
+        {
+            int ti = 0;
+            for (AstNode decl : unit.declarations()) {
+                if (decl instanceof TestDeclarationNode t) {
+                    discoveredTests.add(new TestInfo(t.name(), "kof_test_" + ti++));
+                }
+            }
+        }
+        FunctionDeclarationNode harnessMain =
+                testHarnessMode && !discoveredTests.isEmpty() ? buildTestHarnessMain() : null;
+
+        java.util.List<AstNode> decls = new ArrayList<>();
         for (AstNode decl : unit.declarations()) {
+            if (harnessMain != null && decl instanceof FunctionDeclarationNode f && "main".equals(f.name())) {
+                continue; // kof test roda só os testes (como cargo test)
+            }
+            decls.add(decl);
+        }
+        if (harnessMain != null) {
+            decls.add(harnessMain);
+        }
+
+        int testIndex = 0;
+        for (AstNode decl : decls) {
             if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
             else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
             else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
@@ -179,6 +231,14 @@ private Target target = Target.JVM;
                 classes.add(lowerRecord(new RecordDeclarationNode(ent.position(), ent.name(),
                         ent.modifiers(), null, List.of(), components, List.of()),
                         unit.packageName(), nextTypeId++));
+            }
+            else if (decl instanceof TestDeclarationNode test) {
+                // teste vira função void sem argumentos — todos os backends
+                // o executam como qualquer outra função
+                FunctionDeclarationNode asFunc = new FunctionDeclarationNode(test.position(),
+                        List.of(), "void", "kof_test_" + testIndex++,
+                        List.of(), List.of(), List.of(), test.body());
+                topLevelFunctions.add(lowerFunction(asFunc));
             }
             else if (decl instanceof FunctionDeclarationNode func) {
                 topLevelFunctions.add(lowerFunction(func));
@@ -197,6 +257,8 @@ private Target target = Target.JVM;
     private final List<IRClass> syntheticClasses = new ArrayList<>();
     private final java.util.Map<String, List<EntityFieldNode>> entitySchemas = new java.util.HashMap<>();
     private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
+    private final java.util.List<TestInfo> discoveredTests = new java.util.ArrayList<>();
+    private boolean testHarnessMode = false;
     private int lambdaCounter = 0;
 
     /**
