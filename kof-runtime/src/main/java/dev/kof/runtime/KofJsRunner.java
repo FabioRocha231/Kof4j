@@ -59,14 +59,17 @@ public final class KofJsRunner {
 
     public static int run(Path moduleFile, OutputStream out, InputStream in,
                           OutputStream err, boolean openWindow, String[] programArgs) throws IOException {
-        try (Context context = Context.newBuilder("js")
+        // o contexto NÃO pode fechar antes da extração do sentinel de
+        // process.exit (o guest object só é legível com o contexto vivo)
+        Context context = Context.newBuilder("js")
                 .allowIO(true)
                 .allowAllAccess(true)
                 .option("engine.WarnInterpreterOnly", "false")
                 .out(out)
                 .err(err)
                 .in(in)
-                .build()) {
+                .build();
+        try {
             exposePlatform(context, out, in, programArgs);
             Source source = Source.newBuilder("js", moduleFile.toFile())
                     .mimeType("application/javascript+module")
@@ -115,6 +118,8 @@ public final class KofJsRunner {
             } catch (IOException ignored) {
             }
             return 1;
+        } finally {
+            context.close();
         }
     }
 

@@ -20,6 +20,7 @@ final class NativeRuntime {
         emitJsonFunctions(sb);
         emitAlloc(sb);
         emitFree(sb);
+        emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
         emitBoundsError(sb);

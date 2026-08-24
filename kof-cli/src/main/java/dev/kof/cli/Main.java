@@ -332,7 +332,7 @@ private static void build(String[] args) {
     }
 
     private static void test(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native]"); System.exit(1); return; }
+        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native|js]"); System.exit(1); return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         for (int i = 2; i < args.length; i++) {
@@ -376,6 +376,22 @@ private static void build(String[] args) {
                             ok = ec == 0;
                             if (!ok) output.append("exit code: ").append(ec).append('\n');
                         } catch (IOException | InterruptedException e) {
+                            ok = false;
+                            output.append("failed to execute: ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                } else if (target == Target.JS) {
+                    String entry = findJsEntry(tmp);
+                    if (entry == null) {
+                        ok = false;
+                        output.append("no JS entry point found\n");
+                    } else {
+                        try {
+                            int ec = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry),
+                                    System.out, System.in, System.err, false, new String[0]);
+                            ok = ec == 0;
+                            if (!ok) output.append("exit code: ").append(ec).append('\n');
+                        } catch (IOException e) {
                             ok = false;
                             output.append("failed to execute: ").append(e.getMessage()).append('\n');
                         }

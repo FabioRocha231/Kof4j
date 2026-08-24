@@ -67,7 +67,7 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 |-----------|---------|-----|--------|----|
 | `passwords` | `hash/verify/needsRehash` (PBKDF2-HMAC-SHA256 600k) | ✅ | ❌ SECN001 | ✅ |
 | `crypto` | `sha256`, `sha512`, `hmacSha256`, `encryptAesGcm/decryptAesGcm`, `randomHex`, `randomInt` | ✅ (sha512/AES-GCM) | ✅ sha256/hmac/random; ❌ sha512 SECN003, AES-GCM SECN002 | ✅ |
-| `jwt` | `create(claims, secret[, ttl])`, `verify(token, secret[, iss, aud])`, `secret()` (HS256 fixo, iat/exp) | ✅ | ❌ sem binding (ver §4 gap G7) | ✅ |
+| `jwt` | `create(claims, secret[, ttl])`, `verify(token, secret[, iss, aud])`, `secret()` (HS256 fixo, iat/exp) | ✅ | ❌ SECN004 (diagnóstico em compile-time — G7 fechado) | ✅ |
 | `secrets` | `get(name)`, `get(name, fallback)` (env `KOF_*`), `redact(value)` | ✅ | ✅ (`/proc/self/environ`) | ✅ |
 | `security` | `constantTimeEquals`, `csrfToken/csrfValid`, `corsAllowed`, headers (CSP/HSTS/nosniff/Frame/Referrer), `randomHex/randomInt`, `redact` | ✅ | ✅ constant-time/redact; ❌ csrf/cors/headers | ✅ constant-time/redact; ❌ csrf/cors/headers |
 | `auth` (web) | `secret(token)`, `token()`, `authenticated()`, `claims()`, `user()`, `hasRole(r)`, `hasPermission(p)` (Bearer JWT + ThreadLocal por request) | ✅ | ❌ | ❌ |
@@ -197,7 +197,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | SHA-256 / SHA-512 / HMAC | `DONE` | y | y sha256/hmac; – sha512 SECN003 | y | KofSecurityTest | security.md |
 | AES-GCM | `DONE` (JVM) | y | – SECN002 | – SECN002 | KofSecurityTest | security.md |
 | SecureRandom | `DONE` | y | y (getrandom) | y | KofSecurityTest | security.md |
-| JWT (HS256, exp/iss/aud) | `DONE` (JVM/JS) | y | – (gap G7) | y | KofSecurityTest | security.md |
+| JWT (HS256, exp/iss/aud) | `DONE` (JVM/JS) | y | – SECN004 (compile-time) | y | KofSecurityTest | security.md |
 | secrets (`secrets.get`, env) | `DONE` | y | y | y | KofSecurityTest | security.md |
 | constant-time comparison | `DONE` | y | y | y | KofSecurityTest | security.md |
 | redaction | `DONE` | y | y | y | KofSecurityTest | security.md |
@@ -325,8 +325,8 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (JVM; arquivo > env > profile > default, typed `str/int/long/bool`); falta Native/JS (CONFIG001) | — | estender targets (P0/G10) |
 | G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
 | G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM, LOG001 outros); faltam health checks, metrics e request IDs | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
-| G6 | **kof.test estruturado** inexistente | testes como cidadãos de primeira classe | `test "nome" { }` + suites + E2E |
-| G7 | **Diagnósticos de target incompletos no security/web**: `jwt.*`, `auth.*`, `csrf`, `cors`, headers no Native/JS e `kof_web_*` no Native não têm entrada em `supportedOn` (default `true`) → erro de link em vez de SECN00x claro | viola "nunca silencioso" | preencher `KofSecurity.supportedOn`/diagnósticos |
+| G6 | ~~**kof.test estruturado** inexistente~~ — ✅ **implementado**: `test "nome" { }` nos 3 targets; runner sintetizado em compile-time; PASS/FAIL por nome + exit code (`StructuredTestE2ETest`) | testes como cidadãos de primeira classe | próximo: suites nomeadas por diretório, timeouts, fixtures |
+| G7 | ~~**Diagnósticos de target incompletos no security/web**~~ — ✅ **fechado**: `jwt.*` com entrada explícita (SECN004 no Native); `csrf/cors/auth/headers` já cobertos; WEB001 emitido para web.app() e métodos de app fora do JVM | viola "nunca silencioso" | manter: toda função nova entra em `supportedOn` no mesmo PR |
 | G8 | **Scheduling** inexistente (nem `sleep`) | jobs periódicos | `kof.time.sleep`, scheduler |
 | G9 | **Rate limiting / sessions / API keys** inexistentes | produção web | kof.security (web security layer) |
 | G10 | **JWT/passwords/SHA-512/AES-GCM no Native** sem binding (asm parcial) | multiplataforma incompleta | implementar `kof_sec_jwt_*`, `kof_sec_password_*`, sha512, aesgcm no asm |
@@ -412,9 +412,9 @@ Princípios mantidos:
 
 ## P0 — plataforma base (agora)
 
-1. G7 — diagnóstico de target completo no security/web (pequeno, remove
-   erros de link silenciosos).
-2. G6 — `kof.test` estruturado (`test "nome" { }` + suites).
+1. ~~G7~~ — ✅ diagnóstico de target completo no security/web.
+2. ~~G6~~ — ✅ `kof.test` estruturado (`test "nome" { }` nos 3 targets,
+   runner sintetizado em compile-time, `process.exit(code)`).
 3. ~~G3~~ — `kof.config` ✅ (JVM); estender a Native/JS (CONFIG001) com G10.
 4. G2 — `kof.http` client.
 5. ~~G1~~ — ✅ `kof.db` + `kof.orm` nível 0 (JDBC idiomático, SQLite nativo,

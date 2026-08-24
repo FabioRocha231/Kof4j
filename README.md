@@ -174,8 +174,10 @@ Status alpha: [docs/targets/KOFJS.md](docs/targets/KOFJS.md).
 join implícito; Native reporta `CONC001` (gap documentado). Ver
 [docs/concurrency.md](docs/concurrency.md).
 
-**Testes**: `assert(cond, "msg")` + `kof test <file.kf|dir>` — PASS/FAIL por
-exit code. Ver [learn/23-testing.md](learn/23-testing.md).
+**Testes**: `test "nome" { }` + `assert(cond, "msg")` + `kof test
+<file.kf|dir> [--target jvm|native|js]` — PASS/FAIL **por teste**, runner
+sintetizado em compile-time, exit code pelo resultado. Ver
+[learn/23-testing.md](learn/23-testing.md).
 
 **Depuração**: `kof debug <file.kf>` — servidor DAP sobre stdio com JDWP cru
 (breakpoints por linha Kof, call stack com funções/linhas Kof, continue,
@@ -336,7 +338,7 @@ kof build <dir> [--target jvm|native|js] [--output <dir>]
 kof run <file.kf> [--target jvm|native|js] [args...]
 kof serve <file.kf> [--port <port>] [--host <host>]
 kof check <file.kf|dir>
-kof test <file.kf|dir> [--target jvm|native]
+kof test <file.kf|dir> [--target jvm|native|js]
 kof info [--json]
 kof lsp
 kof install <dir>

@@ -235,6 +235,25 @@ class KofOrmE2ETest {
     }
 
     @Test
+    void countWhereAndDeleteAll(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:orm11;DB_CLOSE_DELAY=-1\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    orm.save(db, User(0, \"Ana\", \"ana@kof.dev\", 25))\n"
+                + "                    println(orm.count<User>(db, \"age\", 30))\n"
+                + "                    println(orm.count<User>(db))\n"
+                + "                    orm.deleteAll<User>(db)\n"
+                + "                    println(orm.count<User>(db))\n"
+                + "                    db.close(db)\n"
+                + "                }\n"
+                + "                ");
+        runJvm(source, tempDir.resolve("out"), "1\n2\n0");
+    }
+
+    @Test
     void migrateAppliesOnce(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, ENTITY_SRC + "\n"
@@ -303,12 +322,13 @@ class KofOrmE2ETest {
                     println(pg.size)
                     var leo = orm.where<User>(db, "name", "LIKE", "L%%")
                     println(leo.size)
-                    orm.delete<User>(db, 1)
+                    println(orm.count<User>(db, "age", 25))
+                    orm.deleteAll<User>(db)
                     println(orm.count<User>(db))
                     db.close(db)
                 }
                 """.formatted(port, System.nanoTime()));
-            runJvmWithExtra(source, tempDir.resolve("out"), mongoClasspath(), "Mel\n1\n1\n3\n1\n2\n1\n2");
+            runJvmWithExtra(source, tempDir.resolve("out"), mongoClasspath(), "Mel\n1\n1\n3\n1\n2\n1\n1\n0");
         }
     }
 

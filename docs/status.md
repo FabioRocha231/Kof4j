@@ -9,12 +9,12 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 527 testes (todos PASS; +1 skip condicional)
+mvn test             → 543 testes (todos PASS; +1 skip condicional)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
 kof check            → PASS
-kof test             → PASS (PASS/FAIL por exit code com assert)
+kof test             → PASS (suíte estruturada `test "nome" { }` nos 3 targets)
 kof bench            → PASS (harness: compile, run, validate, métricas, baseline)
 kof debug            → PASS (DAP MVP no target JVM)
 kof info             → PASS
@@ -330,18 +330,32 @@ log.error("failed: " + message)
 - Funciona dentro de handlers web; Native/JS reportam `LOG001`;
   docs: `docs/stdlib-logging.md` (`KofLogE2ETest`, 7 E2E).
 
-### Testes da linguagem
+### Testes da linguagem (G6 — suíte estruturada)
 
 ```kof
-main() {
+test "soma simples" {
     assert(2 + 2 == 4)
+}
+
+test "string igual" {
     assert("kof" == "kof", "strings iguais")
 }
+
+main() { /* ignorado pelo kof test */ }
 ```
 
-- `assert` lança quando falso → exit code 1.
-- `kof test <file.kf|dir> [--target jvm|native]` reporta PASS/FAIL.
-- Ver: `learn/23-testing.md`.
+- `test "nome" { }` vira função em compile-time (desugar → `kof_test_N`);
+  o runner é sintetizado pelo compilador — zero reflection.
+- `kof test <file.kf|dir> [--target jvm|native|js]` reporta
+  `PASS nome` / `FAIL nome: mensagem` + resumo; exit code ≠ 0 se houver
+  falha. Cada teste roda isolado (try/catch por teste).
+- Arquivos sem blocos `test` mantêm o contrato antigo (PASS/FAIL por
+  exit code do programa inteiro).
+- **process.exit(code)**: primitivo novo nos 3 targets (JVM System.exit,
+  Native syscall, JS sentinel no KofJsRunner) — sem stack trace.
+- G7 fechado: `jwt.*` tem entrada explícita na matriz de targets — Native
+  reporta `SECN004` em compile-time (antes: erro de link silencioso).
+- Ver: `learn/23-testing.md`, `StructuredTestE2ETest` (11 testes).
 
 ---
 
@@ -371,6 +385,7 @@ main() {
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
 | AssertE2ETest | 5 | assert JVM + Native |
+| StructuredTestE2ETest | 11 | test "nome" {} nos 3 targets + process.exit + descoberta |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | LambdaE2ETest | 4 | lambdas + if-expr |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
@@ -380,7 +395,7 @@ main() {
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
 | NativeDebugTest* | 5 | harnesses de debug |
-| **Total** | **527** (+1 skip condicional — MongoDB sem container) | |
+| **Total** | **543** (+1 skip condicional — MongoDB sem container) | |
 
 ---
 

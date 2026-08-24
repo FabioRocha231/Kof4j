@@ -77,6 +77,12 @@ final class KofOrm {
                     : null;
             case "count" -> typed && argTypes.size() == 1
                     ? new OrmCall("kof_orm_count", Type.PrimitiveType.LONG, List.of(STR), entityName, true)
+                    : typed && argTypes.size() == 3
+                    ? new OrmCall("kof_orm_count_where", Type.PrimitiveType.LONG, List.of(STR, STR, OBJ),
+                    entityName, true)
+                    : null;
+            case "deleteAll" -> typed && argTypes.size() == 1
+                    ? new OrmCall("kof_orm_delete_all", BOOL, List.of(STR), entityName, true)
                     : null;
             case "where" -> typed && argTypes.size() == 3
                     ? new OrmCall("kof_orm_where", new Type.ClassType("kof", "List", List.of(STR)),

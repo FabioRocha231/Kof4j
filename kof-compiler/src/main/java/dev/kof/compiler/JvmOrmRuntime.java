@@ -350,6 +350,41 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                             + kof_orm_q(pk) + " = ?", key) >= 0;
                 }
 
+                public static long kof_orm_count_where(String id, String field, Object value,
+                        String table, String schema) throws Exception {
+                    if (kof_mongo_id(id)) {
+                        Object coll = kof_mongo_coll(id, table);
+                        Object filter = kof_mongo_eq(field, value);
+                        Object n = kof_mongo_method(coll.getClass(), "countDocuments", 1,
+                                filter.getClass()).invoke(coll, filter);
+                        return ((Number) n).longValue();
+                    }
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                            "SELECT COUNT(*) FROM " + kof_orm_q(table) + " WHERE "
+                                    + kof_orm_q(field) + " = ?")) {
+                        ps.setObject(1, value);
+                        try (java.sql.ResultSet rs = ps.executeQuery()) {
+                            return rs.next() ? rs.getLong(1) : 0L;
+                        }
+                    }
+                }
+
+                public static boolean kof_orm_delete_all(String id, String table, String schema) throws Exception {
+                    if (kof_mongo_id(id)) {
+                        Object coll = kof_mongo_coll(id, table);
+                        Object r = kof_mongo_method(coll.getClass(), "deleteMany", 1,
+                                kof_mongo_eq("_id", "").getClass().getInterfaces()[0]).invoke(coll,
+                                kof_mongo_empty_filter());
+                        return ((Number) kof_mongo_method(r.getClass(), "getDeletedCount", 0).invoke(r)).longValue() > 0;
+                    }
+                    return kof_db_execute(id, "DELETE FROM " + kof_orm_q(table)) >= 0;
+                }
+
+                private static Object kof_mongo_empty_filter() throws Exception {
+                    Class<?> filters = Class.forName("com.mongodb.client.model.Filters");
+                    return filters.getMethod("ne", String.class, Object.class).invoke(null, "_id", null);
+                }
+
                 public static java.util.ArrayList<Object> kof_orm_where_op(String id, String field, String op,
                         Object value, String table, String schema, String className) throws Exception {
                     // whitelist: o operador é um literal do usuário, nunca
