@@ -2,10 +2,11 @@
 
 **Última atualização:** 24 de agosto de 2026
 **Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`):
-`entity` (schema na linguagem), `orm.create/save/find/all/where/delete/
-count/migrate` (JDBC no JVM, mappings de records, migrations versionadas);
-SQLite nativo via `libsqlite3` direto; MySQL/MariaDB wire protocol em
-andamento.
+`entity` (schema na linguagem), `orm.create/save/saveAll/find/all/where/
+where-op/delete/deleteAll/count/count-filtrado/page/migrate` (JDBC no JVM:
+H2, MySQL, MariaDB, PostgreSQL, SQLite; mappings de records; migrations
+versionadas); SQLite nativo via `libsqlite3` direto; wire protocol nativo
+MySQL/MariaDB em andamento.
 
 ---
 

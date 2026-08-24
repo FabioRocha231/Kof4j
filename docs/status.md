@@ -144,13 +144,17 @@ main() {
 - Schema declarado na linguagem (`entity`) — o compilador conhece campos,
   tipos e constraints em compile-time (nunca reflection para descobrir
   schema); `generated`, `unique`, PK não-numérica.
-- Backends SQL: H2/SQLite/MySQL via JDBC (JVM).
-- **MongoDB**: `save/find/all/where/delete/count/saveAll/page` sobre o driver oficial via
+- Backends SQL: H2/SQLite/MySQL/MariaDB/PostgreSQL via JDBC (JVM).
+- CRUD completo + consultas: `saveAll` (batch), `where` com operadores
+  (`"="`, `">"`, `"<"`, `">="`, `"<="`, `"!="`...), `count` com filtro,
+  `page` (limit/offset) e `deleteAll`.
+- **MongoDB**: `save/find/all/where/delete/count` sobre o driver oficial via
   reflexão compatível (`Bson`/`Class`, sem ClientSession); teste E2E com
-  container real (`docker run -d -p 27017:27017 mongo:7`, skip condicional).
+  container real (skip condicional; serviço Mongo no CI).
 - Migrations versionadas: tabela `kof_migrations`, cada migração roda uma vez.
 - Native/JS reportam `ORM001`.
-- Testes: `KofDbE2ETest` (8), `KofOrmE2ETest` (10).
+- Testes: `KofDbE2ETest` (8), `KofOrmE2ETest` (12+; MariaDB/PostgreSQL/MongoDB
+  com skip condicional quando o container não está no ar).
 - Docs: `docs/future/DATABASE_VISION.md` (níveis 0-2 e 4 implementados;
   nível 3 = query DSL tipada é o próximo).
 
