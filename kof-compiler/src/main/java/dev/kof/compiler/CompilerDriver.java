@@ -30,6 +30,31 @@ private Target target = Target.JVM;
         return compile(sourceFile, outputDir, Target.JVM);
     }
 
+    /** Um caso `test "nome" { }` descoberto em compile-time. */
+    public record TestInfo(String name, String functionName) {
+    }
+
+    /** Testes descobertos na última compilação (ordem de declaração). */
+    public java.util.List<TestInfo> discoveredTests() {
+        return List.copyOf(discoveredTests);
+    }
+
+    /**
+     * Compila em modo harness de testes: cada `test "nome" { }` vira uma
+     * função void (`kof_test_N`) e o main do programa é substituído por um
+     * runner sintetizado que executa os testes isolados por try/catch,
+     * imprime PASS/FAIL por nome e sai com código != 0 quando há falha.
+     * O main original é ignorado (como cargo test).
+     */
+    public CompilationResult compileForTests(Path sourceFile, Path outputDir, Target target) {
+        this.testHarnessMode = true;
+        try {
+            return compile(sourceFile, outputDir, target);
+        } finally {
+            this.testHarnessMode = false;
+        }
+    }
+
     /** Enable or disable IR optimization passes (enabled by default). */
     public CompilerDriver setOptimizationEnabled(boolean enabled) {
         this.optimizeEnabled = enabled;
@@ -57,11 +82,47 @@ private Target target = Target.JVM;
         return this;
     }
 
+    /**
+     * Classpath externo (.jar/.aar/diretórios) fornecido pelo build tool
+     * (Gradle no Android). Usado para resolver assinaturas de métodos de
+     * superclasses externas — o INVOKESPECIAL de super.metodo() exige o
+     * descritor exato declarado na classe externa.
+     */
+    private final ExternalClasspath externalClasspath = new ExternalClasspath();
+    private final List<String> pendingClasspathWarnings = new ArrayList<>();
+
+    public CompilerDriver setExternalClasspath(java.util.List<Path> entries) {
+        try {
+            externalClasspath.setEntries(entries);
+        } catch (java.io.IOException e) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "external classpath could not be read: " + e.getMessage(), "CP001");
+            } else {
+                pendingClasspathWarnings.add("external classpath could not be read: " + e.getMessage());
+            }
+        }
+        pendingClasspathWarnings.addAll(externalClasspath.loadWarnings());
+        return this;
+    }
+
+    /** Emite warnings acumulados do classpath externo quando houver coletor. */
+    private void flushClasspathWarnings() {
+        if (currentDiagnostics != null && !pendingClasspathWarnings.isEmpty()) {
+            for (String w : pendingClasspathWarnings) {
+                currentDiagnostics.warning("", 0, 0, 0, w, "CP002");
+            }
+            pendingClasspathWarnings.clear();
+        }
+    }
+
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
         this.currentDiagnostics = diagnostics;
+        flushClasspathWarnings();
         this.currentSourceName = sourceFile.getFileName() != null ? sourceFile.getFileName().toString() : null;
+        this.entitySchemas.clear();
         try {
             String source = Files.readString(sourceFile);
             String fileName = sourceFile.getFileName().toString();
@@ -75,6 +136,7 @@ private Target target = Target.JVM;
             if (diagnostics.hasErrors()) {
                 return new CompilationResult(false, diagnostics, outputDir);
             }
+            unit = desugarTests(unit);
             semanticAnalyzer = new SemanticAnalyzer();
             semanticAnalyzer.analyze(unit, diagnostics);
             if (diagnostics.hasErrors()) {
@@ -123,7 +185,20 @@ private Target target = Target.JVM;
 
     private Type toType(String typeName) {
         if ("List".equals(typeName) || "ArrayList".equals(typeName)) return BuiltinTypes.LIST;
+        // tipos qualificados (android.os.Bundle): pacote vai no packageName
+        // para o descritor JVM sair com barras (Landroid/os/Bundle;)
+        int lastDot = typeName.lastIndexOf('.');
+        if (lastDot > 0 && !typeName.contains("<") && !typeName.contains("/")) {
+            return new Type.ClassType(typeName.substring(0, lastDot),
+                    typeName.substring(lastDot + 1), List.of());
+        }
         return Type.of(typeName);
+    }
+
+    /** Nome JVM da entidade: as classes top-level do programa ficam sem
+     *  pacote (User.class); o Main é Default/Main. */
+    private String classNameFor(String simpleName) {
+        return simpleName;
     }
 
     private Type ownerTypeFromInternal(String internalName) {
@@ -163,6 +238,16 @@ private Target target = Target.JVM;
             if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
             else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
             else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
+            else if (decl instanceof EntityDeclarationNode ent) {
+                entitySchemas.put(ent.name(), ent.fields());
+                List<RecordComponentNode> components = new java.util.ArrayList<>();
+                for (EntityFieldNode f : ent.fields()) {
+                    components.add(new RecordComponentNode(f.position(), List.of(), f.type(), f.name(), null));
+                }
+                classes.add(lowerRecord(new RecordDeclarationNode(ent.position(), ent.name(),
+                        ent.modifiers(), null, List.of(), components, List.of()),
+                        unit.packageName(), nextTypeId++));
+            }
             else if (decl instanceof FunctionDeclarationNode func) {
                 topLevelFunctions.add(lowerFunction(func));
                 topLevelFunctions.addAll(lowerFunctionDefaults(func));
@@ -178,7 +263,129 @@ private Target target = Target.JVM;
     }
 
     private final List<IRClass> syntheticClasses = new ArrayList<>();
+
+    /**
+     * G6: desugar `test "nome" { }` para função void `kof_test_N` logo
+     * após o parse — semântica, resolução e lowering tratam os testes como
+     * funções comuns (zero casos especiais). Com o harness ativo, o main
+     * do usuário é substituído pelo runner sintetizado em compile-time
+     * (nunca reflection): cada teste roda isolado por try/catch, PASS/FAIL
+     * por nome e exit code != 0 quando há falha.
+     */
+    private CompilationUnitNode desugarTests(CompilationUnitNode unit) {
+        discoveredTests.clear();
+        java.util.List<AstNode> decls = new ArrayList<>();
+        int ti = 0;
+        for (AstNode d : unit.declarations()) {
+            if (d instanceof TestDeclarationNode t) {
+                String fn = "kof_test_" + ti++;
+                discoveredTests.add(new TestInfo(t.name(), fn));
+                decls.add(new FunctionDeclarationNode(t.position(), List.of(), "void", fn,
+                        List.of(), List.of(), List.of(), t.body()));
+            } else {
+                decls.add(d);
+            }
+        }
+        if (testHarnessMode && !discoveredTests.isEmpty()) {
+            java.util.List<AstNode> withHarness = new ArrayList<>();
+            for (AstNode d : decls) {
+                if (d instanceof FunctionDeclarationNode f && "main".equals(f.name())) {
+                    continue; // kof test roda só os testes (como cargo test)
+                }
+                withHarness.add(d);
+            }
+            withHarness.add(buildTestHarnessMain());
+            decls = withHarness;
+        }
+        return new CompilationUnitNode(unit.position(), unit.packageName(), unit.imports(),
+                java.util.Collections.unmodifiableList(decls));
+    }
+
+
+    /**
+     * Runner de testes sintetizado em compile-time (nunca reflection):
+     *
+     * main() {
+     *     var __kof_failed = 0
+     *     try {
+     *         kof_test_0()
+     *         println("PASS " + "nome")
+     *     } catch (String e) {
+     *         println("FAIL " + "nome" + ": " + e)
+     *         __kof_failed = __kof_failed + 1
+     *     }
+     *     ...
+     *     println("────────")
+     *     println(__kof_failed + " failed of N tests")
+     *     if (__kof_failed > 0) {
+     *         throw "__kof_tests_failed__"
+     *     }
+     * }
+     *
+     * O throw final vira exit code != 0 em todos os targets (JVM: exceção
+     * não capturada; Native: kof_panic; JS: runner reporta 1).
+     */
+    private FunctionDeclarationNode buildTestHarnessMain() {
+        SourcePosition p = new SourcePosition(currentSourceName != null ? currentSourceName : "", 0, 0, 0, 0);
+        List<StatementNode> body = new ArrayList<>();
+        ExpressionNode failedVar = new IdentifierExpr(p, "__kof_failed");
+        body.add(new VarDeclStmt(p, "Int", "__kof_failed",
+                new LiteralExpr(p, ConcreteLiteralKind.INT, "0")));
+        for (int i = 0; i < discoveredTests.size(); i++) {
+            TestInfo test = discoveredTests.get(i);
+            ExpressionNode nameLit = new LiteralExpr(p, ConcreteLiteralKind.STRING, test.name());
+            List<StatementNode> tryBody = new ArrayList<>();
+            tryBody.add(new ExpressionStmt(p, new MethodCallExpr(p, null,
+                    test.functionName(), List.of(), List.of())));
+            tryBody.add(new ExpressionStmt(p, callPrintln(p, concat(p,
+                    new LiteralExpr(p, ConcreteLiteralKind.STRING, "PASS "), nameLit))));
+            ExpressionNode failMsg = concat(p,
+                    new LiteralExpr(p, ConcreteLiteralKind.STRING, "FAIL "), nameLit,
+                    new LiteralExpr(p, ConcreteLiteralKind.STRING, ": "),
+                    new IdentifierExpr(p, "e"));
+            List<StatementNode> catchBody = new ArrayList<>();
+            catchBody.add(new ExpressionStmt(p, callPrintln(p, failMsg)));
+            catchBody.add(new ExpressionStmt(p, new AssignmentExpr(p, failedVar, "=",
+                    new BinaryExpr(p, "+", failedVar,
+                            new LiteralExpr(p, ConcreteLiteralKind.INT, "1")))));
+            body.add(new TryStmt(p, tryBody,
+                    List.of(new CatchClause(p, "String", "e", catchBody)), List.of()));
+        }
+        body.add(new ExpressionStmt(p, callPrintln(p,
+                new LiteralExpr(p, ConcreteLiteralKind.STRING, "────────"))));
+        ExpressionNode summary = concat(p,
+                failedVar,
+                new LiteralExpr(p, ConcreteLiteralKind.STRING, " failed of "
+                        + discoveredTests.size() + " tests"));
+        body.add(new ExpressionStmt(p, callPrintln(p, summary)));
+        // falha = exit code != 0 em todos os targets, sem stack trace:
+        // JVM System.exit / Native syscall exit / JS sentinel no runner
+        body.add(new IfStmt(p,
+                new BinaryExpr(p, ">", failedVar, new LiteralExpr(p, ConcreteLiteralKind.INT, "0")),
+                new BlockStmt(p, List.of(new ExpressionStmt(p, new MethodCallExpr(p,
+                        new IdentifierExpr(p, "process"), "exit", List.of(),
+                        List.of(new LiteralExpr(p, ConcreteLiteralKind.INT, "1")))))),
+                null));
+        return new FunctionDeclarationNode(p, List.of(), "void", "main",
+                List.of(), List.of(), List.of(), List.copyOf(body));
+    }
+
+    private static ExpressionNode concat(SourcePosition p, ExpressionNode... parts) {
+        ExpressionNode acc = parts[0];
+        for (int i = 1; i < parts.length; i++) {
+            acc = new BinaryExpr(p, "+", acc, parts[i]);
+        }
+        return acc;
+    }
+
+    private static ExpressionNode callPrintln(SourcePosition p, ExpressionNode arg) {
+        return new MethodCallExpr(p, null, "println", List.of(), List.of(arg));
+    }
+
+    private final java.util.Map<String, List<EntityFieldNode>> entitySchemas = new java.util.HashMap<>();
     private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
+    private final java.util.List<TestInfo> discoveredTests = new java.util.ArrayList<>();
+    private boolean testHarnessMode = false;
     private int lambdaCounter = 0;
 
     /**
@@ -501,7 +708,8 @@ private Target target = Target.JVM;
         loweringMain = prevMain;
         mainArgsListField = prevMainArgsList;
         return new IRMethod(func.name(), returnType, paramTypes, access, func.thrownExceptions(),
-                List.of(new IRBasicBlock(0, body)), locals, debugInfo);
+                List.of(new IRBasicBlock(0, body)), locals, debugInfo,
+                lowerAnnotations(func.annotations()), lowerParameterAnnotations(func.parameters()));
     }
 
     /**
@@ -602,6 +810,8 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
                     if ("var".equals(vds.type()) || "val".equals(vds.type())) {
                         varType = inferExprType(vds.initializer(), locals);
+                    } else {
+                        emitWideningIfNeeded(ops, inferExprType(vds.initializer(), locals), varType);
                     }
                 }
                 ops.add(new KofStoreLocal(varType, localIdx));
@@ -1054,7 +1264,29 @@ private Target target = Target.JVM;
                             && isNumeric(accType) && isNumeric(rightType);
                     if ((isArithmetic || isNumericComparison)
                             && isNumeric(accType) && isNumeric(rightType)) {
+                        // OBS-009: divisão (ou resto) por zero constante é
+                        // detectada em compile-time — o compilador conhece a
+                        // intenção; o usuário não vê o ArithmeticException do
+                        // JVM.
+                        boolean integerArithmetic = Type.isInteger(accType) && Type.isInteger(rightType);
+                        if (integerArithmetic && ("/".equals(be.operator()) || "%".equals(be.operator()))
+                                && be.right() instanceof LiteralExpr lit
+                                && isZeroLiteral(lit)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(be.position() != null ? be.position().file() : "",
+                                        be.position() != null ? be.position().line() : 0,
+                                        be.position() != null ? be.position().column() : 0,
+                                        0,
+                                        "division by zero: constant " + be.operator()
+                                                + " by zero is not allowed",
+                                        "ARITH001");
+                            }
+                            yield localIdx;
+                        }
                         Type commonType = commonNumericType(accType, rightType);
+                        if (!fpSupportedOnNative(commonType, be.position())) {
+                            yield localIdx;
+                        }
                         emitWideningIfNeeded(ops, accType, commonType);
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
                         emitWideningIfNeeded(ops, rightType, commonType);
@@ -1062,6 +1294,14 @@ private Target target = Target.JVM;
                         accType = commonType;
                     } else if ("+".equals(be.operator())
                             && (Type.isString(accType) || Type.isString(rightType))) {
+                        // concatenação com float/double no Native formataria
+                        // os bits como inteiro — diagnóstico em vez de lixo
+                        if ((Type.isString(accType) && isFloatingPoint(rightType))
+                                || (Type.isString(rightType) && isFloatingPoint(accType))) {
+                            fpSupportedOnNative(isFloatingPoint(rightType) ? rightType : accType,
+                                    be.position());
+                            yield localIdx;
+                        }
                         if (!Type.isString(accType) && isPrimitiveType(accType)) boxPrimitive(ops, accType);
                         ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
                                 List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
@@ -1288,6 +1528,10 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (("print".equals(mc.methodName()) || "println".equals(mc.methodName())) && mc.arguments().size() == 1) {
+                    Type printedType = inferExprType(mc.arguments().get(0), locals);
+                    if (!fpSupportedOnNative(printedType, mc.position())) {
+                        yield localIdx;
+                    }
                     ops.add(new KofGetStatic(
                             new Type.ClassType("java.lang", "System", List.of()),
                             "out", new Type.ClassType("java.io", "PrintStream", List.of())));
@@ -1393,6 +1637,89 @@ private Target target = Target.JVM;
                                 dbCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    boolean typed = !mc.typeArguments().isEmpty();
+                    String entityName = typed ? mc.typeArguments().get(0) : null;
+                    if (entityName == null && "save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                        Type objType = argTypes.get(argTypes.size() - 1);
+                        if (objType instanceof Type.ClassType ct) entityName = ct.name();
+                    }
+                    KofOrm.OrmCall ormCall = KofOrm.staticCall(mc.methodName(), argTypes, typed, entityName);
+                    if (ormCall != null) {
+                        if (!KofOrm.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofOrm.gapCode() + ")",
+                                        KofOrm.gapCode());
+                            }
+                            yield localIdx;
+                        }
+                        List<EntityFieldNode> fields = entityName == null ? null : entitySchemas.get(entityName);
+                        boolean needsEntity = !"migrate".equals(mc.methodName());
+                        if (needsEntity && fields == null) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        "orm." + mc.methodName() + ": unknown entity '"
+                                                + (entityName == null ? "?" : entityName) + "' (ORM002)",
+                                        "ORM002");
+                            }
+                            yield localIdx;
+                        }
+                        // args do usuário: (db[, obj|id]) — primitivos são
+                        // boxed (o runtime espera Object para obj/id)
+                        for (int ai = 0; ai < mc.arguments().size(); ai++) {
+                            ExpressionNode arg = mc.arguments().get(ai);
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            if (ai > 0 && isPrimitiveType(inferExprType(arg, locals))) {
+                                boxPrimitive(ops, inferExprType(arg, locals));
+                            }
+                        }
+                        // literais do schema (conhecidos em compile-time):
+                        // table, schema, [className]
+                        boolean isMigrate = "migrate".equals(mc.methodName());
+                        String table = entityName == null ? "" : KofOrm.tableName(entityName);
+                        String schema = entityName == null ? "" : KofOrm.schemaString(fields);
+                        boolean needsClassName = "find".equals(mc.methodName())
+                                || "all".equals(mc.methodName())
+                                || "where".equals(mc.methodName())
+                                || "page".equals(mc.methodName());
+                        List<Type> params = new ArrayList<>(ormCall.parameterTypes());
+                        if (!isMigrate) {
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, table));
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, schema));
+                            params.add(BuiltinTypes.STRING); // table
+                            params.add(BuiltinTypes.STRING); // schema
+                        }
+                        if (needsClassName) {
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, classNameFor(entityName)));
+                            params.add(BuiltinTypes.STRING); // className
+                        }
+                        Type retType = ormCall.returnType();
+                        if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                            retType = argTypes.get(argTypes.size() - 1);
+                        } else if (typed) {
+                            if ("all".equals(mc.methodName()) || "page".equals(mc.methodName())
+                                    || "where".equals(mc.methodName())) {
+                                retType = new Type.ClassType("kof", "List",
+                                        List.of(toType(mc.typeArguments().get(0))));
+                            } else if ("find".equals(mc.methodName())) {
+                                retType = toType(mc.typeArguments().get(0));
+                            }
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.orm", "Orm", List.of()),
+                                ormCall.function(), params, retType, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -1451,6 +1778,65 @@ private Target target = Target.JVM;
                         ops.add(new KofCall(KofProcess.RESULT, "kof_process_run",
                                 List.of(BuiltinTypes.STRING, KofProcess.STRING_LIST),
                                 KofProcess.RESULT, KofCallKind.FUNCTION));
+                    } else {
+                        // process.exit(code) — todos os targets
+                        KofProcess.ProcessCall exitCall = KofProcess.exitCall(argTypes);
+                        if (exitCall != null) {
+                            localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(new Type.ClassType("kof.process", "Process", List.of()),
+                                    exitCall.function(), exitCall.parameterTypes(), exitCall.returnType(),
+                                    KofCallKind.FUNCTION));
+                        }
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
+                    if (httpCall != null) {
+                        if (!KofHttp.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (HTTP002)",
+                                        "HTTP002");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofHttp.HTTP, httpCall.function(), httpCall.parameterTypes(),
+                                httpCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
+                    if (mqCall != null) {
+                        if (!KofMq.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (MQ001)",
+                                        "MQ001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofMq.MQ, mqCall.function(), mqCall.parameterTypes(),
+                                mqCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
@@ -1576,6 +1962,93 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 } else if (mc.receiver() != null) {
+                    if (mc.receiver() instanceof IdentifierExpr sid && "super".equals(sid.name())
+                            && !owner.isEmpty()) {
+                        // super.method(args): non-virtual call to the
+                        // superclass implementation — lowered to
+                        // INVOKESPECIAL on the direct superclass (JVM).
+                        if (target == Target.NATIVE && currentDiagnostics != null) {
+                            SourcePosition p = mc.position();
+                            currentDiagnostics.error(p != null ? p.file() : "",
+                                    p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                    "super." + mc.methodName()
+                                            + "() is not supported on the native target yet (SUP001)",
+                                    "SUP001");
+                            yield localIdx;
+                        }
+                        String superInternal = findSuperClass(owner);
+                        if (superInternal == null) superInternal = "java/lang/Object";
+                        // nomes declarados com pontos (android.view.View)
+                        // viram nome interno JVM para resolução e emissão
+                        superInternal = superInternal.replace('.', '/');
+                        // super.metodo() só faz sentido no corpo de um método
+                        // de classe; dentro de lambda sintética ou função
+                        // top-level não existe superclasse significativa
+                        String ownerSimple = owner.substring(owner.lastIndexOf('/') + 1);
+                        if (semanticAnalyzer == null || semanticAnalyzer.getClass(ownerSimple) == null) {
+                            if (currentDiagnostics != null) {
+                                SourcePosition p = mc.position();
+                                currentDiagnostics.error(p != null ? p.file() : "",
+                                        p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                        "super." + mc.methodName()
+                                                + "() is only valid inside class methods (SUP002)",
+                                        "SUP002");
+                            }
+                            yield localIdx;
+                        }
+                        Type superType = ownerTypeFromInternal(superInternal);
+                        SymbolTable.MethodSymbol superMethod = null;
+                        if (semanticAnalyzer != null) {
+                            String superSimple = superInternal.substring(superInternal.lastIndexOf('/') + 1);
+                            SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(superSimple, mc.methodName());
+                            if (s instanceof SymbolTable.MethodSymbol ms) superMethod = ms;
+                        }
+                        List<Type> paramTypes;
+                        Type returnType;
+                        ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
+                        ExternalClasspath.MethodSignature extSig = null;
+                        if (superMethod == null && osig == null && externalClasspath != null) {
+                            extSig = externalClasspath.resolveMethod(superInternal, mc.methodName(),
+                                    mc.arguments().size());
+                        }
+                        if (superMethod == null && osig == null && extSig == null
+                                && hierarchyFullyKnown(superInternal) && currentDiagnostics != null) {
+                            // hierarquia inteiramente conhecida e o método não
+                            // existe — erro em compile-time, não NoSuchMethodError
+                            SourcePosition p = mc.position();
+                            currentDiagnostics.error(p != null ? p.file() : "",
+                                    p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                    "method '" + mc.methodName() + "' does not exist in superclass '"
+                                            + superSimpleName(superInternal) + "'",
+                                    "SEM016");
+                            yield localIdx;
+                        }
+                        if (superMethod != null
+                                && superMethod.parameterTypes().size() == mc.arguments().size()) {
+                            paramTypes = superMethod.parameterTypes();
+                            returnType = superMethod.returnType();
+                        } else if (osig != null) {
+                            paramTypes = osig.parameterTypes();
+                            returnType = osig.returnType();
+                        } else if (extSig != null) {
+                            // assinatura real lida do classpath externo — o
+                            // descritor emitido casa com a classe externa
+                            List<Type> formal = new ArrayList<>();
+                            for (String d : extSig.parameterDescriptors()) {
+                                formal.add(ExternalClasspath.typeFromDescriptor(d));
+                            }
+                            paramTypes = formal;
+                            returnType = ExternalClasspath.typeFromDescriptor(extSig.returnDescriptor());
+                        } else {
+                            paramTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) paramTypes.add(inferExprType(arg, locals));
+                            returnType = inferExprType(mc, locals);
+                        }
+                        ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), paramTypes, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(superType, mc.methodName(), paramTypes, returnType, KofCallKind.SUPER));
+                        yield localIdx;
+                    }
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
                     if (KofUi.isUiType(recvType)) {
@@ -1639,7 +2112,11 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) {
                             localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                         }
-                        ops.add(new KofCall(recvType, "invoke", argTypes, ft.returnType(), KofCallKind.INSTANCE));
+                        // f.invoke(): o owner precisa ser a classe sintética
+                        // da lambda — FunctionType não tem nome JVM
+                        Type invokeOwner = ft.className() != null
+                                ? new Type.ClassType("", ft.className(), List.of()) : ft;
+                        ops.add(new KofCall(invokeOwner, "invoke", argTypes, ft.returnType(), KofCallKind.INSTANCE));
                         yield localIdx;
                     }
                     if (BuiltinTypes.isList(recvType)) {
@@ -1711,6 +2188,15 @@ private Target target = Target.JVM;
                             methodReturnType = sig.returnType();
                             methodParamTypes = sig.parameterTypes();
                         }
+                    } else if (isPrimitiveType(recvType) && "toString".equals(mc.methodName())
+                            && mc.arguments().isEmpty()) {
+                        // primitivo.toString(): o primitivo não tem classe —
+                        // boxar e converter (String.valueOf) em vez de gerar
+                        // um owner vazio no bytecode (ClassFormatError)
+                        boxPrimitive(ops, recvType);
+                        ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+                        yield localIdx;
                     } else {
                         ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());
                         if (osig != null) {
@@ -1740,7 +2226,11 @@ private Target target = Target.JVM;
                             callKind = KofCallKind.INTERFACE;
                         }
                     }
-                    ops.add(new KofCall(recvType, mc.methodName(), methodParamTypes, methodReturnType, callKind));
+                    String runtimeMethod = BuiltinTypes.isString(recvType)
+                            ? stringRuntimeMethod(mc.methodName()) : null;
+                    ops.add(new KofCall(recvType,
+                            runtimeMethod != null ? runtimeMethod : mc.methodName(),
+                            methodParamTypes, methodReturnType, callKind));
                     if (methodReturnType instanceof Type.TypeVariable) {
                         Type effective = inferExprType(mc, locals);
                         if (isPrimitiveType(effective)) {
@@ -1748,24 +2238,56 @@ private Target target = Target.JVM;
                         }
                     }
                 } else {
-                    if ("super".equals(mc.methodName()) && semanticAnalyzer != null) {
-                        String superName = findSuperClass(owner);
-                        if (superName != null) {
-                            Type superType = ownerTypeFromInternal(superName);
-                            SymbolTable.ClassSymbol superCs = semanticAnalyzer.getClass(superName.substring(superName.lastIndexOf('/') + 1));
-                            SymbolTable.ConstructorSymbol ctor = null;
-                            if (superCs != null) {
-                                SymbolTable.Symbol ctorSym = superCs.members().resolve("<init>");
-                                if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
-                            }
-                            List<Type> argTypes = new ArrayList<>();
-                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                            ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
-                            List<Type> ctorParamTypes = ctor != null ? ctor.parameterTypes() : argTypes;
-                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
-                            ops.add(new KofCall(superType, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
-                            yield localIdx;
+                    if (("super".equals(mc.methodName()) || "this".equals(mc.methodName()))
+                            && semanticAnalyzer != null && !owner.isEmpty()) {
+                        // super(args): construtor da superclasse (Object quando
+                        // a classe não tem extends). this(args): delegação para
+                        // outro construtor da própria classe — o alvo executa
+                        // super() e os inicializadores de campo.
+                        boolean delegation = "this".equals(mc.methodName());
+                        String targetInternal;
+                        if (delegation) {
+                            targetInternal = owner;
+                        } else {
+                            targetInternal = findSuperClass(owner);
+                            if (targetInternal == null) targetInternal = "java/lang/Object";
+                            targetInternal = targetInternal.replace('.', '/');
                         }
+                        Type targetType = ownerTypeFromInternal(targetInternal);
+                        SymbolTable.ClassSymbol targetCs = semanticAnalyzer.getClass(
+                                targetInternal.substring(targetInternal.lastIndexOf('/') + 1));
+                        SymbolTable.ConstructorSymbol ctor = null;
+                        if (targetCs != null) {
+                            SymbolTable.Symbol ctorSym = targetCs.members().resolve("<init>");
+                            if (ctorSym instanceof SymbolTable.ConstructorSymbol c
+                                    && c.parameterTypes().size() == mc.arguments().size()) {
+                                ctor = c;
+                            }
+                        }
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                        ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
+                        List<Type> ctorParamTypes;
+                        if (ctor != null && ctor.parameterTypes().size() == mc.arguments().size()) {
+                            ctorParamTypes = ctor.parameterTypes();
+                        } else {
+                            if (targetCs != null && currentDiagnostics != null) {
+                                // classe conhecida e nenhum construtor com essa
+                                // aridade — erro em compile-time
+                                SourcePosition p = mc.position();
+                                currentDiagnostics.error(p != null ? p.file() : "",
+                                        p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                        (delegation ? "no constructor of '" : "no super constructor of '")
+                                                + targetInternal.substring(targetInternal.lastIndexOf('/') + 1)
+                                                + "' with " + mc.arguments().size() + " argument(s)",
+                                        "SEM017");
+                                yield localIdx;
+                            }
+                            ctorParamTypes = argTypes;
+                        }
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(targetType, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                        yield localIdx;
                     }
                     SymbolTable.MethodSymbol selfMethod = semanticAnalyzer != null
                             ? semanticAnalyzer.getResolvedMethod(mc) : null;
@@ -1960,6 +2482,7 @@ private Target target = Target.JVM;
                 if (ae.target() instanceof IdentifierExpr ie) {
                     for (int i = locals.size() - 1; i >= 0; i--) {
                         if (locals.get(i).name().equals(ie.name())) {
+                            emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), locals.get(i).type());
                             ops.add(new KofStoreLocal(locals.get(i).type(), locals.get(i).index()));
                             yield localIdx;
                         }
@@ -2016,6 +2539,20 @@ private Target target = Target.JVM;
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, color));
                         yield localIdx;
                     }
+                }
+                if (fa.receiver() instanceof IdentifierExpr sid2 && "super".equals(sid2.name())
+                        && !owner.isEmpty() && semanticAnalyzer != null) {
+                    // super.campo: GETFIELD com owner na superclasse
+                    String superInternal = findSuperClass(owner);
+                    if (superInternal == null) superInternal = "java/lang/Object";
+                    superInternal = superInternal.replace('.', '/');
+                    Type superType = ownerTypeFromInternal(superInternal);
+                    String superSimple = superInternal.substring(superInternal.lastIndexOf('/') + 1);
+                    SymbolTable.Symbol fieldSym = semanticAnalyzer.resolveInHierarchy(superSimple, fa.fieldName());
+                    Type fieldType = fieldSym != null ? fieldSym.type() : inferExprType(fa, locals);
+                    ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
+                    ops.add(new KofLoadField(superType, fa.fieldName(), fieldType));
+                    yield localIdx;
                 }
                 Type faType = inferExprType(fa.receiver(), locals);
                 if (KofProcess.isResult(faType) && KofProcess.isField(fa.fieldName())) {
@@ -2308,11 +2845,49 @@ private Target target = Target.JVM;
                     }
                     yield Type.UnknownType.UNKNOWN;
                 }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
+                    if (httpCall != null) yield httpCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
+                    if (mqCall != null) yield mqCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
                     if (logCall != null) yield logCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    boolean typed = !mc.typeArguments().isEmpty();
+                    String entityName = typed ? mc.typeArguments().get(0) : null;
+                    KofOrm.OrmCall ormCall = KofOrm.staticCall(mc.methodName(), argTypes, typed, entityName);
+                    if (ormCall != null) {
+                        if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                            yield argTypes.get(argTypes.size() - 1);
+                        }
+                        if (typed && !mc.typeArguments().isEmpty()) {
+                            if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())
+                                    || "page".equals(mc.methodName())) {
+                                yield new Type.ClassType("kof", "List",
+                                        List.of(toType(mc.typeArguments().get(0))));
+                            }
+                            if ("find".equals(mc.methodName())) {
+                                yield toType(mc.typeArguments().get(0));
+                            }
+                        }
+                        yield ormCall.returnType();
+                    }
                     yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
@@ -2381,6 +2956,10 @@ private Target target = Target.JVM;
                     if (Type.isString(recvType)) {
                         String mn = mc.methodName();
                         if ("charAt".equals(mn)) yield Type.PrimitiveType.CHAR;
+                        if ("toInt".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("toLong".equals(mn)) yield Type.PrimitiveType.LONG;
+                        if ("toDouble".equals(mn)) yield Type.PrimitiveType.DOUBLE;
+                        if ("toFloat".equals(mn)) yield Type.PrimitiveType.FLOAT;
                         if ("length".equals(mn) || "indexOf".equals(mn) || "compareTo".equals(mn)) yield Type.PrimitiveType.INT;
                         if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn)
                                 || "equals".equals(mn) || "equalsIgnoreCase".equals(mn)) {
@@ -2571,6 +3150,35 @@ private Target target = Target.JVM;
         return superName;
     }
 
+    /**
+     * True quando a cadeia de superclasses a partir de internalName é
+     * inteiramente conhecida pelo SemanticAnalyzer (nenhuma classe externa
+     * no caminho). Só nesse caso "método não resolvido" prova inexistência.
+     */
+    private boolean hierarchyFullyKnown(String internalName) {
+        if (semanticAnalyzer == null) return false;
+        String cur = internalName;
+        int hops = 0;
+        while (cur != null && !"java/lang/Object".equals(cur) && hops++ < 32) {
+            String simple = cur.substring(cur.lastIndexOf('/') + 1);
+            SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(simple);
+            if (cs == null) return false;
+            String sup = cs.superClass();
+            if (sup == null || sup.isEmpty() || "Object".equals(sup)) return true;
+            if (sup.contains(".")) {
+                cur = sup.replace('.', '/');
+            } else {
+                SymbolTable.ClassSymbol supCs = semanticAnalyzer.getClass(sup);
+                cur = supCs != null ? supCs.internalName() : sup;
+            }
+        }
+        return true;
+    }
+
+    private String superSimpleName(String internalName) {
+        return internalName.substring(internalName.lastIndexOf('/') + 1);
+    }
+
     private boolean isPrimitiveType(Type type) {
         return type instanceof Type.PrimitiveType pt && !"void".equals(pt.name());
     }
@@ -2659,6 +3267,18 @@ private Target target = Target.JVM;
         }
     }
 
+    private static boolean isZeroLiteral(LiteralExpr lit) {
+        if (lit.value() == null) return false;
+        String v = lit.value().trim();
+        boolean zero = "0".equals(v) || "-0".equals(v)
+                || "0.0".equals(v) || "-0.0".equals(v) || "0.00".equals(v);
+        return switch (lit.kind()) {
+            case ConcreteLiteralKind.INT, ConcreteLiteralKind.LONG -> zero;
+            case ConcreteLiteralKind.FLOAT, ConcreteLiteralKind.DOUBLE -> zero;
+            default -> false;
+        };
+    }
+
     private Type boxedTypeFor(Type primitive) {
         if (primitive instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
@@ -2701,6 +3321,11 @@ private Target target = Target.JVM;
             localIdx = emitExpression(args.get(i), ops, owner, localIdx, locals);
             Type argType = inferExprType(args.get(i), locals);
             Type formal = i < formalTypes.size() ? formalTypes.get(i) : null;
+            if (formal != null && formal instanceof Type.PrimitiveType fpt
+                    && argType instanceof Type.PrimitiveType apt
+                    && !BuiltinTypes.isString(formal)) {
+                emitWideningIfNeeded(ops, argType, formal);
+            }
             if (formal != null && erasesToReference(formal) && isPrimitiveType(argType)
                     && !BuiltinTypes.isString(formal)) {
                 emitErasureBox(ops, argType);
@@ -2754,6 +3379,10 @@ private Target target = Target.JVM;
                     : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
             case "concat" -> argCount == 1 ? new StringMethodSig(str, List.of(str)) : null;
             case "trim" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
+            case "toInt" -> argCount == 0 ? new StringMethodSig(INT, List.of()) : null;
+            case "toLong" -> argCount == 0 ? new StringMethodSig(Type.PrimitiveType.LONG, List.of()) : null;
+            case "toDouble" -> argCount == 0 ? new StringMethodSig(Type.PrimitiveType.DOUBLE, List.of()) : null;
+            case "toFloat" -> argCount == 0 ? new StringMethodSig(Type.PrimitiveType.FLOAT, List.of()) : null;
             case "toUpperCase", "toLowerCase" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
             case "replace" -> argCount == 2 ? replaceSignature(argTypes, str, CHAR, charSeq) : null;
             case "split" -> argCount == 1 ? new StringMethodSig(strArray, List.of(str))
@@ -2769,6 +3398,18 @@ private Target target = Target.JVM;
      * argument types — a previous version always picked (char, char), which
      * pushed Strings onto a (C, C) descriptor (VerifyError on the JVM).
      */
+    /** Métodos do String implementados pelo runtime Kof (não existem no
+     *  java.lang.String): as conversões numéricas. */
+    private static String stringRuntimeMethod(String name) {
+        return switch (name) {
+            case "toInt" -> "kof_string_to_int";
+            case "toLong" -> "kof_string_to_long";
+            case "toDouble" -> "kof_string_to_double";
+            case "toFloat" -> "kof_string_to_float";
+            default -> null;
+        };
+    }
+
     private StringMethodSig replaceSignature(List<Type> argTypes, Type str, Type CHAR, Type charSeq) {
         boolean stringArgs = argTypes.size() == 2
                 && BuiltinTypes.isString(argTypes.get(0)) && BuiltinTypes.isString(argTypes.get(1));
@@ -3063,6 +3704,36 @@ private Target target = Target.JVM;
         return ">".equals(op) || "<".equals(op) || ">=".equals(op) || "<=".equals(op) || "==".equals(op) || "!=".equals(op);
     }
 
+    /**
+     * FLT001: no Native, float/double ainda não têm aritmética SSE nem
+     * formatação real (os bits vivem na pilha como inteiros). Operações de
+     * ponto flutuante viram diagnóstico em compile-time — nunca resultado
+     * silenciosamente errado. JSON já tem o próprio código (JSN001).
+     */
+    private boolean fpSupportedOnNative(Type type, SourcePosition pos) {
+        if (target != Target.NATIVE || type == null) return true;
+        if (!(type instanceof Type.PrimitiveType pt)) return true;
+        String name = pt.name();
+        if ("float".equals(name) || "double".equals(name)) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error(pos != null ? pos.file() : "",
+                        pos != null ? pos.line() : 0,
+                        pos != null ? pos.column() : 0,
+                        0,
+                        "floating-point arithmetic/printing is not supported on the Native target yet"
+                                + " (use Int/Long for now)",
+                        "FLT001");
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean isFloatingPoint(Type type) {
+        return type instanceof Type.PrimitiveType pt
+                && ("float".equals(pt.name()) || "double".equals(pt.name()));
+    }
+
     private int jsonListTag(Type elemType) {
         if (BuiltinTypes.isString(elemType)) return 1;
         if (elemType instanceof Type.PrimitiveType pt && "bool".equals(pt.name())) return 2;
@@ -3228,6 +3899,9 @@ private Target target = Target.JVM;
     private int emitComparisonShortcut(BinaryExpr bin, List<KofOperation> ops, String owner,
                                        int localIdx, List<IRLocalVariable> locals) {
         Type common = comparisonOperandType(bin, locals);
+        if (!fpSupportedOnNative(common, bin.position())) {
+            return localIdx;
+        }
         localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
         emitWideningIfNeeded(ops, inferExprType(bin.left(), locals), common);
         localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
@@ -3276,6 +3950,11 @@ private Target target = Target.JVM;
                             "contains", "isEmpty" -> true;
                     default -> false;
                 };
+            }
+            if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                // todos os orm.* retornam valor (Bool/Object/List/Long) — antes
+                // dos checks genéricos (o "delete" também é rota do web)
+                return true;
             }
             if (mc.receiver() != null) {
                 List<Type> webArgTypes = new ArrayList<>();
@@ -3330,7 +4009,8 @@ private Target target = Target.JVM;
         if (!methods.stream().anyMatch(m -> m.name().equals("<init>"))) {
             methods.add(0, generateDefaultConstructor(internalName, superName, fields, fieldInits));
         }
-        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
+        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
+                typeId, lowerAnnotations(cls.annotations()));
     }
 
     private IRClass lowerInterface(InterfaceDeclarationNode iface, String packageName, int typeId) {
@@ -3343,7 +4023,8 @@ private Target target = Target.JVM;
             if (member instanceof MethodDeclarationNode method) methods.add(lowerMethod(method, internalName, true, List.of()));
             else if (member instanceof FieldDeclarationNode field) fields.add(lowerField(field, List.of()));
         }
-        return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null, typeId);
+        return new IRClass(internalName, "java/lang/Object", ifaces, access, fields, methods, List.of(), null,
+                typeId, lowerAnnotations(iface.annotations()));
     }
 
     private IRClass lowerRecord(RecordDeclarationNode rec, String packageName, int typeId) {
@@ -3354,7 +4035,8 @@ private Target target = Target.JVM;
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
         for (RecordComponentNode comp : rec.components()) {
-            fields.add(new IRField(comp.name(), toType(comp.type()), AccessFlags.PRIVATE | AccessFlags.FINAL, null));
+            fields.add(new IRField(comp.name(), toType(comp.type()), AccessFlags.PRIVATE | AccessFlags.FINAL,
+                    null, lowerAnnotations(comp.annotations())));
         }
         methods.add(0, generateRecordConstructor(rec, internalName));
         methods.addAll(generateRecordDefaultOverloads(rec, internalName));
@@ -3377,7 +4059,8 @@ private Target target = Target.JVM;
                         List.of(), fields, java.util.Map.of()));
             }
         }
-        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null, typeId);
+        return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
+                typeId, lowerAnnotations(rec.annotations()));
     }
 
     private Type resolveWithTypeParams(String typeName, List<String> typeParams) {
@@ -3399,7 +4082,51 @@ private Target target = Target.JVM;
                 default -> null;
             };
         }
-        return new IRField(field.name(), fieldType, computeAccess(field.modifiers()), initVal);
+        return new IRField(field.name(), fieldType, computeAccess(field.modifiers()), initVal,
+                lowerAnnotations(field.annotations()));
+    }
+
+    /**
+     * Converte annotations do AST para a IR: nome resolvido para o formato
+     * interno JVM e valores já constantes (o parser só aceita literais).
+     */
+    private List<IRAnnotation> lowerAnnotations(List<AnnotationNode> annos) {
+        if (annos == null || annos.isEmpty()) return List.of();
+        List<IRAnnotation> out = new ArrayList<>();
+        for (AnnotationNode anno : annos) {
+            java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+            for (AnnotationPair pair : anno.pairs()) {
+                String key = pair.key() != null ? pair.key()
+                        : (anno.pairs().size() == 1 ? "value" : null);
+                if (key != null) values.put(key, pair.value());
+            }
+            out.add(new IRAnnotation(resolveAnnotationInternalName(anno.name()), values));
+        }
+        return out;
+    }
+
+    /**
+     * Resolve o nome da annotation para o formato interno JVM. Nomes
+     * qualificados vão direto; simples usam imports do arquivo; os de
+     * java.lang são embutidos; senão assume-se a própria classe local.
+     */
+    private String resolveAnnotationInternalName(String name) {
+        if (name.contains(".")) return name.replace('.', '/');
+        switch (name) {
+            case "Override": return "java/lang/Override";
+            case "Deprecated": return "java/lang/Deprecated";
+            case "FunctionalInterface": return "java/lang/FunctionalInterface";
+            case "SafeVarargs": return "java/lang/SafeVarargs";
+            case "SuppressWarnings": return "java/lang/SuppressWarnings";
+        }
+        if (currentUnit != null) {
+            for (String imp : currentUnit.imports()) {
+                if (!"*.kof".equals(imp) && imp.endsWith("." + name)) {
+                    return imp.replace('.', '/');
+                }
+            }
+        }
+        return name;
     }
 
     private IRMethod lowerMethod(MethodDeclarationNode method, String owner, boolean isInterface, List<String> typeParams) {
@@ -3454,7 +4181,20 @@ private Target target = Target.JVM;
                 : new KofDebugInfo(new java.util.HashMap<>(currentDebugPositions));
         currentDebugPositions.clear();
         return new IRMethod(method.name(), returnType, paramTypes, access, method.thrownExceptions(),
-                body, locals, debugInfo);
+                body, locals, debugInfo,
+                lowerAnnotations(method.annotations()), lowerParameterAnnotations(method.parameters()));
+    }
+
+    /** Annotations por parâmetro, alinhadas à ordem de parameterTypes. */
+    private List<List<IRAnnotation>> lowerParameterAnnotations(List<FormalParameterNode> params) {
+        List<List<IRAnnotation>> out = new ArrayList<>();
+        boolean any = false;
+        for (FormalParameterNode p : params) {
+            List<IRAnnotation> annos = lowerAnnotations(p.annotations());
+            if (!annos.isEmpty()) any = true;
+            out.add(annos);
+        }
+        return any ? out : List.of();
     }
 
     /**
@@ -3525,15 +4265,22 @@ private Target target = Target.JVM;
         Type ownerType = ownerTypeFromInternal(owner);
         Type superType = ownerTypeFromInternal(superName);
         localVars.add(new IRLocalVariable(0, "this", ownerType));
+        boolean delegatesToThis = !ctor.body().isEmpty() &&
+                ctor.body().getFirst() instanceof ExpressionStmt es &&
+                es.expression() instanceof MethodCallExpr mc &&
+                "this".equals(mc.methodName());
         boolean hasExplicitSuper = !ctor.body().isEmpty() &&
                 ctor.body().getFirst() instanceof ExpressionStmt es &&
                 es.expression() instanceof MethodCallExpr mc &&
                 "super".equals(mc.methodName());
-        if (!hasExplicitSuper && !"java/lang/Object".equals(superName)) {
+        // this(...): o construtor alvo executa super() e os inicializadores
+        if (!delegatesToThis && !hasExplicitSuper && !"java/lang/Object".equals(superName)) {
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofCall(superType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
         }
-        emitFieldInitializers(ops, ownerType, fields);
+        if (!delegatesToThis) {
+            emitFieldInitializers(ops, ownerType, fields);
+        }
         int localIdx = 1;
         for (FormalParameterNode param : ctor.parameters()) {
             Type paramType = resolveWithTypeParams(param.type(), typeParams);
@@ -3541,6 +4288,7 @@ private Target target = Target.JVM;
             localIdx += isDoubleWidth(paramType) ? 2 : 1;
         }
         for (var entry : fieldInits.entrySet()) {
+            if (delegatesToThis) break;
             Type fieldType = fields.stream().filter(f -> f.name().equals(entry.getKey())).findFirst()
                     .map(f -> f.type()).orElse(Type.UnknownType.UNKNOWN);
             ops.add(new KofLoadLocal(ownerType, 0));
@@ -3550,7 +4298,8 @@ private Target target = Target.JVM;
         for (StatementNode stmt : ctor.body()) localIdx = emitStatement(stmt, ops, owner, localIdx, localVars, Type.PrimitiveType.VOID);
         ops.add(new KofReturnVoid());
         return new IRMethod("<init>", Type.PrimitiveType.VOID, paramTypes, access, ctor.thrownExceptions(),
-                List.of(new IRBasicBlock(0, ops)), localVars);
+                List.of(new IRBasicBlock(0, ops)), localVars, KofDebugInfo.EMPTY,
+                lowerAnnotations(ctor.annotations()), lowerParameterAnnotations(ctor.parameters()));
     }
 
     private IRMethod generateDefaultConstructor(String owner, String superName, List<IRField> fields,

@@ -25,6 +25,8 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_config_")
                 || methodName.startsWith("kof_log_")
                 || methodName.startsWith("kof_db_")
+                || methodName.startsWith("kof_orm_")
+                || methodName.startsWith("kof_string_to_")
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.startsWith("kof_tetris_")
@@ -34,6 +36,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_write_file")
                 || methodName.equals("kof_spawn")
                 || methodName.equals("kof_process_run")
+                || methodName.equals("kof_process_exit")
                 || methodName.equals("kof_args_list");
     }
 
@@ -98,6 +101,7 @@ static boolean hasRuntimeFn(String methodName) {
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/List;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_process_exit" -> "(I)V";
             case "kof_args_list" -> "([Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
@@ -129,6 +133,20 @@ static boolean hasRuntimeFn(String methodName) {
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
             case "kof_config_get", "kof_config_env" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_http_get", "kof_http_delete", "kof_http_options" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_http_get_headers", "kof_http_delete_headers", "kof_http_options_headers"
+                    -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_http_post", "kof_http_put", "kof_http_patch"
+                    -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_http_post_headers", "kof_http_put_headers", "kof_http_patch_headers"
+                    -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_http_status" -> "(Ljava/lang/String;)I";
+            case "kof_http_timeout_set" -> "(I)V";
+            case "kof_mq_publish", "kof_mq_push" -> "(Ljava/lang/String;Ljava/lang/Object;)V";
+            case "kof_mq_subscribe", "kof_mq_unsubscribe" -> "(Ljava/lang/String;Ljava/lang/Object;)V";
+            case "kof_mq_queue" -> "()Ljava/lang/String;";
+            case "kof_mq_pop" -> "(Ljava/lang/String;)Ljava/lang/Object;";
+            case "kof_mq_queue_size" -> "(Ljava/lang/String;)I";
             case "kof_config_str" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_config_has" -> "(Ljava/lang/String;)I";
             case "kof_config_int", "kof_config_bool" -> "(Ljava/lang/String;I)I";
@@ -149,6 +167,23 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_db_query3" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_db_query4" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_db_transaction" -> "(Ljava/lang/Object;)V";
+            case "kof_string_to_int" -> "(Ljava/lang/String;)I";
+            case "kof_string_to_long" -> "(Ljava/lang/String;)J";
+            case "kof_string_to_double" -> "(Ljava/lang/String;)D";
+            case "kof_string_to_float" -> "(Ljava/lang/String;)F";
+            case "kof_orm_create" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_save" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
+            case "kof_orm_find" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
+            case "kof_orm_all" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_where" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_delete" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_count" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J";
+            case "kof_orm_migrate" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_where_op" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_save_all" -> "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_page" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_count_where" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)J";
+            case "kof_orm_delete_all" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -198,6 +233,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_resolve",
                     "kof_io_path_to_absolute" -> "Ljava/lang/String;";
             case "kof_process_run" -> "Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_process_exit" -> "V";
             case "kof_args_list" -> "Ljava/util/ArrayList;";
             case "kof_io_read_bytes" -> "[I";
             case "kof_io_file_size" -> "J";
@@ -205,14 +241,30 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
                     "kof_web_body", "kof_web_method", "kof_web_path" -> "Ljava/lang/String;";
             case "kof_config_get", "kof_config_env", "kof_config_str" -> "Ljava/lang/String;";
+            case "kof_http_get", "kof_http_get_headers", "kof_http_delete", "kof_http_delete_headers",
+                    "kof_http_options", "kof_http_options_headers", "kof_http_post", "kof_http_post_headers",
+                    "kof_http_put", "kof_http_put_headers", "kof_http_patch", "kof_http_patch_headers"
+                    -> "Ljava/lang/String;";
+            case "kof_http_status", "kof_mq_queue_size" -> "I";
+            case "kof_mq_queue" -> "Ljava/lang/String;";
+            case "kof_mq_pop" -> "Ljava/lang/Object;";
+            case "kof_http_timeout_set", "kof_mq_publish", "kof_mq_subscribe", "kof_mq_unsubscribe",
+                    "kof_mq_push" -> "V";
             case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
             case "kof_config_long" -> "J";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error" -> "V";
             case "kof_db_connect", "kof_db_connect2" -> "Ljava/lang/String;";
             case "kof_db_close", "kof_db_transaction" -> "V";
             case "kof_db_execute", "kof_db_execute1", "kof_db_execute2", "kof_db_execute3", "kof_db_execute4" -> "I";
-            case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4"
-                    -> "Ljava/util/ArrayList;";
+            case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4",
+                    "kof_orm_all", "kof_orm_where" -> "Ljava/util/ArrayList;";
+            case "kof_string_to_int" -> "I";
+            case "kof_string_to_long" -> "J";
+            case "kof_string_to_double" -> "D";
+            case "kof_string_to_float" -> "F";
+            case "kof_orm_create", "kof_orm_delete", "kof_orm_migrate" -> "Z";
+            case "kof_orm_save", "kof_orm_find" -> "Ljava/lang/Object;";
+            case "kof_orm_count" -> "J";
              case "kof_web_port" -> "I";
              case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "I";
              case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
@@ -826,9 +878,15 @@ static boolean hasRuntimeFn(String methodName) {
 
                 // ── kof.io ─────────────────────────────────────────
 
+                private static final java.io.BufferedReader KOF_STDIN =
+                        new java.io.BufferedReader(new java.io.InputStreamReader(System.in));
+
                 public static String kof_read_line() {
+                    // BufferedReader compartilhado: criar um por chamada
+                    // perdia o buffer entre leituras (OBS: readLine repetido
+                    // retornava null após a primeira linha).
                     try {
-                        return new java.io.BufferedReader(new java.io.InputStreamReader(System.in)).readLine();
+                        return KOF_STDIN.readLine();
                     } catch (java.io.IOException e) {
                         return null;
                     }
@@ -898,8 +956,12 @@ static boolean hasRuntimeFn(String methodName) {
                     }
                 }
 
-                public static ProcessResult kof_process_run(String program, List<String> args) {
-                    try {
+                public static void kof_process_exit(int code) {
+                    // process.exit(code): termina na hora, sem stack trace
+                    System.exit(code);
+                }
+
+                public static ProcessResult kof_process_run(String program, List<String> args) {                    try {
                         List<String> cmd = new ArrayList<>();
                         cmd.add(program);
                         cmd.addAll(args);
@@ -1222,6 +1284,152 @@ static boolean hasRuntimeFn(String methodName) {
                         } catch (java.io.IOException ignored) {
                         }
                     }
+                }
+
+                // ── kof.http — HTTP client (JDK java.net.http) ───────────
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_HTTP_TIMEOUT =
+                        new java.util.concurrent.atomic.AtomicInteger(15);
+
+                public static void kof_http_timeout_set(int seconds) {
+                    KOF_HTTP_TIMEOUT.set(seconds);
+                }
+
+                public static String kof_http_get(String url) throws Exception {
+                    return kof_http_request(url, "GET", null, null);
+                }
+
+                public static String kof_http_get_headers(String url, String headers) throws Exception {
+                    return kof_http_request(url, "GET", headers, null);
+                }
+
+                public static String kof_http_delete(String url) throws Exception {
+                    return kof_http_request(url, "DELETE", null, null);
+                }
+
+                public static String kof_http_delete_headers(String url, String headers) throws Exception {
+                    return kof_http_request(url, "DELETE", headers, null);
+                }
+
+                public static String kof_http_options(String url) throws Exception {
+                    return kof_http_request(url, "OPTIONS", null, null);
+                }
+
+                public static String kof_http_options_headers(String url, String headers) throws Exception {
+                    return kof_http_request(url, "OPTIONS", headers, null);
+                }
+
+                public static String kof_http_post(String url, String body) throws Exception {
+                    return kof_http_request(url, "POST", null, body);
+                }
+
+                public static String kof_http_post_headers(String url, String body, String headers) throws Exception {
+                    return kof_http_request(url, "POST", headers, body);
+                }
+
+                public static String kof_http_put(String url, String body) throws Exception {
+                    return kof_http_request(url, "PUT", null, body);
+                }
+
+                public static String kof_http_put_headers(String url, String body, String headers) throws Exception {
+                    return kof_http_request(url, "PUT", headers, body);
+                }
+
+                public static String kof_http_patch(String url, String body) throws Exception {
+                    return kof_http_request(url, "PATCH", null, body);
+                }
+
+                public static String kof_http_patch_headers(String url, String body, String headers) throws Exception {
+                    return kof_http_request(url, "PATCH", headers, body);
+                }
+
+                public static int kof_http_status(String url) throws Exception {
+                    java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(url))
+                            .timeout(java.time.Duration.ofSeconds(KOF_HTTP_TIMEOUT.get()))
+                            .method("GET", java.net.http.HttpRequest.BodyPublishers.noBody());
+                    java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient()
+                            .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                    return r.statusCode();
+                }
+
+                private static String kof_http_request(String url, String method, String headers, String body)
+                        throws Exception {
+                    java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(url))
+                            .timeout(java.time.Duration.ofSeconds(KOF_HTTP_TIMEOUT.get()));
+                    if (headers != null && !headers.isBlank()) {
+                        for (String line : headers.split("\n")) {
+                            int c = line.indexOf(':');
+                            if (c > 0) {
+                                b.header(line.substring(0, c).trim(), line.substring(c + 1).trim());
+                            }
+                        }
+                    }
+                    if (body != null) {
+                        b.method(method, java.net.http.HttpRequest.BodyPublishers.ofString(body));
+                    } else {
+                        b.method(method, java.net.http.HttpRequest.BodyPublishers.noBody());
+                    }
+                    java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient()
+                            .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                    return r.body();
+                }
+
+                // ── kof.mq — messageria em memória (pub/sub + filas) ─────
+                private static final java.util.concurrent.ConcurrentHashMap<String,
+                        java.util.concurrent.CopyOnWriteArrayList<Object>> KOF_MQ_SUBS =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_MQ_SEQ =
+                        new java.util.concurrent.atomic.AtomicInteger();
+                private static final java.util.concurrent.ConcurrentHashMap<String,
+                        java.util.concurrent.ArrayBlockingQueue<Object>> KOF_MQ_QUEUES =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+
+                public static void kof_mq_publish(String topic, Object msg) {
+                    java.util.List<Object> subs = KOF_MQ_SUBS.get(topic);
+                    if (subs != null) {
+                        for (Object fn : subs) {
+                            try {
+                                fn.getClass().getMethod("invoke", Object.class).invoke(fn, msg);
+                            } catch (java.lang.reflect.InvocationTargetException e) {
+                                if (e.getCause() instanceof RuntimeException re) throw re;
+                                throw new RuntimeException(e.getCause());
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                }
+
+                public static void kof_mq_subscribe(String topic, Object fn) {
+                    KOF_MQ_SUBS.computeIfAbsent(topic, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
+                            .add(fn);
+                }
+
+                public static void kof_mq_unsubscribe(String topic, Object fn) {
+                    java.util.List<Object> subs = KOF_MQ_SUBS.get(topic);
+                    if (subs != null) {
+                        subs.remove(fn);
+                    }
+                }
+
+                public static String kof_mq_queue() {
+                    return "mq-" + KOF_MQ_SEQ.incrementAndGet();
+                }
+
+                public static void kof_mq_push(String q, Object item) {
+                    KOF_MQ_QUEUES.computeIfAbsent(q,
+                            k -> new java.util.concurrent.ArrayBlockingQueue<>(1024)).add(item);
+                }
+
+                public static Object kof_mq_pop(String q) {
+                    java.util.concurrent.ArrayBlockingQueue<Object> queue = KOF_MQ_QUEUES.get(q);
+                    return queue == null ? null : queue.poll();
+                }
+
+                public static int kof_mq_queue_size(String q) {
+                    java.util.concurrent.ArrayBlockingQueue<Object> queue = KOF_MQ_QUEUES.get(q);
+                    return queue == null ? 0 : queue.size();
                 }
 
                 public static void kof_web_listen(String appId, int port) {
@@ -1559,7 +1767,31 @@ static boolean hasRuntimeFn(String methodName) {
                 private static volatile String KOF_DB_DEFAULT;
                 private static final ThreadLocal<java.sql.Connection> KOF_DB_TX = new ThreadLocal<>();
 
+                private static final java.util.concurrent.ConcurrentHashMap<String, Object> KOF_MONGO =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_MONGO_SEQ =
+                        new java.util.concurrent.atomic.AtomicInteger();
+
                 public static String kof_db_connect(String url) throws Exception {
+                    if (url.startsWith("mongodb://")) {
+                        // MongoDB: o driver (mongodb-driver-sync) fica no
+                        // classpath do programa — o runtime usa reflexão para
+                        // não depender dele em compile-time
+                        Class<?> clients = Class.forName("com.mongodb.client.MongoClients");
+                        Object client = clients.getMethod("create", String.class).invoke(null, url);
+                        String dbName = url;
+                        int slash = url.indexOf('/', "mongodb://".length());
+                        if (slash > 0) {
+                            int q = url.indexOf('?', slash);
+                            dbName = url.substring(slash + 1, q > 0 ? q : url.length());
+                        }
+                        if (dbName.isEmpty()) dbName = "kof";
+                        Object database = client.getClass().getMethod("getDatabase", String.class)
+                                .invoke(client, dbName);
+                        String id = "mongo-" + KOF_MONGO_SEQ.incrementAndGet();
+                        KOF_MONGO.put(id, database);
+                        return id;
+                    }
                     return kof_db_register(java.sql.DriverManager.getConnection(url));
                 }
 
@@ -1577,6 +1809,58 @@ static boolean hasRuntimeFn(String methodName) {
                 public static void kof_db_close(String id) throws Exception {
                     java.sql.Connection c = KOF_DB_CONNECTIONS.remove(id);
                     if (c != null) c.close();
+                }
+
+                private static boolean kof_mongo_id(String id) {
+                    return id.startsWith("mongo-");
+                }
+
+                private static Object kof_mongo_coll(String id, String table) throws Exception {
+                    Object db = KOF_MONGO.get(id);
+                    return db.getClass().getMethod("getCollection", String.class).invoke(db, table);
+                }
+
+                private static Object kof_mongo_eq(String field, Object value) throws Exception {
+                    Class<?> filters = Class.forName("com.mongodb.client.model.Filters");
+                    return filters.getMethod("eq", String.class, Object.class).invoke(null, field, value);
+                }
+
+                private static Object kof_mongo_op(String field, String op, Object value) throws Exception {
+                    // operador → filtro do MongoDB (whitelist — mesmo
+                    // conjunto aceito no SQL; LIKE vira regex simples)
+                    Class<?> filters = Class.forName("com.mongodb.client.model.Filters");
+                    String m = switch (op) {
+                        case ">" -> "gt";
+                        case "<" -> "lt";
+                        case ">=" -> "gte";
+                        case "<=" -> "lte";
+                        case "!=" -> "ne";
+                        case "==" -> "eq";
+                        case "LIKE" -> "regex";
+                        default -> throw new IllegalArgumentException("ORM operator not allowed: " + op);
+                    };
+                    if ("LIKE".equals(op)) {
+                        String pattern = String.valueOf(value).replace("%", ".*").replace("_", ".");
+                        return filters.getMethod(m, String.class, String.class).invoke(null, field, pattern);
+                    }
+                    return filters.getMethod(m, String.class, Object.class).invoke(null, field, value);
+                }
+
+                private static Object kof_mongo_doc(String key, Object value) throws Exception {
+                    Class<?> docType = Class.forName("org.bson.Document");
+                    java.lang.reflect.Constructor<?> ctor = docType.getConstructor(String.class, Object.class);
+                    return ctor.newInstance(key, value);
+                }
+
+                private static Object kof_mongo_values(java.lang.reflect.RecordComponent[] comps,
+                                                       Object[] values) throws Exception {
+                    Class<?> docType = Class.forName("org.bson.Document");
+                    Object doc = docType.getConstructor().newInstance();
+                    java.lang.reflect.Method put = docType.getMethod("put", String.class, Object.class);
+                    for (int i = 0; i < comps.length; i++) {
+                        put.invoke(doc, comps[i].getName(), values[i]);
+                    }
+                    return doc;
                 }
 
                 private static java.sql.Connection kof_db_conn(String id) throws Exception {
@@ -1700,6 +1984,27 @@ static boolean hasRuntimeFn(String methodName) {
                         c.setAutoCommit(prevAuto);
                         KOF_DB_TX.remove();
                     }
+                }
+
+""" + JvmOrmRuntime.source() + """
+                // ── String → numérico (OBS-010: toInt/toLong/toDouble/toFloat)
+                // As conversões do String são funções do runtime Kof — o
+                // java.lang.String não tem toInt().
+
+                public static int kof_string_to_int(String s) {
+                    return Integer.parseInt(s.trim());
+                }
+
+                public static long kof_string_to_long(String s) {
+                    return Long.parseLong(s.trim());
+                }
+
+                public static double kof_string_to_double(String s) {
+                    return Double.parseDouble(s.trim());
+                }
+
+                public static float kof_string_to_float(String s) {
+                    return Float.parseFloat(s.trim());
                 }
 
                 // ── kof.security (docs/security.md §5) ──────────────────

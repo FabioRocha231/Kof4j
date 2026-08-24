@@ -124,7 +124,7 @@ Kof não depende de Java como linguagem intermediária.
 
 # Estado Atual
 
-Kof está em desenvolvimento ativo — **Alpha 0.0.5** (`0.0.5-alpha`).
+Kof está em desenvolvimento ativo — **Alpha 0.0.14** (`0.0.14-alpha`).
 
 O compilador possui frontend próprio, type system, Kof IR e três backends.
 
@@ -159,8 +159,10 @@ O compilador possui frontend próprio, type system, Kof IR e três backends.
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 | kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
 | kof.config (arquivo > env > profile, typed) | ✅ | CONF001 | CONF001 |
-| kof.log (níveis, off, JSON estruturado, requestId) | ✅ | LOG001 | LOG001 |
-| kof.db (JDBC, query tipada, `transaction {}`) | ✅ | DB001 | DB001 |
+| kof.log (níveis, off, JSON estruturado, requestId) | ✅ | ✅ (asm; UTC) | LOG001 |
+| kof.db (JDBC, query tipada, `transaction {}`) | ✅ | ✅ (SQLite nativo; MySQL WIP) | DB001 |
+| kof.orm (`entity`, CRUD, where c/ operadores, saveAll, page, deleteAll, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
+| String.toInt/toLong/toDouble/toFloat | ✅ | ✅ | ✅ |
 | JSON Float/Double + arrays (`json.decode<Int[]>`) | ✅ | — | — |
 
 **KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
@@ -172,8 +174,10 @@ Status alpha: [docs/targets/KOFJS.md](docs/targets/KOFJS.md).
 join implícito; Native reporta `CONC001` (gap documentado). Ver
 [docs/concurrency.md](docs/concurrency.md).
 
-**Testes**: `assert(cond, "msg")` + `kof test <file.kf|dir>` — PASS/FAIL por
-exit code. Ver [learn/23-testing.md](learn/23-testing.md).
+**Testes**: `test "nome" { }` + `assert(cond, "msg")` + `kof test
+<file.kf|dir> [--target jvm|native|js]` — PASS/FAIL **por teste**, runner
+sintetizado em compile-time, exit code pelo resultado. Ver
+[learn/23-testing.md](learn/23-testing.md).
 
 **Depuração**: `kof debug <file.kf>` — servidor DAP sobre stdio com JDWP cru
 (breakpoints por linha Kof, call stack com funções/linhas Kof, continue,
@@ -181,7 +185,8 @@ disconnect). Ver [docs/debugging.md](docs/debugging.md).
 
 **Auditoria do ecossistema**: matriz de cobertura da stdlib (inventário,
 gaps G1-G12, prioridade e estratégia) em
-[docs/ecosystem-coverage.md](docs/ecosystem-coverage.md).
+[docs/ecosystem-coverage.md](docs/ecosystem-coverage.md). Plano de evolução
+para plataforma completa: [docs/plan-platform-completion.md](docs/plan-platform-completion.md).
 
 ---
 
@@ -314,10 +319,10 @@ externa de Java é necessária.**
 
 ```bash
 # Baixe o artefato do GitHub Releases e extraia:
-tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.0.14-alpha-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.0.14-alpha-linux-x86_64/bin:$PATH"
 
-kof version        # kof 0.0.5-alpha
+kof version        # kof 0.0.14-alpha
 kof info           # ambiente completo (JVM embutida, Tooling API 21, targets)
 ```
 
@@ -333,7 +338,7 @@ kof build <dir> [--target jvm|native|js] [--output <dir>]
 kof run <file.kf> [--target jvm|native|js] [args...]
 kof serve <file.kf> [--port <port>] [--host <host>]
 kof check <file.kf|dir>
-kof test <file.kf|dir> [--target jvm|native]
+kof test <file.kf|dir> [--target jvm|native|js]
 kof info [--json]
 kof lsp
 kof install <dir>
@@ -381,6 +386,12 @@ Adoptium e monta o layout completo de distribuição.
 
 Versionamento centralizado em `VERSION` — ver
 [docs/distribution/VERSIONING.md](docs/distribution/VERSIONING.md).
+
+**Windows:** use o **Git Bash** para `scripts/package.sh` — o `bash`
+genérico do PATH pode resolver para o WSL e gerar uma distribuição Linux
+(OBS-005). No Windows, o Python pode estar disponível apenas como o
+launcher `py` — o script o descobre automaticamente (`python3`/`python`/
+`py -3`).
 
 ---
 

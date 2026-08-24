@@ -1498,6 +1498,18 @@ class JsBackend implements Backend {
                     args));
             return;
         }
+        if (kc.kind() == KofCallKind.SUPER) {
+            // super.method(args) — JS supports it natively inside class
+            // methods; the receiver on the stack is this and is discarded.
+            pop(stack);
+            JsIr.JsExpression call = new JsIr.JsCall(
+                    new JsIr.JsMember(new JsIr.JsIdentifier("super"), sanitizeName(kc.methodName())), args);
+            if (Type.isVoid(kc.returnType())) {
+                throw new StatementEnd(call);
+            }
+            stack.add(call);
+            return;
+        }
         if (kc.kind() == KofCallKind.STATIC) {
             String owner = jsClassName(ownerInternalName(kc.ownerType()));
             stack.add(new JsIr.JsCall(
@@ -1806,7 +1818,8 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
-                || name.equals("kof_process_run") || name.equals("kof_args")
+                || name.equals("kof_process_run") || name.equals("kof_process_exit")
+                || name.equals("kof_args")
                 || name.equals("kof_box") || name.equals("kof_unbox");
     }
 
@@ -1866,6 +1879,13 @@ class JsBackend implements Backend {
         if (name.equals("kof_process_run")) {
             registerIoRuntime("kofProcessRun");
             stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofProcessRun"), args));
+            return;
+        }
+        if (name.equals("kof_process_exit")) {
+            // sentinel capturado pelo KofJsRunner — nunca use System.exit
+            // dentro da engine (mataria o processo hospedeiro)
+            registerIoRuntime("kofProcessExit");
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofProcessExit"), args));
             return;
         }
         if (name.equals("kof_ui_color_to_css")) {
@@ -3132,6 +3152,11 @@ class JsBackend implements Backend {
                     stderr: result.stderr,
                     exitCode: result.exitCode
                 };
+            }
+
+            export function kofProcessExit(code) {
+                // sentinel: o runner converte no exit code do processo
+                throw { __kof_exit__: code };
             }
 
             export function kofReadLine() {

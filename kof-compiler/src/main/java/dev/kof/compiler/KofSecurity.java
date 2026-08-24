@@ -169,6 +169,9 @@ final class KofSecurity {
             case "kof_sec_password_hash", "kof_sec_password_verify", "kof_sec_password_needs_rehash" ->
                     target == Target.JVM || target == Target.JS;
             case "kof_sec_sha512" -> target != Target.NATIVE;
+            case "kof_sec_jwt_create", "kof_sec_jwt_create_ttl", "kof_sec_jwt_verify",
+                    "kof_sec_jwt_verify_iss_aud", "kof_sec_jwt_secret" ->
+                    target == Target.JVM || target == Target.JS;
             case "kof_sec_csrf_token", "kof_sec_csrf_valid", "kof_sec_cors_allowed",
                     "kof_sec_csp_header", "kof_sec_hsts_header", "kof_sec_content_type_options_header",
                     "kof_sec_frame_header", "kof_sec_referrer_header",
@@ -185,6 +188,8 @@ final class KofSecurity {
             case "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt" -> "SECN002";
             case "kof_sec_password_hash", "kof_sec_password_verify", "kof_sec_password_needs_rehash" -> "SECN001";
             case "kof_sec_sha512" -> "SECN003";
+            case "kof_sec_jwt_create", "kof_sec_jwt_create_ttl", "kof_sec_jwt_verify",
+                    "kof_sec_jwt_verify_iss_aud", "kof_sec_jwt_secret" -> "SECN004";
             default -> "SECN000";
         };
     }

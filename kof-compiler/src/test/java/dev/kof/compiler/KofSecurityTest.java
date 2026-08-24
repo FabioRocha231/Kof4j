@@ -314,6 +314,27 @@ class KofSecurityTest {
     }
 
     @Test
+    void jwtRejectedOnNative(@TempDir Path tempDir) throws IOException {
+        // G7: jwt tem entrada explícita em supportedOn — Native reporta
+        // SECN004 em compile-time (não erro de link silencioso)
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                main() {
+                    var token = jwt.create("{\\"sub\\": \\"u\\"}", "s3cret")
+                    println(token)
+                }
+                """);
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out-n"), Target.NATIVE);
+        assertFalse(nativeResult.success());
+        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("SECN004"),
+                "Native should report SECN004: " + nativeResult.diagnostics().getDiagnostics());
+        CompilationResult jsResult = driver.compile(source, tempDir.resolve("out-j"), Target.JS);
+        assertTrue(jsResult.success(), "JWT works on JS: " + jsResult.diagnostics().getDiagnostics());
+        CompilationResult jvmResult = driver.compile(source, tempDir.resolve("out-v"), Target.JVM);
+        assertTrue(jvmResult.success(), "JWT works on JVM: " + jvmResult.diagnostics().getDiagnostics());
+    }
+
+    @Test
     void sha512RejectedOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, "main() { println(crypto.sha512(\"x\")) }");

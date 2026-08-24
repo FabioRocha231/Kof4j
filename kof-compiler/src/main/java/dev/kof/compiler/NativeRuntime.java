@@ -20,6 +20,7 @@ final class NativeRuntime {
         emitJsonFunctions(sb);
         emitAlloc(sb);
         emitFree(sb);
+        emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
         emitBoundsError(sb);
@@ -47,6 +48,8 @@ final class NativeRuntime {
         emitArraySet(sb);
         emitMemstats(sb);
         emitIoTimeFunctions(sb);
+        emitLogFunctions(sb);
+        emitConfigFunctions(sb);
         emitIoFileFunctions(sb);
         emitUiColorFunctions(sb);
         emitUiWindowFunctions(sb);
@@ -446,6 +449,19 @@ final class NativeRuntime {
             """);
     }
 
+
+    /** process.exit(code): syscall exit — termina o processo na hora. */
+    private static void emitProcessExit(StringBuilder sb) {
+        sb.append("""
+            .section .text
+            .globl kof_process_exit
+            .type kof_process_exit, @function
+            kof_process_exit:
+                movq %rdi, %rdi
+                movq $60, %rax
+                syscall
+            """);
+    }
 
     private static void emitPanic(StringBuilder sb) {
         sb.append("""
@@ -2564,6 +2580,1183 @@ final class NativeRuntime {
 
 
 
+    /**
+     * kof.log no Native — mesmo contrato do JVM testado por KofLogE2ETest:
+     * "yyyy-MM-dd HH:mm:ss.SSS LEVEL msg"; KOF_LOG_LEVEL filtra
+     * (debug&lt;info&lt;warn&lt;error&lt;off, default info); warn/error vão
+     * para stderr. Data civil via clock_gettime + conversão de dias da
+     * época (algoritmo de Hinnant) em aritmética inteira pura, sem libc.
+     * Delta documentado: horário é UTC (JVM usa fuso local) e KOF_LOG_JSON
+     * ainda não tem efeito no Native.
+     */
+    private static void emitLogFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            kof_log_threshold: .quad -1
+            # KofString "KOF_LOG_LEVEL" (layout: len em +16, data em +24)
+            .Llog_env_kstr:
+                .quad 0
+                .quad 0
+                .long 13
+                .long 0
+                .ascii "KOF_LOG_LEVEL"
+            .Llog_env_name:    .asciz "KOF_LOG_LEVEL="
+            .Llog_w_debug:     .asciz "debug"
+            .Llog_w_info:      .asciz "info"
+            .Llog_w_warn:      .asciz "warn"
+            .Llog_w_warning:   .asciz "warning"
+            .Llog_w_error:     .asciz "error"
+            .Llog_w_off:       .asciz "off"
+            .Llog_lbl_debug:   .asciz "DEBUG"
+            .Llog_lbl_info:    .asciz "INFO"
+            .Llog_lbl_warn:    .asciz "WARN"
+            .Llog_lbl_error:   .asciz "ERROR"
+            .Llog_nullmsg:     .asciz "null"
+            .section .text
+            .globl kof_log_debug
+            .type kof_log_debug, @function
+            kof_log_debug:
+                # convenção nativa: 1º argumento (msg) chega em rdi
+                movq %rdi, %rdx
+                movq $0, %rdi
+                leaq .Llog_lbl_debug(%rip), %rsi
+                jmp kof_log_write
+
+            .globl kof_log_info
+            .type kof_log_info, @function
+            kof_log_info:
+                # convenção nativa: 1º argumento (msg) chega em rdi
+                movq %rdi, %rdx
+                movq $1, %rdi
+                leaq .Llog_lbl_info(%rip), %rsi
+                jmp kof_log_write
+
+            .globl kof_log_warn
+            .type kof_log_warn, @function
+            kof_log_warn:
+                # convenção nativa: 1º argumento (msg) chega em rdi
+                movq %rdi, %rdx
+                movq $2, %rdi
+                leaq .Llog_lbl_warn(%rip), %rsi
+                jmp kof_log_write
+
+            .globl kof_log_error
+            .type kof_log_error, @function
+            kof_log_error:
+                # convenção nativa: 1º argumento (msg) chega em rdi
+                movq %rdi, %rdx
+                movq $3, %rdi
+                leaq .Llog_lbl_error(%rip), %rsi
+                jmp kof_log_write
+
+            # .Llog_ci_eq(rdi=candidato, rsi=bytes, edx=len) -> eax=1 se igual (case-insensitive)
+            .Llog_ci_eq:
+                xorl %eax, %eax
+                testl %edx, %edx
+                jle .Llog_ci_no
+            .Llog_ci_loop:
+                movzbl (%rdi), %r8d
+                movzbl (%rsi), %r9d
+                orb $0x20, %r8b
+                orb $0x20, %r9b
+                cmpl %r9d, %r8d
+                jne .Llog_ci_no
+                incq %rdi
+                incq %rsi
+                decl %edx
+                jnz .Llog_ci_loop
+                movl $1, %eax
+            .Llog_ci_no:
+                ret
+
+            # .Llog_parse_level -> rax = threshold (lazy, uma vez por processo).
+            # Autocontido: abre /proc/self/environ e procura "KOF_LOG_LEVEL="
+            # (o kof_sec_secret_get espera KofString e não serve aqui).
+            .Llog_parse_level:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                subq $16384, %rsp
+                leaq .Lsec_environ_path(%rip), %rdi
+                xorq %rsi, %rsi
+                xorq %rdx, %rdx
+                movq $2, %rax               # SYS_open
+                syscall
+                testq %rax, %rax
+                js .Llog_pl_default
+                movq %rax, %r12             # fd
+                movq %r12, %rdi
+                leaq 0(%rsp), %rsi
+                movq $16384, %rdx
+                xorq %rax, %rax             # SYS_read
+                syscall
+                movq %rax, %r13             # bytes lidos
+                movq %r12, %rdi
+                movq $3, %rax               # close
+                syscall
+                cmpq $15, %r13
+                jl .Llog_pl_default
+                xorq %rbx, %rbx             # índice no buffer
+            .Llog_scan:
+                movq %rsp, %r8
+                addq %rbx, %r8
+                leaq .Llog_env_name(%rip), %r10
+                xorq %r9, %r9
+            .Llog_pcmp:
+                cmpq $14, %r9
+                je .Llog_pfound
+                leaq (%rbx,%r9), %rdx
+                cmpq %r13, %rdx
+                jge .Llog_pl_default
+                movzbl (%r8,%r9), %eax
+                movzbl (%r10,%r9), %ecx
+                cmpl %ecx, %eax
+                jne .Llog_padvance
+                incq %r9
+                jmp .Llog_pcmp
+            .Llog_padvance:
+                incq %rbx
+                jmp .Llog_scan
+            .Llog_pfound:
+                leaq 14(%r8), %rsi          # valor
+                xorl %edx, %edx             # len até NUL
+            .Llog_vlen:
+                movq %rbx, %rax
+                addq $14, %rax               # salta o prefixo "KOF_LOG_LEVEL="
+                addq %rdx, %rax
+                cmpq %r13, %rax
+                jge .Llog_vdone
+                cmpb $0, (%rsp,%rax)
+                je .Llog_vdone
+                incq %rdx
+                jmp .Llog_vlen
+            .Llog_vdone:
+                call .Llog_ci_word
+                # dispatch pelo comprimento (debug5 info4 warn4 warning7 error5 off3)
+                movl %edx, %ebx
+                cmpq $7, %rdx
+                jne .Llog_pl_5
+                leaq .Llog_w_warning(%rip), %rdi
+                call .Llog_ci_eq2
+                testl %eax, %eax
+                jnz .Llog_pl_warn
+                jmp .Llog_pl_default
+            .Llog_pl_5:
+                cmpq $5, %rdx
+                jne .Llog_pl_4
+                movl %ebx, %edx
+                leaq .Llog_w_debug(%rip), %rdi
+                call .Llog_ci_eq2
+                testl %eax, %eax
+                jnz .Llog_pl_debug
+                movl %ebx, %edx
+                leaq .Llog_w_error(%rip), %rdi
+                call .Llog_ci_eq2
+                testl %eax, %eax
+                jnz .Llog_pl_error
+                jmp .Llog_pl_default
+            .Llog_pl_4:
+                cmpq $4, %rdx
+                jne .Llog_pl_3
+                movl %ebx, %edx
+                leaq .Llog_w_info(%rip), %rdi
+                call .Llog_ci_eq2
+                testl %eax, %eax
+                jnz .Llog_pl_default
+                movl %ebx, %edx
+                leaq .Llog_w_warn(%rip), %rdi
+                call .Llog_ci_eq2
+                testl %eax, %eax
+                jnz .Llog_pl_warn
+                jmp .Llog_pl_default
+            .Llog_pl_3:
+                cmpq $3, %rdx
+                jne .Llog_pl_default
+                movl %ebx, %edx
+                leaq .Llog_w_off(%rip), %rdi
+                call .Llog_ci_eq2
+                testl %eax, %eax
+                jnz .Llog_pl_off
+                jmp .Llog_pl_default
+            .Llog_pl_debug:
+                movq $0, %rax
+                jmp .Llog_pl_exit
+            .Llog_pl_warn:
+                movq $2, %rax
+                jmp .Llog_pl_exit
+            .Llog_pl_error:
+                movq $3, %rax
+                jmp .Llog_pl_exit
+            .Llog_pl_off:
+                movq $4, %rax
+                jmp .Llog_pl_exit
+            .Llog_pl_default:
+                movq $1, %rax
+            .Llog_pl_exit:
+                addq $16384, %rsp
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # .Llog_ci_word(rsi=valor, edx=len) -> eax=1 se é uma das palavras válidas
+            .Llog_ci_word:
+                cmpq $7, %rdx
+                je .Llog_ciw_yes
+                cmpq $5, %rdx
+                je .Llog_ciw_yes
+                cmpq $4, %rdx
+                je .Llog_ciw_yes
+                cmpq $3, %rdx
+                je .Llog_ciw_yes
+                xorl %eax, %eax
+                ret
+            .Llog_ciw_yes:
+                movl $1, %eax
+                ret
+
+            # .Llog_ci_eq2(rdi=candidato lowercase, rsi=bytes, edx=len) -> eax=1 se igual
+            .Llog_ci_eq2:
+                pushq %rbx
+                movl %edx, %ebx
+                xorl %eax, %eax
+                testl %ebx, %ebx
+                jle .Llog_ci2_no
+            .Llog_ci2_loop:
+                movzbl (%rdi), %r8d
+                movzbl (%rsi), %r9d
+                orb $0x20, %r8b
+                orb $0x20, %r9b
+                cmpl %r9d, %r8d
+                jne .Llog_ci2_no
+                incq %rdi
+                incq %rsi
+                decl %ebx
+                jnz .Llog_ci2_loop
+                movl $1, %eax
+            .Llog_ci2_no:
+                popq %rbx
+                ret
+
+            # kof_log_write(rdi=level, rsi=label cstr, rdx=msg KofString|0)
+            # slots locais: 0..15 timespec | 16 hh | 20 mi | 24 ss | 28 ms
+            #               32 year | 36 mon | 40 day | 44 tempA | 48 tempB
+            #               52 doe  | 56 era | 60 epochsec
+            kof_log_write:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $64, %rsp
+                movq %rdi, %r12
+                movq %rsi, %r13
+                movq %rdx, %r14
+                movq $-1, 44(%rsp)
+                # threshold lazy
+                movq kof_log_threshold(%rip), %rax
+                cmpq $-1, %rax
+                jne .Llog_have_thresh
+                call .Llog_parse_level
+                movq %rax, kof_log_threshold(%rip)
+                movq kof_log_threshold(%rip), %rax
+            .Llog_have_thresh:
+                cmpq %rax, %r12
+                jl .Llog_suppressed
+                # clock_gettime(CLOCK_REALTIME)
+                leaq 0(%rsp), %rdi
+                xorq %rsi, %rsi
+                movq $96, %rax
+                syscall
+                movq 8(%rsp), %rax           # nsec
+                xorq %rdx, %rdx
+                movq $1000000, %rcx
+                divq %rcx
+                movl %eax, 28(%rsp)          # ms
+                movq 0(%rsp), %rax           # epoch sec (timespec já é em segundos)
+                movq %rax, 60(%rsp)
+                # hora do dia
+                movq 60(%rsp), %rax
+                xorq %rdx, %rdx
+                movq $86400, %rcx
+                divq %rcx                    # rax=dias, rdx=secs do dia
+                movq %rdx, %rax
+                xorq %rdx, %rdx
+                movq $3600, %rcx
+                divq %rcx
+                movl %eax, 16(%rsp)          # hh
+                movq %rdx, %rax
+                xorq %rdx, %rdx
+                movq $60, %rcx
+                divq %rcx
+                movl %eax, 20(%rsp)          # mi
+                movl %edx, 24(%rsp)          # ss
+                # data civil (Hinnant) — só registradores, sem slots:
+                # r8=era, r9=doe, r10/r11/rdi temporários
+                movq 60(%rsp), %rax
+                xorq %rdx, %rdx
+                movq $86400, %rcx
+                divq %rcx                     # rax = dias
+                addq $719468, %rax            # z
+                movq $146097, %rcx
+                xorq %rdx, %rdx
+                divq %rcx                     # rax=era, rdx=doe
+                movq %rax, %r8
+                movq %rdx, %r9
+                # N = doe - doe/1460 + doe/36524 - doe/146096
+                movq %r9, %rax
+                xorq %rdx, %rdx
+                movq $1460, %rcx
+                divq %rcx
+                movq %rax, %r10               # doe/1460
+                movq %r9, %rax
+                xorq %rdx, %rdx
+                movq $36524, %rcx
+                divq %rcx
+                movq %rax, %r11               # doe/36524
+                movq %r9, %rax
+                xorq %rdx, %rdx
+                movq $146096, %rcx
+                divq %rcx                     # rax = doe/146096
+                movq %r9, %rdi
+                subq %r10, %rdi
+                addq %r11, %rdi
+                subq %rax, %rdi               # N
+                movq $365, %rcx
+                xorq %rdx, %rdx
+                movq %rdi, %rax
+                divq %rcx                     # rax = yoe
+                movq %rax, %r11               # r11 = yoe
+                # ano = yoe + era*400
+                movq %r11, %rax
+                imulq $400, %r8
+                addq %r8, %rax
+                movq %rax, %r10               # r10 = year (provisório)
+                # doy = doe(r9) - (365*yoe + yoe/4 - yoe/100)
+                movq %r11, %rax
+                imulq $365, %rax
+                movq %rax, %rdi               # rdi = 365*yoe
+                movq %r11, %rax
+                shrq $2, %rax
+                addq %rax, %rdi               # + yoe/4
+                movq %r11, %rax
+                xorq %rdx, %rdx
+                movq $100, %rcx
+                divq %rcx
+                subq %rax, %rdi               # - yoe/100
+                movq %r9, %rax
+                subq %rdi, %rax               # doy
+                movq %rax, %r9                # r9 = doy
+                # mp = (5*doy + 2)/153
+                imulq $5, %rax
+                addq $2, %rax
+                xorq %rdx, %rdx
+                movq $153, %rcx
+                divq %rcx                     # rax = mp
+                movq %rax, %r11               # r11 = mp (yoe livre agora)
+                # day = doy - (153*mp+2)/5 + 1
+                imulq $153, %rax
+                addq $2, %rax
+                xorq %rdx, %rdx
+                movq $5, %rcx
+                divq %rcx                     # rax = correção
+                movq %r9, %rdi                # doy
+                subq %rax, %rdi
+                incq %rdi                     # day
+                # month = mp + 3 - 12*(mp/10)
+                movq %r11, %rax
+                xorq %rdx, %rdx
+                movq $10, %rcx
+                divq %rcx
+                imulq $12, %rax
+                movq %rax, %r8                # r8 = 12*(mp/10) (era livre)
+                movq %r11, %rax
+                addq $3, %rax
+                subq %r8, %rax                # month
+                movl %r10d, 32(%rsp)          # year
+                movl %eax, 36(%rsp)           # month
+                movl %edi, 40(%rsp)           # day
+                cmpl $2, 36(%rsp)
+                jg .Llog_year_ok
+                incl 32(%rsp)
+            .Llog_year_ok:
+                # buffer = msglen + 80
+                movq $4, %rdi
+                testq %r14, %r14
+                jz .Llog_alloc
+                movl 16(%r14), %edi
+                addq $4, %rdi
+            .Llog_alloc:
+                addq $80, %rdi
+                call kof_alloc
+                movq %rax, %r15
+                movq %rax, %rbx
+                # ano (4 dígitos)
+                movl 32(%rsp), %eax
+                xorl %edx, %edx
+                movl $1000, %r8d
+                divl %r8d
+                addb $48, %al
+                movb %al, (%rbx)
+                # resto em edx: centena
+                movl %edx, %eax
+                xorl %edx, %edx
+                movl $100, %r8d
+                divl %r8d
+                addb $48, %al
+                movb %al, 1(%rbx)
+                movl %edx, %eax
+                xorl %edx, %edx
+                movl $10, %r8d
+                divl %r8d
+                addb $48, %al
+                movb %al, 2(%rbx)
+                addb $48, %dl
+                movb %dl, 3(%rbx)
+                addq $4, %rbx
+                movb $45, (%rbx)
+                incq %rbx
+                movl 36(%rsp), %eax
+                call .Llog_put2_at_bx
+                movb $45, (%rbx)
+                incq %rbx
+                movl 40(%rsp), %eax
+                call .Llog_put2_at_bx
+                movb $32, (%rbx)
+                incq %rbx
+                movl 16(%rsp), %eax
+                call .Llog_put2_at_bx
+                movb $58, (%rbx)
+                incq %rbx
+                movl 20(%rsp), %eax
+                call .Llog_put2_at_bx
+                movb $58, (%rbx)
+                incq %rbx
+                movl 24(%rsp), %eax
+                call .Llog_put2_at_bx
+                movb $46, (%rbx)
+                incq %rbx
+                movl 28(%rsp), %eax
+                call .Llog_put3_at_bx
+                movb $32, (%rbx)
+                incq %rbx
+                # label
+                movq %r13, %rax
+            .Llog_copy_label:
+                movzbl (%rax), %ecx
+                testl %ecx, %ecx
+                jz .Llog_label_done
+                movb %cl, (%rbx)
+                incq %rax
+                incq %rbx
+                jmp .Llog_copy_label
+            .Llog_label_done:
+                movb $32, (%rbx)
+                incq %rbx
+                # mensagem
+                testq %r14, %r14
+                jnz .Llog_copy_msg
+                leaq .Llog_nullmsg(%rip), %rax
+            .Llog_copy_loop:
+                movzbl (%rax), %ecx
+                testl %ecx, %ecx
+                jz .Llog_msg_done
+                movb %cl, (%rbx)
+                incq %rax
+                incq %rbx
+                jmp .Llog_copy_loop
+            .Llog_copy_msg:
+                movl 16(%r14), %ecx
+                testl %ecx, %ecx
+                jle .Llog_msg_done
+                leaq 24(%r14), %rax
+                movl %ecx, %edx
+            .Llog_copy_bytes:
+                movzbl (%rax), %ecx
+                movb %cl, (%rbx)
+                incq %rax
+                incq %rbx
+                decl %edx
+                jnz .Llog_copy_bytes
+            .Llog_msg_done:
+                movb $10, (%rbx)
+                incq %rbx
+                # write(fd, buf, len)
+                movq %rbx, %rdx
+                subq %r15, %rdx
+                movq %r15, %rsi
+                movq $1, %rax
+                cmpq $2, %r12
+                jl .Llog_fd_stdout
+                movq $2, %rdi
+                jmp .Llog_do_write
+            .Llog_fd_stdout:
+                movq $1, %rdi
+            .Llog_do_write:
+                syscall
+                movq %r15, %rdi
+                call kof_free
+            .Llog_suppressed:
+                addq $64, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # helpers que usam %rbx como cursor (dentro de kof_log_write)
+            .Llog_put2_at_bx:
+                pushq %rax
+                movl %eax, %ecx
+                xorl %edx, %edx
+                movl $10, %r8d
+                divl %r8d
+                addb $48, %al
+                movb %al, (%rbx)
+                addb $48, %dl
+                movb %dl, 1(%rbx)
+                addq $2, %rbx
+                popq %rax
+                ret
+            .Llog_put3_at_bx:
+                pushq %rax
+                movl %eax, %ecx
+                xorl %edx, %edx
+                movl $100, %r8d
+                divl %r8d
+                addb $48, %al
+                movb %al, (%rbx)
+                incq %rbx                    # centena gravada; dezena/unidade via put2
+                movl %edx, %eax
+                call .Llog_put2_at_bx
+                popq %rax
+                ret
+            """);
+    }
+
+
+    /**
+     * kof.config no Native — mesma semântica do JVM (KofConfigE2ETest):
+     * precedência KOF_CONFIG > env KOF_&lt;KEY&gt; (pontos/traços viram
+     * underscore, maiúsculas) > kof.&lt;profile&gt;.config / kof.config no
+     * diretório de trabalho. Arquivo: linhas "chave = valor", "#" comenta,
+     * bordas aparadas. Conversores tipados com default em valor inválido.
+     * Tudo em asm puro sobre syscalls, sem libc.
+     */
+    private static void emitConfigFunctions(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lcfg_s_kofconfig:  .asciz "KOF_CONFIG"
+            .Lcfg_s_kofprofile: .asciz "KOF_PROFILE"
+            .Lcfg_s_default:    .asciz "kof.config"
+            .Lcfg_w_true:  .asciz "true"
+            .Lcfg_w_yes:   .asciz "yes"
+            .Lcfg_w_one:   .asciz "1"
+            .Lcfg_w_false: .asciz "false"
+            .Lcfg_w_no:    .asciz "no"
+            .Lcfg_w_zero:  .asciz "0"
+            .section .text
+
+            # kof_env_getc(rdi=nome C-string) -> rax = KofString*|0
+            kof_env_getc:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $16384, %rsp
+                movq %rdi, %rbx              # nome
+                xorq %r10, %r10              # strlen(nome)
+            .Lceg_nlen:
+                cmpb $0, (%rbx,%r10)
+                je .Lceg_nlen_done
+                incq %r10
+                jmp .Lceg_nlen
+            .Lceg_nlen_done:
+                leaq .Lsec_environ_path(%rip), %rdi
+                xorq %rsi, %rsi
+                xorq %rdx, %rdx
+                movq $2, %rax                # SYS_open
+                syscall
+                testq %rax, %rax
+                js .Lceg_fail
+                movq %rax, %r12              # fd
+                movq %r12, %rdi
+                leaq 0(%rsp), %rsi
+                movq $16384, %rdx
+                xorq %rax, %rax              # SYS_read
+                syscall
+                movq %rax, %r13              # bytes lidos
+                movq %r12, %rdi
+                movq $3, %rax                # close
+                syscall
+                cmpq %r10, %r13
+                jle .Lceg_fail
+                xorq %r14, %r14              # inicio da entrada corrente
+            .Lceg_scan:
+                cmpq %r13, %r14
+                jge .Lceg_fail               # consumiu o buffer sem achar
+                movq %rsp, %r8
+                addq %r14, %r8
+                movq %r14, %rcx              # fim da entrada (NUL ou fim)
+            .Lceg_eentry:
+                cmpq %r13, %rcx
+                jge .Lceg_eentry_end
+                cmpb $0, (%rsp,%rcx)
+                je .Lceg_eentry_end
+                incq %rcx
+                jmp .Lceg_eentry
+            .Lceg_eentry_end:
+                movq %rcx, %r15              # fim exclusivo
+                movq %r14, %rcx              # procura '='
+            .Lceg_findeq:
+                cmpq %r15, %rcx
+                jge .Lceg_next
+                cmpb $61, (%rsp,%rcx)
+                je .Lceg_eq
+                incq %rcx
+                jmp .Lceg_findeq
+            .Lceg_eq:
+                movq %rcx, %rdx              # namelen da entrada
+                subq %r14, %rdx
+                cmpq %r10, %rdx
+                jne .Lceg_next
+                xorq %r9, %r9
+            .Lceg_cmpname:
+                cmpq %r10, %r9
+                jge .Lceg_match
+                movzbl (%rbx,%r9), %eax
+                movzbl (%rsp,%r9), %ecx
+                cmpl %ecx, %eax
+                jne .Lceg_next
+                incq %r9
+                jmp .Lceg_cmpname
+            .Lceg_match:
+                leaq 1(%rcx), %rdi           # valor = depois do '='
+                movq %r15, %rsi              # vallen
+                call kof_string_from_literal
+                jmp .Lceg_exit
+            .Lceg_next:
+                leaq 1(%r15), %r14
+                jmp .Lceg_scan
+            .Lceg_fail:
+                xorl %eax, %eax
+            .Lceg_exit:
+                addq $16384, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # .Lcfg_file_find(rdi=path C-string, rsi=key KofString*) -> KofString*|0
+            .Lcfg_file_find:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $16384, %rsp
+                movq %rsi, %r12              # key
+                movq %rdi, %rbx              # path cstr
+                movq %rbx, %rdi
+                xorq %rsi, %rsi
+                xorq %rdx, %rdx
+                movq $2, %rax                # SYS_open (ausente -> null)
+                syscall
+                testq %rax, %rax
+                js .Lcff_fail
+                movq %rax, %r13              # fd
+                movq %r13, %rdi
+                leaq 0(%rsp), %rsi
+                movq $16384, %rdx
+                xorq %rax, %rax              # SYS_read
+                syscall
+                movq %rax, %r14              # len
+                movq %r13, %rdi
+                movq $3, %rax                # close
+                syscall
+                testq %r14, %r14
+                jle .Lcff_fail
+                leaq 24(%r12), %r13          # r13 = key data (fd ja fechado)
+                movl 16(%r12), %r15d         # r15d = key len
+                xorq %rbx, %rbx              # pos
+            .Lcff_line:
+                cmpq %r14, %rbx
+                jge .Lcff_fail
+                movq %rbx, %rcx              # fim da linha
+            .Lcff_findeol:
+                cmpq %r14, %rcx
+                jge .Lcff_haveeol
+                cmpb $10, (%rsp,%rcx)
+                je .Lcff_haveeol
+                incq %rcx
+                jmp .Lcff_findeol
+            .Lcff_haveeol:
+                movq %rcx, %r8               # eol exclusivo
+                movq %rbx, %r9               # trim esquerdo
+            .Lcff_tls:
+                cmpq %r8, %r9
+                jge .Lcff_blank
+                movzbl (%rsp,%r9), %eax
+                cmpb $32, %al
+                je .Lcff_tls1
+                cmpb $9, %al
+                je .Lcff_tls1
+                jmp .Lcff_tle
+            .Lcff_tls1:
+                incq %r9
+                jmp .Lcff_tls
+            .Lcff_tle:
+                movq %r8, %r10               # trim direito (' ', tab, CR)
+            .Lcff_tle_loop:
+                cmpq %r9, %r10
+                jle .Lcff_blank
+                movzbl -1(%rsp,%r10), %eax
+                cmpb $32, %al
+                je .Lcff_tle1
+                cmpb $9, %al
+                je .Lcff_tle1
+                cmpb $13, %al
+                je .Lcff_tle1
+                jmp .Lcff_hash
+            .Lcff_tle1:
+                decq %r10
+                jmp .Lcff_tle_loop
+            .Lcff_blank:
+                movq %r8, %rbx
+                incq %rbx
+                jmp .Lcff_line
+            .Lcff_hash:
+                cmpb $35, (%rsp,%r9)         # '#'
+                je .Lcff_blank
+                movq %r9, %rcx               # '=' dentro de [r9,r10)
+            .Lcff_eq:
+                cmpq %r10, %rcx
+                jge .Lcff_blank
+                cmpb $61, (%rsp,%rcx)
+                je .Lcff_keytrim
+                incq %rcx
+                jmp .Lcff_eq
+            .Lcff_keytrim:
+                movq %rcx, %r11              # chave direita-aparada [r9,r11)
+            .Lcff_keyt:
+                cmpq %r9, %r11
+                jle .Lcff_keycmp
+                movzbl -1(%rsp,%r11), %eax
+                cmpb $32, %al
+                je .Lcff_keyt1
+                cmpb $9, %al
+                jne .Lcff_keycmp
+            .Lcff_keyt1:
+                decq %r11
+                jmp .Lcff_keyt
+            .Lcff_keycmp:
+                movq %r11, %rdx
+                subq %r9, %rdx
+                cmpq %r15, %rdx
+                jne .Lcff_valskip
+                xorq %rdx, %rdx
+            .Lcff_cmpline:
+                cmpq %r15, %rdx
+                jge .Lcff_foundkey
+                movzbl (%rsp,%r9), %eax
+                movzbl (%r13,%rdx), %ecx
+                cmpl %ecx, %eax
+                jne .Lcff_valskip
+                incq %rdx
+                incq %r9
+                jmp .Lcff_cmpline
+            .Lcff_foundkey:
+                leaq 1(%rcx), %rsi           # vs = '=' + 1
+            .Lcff_vtls:
+                cmpq %r10, %rsi
+                jge .Lcff_vmk
+                movzbl (%rsp,%rsi), %eax
+                cmpb $32, %al
+                je .Lcff_vtls1
+                cmpb $9, %al
+                jne .Lcff_vmk
+            .Lcff_vtls1:
+                incq %rsi
+                jmp .Lcff_vtls
+            .Lcff_vmk:
+                movq %r10, %rdx
+                subq %rsi, %rdx              # vallen
+                call kof_string_from_literal
+                jmp .Lcff_exit
+            .Lcff_valskip:
+                movq %r8, %rbx
+                incq %rbx
+                jmp .Lcff_line
+            .Lcff_fail:
+                xorl %eax, %eax
+            .Lcff_exit:
+                addq $16384, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # .Lcfg_envname(rdi=key KofString*, rsi=dest) -> escreve "KOF_<KEY>" C-string
+            .Lcfg_envname:
+                movl 16(%rdi), %ecx          # keylen
+                leaq 24(%rdi), %rdx          # data
+                movb $75, 0(%rsi)            # 'K'
+                movb $79, 1(%rsi)            # 'O'
+                movb $70, 2(%rsi)            # 'F'
+                movb $95, 3(%rsi)            # '_'
+                movq $4, %rax
+                xorq %r9, %r9
+            .Lce_loop:
+                cmpq %rcx, %r9
+                jge .Lce_done
+                movzbl (%rdx,%r9), %edi
+                cmpb $46, %dil               # '.'
+                je .Lce_us
+                cmpb $45, %dil               # '-'
+                je .Lce_us
+                cmpb $97, %dil               # 'a'
+                jb .Lce_store
+                cmpb $122, %dil              # 'z'
+                ja .Lce_store
+                subb $32, %dil               # maiuscula
+                jmp .Lce_store
+            .Lce_us:
+                movb $95, %dil               # '_'
+            .Lce_store:
+                movb %dil, (%rsi,%rax)
+                incq %rax
+                incq %r9
+                jmp .Lce_loop
+            .Lce_done:
+                movb $0, (%rsi,%rax)
+                ret
+
+            # kof_config_lookup(rdi=key KofString*) -> KofString*|0
+            kof_config_lookup:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $512, %rsp
+                movq %rdi, %rbx              # key
+                # 1) arquivo explicito via KOF_CONFIG
+                leaq .Lcfg_s_kofconfig(%rip), %rdi
+                call kof_env_getc
+                testq %rax, %rax
+                jz .Lcl_envkey
+                leaq 24(%rax), %rdi          # path cstr (data e NUL-terminada)
+                movq %rbx, %rsi
+                call .Lcfg_file_find
+                testq %rax, %rax
+                jnz .Lcl_exit
+            .Lcl_envkey:
+                # 2) env KOF_<CHAVE>
+                movq %rbx, %rdi
+                movq %rsp, %rsi
+                call .Lcfg_envname
+                movq %rsp, %rdi
+                call kof_env_getc
+                testq %rax, %rax
+                jnz .Lcl_exit
+                # 3) kof.<profile>.config ou kof.config
+                leaq .Lcfg_s_kofprofile(%rip), %rdi
+                call kof_env_getc
+                testq %rax, %rax
+                jz .Lcl_defaultfile
+                # monta "kof.<profile>.config" no buffer do frame
+                movq %rsp, %r8
+                movl $1699939949, %eax       # "kof."
+                movl %eax, 0(%r8)
+                movq %rax, %r12              # profile KofString
+                movq %rsp, %r8
+                movl $1699939949, %eax       # "kof." little-endian
+                movl %eax, 0(%r8)
+                movq $4, %rax
+                movl 16(%r12), %ecx          # profile len
+                leaq 24(%r12), %rdx          # profile data
+                xorq %r9, %r9
+            .Lcl_pcopy:
+                cmpq %rcx, %r9
+                jge .Lcl_pdone
+                movzbl (%rdx,%r9), %edi
+                movb %dil, (%r8,%rax)
+                incq %rax
+                incq %r9
+                jmp .Lcl_pcopy
+            .Lcl_pdone:
+                movb $46, 0(%r8,%rax)        # ".config"
+                movb $99, 1(%r8,%rax)
+                movb $111, 2(%r8,%rax)
+                movb $110, 3(%r8,%rax)
+                movb $102, 4(%r8,%rax)
+                movb $105, 5(%r8,%rax)
+                movb $103, 6(%r8,%rax)
+                addq $7, %rax
+                movb $0, (%r8,%rax)
+                leaq 0(%rsp), %rdi
+                jmp .Lcl_ffcall
+            .Lcl_defaultfile:
+                leaq .Lcfg_s_default(%rip), %rdi
+            .Lcl_ffcall:
+                movq %rbx, %rsi
+                call .Lcfg_file_find
+            .Lcl_exit:
+                addq $512, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # ---- wrappers publicos ----
+
+            kof_config_get:
+                jmp kof_config_lookup
+
+            kof_config_env:
+                leaq 24(%rdi), %rdi          # nome KofString -> C-string (data NUL-terminada)
+                jmp kof_env_getc
+
+            kof_config_has:
+                call kof_config_lookup
+                testq %rax, %rax
+                setne %al
+                movzbq %al, %rax
+                ret
+
+            kof_config_str:
+                pushq %rbx
+                movq %rsi, %rbx              # default (lookup preserva rbx)
+                call kof_config_lookup
+                testq %rax, %rax
+                cmovzq %rbx, %rax
+                popq %rbx
+                ret
+
+            kof_config_int:
+                pushq %rbx
+                movl %esi, %ebx              # default
+                call kof_config_lookup
+                testq %rax, %rax
+                jz .Lci_def
+                movq %rax, %rdi
+                call .Lcfg_parse_i64
+                testl %edx, %edx
+                jz .Lci_def
+                # range int32
+                cmpq $2147483647, %rax
+                jg .Lci_def
+                cmpq $-2147483648, %rax
+                jl .Lci_def
+                popq %rbx
+                ret
+            .Lci_def:
+                movl %ebx, %eax
+                popq %rbx
+                ret
+
+            kof_config_long:
+                pushq %rbx
+                movq %rsi, %rbx              # default long
+                call kof_config_lookup
+                testq %rax, %rax
+                jz .Lcl_def
+                movq %rax, %rdi
+                call .Lcfg_parse_i64
+                testl %edx, %edx
+                jz .Lcl_def
+                popq %rbx
+                ret
+            .Lcl_def:
+                movq %rbx, %rax
+                popq %rbx
+                ret
+
+            kof_config_bool:
+                pushq %rbx
+                movl %esi, %ebx              # default
+                call kof_config_lookup
+                testq %rax, %rax
+                jz .Lcb_def
+                movl 16(%rax), %ecx          # len
+                leaq 24(%rax), %rdx          # data
+                # trim rapido nas bordas
+                xorq %r9, %r9
+            .Lcb_tls:
+                cmpq %rcx, %r9
+                jge .Lcb_def
+                movzbl (%rdx,%r9), %eax
+                cmpb $32, %al
+                je .Lcb_tls1
+                cmpb $9, %al
+                je .Lcb_tls1
+                jmp .Lcb_tle
+            .Lcb_tls1:
+                incq %r9
+                jmp .Lcb_tls
+            .Lcb_tle:
+                movq %rcx, %r10
+            .Lcb_tle_loop:
+                cmpq %r9, %r10
+                jle .Lcb_def
+                movzbl -1(%rdx,%r10), %eax
+                cmpb $32, %al
+                je .Lcb_tle1
+                cmpb $9, %al
+                je .Lcb_tle1
+                jmp .Lcb_dispatch
+            .Lcb_tle1:
+                decq %r10
+                jmp .Lcb_tle_loop
+            .Lcb_dispatch:
+                subq %r9, %r10               # len aparado
+                # true / yes / 1 -> 1
+                cmpq $4, %r10
+                jne .Lcb_chk3
+                leaq .Lcfg_w_true(%rip), %rdi
+                jmp .Lcb_cmp_true
+            .Lcb_chk3:
+                cmpq $3, %r10
+                jne .Lcb_chk1
+                leaq .Lcfg_w_yes(%rip), %rdi
+                jmp .Lcb_cmp_true
+            .Lcb_chk1:
+                cmpq $1, %r10
+                jne .Lcb_chk5
+                leaq .Lcfg_w_one(%rip), %rdi
+                jmp .Lcb_cmp_true
+            .Lcb_chk5:
+                cmpq $5, %r10
+                jne .Lcb_chk2
+                leaq .Lcfg_w_false(%rip), %rdi
+                jmp .Lcb_cmp_false
+            .Lcb_chk2:
+                cmpq $2, %r10
+                jne .Lcb_def
+                leaq .Lcfg_w_no(%rip), %rdi
+                jmp .Lcb_cmp_false
+            .Lcb_cmp_true:
+                call .Lcb_ci_match
+                testl %eax, %eax
+                jz .Lcb_def
+                movl $1, %eax
+                jmp .Lcb_ret1
+            .Lcb_cmp_false:
+                call .Lcb_ci_match
+                testl %eax, %eax
+                jz .Lcb_def
+                xorl %eax, %eax
+                jmp .Lcb_ret1
+            .Lcb_def:
+                movl %ebx, %eax
+            .Lcb_ret1:
+                popq %rbx
+                ret
+
+            # .Lcb_ci_match(rdi=candidato, rsi=data, r10=len aparado) -> eax=1 se igual
+            .Lcb_ci_match:
+                pushq %rbx
+                movl %r10d, %ebx
+                xorl %eax, %eax
+                testl %ebx, %ebx
+                jle .Lcbm_no
+                xorq %rcx, %rcx
+            .Lcbm_loop:
+                movzbl (%rdi,%rcx), %r8d
+                movzbl (%rsi,%rcx), %r9d
+                orb $0x20, %r8b
+                orb $0x20, %r9b
+                cmpl %r9d, %r8d
+                jne .Lcbm_no
+                incq %rcx
+                cmpl %ebx, %ecx
+                jl .Lcbm_loop
+                movl $1, %eax
+            .Lcbm_no:
+                popq %rbx
+                ret
+
+            # .Lcfg_parse_i64(rdi=KofString*) -> rax=valor, edx=1 ok | edx=0 invalido
+            .Lcfg_parse_i64:
+                movl 16(%rdi), %ecx          # len
+                leaq 24(%rdi), %r8           # data
+                xorq %r9, %r9
+            .Lpi_tls:
+                cmpq %rcx, %r9
+                jge .Lpi_bad
+                movzbl (%r8,%r9), %eax
+                cmpb $32, %al
+                je .Lpi_tls1
+                cmpb $9, %al
+                je .Lpi_tls1
+                jmp .Lpi_tle
+            .Lpi_tls1:
+                incq %r9
+                jmp .Lpi_tls
+            .Lpi_tle:
+                movq %rcx, %r10              # fim exclusivo
+            .Lpi_tle_l:
+                cmpq %r9, %r10
+                jle .Lpi_bad                 # vazio apos trim
+                movzbl -1(%r8,%r10), %eax
+                cmpb $32, %al
+                je .Lpi_tle1
+                cmpb $9, %al
+                je .Lpi_tle1
+                jmp .Lpi_sign
+            .Lpi_tle1:
+                decq %r10
+                jmp .Lpi_tle_l
+            .Lpi_sign:
+                xorq %r11, %r11              # acc
+                xorl %esi, %esi              # neg
+                cmpq %r9, %r10
+                jle .Lpi_bad
+                movzbl (%r8,%r9), %eax
+                cmpb $45, %al                # '-'
+                je .Lpi_negset
+                cmpb $43, %al                # '+'
+                je .Lpi_posskip
+                jmp .Lpi_dcheck
+            .Lpi_negset:
+                movl $1, %esi
+            .Lpi_posskip:
+                incq %r9
+            .Lpi_dcheck:
+                cmpq %r9, %r10
+                jle .Lpi_bad                 # sinal sem digitos
+            .Lpi_digit:
+                movzbl (%r8,%r9), %eax
+                subb $48, %al
+                cmpb $9, %al
+                ja .Lpi_bad
+                imulq $10, %r11
+                movzbl %al, %eax
+                addq %rax, %r11
+                incq %r9
+                cmpq %r9, %r10
+                jg .Lpi_digit
+                movq %r11, %rax
+                testl %esi, %esi
+                jz .Lpi_ok
+                negq %rax
+            .Lpi_ok:
+                movl $1, %edx
+                ret
+            .Lpi_bad:
+                xorl %edx, %edx
+                xorl %eax, %eax
+                ret
+            """);
+    }
     private static void emitIoTimeFunctions(StringBuilder sb) {
         sb.append("""
             .section .data

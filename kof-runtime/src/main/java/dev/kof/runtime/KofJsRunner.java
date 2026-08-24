@@ -59,14 +59,17 @@ public final class KofJsRunner {
 
     public static int run(Path moduleFile, OutputStream out, InputStream in,
                           OutputStream err, boolean openWindow, String[] programArgs) throws IOException {
-        try (Context context = Context.newBuilder("js")
+        // o contexto NÃO pode fechar antes da extração do sentinel de
+        // process.exit (o guest object só é legível com o contexto vivo)
+        Context context = Context.newBuilder("js")
                 .allowIO(true)
                 .allowAllAccess(true)
                 .option("engine.WarnInterpreterOnly", "false")
                 .out(out)
                 .err(err)
                 .in(in)
-                .build()) {
+                .build();
+        try {
             exposePlatform(context, out, in, programArgs);
             Source source = Source.newBuilder("js", moduleFile.toFile())
                     .mimeType("application/javascript+module")
@@ -82,6 +85,29 @@ public final class KofJsRunner {
                 }
             }
             return 0;
+        } catch (org.graalvm.polyglot.PolyglotException pe) {
+            // process.exit(code): o guest lança { __kof_exit__: code }
+            if (pe.isGuestException()) {
+                try {
+                    Value guest = pe.getGuestObject();
+                    if (guest != null && guest.hasMembers()) {
+                        Value exit = guest.getMember("__kof_exit__");
+                        if (exit != null && exit.isNumber()) {
+                            return exit.asInt();
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+            try {
+                String message = pe.getMessage();
+                if (message != null && !message.isBlank()) {
+                    err.write((message + "\n").getBytes(StandardCharsets.UTF_8));
+                    err.flush();
+                }
+            } catch (IOException ignored) {
+            }
+            return 1;
         } catch (Exception e) {
             try {
                 String message = e.getMessage();
@@ -92,6 +118,8 @@ public final class KofJsRunner {
             } catch (IOException ignored) {
             }
             return 1;
+        } finally {
+            context.close();
         }
     }
 

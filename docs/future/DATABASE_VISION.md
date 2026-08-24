@@ -1,9 +1,12 @@
 # Database Vision — Persistência como Parte da Linguagem
 
 **Última atualização:** 24 de agosto de 2026
-**Status:** Nível 0 implementado (`kof.db` — JDBC idiomático no JVM, SQLite
-nativo via `libsqlite3` direto, MySQL/MariaDB wire protocol em andamento);
-níveis 1-4 (entity, queries tipadas, migrations) seguem esta visão.
+**Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`):
+`entity` (schema na linguagem), `orm.create/save/saveAll/find/all/where/
+where-op/delete/deleteAll/count/count-filtrado/page/migrate` (JDBC no JVM:
+H2, MySQL, MariaDB, PostgreSQL, SQLite; mappings de records; migrations
+versionadas); SQLite nativo via `libsqlite3` direto; wire protocol nativo
+MySQL/MariaDB em andamento.
 
 ---
 

@@ -156,17 +156,32 @@ class JvmBackend implements Backend {
         Path classFile = outputDir.resolve(clazz.name() + ".class");
         Files.createDirectories(classFile.getParent());
 
-        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+        // getCommonSuperClass consultaria Class.forName; classes externas
+        // (android.* etc.) não estão no classpath da compilação — o merge
+        // conservador para java/lang/Object mantém o compile vivo
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
+            @Override
+            protected String getCommonSuperClass(String type1, String type2) {
+                try {
+                    return super.getCommonSuperClass(type1, type2);
+                } catch (Exception e) {
+                    return "java/lang/Object";
+                }
+            }
+        };
         String superName = clazz.superName() != null ? clazz.superName() : "java/lang/Object";
         cw.visit(V21, clazz.accessFlags(), clazz.name(), clazz.signature(),
                 superName, clazz.interfaces().toArray(new String[0]));
         if (sourceName != null && debugInfoEnabled) {
             cw.visitSource(sourceName, null);
         }
+        emitAnnotations(cw::visitAnnotation, clazz.annotations());
 
         for (IRField field : clazz.fields()) {
             String desc = JvmTypeMapper.toDescriptor(field.type());
-            cw.visitField(field.accessFlags(), field.name(), desc, null, field.initialValue()).visitEnd();
+            var fv = cw.visitField(field.accessFlags(), field.name(), desc, null, field.initialValue());
+            emitAnnotations(fv::visitAnnotation, field.annotations());
+            fv.visitEnd();
         }
 
         if ("java/lang/Record".equals(superName)) {
@@ -362,6 +377,14 @@ class JvmBackend implements Backend {
         String desc = JvmTypeMapper.toMethodDescriptor(method.returnType(), method.parameterTypes());
         MethodVisitor mv = cw.visitMethod(method.accessFlags(), method.name(), desc,
                 null, method.thrownExceptions().toArray(new String[0]));
+        emitAnnotations(mv::visitAnnotation, method.annotations());
+        if (!method.parameterAnnotations().isEmpty()) {
+            for (int i = 0; i < method.parameterAnnotations().size(); i++) {
+                int paramIndex = i;
+                emitAnnotations((v, visible) -> mv.visitParameterAnnotation(paramIndex, v, visible),
+                        method.parameterAnnotations().get(i));
+            }
+        }
         if ((method.accessFlags() & ACC_ABSTRACT) != 0 || method.basicBlocks().isEmpty()) {
             mv.visitEnd();
             return;
@@ -431,6 +454,72 @@ class JvmBackend implements Backend {
     private String exceptionJvmType(String kofType) {
         if ("String".equals(kofType)) return "java/lang/RuntimeException";
         return "java/lang/" + kofType;
+    }
+
+    // ── Annotations ─────────────────────────────────────────────────
+
+    /**
+     * Pacotes com retenção CLASS/SOURCE (não visíveis em runtime).
+     * Tudo que não estiver aqui é emitido como RuntimeVisible — a escolha
+     * conservadora para interop (frameworks Android/JUnit leem em runtime).
+     */
+    private static final List<String> INVISIBLE_PREFIXES = List.of(
+            "java/lang/Override",
+            "java/lang/SuppressWarnings",
+            "androidx/annotation/",
+            "javax/annotation/",
+            "org/jetbrains/annotations/",
+            "edu/umd/cs/findbugs/annotations/"
+    );
+
+    private static boolean retentionIsVisible(String internalName) {
+        if (internalName == null) return true;
+        for (String prefix : INVISIBLE_PREFIXES) {
+            if (internalName.equals(prefix) || internalName.startsWith(prefix)) return false;
+        }
+        return true;
+    }
+
+    private interface AnnotationVisitorFactory {
+        org.objectweb.asm.AnnotationVisitor create(String descriptor, boolean visible);
+    }
+
+    private void emitAnnotations(AnnotationVisitorFactory factory, List<IRAnnotation> annotations) {
+        if (annotations == null) return;
+        for (IRAnnotation anno : annotations) {
+            String desc = "L" + anno.name() + ";";
+            var av = factory.create(desc, retentionIsVisible(anno.name()));
+            if (av != null) {
+                for (var e : anno.values().entrySet()) {
+                    // forma curta @Name("x"): chave null → elemento "value"
+                    String key = e.getKey() != null ? e.getKey() : "value";
+                    emitAnnotationValues(av, key, e.getValue());
+                }
+                av.visitEnd();
+            }
+        }
+    }
+
+    /**
+     * Emite um valor de annotation: constante simples ou array {v1, v2}.
+     */
+    private void emitAnnotationValues(org.objectweb.asm.AnnotationVisitor av,
+                                      String key, Object value) {
+        if (value instanceof List<?> items) {
+            var arr = av.visitArray(key);
+            for (Object item : items) arr.visit(null, asmValue(item));
+            arr.visitEnd();
+            return;
+        }
+        av.visit(key, asmValue(value));
+    }
+
+    private Object asmValue(Object value) {
+        if (value == null || value instanceof String || value instanceof Boolean) return value;
+        if (value instanceof Integer || value instanceof Long
+                || value instanceof Float || value instanceof Double
+                || value instanceof Character) return value;
+        return String.valueOf(value);
     }
 
     private void emitOperation(MethodVisitor mv, String className, KofOperation op) {
@@ -678,6 +767,7 @@ class JvmBackend implements Backend {
                 case CONSTRUCTOR -> mv.visitMethodInsn(INVOKESPECIAL, owner, kc.methodName(), desc, false);
                 case FUNCTION -> mv.visitMethodInsn(INVOKESTATIC, owner, kc.methodName(), desc, false);
                 case INTERFACE -> mv.visitMethodInsn(INVOKEINTERFACE, owner, kc.methodName(), desc, true);
+                case SUPER -> mv.visitMethodInsn(INVOKESPECIAL, owner, kc.methodName(), desc, false);
             }
         } else if (op instanceof KofNewObject no) {
             String typeName = no.type() instanceof Type.ClassType ct

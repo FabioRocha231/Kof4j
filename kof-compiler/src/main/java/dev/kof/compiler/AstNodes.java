@@ -6,6 +6,30 @@ sealed interface AstNode {
     SourcePosition position();
 }
 
+/**
+ * @Name ou @Name(key = valor, ...) — metadado de interop anexado a
+ * classes, campos, métodos, construtores e parâmetros. Os valores são
+ * constantes em compile-time (literal ou array de literais); o compilador
+ * os emite no bytecode como RuntimeVisible/InvisibleAnnotations.
+ */
+record AnnotationNode(SourcePosition position, String name,
+                      List<AnnotationPair> pairs) implements AstNode {
+
+    /** Valor único na forma curta @Name("x"): par com chave null. */
+    boolean singleValue() {
+        return pairs.size() == 1 && pairs.get(0).key() == null;
+    }
+}
+
+/**
+ * Par chave=valor de uma annotation. O valor é uma constante em
+ * compile-time: String, Integer, Long, Float, Double, Boolean, Character,
+ * null ou List&lt;Object&gt; (array de constantes). Um identificador não
+ * constante é rejeitado com ANNOT001 — nunca vira silenciosamente outro tipo.
+ */
+record AnnotationPair(String key, Object value) {
+}
+
 record CompilationUnitNode(SourcePosition position, String packageName, List<String> imports,
                            List<? extends AstNode> declarations) implements AstNode {
 }
@@ -13,7 +37,24 @@ record CompilationUnitNode(SourcePosition position, String packageName, List<Str
 record FunctionDeclarationNode(SourcePosition position, List<String> modifiers, String returnType,
                                String name, List<FormalParameterNode> parameters,
                                List<String> thrownExceptions, List<String> typeParameters,
-                               List<StatementNode> body) implements AstNode {
+                               List<StatementNode> body, List<AnnotationNode> annotations) implements AstNode {
+
+    public FunctionDeclarationNode(SourcePosition position, List<String> modifiers, String returnType,
+                                   String name, List<FormalParameterNode> parameters,
+                                   List<String> thrownExceptions, List<String> typeParameters,
+                                   List<StatementNode> body) {
+        this(position, modifiers, returnType, name, parameters, thrownExceptions, typeParameters,
+                body, List.of());
+    }
+}
+
+/**
+ * Bloco `test "nome" { ... }` — um caso de teste da suíte estruturada do
+ * Kof (G6). O corpo roda isolado; assert falho = teste falho. O compilador
+ * conhece os testes em compile-time (nunca reflection).
+ */
+record TestDeclarationNode(SourcePosition position, String name,
+                           List<StatementNode> body) implements AstNode {
 }
 
 sealed interface TypeDeclarationNode extends AstNode {
@@ -23,47 +64,126 @@ sealed interface TypeDeclarationNode extends AstNode {
 
 record ClassDeclarationNode(SourcePosition position, String name, List<String> modifiers,
                             String superClass, List<String> interfaces, List<String> typeParameters,
-                            List<? extends AstNode> members) implements TypeDeclarationNode {
+                            List<? extends AstNode> members, List<AnnotationNode> annotations) implements TypeDeclarationNode {
+
+    public ClassDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                                String superClass, List<String> interfaces, List<String> typeParameters,
+                                List<? extends AstNode> members) {
+        this(position, name, modifiers, superClass, interfaces, typeParameters, members, List.of());
+    }
 }
 
 record InterfaceDeclarationNode(SourcePosition position, String name, List<String> modifiers,
                                 List<String> interfaces,
-                                List<? extends AstNode> members) implements TypeDeclarationNode {
+                                List<? extends AstNode> members,
+                                List<AnnotationNode> annotations) implements TypeDeclarationNode {
+
+    public InterfaceDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                                    List<String> interfaces, List<? extends AstNode> members) {
+        this(position, name, modifiers, interfaces, members, List.of());
+    }
 }
 
 record RecordDeclarationNode(SourcePosition position, String name, List<String> modifiers,
                              String superClass, List<String> interfaces,
                              List<RecordComponentNode> components,
-                             List<? extends AstNode> members) implements TypeDeclarationNode {
+                             List<? extends AstNode> members,
+                             List<AnnotationNode> annotations) implements TypeDeclarationNode {
+
+    public RecordDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                                 String superClass, List<String> interfaces,
+                                 List<RecordComponentNode> components,
+                                 List<? extends AstNode> members) {
+        this(position, name, modifiers, superClass, interfaces, components, members, List.of());
+    }
 }
 
 record RecordComponentNode(SourcePosition position, List<String> modifiers, String type, String name,
-                            ExpressionNode initializer) implements AstNode {
+                            ExpressionNode initializer, List<AnnotationNode> annotations) implements AstNode {
+
+    public RecordComponentNode(SourcePosition position, List<String> modifiers, String type, String name,
+                               ExpressionNode initializer) {
+        this(position, modifiers, type, name, initializer, List.of());
+    }
+}
+
+/**
+ * entity User {
+ *     id: Long generated
+ *     name: String
+ *     email: String unique
+ *     age: Int
+ * }
+ *
+ * A entity é um record gerado pelo compilador + um schema registrado para
+ * o ORM (kof.orm): o compilador conhece os campos, os tipos e as
+ * constraints em compile-time — nunca reflection para descobrir schema.
+ */
+record EntityDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                             List<EntityFieldNode> fields,
+                             List<AnnotationNode> annotations) implements TypeDeclarationNode {
+
+    public EntityDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                                 List<EntityFieldNode> fields) {
+        this(position, name, modifiers, fields, List.of());
+    }
+}
+
+record EntityFieldNode(SourcePosition position, String type, String name,
+                       boolean generated, boolean unique) implements AstNode {
 }
 
 sealed interface MemberNode extends AstNode {
 }
 
 record FieldDeclarationNode(SourcePosition position, List<String> modifiers, String type,
-                            String name, ExpressionNode initializer) implements MemberNode {
+                            String name, ExpressionNode initializer,
+                            List<AnnotationNode> annotations) implements MemberNode {
+
+    public FieldDeclarationNode(SourcePosition position, List<String> modifiers, String type,
+                                String name, ExpressionNode initializer) {
+        this(position, modifiers, type, name, initializer, List.of());
+    }
 }
 
 record MethodDeclarationNode(SourcePosition position, List<String> modifiers, String returnType,
                              String name, List<FormalParameterNode> parameters,
-                             List<String> thrownExceptions, List<StatementNode> body) implements MemberNode {
+                             List<String> thrownExceptions, List<StatementNode> body,
+                             List<AnnotationNode> annotations) implements MemberNode {
+
+    public MethodDeclarationNode(SourcePosition position, List<String> modifiers, String returnType,
+                                 String name, List<FormalParameterNode> parameters,
+                                 List<String> thrownExceptions, List<StatementNode> body) {
+        this(position, modifiers, returnType, name, parameters, thrownExceptions, body, List.of());
+    }
 }
 
 record ConstructorDeclarationNode(SourcePosition position, List<String> modifiers,
                                   String name, List<FormalParameterNode> parameters,
                                   List<String> thrownExceptions,
-                                  List<StatementNode> body) implements MemberNode {
+                                  List<StatementNode> body,
+                                  List<AnnotationNode> annotations) implements MemberNode {
+
+    public ConstructorDeclarationNode(SourcePosition position, List<String> modifiers,
+                                      String name, List<FormalParameterNode> parameters,
+                                      List<String> thrownExceptions,
+                                      List<StatementNode> body) {
+        this(position, modifiers, name, parameters, thrownExceptions, body, List.of());
+    }
 }
 
 record FormalParameterNode(SourcePosition position, List<String> modifiers, String type,
-                           String name, ExpressionNode defaultExpression) implements AstNode {
+                           String name, ExpressionNode defaultExpression,
+                           List<AnnotationNode> annotations) implements AstNode {
 
-    FormalParameterNode(SourcePosition position, List<String> modifiers, String type, String name) {
-        this(position, modifiers, type, name, null);
+    public FormalParameterNode(SourcePosition position, List<String> modifiers, String type,
+                               String name, ExpressionNode defaultExpression) {
+        this(position, modifiers, type, name, defaultExpression, List.of());
+    }
+
+    public FormalParameterNode(SourcePosition position, List<String> modifiers, String type,
+                               String name) {
+        this(position, modifiers, type, name, null, List.of());
     }
 }
 

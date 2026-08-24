@@ -67,7 +67,7 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 |-----------|---------|-----|--------|----|
 | `passwords` | `hash/verify/needsRehash` (PBKDF2-HMAC-SHA256 600k) | ✅ | ❌ SECN001 | ✅ |
 | `crypto` | `sha256`, `sha512`, `hmacSha256`, `encryptAesGcm/decryptAesGcm`, `randomHex`, `randomInt` | ✅ (sha512/AES-GCM) | ✅ sha256/hmac/random; ❌ sha512 SECN003, AES-GCM SECN002 | ✅ |
-| `jwt` | `create(claims, secret[, ttl])`, `verify(token, secret[, iss, aud])`, `secret()` (HS256 fixo, iat/exp) | ✅ | ❌ sem binding (ver §4 gap G7) | ✅ |
+| `jwt` | `create(claims, secret[, ttl])`, `verify(token, secret[, iss, aud])`, `secret()` (HS256 fixo, iat/exp) | ✅ | ❌ SECN004 (diagnóstico em compile-time — G7 fechado) | ✅ |
 | `secrets` | `get(name)`, `get(name, fallback)` (env `KOF_*`), `redact(value)` | ✅ | ✅ (`/proc/self/environ`) | ✅ |
 | `security` | `constantTimeEquals`, `csrfToken/csrfValid`, `corsAllowed`, headers (CSP/HSTS/nosniff/Frame/Referrer), `randomHex/randomInt`, `redact` | ✅ | ✅ constant-time/redact; ❌ csrf/cors/headers | ✅ constant-time/redact; ❌ csrf/cors/headers |
 | `auth` (web) | `secret(token)`, `token()`, `authenticated()`, `claims()`, `user()`, `hasRole(r)`, `hasPermission(p)` (Bearer JWT + ThreadLocal por request) | ✅ | ❌ | ❌ |
@@ -134,7 +134,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | validation | `PLANNED` (`kof.validation`) | — | — | — | — | stdlib.md |
 | scheduling | `PLANNED` | — | — | — | — | roadmap.md |
 | caching | `PLANNED` | — | — | — | — | roadmap.md |
-| transactions | `PLANNED` (com kof.database) | — | — | — | — | future/DATABASE_VISION.md |
+| transactions | ✅ `transaction {}` (JVM; commit/rollback real) | y | – DB001 | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
 | resource management | `PARTIAL` (try/finally real) | y | y | — | ExceptionsE2ETest | language-state.md |
 | profiles/environments | `PARTIAL` (profile file + env; o resto em kof.config) | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | — |
 
@@ -165,13 +165,15 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| SQL / JDBC | `PLANNED` (`kof.database`, SQL-first) | — | — | — | — | future/DATABASE_VISION.md |
-| `db.connect/query/transaction` | `PLANNED` | — | — | — | — | future/DATABASE_VISION.md |
-| prepared statements | `PLANNED` | — | — | — | — | — |
+| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` | y | y (SQLite; MySQL WIP) | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
+| `db.connect/query/transaction` | ✅ (+ `query<T>` tipado) | y | y | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
+| prepared statements | ✅ (binds `?`) | y | y | – DB001 | KofDbE2ETest | — |
 | connection pools | `PLANNED` | — | — | — | — | — |
-| migrations | `PLANNED` | — | — | — | — | — |
-| repositories | `PLANNED` (sem ORM obrigatório) | — | — | — | — | — |
-| mapping | `PARTIAL` (json binding por reflexão) | y | – | y | JsonE2ETest | — |
+| migrations | ✅ `orm.migrate` versionado (`kof_migrations`) | y | – ORM001 | – ORM001 | KofOrmE2ETest | future/DATABASE_VISION.md |
+| repositories/ORM | ✅ `kof.orm`: `entity` + create/save/find/all/where/delete/count | y | – ORM001 | – ORM001 | KofOrmE2ETest | future/DATABASE_VISION.md |
+| NoSQL (MongoDB) | ✅ driver oficial via reflexão compatível | y | — | — | KofOrmE2ETest (E2E, skip condicional) | future/DATABASE_VISION.md |
+| mapping | ✅ entity → linha/documento por schema de compile-time | y | – | y | JsonE2ETest, KofOrmE2ETest | — |
+| query DSL tipada (`User.query { where ... }`) | `PLANNED` (nível 3 da visão) | — | — | — | — | future/DATABASE_VISION.md |
 | pagination | `PLANNED` | — | — | — | — | — |
 | PostgreSQL / MySQL / SQLite / MongoDB / Redis | `PLANNED` (adapters) | — | — | — | — | — |
 | transactions | `PLANNED` | — | — | — | — | — |
@@ -195,7 +197,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | SHA-256 / SHA-512 / HMAC | `DONE` | y | y sha256/hmac; – sha512 SECN003 | y | KofSecurityTest | security.md |
 | AES-GCM | `DONE` (JVM) | y | – SECN002 | – SECN002 | KofSecurityTest | security.md |
 | SecureRandom | `DONE` | y | y (getrandom) | y | KofSecurityTest | security.md |
-| JWT (HS256, exp/iss/aud) | `DONE` (JVM/JS) | y | – (gap G7) | y | KofSecurityTest | security.md |
+| JWT (HS256, exp/iss/aud) | `DONE` (JVM/JS) | y | – SECN004 (compile-time) | y | KofSecurityTest | security.md |
 | secrets (`secrets.get`, env) | `DONE` | y | y | y | KofSecurityTest | security.md |
 | constant-time comparison | `DONE` | y | y | y | KofSecurityTest | security.md |
 | redaction | `DONE` | y | y | y | KofSecurityTest | security.md |
@@ -251,7 +253,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | metrics (runtime API) | `PARTIAL` (tooling `kof bench/profile`) | y | y | – | Bench | performance.md |
 | health checks / readiness / liveness | `PLANNED` | — | — | — | — | — |
 | tracing / OpenTelemetry | `PLANNED` | — | — | — | — | — |
-| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | – LOG001 | – LOG001 | KofLogE2ETest | — |
+| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | y (asm, UTC) | – LOG001 | KofLogE2ETest, NativeLogE2ETest | — |
 | correlation IDs / request IDs | `PLANNED` | — | — | — | — | — |
 | request IDs | `PLANNED` | — | — | — | — | — |
 | profiling / runtime diagnostics | `PARTIAL` (`kof profile`) | y | y | – | — | performance.md |
@@ -318,13 +320,13 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | # | Gap | Impacto | Local proposto |
 |---|-----|---------|----------------|
-| G1 | **Database/SQL** inexistente (nem JDBC, nem SQL) | apps reais sem persistência | `kof.database` (SQL-first, prepared statements, transactions, pools, migrations) |
+| G1 | ~~**Database/SQL** inexistente~~ — ✅ **nível 0 implementado**: `kof.db` (JDBC JVM, SQLite nativo, MySQL WIP) + `kof.orm` (entity, CRUD, where, migrate, MongoDB) | apps reais com persistência no JVM/Native-SQLite | próximo: query DSL tipada, pools, kof.db fora do JVM |
 | G2 | **HTTP client** inexistente | integrações, testes, frontend | `kof.http` client (get/post/put/delete, headers, JSON, timeout) |
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (JVM; arquivo > env > profile > default, typed `str/int/long/bool`); falta Native/JS (CONFIG001) | — | estender targets (P0/G10) |
 | G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
-| G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM, LOG001 outros); faltam health checks, metrics e request IDs | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
-| G6 | **kof.test estruturado** inexistente | testes como cidadãos de primeira classe | `test "nome" { }` + suites + E2E |
-| G7 | **Diagnósticos de target incompletos no security/web**: `jwt.*`, `auth.*`, `csrf`, `cors`, headers no Native/JS e `kof_web_*` no Native não têm entrada em `supportedOn` (default `true`) → erro de link em vez de SECN00x claro | viola "nunca silencioso" | preencher `KofSecurity.supportedOn`/diagnósticos |
+| G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM + Native asm; LOG001 só no JS); faltam health checks, metrics e request IDs no Native/JS | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
+| G6 | ~~**kof.test estruturado** inexistente~~ — ✅ **implementado**: `test "nome" { }` nos 3 targets; runner sintetizado em compile-time; PASS/FAIL por nome + exit code (`StructuredTestE2ETest`) | testes como cidadãos de primeira classe | próximo: suites nomeadas por diretório, timeouts, fixtures |
+| G7 | ~~**Diagnósticos de target incompletos no security/web**~~ — ✅ **fechado**: `jwt.*` com entrada explícita (SECN004 no Native); `csrf/cors/auth/headers` já cobertos; WEB001 emitido para web.app() e métodos de app fora do JVM | viola "nunca silencioso" | manter: toda função nova entra em `supportedOn` no mesmo PR |
 | G8 | **Scheduling** inexistente (nem `sleep`) | jobs periódicos | `kof.time.sleep`, scheduler |
 | G9 | **Rate limiting / sessions / API keys** inexistentes | produção web | kof.security (web security layer) |
 | G10 | **JWT/passwords/SHA-512/AES-GCM no Native** sem binding (asm parcial) | multiplataforma incompleta | implementar `kof_sec_jwt_*`, `kof_sec_password_*`, sha512, aesgcm no asm |
@@ -410,13 +412,14 @@ Princípios mantidos:
 
 ## P0 — plataforma base (agora)
 
-1. G7 — diagnóstico de target completo no security/web (pequeno, remove
-   erros de link silenciosos).
-2. G6 — `kof.test` estruturado (`test "nome" { }` + suites).
+1. ~~G7~~ — ✅ diagnóstico de target completo no security/web.
+2. ~~G6~~ — ✅ `kof.test` estruturado (`test "nome" { }` nos 3 targets,
+   runner sintetizado em compile-time, `process.exit(code)`).
 3. ~~G3~~ — `kof.config` ✅ (JVM); estender a Native/JS (CONFIG001) com G10.
 4. G2 — `kof.http` client.
-5. G1 — `kof.database` (JDBC idiomático: connect/query/transaction,
-   prepared statements, pools, migrations).
+5. ~~G1~~ — ✅ `kof.db` + `kof.orm` nível 0 (JDBC idiomático, SQLite nativo,
+   transactions, entity, migrations, MongoDB); próximo: query DSL tipada,
+   pools, portabilidade Native/JS (DB001/ORM001).
 6. G4 — `kof.validation`.
 7. G5 — `kof.observability` (health, metrics; o logging básico já existe
    via `kof.log`).

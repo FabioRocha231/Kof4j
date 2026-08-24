@@ -1,7 +1,13 @@
 # Backend Parity — Kof JVM × Native × KofJS
 
-**Última atualização:** 22 de agosto de 2026
-**Versão:** 0.0.5-alpha
+**Última atualização:** 24 de agosto de 2026
+**Versão:** 0.0.14-alpha
+
+> Deltas desde 0.0.5: `kof.db` agora tem SQLite **nativo** (link direto da
+> `.so`) e MySQL por wire protocol (WIP); `kof.orm`/MongoDB são JVM-only
+> (ORM001 fora dele); logging estruturado no JVM; UI renderizada via KofJS.
+> A tabela abaixo reflete a base 0.0.5 — sincronizar célula a célula é
+> parte do DoD de cada fase do plano (`docs/plan-platform-completion.md`).
 
 ---
 
@@ -21,7 +27,7 @@
 | Records (`record Point(Int x, Int y)`) | ✅ | ✅ | ✅ | toString/equals/hashCode |
 | Classes, campos, métodos | ✅ | ✅ | ✅ | |
 | `constructor(...)` e primary `class X(...)` | ✅ | ✅ | ✅ | |
-| Herança, `super`, override | ✅ | ✅ | ✅ | |
+| Herança, `super`, override | ✅ | ✅* | ✅ | Native: `super.metodo()` = SUP001 |
 | Virtual dispatch | ✅ | ✅ | ✅ | |
 | Interfaces | ✅ | ✅ | ✅ | |
 | Generics (erasure) | ✅ | ✅ | ✅ | |

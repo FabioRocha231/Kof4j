@@ -13,6 +13,9 @@ class Lexer {
         KEYWORDS.put("class", TokenType.CLASS);
         KEYWORDS.put("interface", TokenType.INTERFACE);
         KEYWORDS.put("record", TokenType.RECORD);
+        KEYWORDS.put("entity", TokenType.ENTITY);
+        KEYWORDS.put("generated", TokenType.GENERATED);
+        KEYWORDS.put("unique", TokenType.UNIQUE);
         KEYWORDS.put("extends", TokenType.EXTENDS);
         KEYWORDS.put("implements", TokenType.IMPLEMENTS);
         KEYWORDS.put("sealed", TokenType.SEALED);
@@ -84,6 +87,12 @@ class Lexer {
     }
 
     List<Token> tokenize() {
+        // OBS-008: tolerar um UTF-8 BOM inicial (EF BB BF) — editores do
+        // Windows gravam o BOM por padrão; um BOM no começo do arquivo não
+        // é um caractere de código Kof.
+        if (source.startsWith("\uFEFF")) {
+            pos = 1;
+        }
         while (pos < source.length()) {
             char c = source.charAt(pos);
             if (c == '\n' || c == '\r') {

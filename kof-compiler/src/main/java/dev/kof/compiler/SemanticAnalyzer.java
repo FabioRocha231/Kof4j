@@ -103,6 +103,12 @@ class SemanticAnalyzer {
                     "Record", rec.interfaces(), members);
             knownClasses.put(rec.name(), sym);
             currentScope.define(sym);
+        } else if (decl instanceof EntityDeclarationNode ent) {
+            SymbolTable members = new SymbolTable();
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(ent.name(), currentPackage,
+                    "Record", List.of(), members);
+            knownClasses.put(ent.name(), sym);
+            currentScope.define(sym);
         } else if (decl instanceof InterfaceDeclarationNode iface) {
             SymbolTable members = new SymbolTable();
             SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(iface.name(), currentPackage,
@@ -117,6 +123,7 @@ class SemanticAnalyzer {
         switch (decl) {
             case ClassDeclarationNode cls -> analyzeClass(cls);
             case RecordDeclarationNode rec -> analyzeRecord(rec);
+            case EntityDeclarationNode ent -> analyzeEntity(ent);
             case InterfaceDeclarationNode iface -> analyzeInterface(iface);
             case FunctionDeclarationNode func -> analyzeFunction(func);
             default -> {}
@@ -131,7 +138,24 @@ class SemanticAnalyzer {
     private Type resolveType(String name, SymbolTable scope) {
         SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
         if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
-        return Type.of(name);
+        return qualifiedType(Type.of(name));
+    }
+
+    /**
+     * Nomes qualificados ("android.os.Bundle") precisam do pacote separado
+     * do nome simples — senão o descritor JVM sai com pontos
+     * (Landroid.os.Bundle;) e a classe não carrega.
+     */
+    static Type qualifiedType(Type type) {
+        if (type instanceof Type.ClassType ct && !ct.name().contains("<")
+                && ct.packageName().isEmpty()) {
+            int lastDot = ct.name().lastIndexOf('.');
+            if (lastDot > 0) {
+                return new Type.ClassType(ct.name().substring(0, lastDot),
+                        ct.name().substring(lastDot + 1), ct.typeArguments());
+            }
+        }
+        return type;
     }
 
     private void analyzeClass(ClassDeclarationNode cls) {
@@ -262,6 +286,15 @@ class SemanticAnalyzer {
                 ms.setReturnType(inferred);
             }
         }
+    }
+
+    private void analyzeEntity(EntityDeclarationNode ent) {
+        List<RecordComponentNode> components = new java.util.ArrayList<>();
+        for (EntityFieldNode f : ent.fields()) {
+            components.add(new RecordComponentNode(f.position(), List.of(), f.type(), f.name(), null));
+        }
+        analyzeRecord(new RecordDeclarationNode(ent.position(), ent.name(), ent.modifiers(),
+                null, List.of(), components, List.of()));
     }
 
     private void analyzeRecord(RecordDeclarationNode rec) {
@@ -494,8 +527,11 @@ class SemanticAnalyzer {
                         && !KofWeb.isWebNamespace(ie.name())
                         && !KofConfig.isConfigNamespace(ie.name())
                         && !KofDb.isDbNamespace(ie.name())
+                        && !KofOrm.isOrmNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
+                        && !KofHttp.isHttpNamespace(ie.name())
+                        && !KofMq.isMqNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
@@ -647,6 +683,27 @@ class SemanticAnalyzer {
                     }
                 }
                 if (mc.receiver() != null) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && "super".equals(rid.name())) {
+                        // super.method(args): resolve against the superclass
+                        // hierarchy of the enclosing class. The resolved symbol
+                        // is intentionally NOT registered in resolvedMethods —
+                        // lowering emits a non-virtual SUPER call.
+                        String superName = "Object";
+                        if (currentClassName != null) {
+                            SymbolTable.ClassSymbol self = knownClasses.get(currentClassName);
+                            if (self != null && self.superClass() != null && !"Object".equals(self.superClass())) {
+                                superName = self.superClass();
+                            }
+                        }
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        SymbolTable.Symbol m = resolveInHierarchy(superName, mc.methodName());
+                        if (m instanceof SymbolTable.MethodSymbol ms) {
+                            checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
+                            yield ms.returnType();
+                        }
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     Type recvType = inferType(mc.receiver(), scope);
                     if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
@@ -669,12 +726,38 @@ class SemanticAnalyzer {
                         if (logCall != null) yield logCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        boolean typed = !mc.typeArguments().isEmpty();
+                        String entityName = typed ? mc.typeArguments().get(0) : null;
+                        KofOrm.OrmCall ormCall = KofOrm.staticCall(mc.methodName(), argTypes, typed, entityName);
+                        if (ormCall != null) {
+                            if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                                yield argTypes.get(argTypes.size() - 1);
+                            }
+                            if (typed && !mc.typeArguments().isEmpty()) {
+                                if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())
+                                        || "page".equals(mc.methodName())) {
+                                    yield new Type.ClassType("kof", "List",
+                                            List.of(resolveType(mc.typeArguments().get(0), scope)));
+                                }
+                                if ("find".equals(mc.methodName())) {
+                                    yield resolveType(mc.typeArguments().get(0), scope);
+                                }
+                            }
+                            yield ormCall.returnType();
+                        }
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
                             && !isLocalName(rid.name(), scope)) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
                         if (procCall != null) yield procCall.returnType();
+                        KofProcess.ProcessCall exitCall = KofProcess.exitCall(argTypes);
+                        if (exitCall != null) yield exitCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
@@ -682,6 +765,20 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
                         if (cfgCall != null) yield cfgCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
+                        if (httpCall != null) yield httpCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
+                        if (mqCall != null) yield mqCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
@@ -748,6 +845,13 @@ class SemanticAnalyzer {
                             yield ms.returnType();
                         }
                     }
+                }
+                if (mc.receiver() == null
+                        && ("super".equals(mc.methodName()) || "this".equals(mc.methodName()))) {
+                    // super(args) / this(args): chamadas de construtor —
+                    // válidas apenas dentro do corpo de um construtor
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield Type.PrimitiveType.VOID;
                 }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())

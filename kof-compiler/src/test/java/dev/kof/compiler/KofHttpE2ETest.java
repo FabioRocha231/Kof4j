@@ -1,0 +1,164 @@
+package dev.kof.compiler;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+
+/**
+ * End-to-end tests for {@code kof.http} — the HTTP client.
+ *
+ * A Kof server ({@code web.app()}) runs as a subprocess and the client
+ * (compiled Kof code using {@code http.get/post/status}) talks to it over
+ * real sockets. No external servers, no Docker.
+ */
+class KofHttpE2ETest {
+
+    private static final String JAVA_BIN = java.nio.file.Path.of(
+            System.getProperty("java.home"), "bin", "java").toString();
+
+    private final CompilerDriver driver = new CompilerDriver();
+    private Process serverProcess;
+
+    @AfterEach
+    void stopServer() {
+        if (serverProcess != null) {
+            serverProcess.destroy();
+            try {
+                serverProcess.waitFor(5, TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+            }
+            serverProcess.destroyForcibly();
+            serverProcess = null;
+        }
+    }
+
+    private static final String SERVER = """
+            main() {
+                var app = web.app()
+                app.get("/hello") {
+                    return "Hello from Kof"
+                }
+                app.post("/echo") {
+                    return "got:" + body()
+                }
+                app.get("/agent") {
+                    return "agent=" + header("user-agent")
+                }
+                app.listen(PORT)
+            }
+            """;
+
+    private int startServer(Path tempDir) throws IOException {
+        int port = freePort();
+        Path source = tempDir.resolve("App.kf");
+        Files.writeString(source, SERVER.replace("PORT", String.valueOf(port)));
+        Path outDir = tempDir.resolve("classes");
+        CompilationResult result = driver.compile(source, outDir, Target.JVM);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        ProcessBuilder pb = new ProcessBuilder(JAVA_BIN, "-cp", outDir.toString(), "Default.Main");
+        pb.redirectErrorStream(true);
+        serverProcess = pb.start();
+        int attempt = 0;
+        while (attempt < 40) {
+            if (!serverProcess.isAlive()) {
+                String out = new String(serverProcess.getInputStream().readAllBytes(),
+                        StandardCharsets.UTF_8).replace("\r\n", "\n").trim();
+                throw new IOException("server exited early: " + out);
+            }
+            try (Socket probe = new Socket()) {
+                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 200);
+                return port;
+            } catch (IOException e) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            attempt++;
+        }
+        serverProcess.destroyForcibly();
+        throw new IOException("server did not come up on port " + port);
+    }
+
+    private static int freePort() throws IOException {
+        try (java.net.ServerSocket s = new java.net.ServerSocket(0)) {
+            return s.getLocalPort();
+        }
+    }
+
+    private String runJvm(Path tempDir, String kofSource, String expected) throws IOException {
+        Path source = tempDir.resolve("Client.kf");
+        Files.writeString(source, kofSource);
+        Path outDir = tempDir.resolve("client-classes");
+        CompilationResult result = driver.compile(source, outDir, Target.JVM);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder(JAVA_BIN, "-Dfile.encoding=UTF-8", "-cp", outDir.toString(),
+                    "Default.Main");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running JVM class", e);
+        }
+    }
+
+    @Test
+    void getPostAndStatus(@TempDir Path tempDir) throws IOException {
+        int port = startServer(tempDir);
+        runJvm(tempDir, """
+                main() {
+                    println(http.get("http://127.0.0.1:%d/hello"))
+                    println(http.status("http://127.0.0.1:%d/hello"))
+                    println(http.post("http://127.0.0.1:%d/echo", "abc"))
+                    println(http.status("http://127.0.0.1:%d/nope"))
+                    println(http.get("http://127.0.0.1:%d/nope"))
+                }
+                """.formatted(port, port, port, port, port), "Hello from Kof\n200\ngot:abc\n404\n404");
+    }
+
+    @Test
+    void headersAreSent(@TempDir Path tempDir) throws IOException {
+        int port = startServer(tempDir);
+        runJvm(tempDir, """
+                main() {
+                    println(http.get("http://127.0.0.1:%d/agent", "User-Agent: kof-client/1.0"))
+                }
+                """.formatted(port), "agent=kof-client/1.0");
+    }
+
+    @Test
+    void nativeAndJsReportHttp002(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                main() {
+                    println(http.get("http://example.com"))
+                }
+                """);
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native"), Target.NATIVE);
+        assertFalse(nativeResult.success(), "Native should reject http.get");
+        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("HTTP002")), "" + nativeResult.diagnostics().getDiagnostics());
+        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
+        assertFalse(jsResult.success(), "JS should reject http.get");
+        assertTrue(jsResult.diagnostics().getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("HTTP002")), "" + jsResult.diagnostics().getDiagnostics());
+    }
+}

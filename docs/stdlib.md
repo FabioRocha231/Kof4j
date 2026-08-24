@@ -55,7 +55,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.cli` | ✅ | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` (inclui o debugger DAP) |
 | `kof.metrics` | 🟡 | `kof bench`/`kof profile` (tooling) |
 | `kof.rest` | ⏳ | planejado |
-| `kof.database` | ⏳ | planejado (SQL-first, sem ORM pesado) |
+| `kof.database` | ✅ | `kof.db` (JDBC idiomático + SQLite nativo) + `kof.orm` (entity, create/save/find/all/where/delete/count/migrate) — JVM; ver `future/DATABASE_VISION.md` |
 | `kof.messaging` | ⏳ | planejado |
 | `kof.validation` | ⏳ | planejado |
 | `kof.logging` | ✅ | `log.debug/info/warn/error`, níveis, off (JVM; LOG001 outros) — KofLogE2ETest (7) |

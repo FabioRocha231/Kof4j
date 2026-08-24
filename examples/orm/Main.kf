@@ -1,0 +1,45 @@
+// kof.orm — o ORM da própria linguagem.
+//
+// A entidade define o schema em compile-time: o compilador conhece os
+// campos, os tipos e as constraints (generated/unique) — nunca reflection
+// para descobrir schema, nunca annotations.
+entity User {
+    id: Long generated
+    name: String
+    email: String unique
+    age: Int
+}
+
+main() {
+    var db = db.connect("jdbc:h2:mem:users;DB_CLOSE_DELAY=-1")
+
+    // DDL gerado a partir da entidade (CREATE TABLE IF NOT EXISTS)
+    orm.create<User>(db)
+
+    // INSERT (id=0 → o banco gera) — retorna o registro com o id
+    var mel = orm.save(db, User(0, "Mel", "mel@kof.dev", 30))
+    orm.save(db, User(0, "Ana", "ana@kof.dev", 25))
+
+    // UPDATE (id existente)
+    mel = orm.save(db, User(mel.id, "Melissa", "mel@kof.dev", 31))
+
+    // SELECT por PK
+    var u = orm.find<User>(db, mel.id)
+    println(u.name + " " + u.age)
+
+    // SELECT por campo
+    var adultos = orm.where<User>(db, "age", 31)
+    println("adultos: " + adultos.size)
+
+    // Migrações versionadas — aplicadas uma única vez
+    orm.migrate(db, "add_city", "ALTER TABLE \"user\" ADD COLUMN city VARCHAR(255)")
+
+    // SELECT * + contagem
+    println("total: " + orm.count<User>(db))
+
+    // DELETE por PK
+    orm.delete<User>(db, mel.id)
+    println("apos delete: " + orm.count<User>(db))
+
+    db.close(db)
+}

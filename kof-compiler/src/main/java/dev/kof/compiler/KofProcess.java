@@ -51,4 +51,18 @@ final class KofProcess {
         }
         return new ProcessCall("kof_process_run", RESULT, argTypes);
     }
+
+    /**
+     * process.exit(code) — termina o programa com o código dado em todos
+     * os targets (JVM: System.exit; Native: syscall exit; JS: sentinel
+     * capturado pelo runner). Primitivo de scripting e do harness de testes.
+     */
+    static ProcessCall exitCall(List<Type> argTypes) {
+        if (argTypes.size() != 1) return null;
+        Type t = argTypes.get(0);
+        if (!(t instanceof Type.PrimitiveType pt)) return null;
+        if (!"int".equals(Type.canonicalPrimitiveName(pt.name()))) return null;
+        return new ProcessCall("kof_process_exit", Type.PrimitiveType.VOID,
+                List.of(Type.PrimitiveType.INT));
+    }
 }

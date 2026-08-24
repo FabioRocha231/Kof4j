@@ -1,0 +1,12 @@
+# OBS-004: arquivos sensíveis a line-ending devem ser sempre LF —
+# o CRLF do Windows quebra o parsing do shell e pode vazar \r
+# em valores textuais (ex.: VERSION dentro de nomes de artefatos).
+VERSION text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.kf text eol=lf
+*.java text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.properties text eol=lf
+*.kf text

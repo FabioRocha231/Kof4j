@@ -33,6 +33,10 @@ public final class Main {
 
     private static void run(String[] args) {
         if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]"); return; }
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]");
+            return;
+        }
         Path file = Path.of(args[1]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
 
@@ -92,6 +96,22 @@ public final class Main {
             return;
         }
 
+        // Target nativo: executa o ELF produzido — não há classes JVM aqui
+        if (target == Target.NATIVE) {
+            Path bin = tempDir.resolve("Default/Main");
+            if (!Files.exists(bin)) {
+                System.err.println("no native binary produced");
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            List<String> cmd = new ArrayList<>();
+            cmd.add(bin.toString());
+            for (int i = argStart; i < args.length; i++) cmd.add(args[i]);
+            executeProcess(cmd, tempDir);
+            return;
+        }
+
         String className = findMainClass(tempDir);
         if (className == null) {
             System.err.println("no main class found");
@@ -145,7 +165,11 @@ public final class Main {
     }
 
 private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]");
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]");
+            return;
+        } return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         Path out = Path.of("build/classes");
@@ -324,7 +348,7 @@ private static void build(String[] args) {
     }
 
     private static void test(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native]"); System.exit(1); return; }
+        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native|js]"); System.exit(1); return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         for (int i = 2; i < args.length; i++) {
@@ -343,11 +367,16 @@ private static void build(String[] args) {
             Path tmp;
             try { tmp = Files.createTempDirectory("kof-test-"); }
             catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
-            CompilationResult result = driver.compile(f, tmp, target);
+            // modo harness: `test "nome" { }` vira função + runner sintetizado;
+            // arquivos sem testes compilam idênticos ao modo normal
+            CompilationResult result = driver.compileForTests(f, tmp, target);
             boolean ok = result.success();
             StringBuilder output = new StringBuilder();
             if (ok) {
                 for (Diagnostic d : result.diagnostics().getDiagnostics()) output.append(d.format()).append('\n');
+                if (!driver.discoveredTests().isEmpty()) {
+                    System.out.println("SUITE " + f + " (" + driver.discoveredTests().size() + " tests)");
+                }
                 if (target == Target.JVM) {
                     String className = findMainClass(tmp);
                     if (className == null) {
@@ -363,6 +392,22 @@ private static void build(String[] args) {
                             ok = ec == 0;
                             if (!ok) output.append("exit code: ").append(ec).append('\n');
                         } catch (IOException | InterruptedException e) {
+                            ok = false;
+                            output.append("failed to execute: ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                } else if (target == Target.JS) {
+                    String entry = findJsEntry(tmp);
+                    if (entry == null) {
+                        ok = false;
+                        output.append("no JS entry point found\n");
+                    } else {
+                        try {
+                            int ec = dev.kof.runtime.KofJsRunner.run(java.nio.file.Path.of(entry),
+                                    System.out, System.in, System.err, false, new String[0]);
+                            ok = ec == 0;
+                            if (!ok) output.append("exit code: ").append(ec).append('\n');
+                        } catch (IOException e) {
                             ok = false;
                             output.append("failed to execute: ").append(e.getMessage()).append('\n');
                         }
@@ -393,7 +438,8 @@ private static void build(String[] args) {
             cleanup(tmp);
             if (ok) {
                 passed++;
-                System.out.println("PASS " + f);
+                if (driver.discoveredTests().isEmpty()) System.out.println("PASS " + f);
+                else System.out.print(output);
             } else {
                 failed++;
                 System.out.println("FAIL " + f);
@@ -406,6 +452,10 @@ private static void build(String[] args) {
 
     private static void check(String[] args) {
         if (args.length < 2) { System.err.println("usage: kof check <file.kf|dir>"); System.exit(1); return; }
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof check <file.kf|dir>");
+            return;
+        }
         Path src = Path.of(args[1]);
         if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
         List<Path> files = Files.isDirectory(src) ? collect(src) : List.of(src);
@@ -503,7 +553,11 @@ private static void build(String[] args) {
     }
 
     private static void serve(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof serve <file.kf> [--port <port>] [--host <host>]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof serve <file.kf> [--port <port>] [--host <host>]");
+        if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
+            System.out.println("usage: kof serve <file.kf> [--port <port>] [--host <host>]");
+            return;
+        } return; }
         Path file = Path.of(args[1]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
 

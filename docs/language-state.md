@@ -1,9 +1,30 @@
 # Estado Atual da Linguagem Kof
 
-**Data:** 22 de agosto de 2026
-**Versão:** 0.0.5-alpha
-**Testes:** 381/381 passando (incluindo execução real de binários nativos, JSON E2E e exceptions E2E)
+**Data:** 24 de agosto de 2026
+**Versão:** 0.0.14-alpha
+**Testes:** 527 passando (+1 skip condicional; inclui execução real de binários nativos, JS via GraalJS, JSON, exceptions, web, db/orm, UI e security E2E)
 **Status:** Compilador funcional com backends JVM, Native e KofJS; web server, distribuição e tooling oficiais
+
+---
+
+## Novidades 0.0.5 → 0.0.14
+
+- **Interop Android/JVM**: `super.metodo()` com INVOKESPECIAL (owner é a
+  superclasse direta; assinaturas externas resolvidas via classpath
+  `.jar`/`.aar` — `CompilerDriver.setExternalClasspath`) e annotations
+  `@Name`/`@Name(valor | key = valor, ...)` emitidas no bytecode
+  (RuntimeVisible/Invisible) em classes, campos, métodos e parâmetros.
+  `super.metodo()` no Native reporta `SUP001`.
+- `entity Name { field: Type constraint }` — schema declarativo (compile-time)
+  para o `kof.orm` (`generated`, `unique`, PK não-numérica).
+- Namespaces da stdlib: `kof.db`, `kof.orm`, `kof.process`, `kof.ui`
+  (Window/Label/Button/Input/Column/Row/View/Style), além de `kof.web`,
+  `kof.io`, `kof.time`, `kof.config`, `kof.log`, `kof.security`.
+- Conversões `String.toInt()/toLong()/toDouble()/toFloat()` (runtime).
+- ARITH001: divisão/resto por zero **constante** rejeitada em compile-time
+  (apenas inteiros — float/double produzem Infinity/NaN).
+- Lexer tolera UTF-8 BOM inicial.
+- Lambdas com capturas em todos os targets; múltiplas janelas no kof.ui.
 
 ---
 
@@ -293,7 +314,7 @@ Fields:
 - `await`/resultado de tarefa, filas (`kof.concurrent.Queue`)
 - `spawn` no Native (CONC001)
 - JSON objetos/records no Native (JSN002)
-- Reflection, Annotations, Macros
+- Reflection, Macros; annotations de enum/Classe em valores (`ANNOT001`)
 - Captura em lambdas
 - Database
 - REPL
