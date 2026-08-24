@@ -3412,7 +3412,8 @@ final class NativeRuntime {
                 jmp .Lcff_vtls
             .Lcff_vmk:
                 movq %r10, %rdx
-                subq %rsi, %rdx              # vallen
+                subq %rsi, %rdx              # vallen = fim da linha - inicio do valor
+                leaq (%rsp,%rsi), %rdi       # endereco do valor (rsi e OFFSET!)
                 call kof_string_from_literal
                 jmp .Lcff_exit
             .Lcff_valskip:
