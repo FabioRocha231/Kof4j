@@ -57,7 +57,7 @@ Tudo o resto depende disso. Pequeno, alto valor.
 | ✅ G7 *(feito 0.0.14)* | `jwt.*` com entrada explícita em `supportedOn` — Native reporta SECN004 em compile-time; `supportedOn` revisado função a função | zero erros de link silenciosos no security/web |
 | ✅ G6 *(feito 0.0.14)* | `kof.test` estruturado: `test "nome" { }`, runner sintetizado em compile-time (desugar → `kof_test_N`), PASS/FAIL por nome nos 3 targets, `--target js` no CLI, `process.exit(code)` nos 3 targets | `StructuredTestE2ETest` 11/11; golden/integração verdes |
 | JSON Native | fechar JSN001 (Float/Double), JSN002 (objetos), JSN003 (arrays) | parity JSON total JVM×Native no BackendParityTest |
-| 🟡 Config/Log Native *(LOG001 ✅ feito 0.0.14)* | `kof.log` Native completo (asm: data civil, env scan próprio, stderr); falta `kof.config` no Native (env + arquivo) e `KOF_LOG_JSON` nativo | LOG001 ✅; CONFIG001 pendente |
+| 🟡 Config/Log Native *(LOG001 ✅ feito 0.0.14)* | `kof.log` Native completo (asm: data civil, env scan próprio, stderr); falta `kof.config` no Native e `KOF_LOG_JSON` nativo | LOG001 ✅; CONFIG001 ~90% (WIP: defaults/env/arquivo OK, falta valor inflado + perfil) |
 | Processo doc | checklist DoD-doc no PR template; `status.md` regenerado por release | docs nunca mais defasam 9 versões |
 
 ## P1 — Linguagem: coleções e expressividade *(fundação das APIs)*

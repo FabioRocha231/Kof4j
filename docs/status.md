@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 543 testes (todos PASS; +1 skip condicional)
+mvn test             → ~580 testes (verificar numero exato no CI)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -230,7 +230,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
-| kof.config (env, arquivos, profiles, typed) | ✅ | CONF001 | CONF001 |
+| kof.config (env, arquivos, profiles, typed) | ✅ | 🟡 WIP (asm; defaults/env OK) | CONF001 |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
 | kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite; MySQL WIP) | DB001 |
@@ -317,7 +317,9 @@ main() {
 - Precedência: arquivo explícito (`KOF_CONFIG`) > env `KOF_<KEY>` >
   profile (`kof.<KOF_PROFILE>.config`) > arquivo padrão (`kof.config`).
 - Tipagem em compile-time; valores ausentes/inválidos → default.
-- Native/JS reportam `CONF001`; docs: `docs/stdlib-config.md`
+- Native: em progresso (asm próprio — defaults/env/arquivo explícito já
+  funcionam manualmente; perfil e casos raros pendentes, WIP no stash).
+  JS reporta `CONF001`. Docs: `docs/stdlib-config.md`
   (`KofConfigE2ETest`, 8 E2E).
 
 ### Logging nativo (`kof.log`)
@@ -402,7 +404,7 @@ main() { /* ignorado pelo kof test */ }
 | IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
 | NativeDebugTest* | 5 | harnesses de debug |
-| **Total** | **543** (+1 skip condicional — MongoDB sem container) | |
+| **Total** | **581 declarados** (+1 skip condicional; conferir total no CI a cada release) | |
 
 ---
 
