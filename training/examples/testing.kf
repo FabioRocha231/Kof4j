@@ -1,0 +1,15 @@
+// test "nome" { } — a suíte estruturada do Kof.
+// Cada bloco é um caso independente; assert falho marca o teste como falho
+// com mensagem clara. O main é ignorado pelo `kof test` (como cargo test).
+
+test "soma simples" {
+    assert(2 + 2 == 4)
+}
+
+test "strings iguais" {
+    assert("kof" == "kof", "strings deveriam ser iguais")
+}
+
+main() {
+    println("aplicação real — rode com kof run; testes com kof test")
+}

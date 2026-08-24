@@ -11,7 +11,7 @@ comandos, tooling e editor support.
 | `kof run <file.kf> [args...]` | Compila e executa (JVM) |
 | `kof serve <file.kf> [--port <port>] [--host <host>]` | Web server HTTP básico |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
-| `kof test <file.kf\|dir> [--target jvm\|native]` | Roda programas; PASS se exit code 0 |
+| `kof test <file.kf\|dir> [--target jvm\|native\|js]` | Suíte estruturada `test "nome" { }`: PASS/FAIL por teste; arquivos sem testes rodam inteiros (PASS = exit 0) |
 | `kof info [--json]` | Relatório do ambiente |
 | `kof lsp` | Language Server (stdio, LSP 3.x) |
 | `kof version` | Versão da plataforma |

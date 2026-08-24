@@ -54,8 +54,8 @@ Tudo o resto depende disso. Pequeno, alto valor.
 
 | Item | O quê | Aceite |
 |------|-------|--------|
-| G7 | `supportedOn` + diagnósticos completos em `jwt/auth/csrf/cors/headers` (Native/JS) e `kof_web_*` (Native) | zero erros de link silenciosos; cada uso fora de target → SECN/WEB00x |
-| G6 | `kof.test` estruturado: `test "nome" { }`, suítes por diretório, saída PASS/FAIL/resumo | `kof test` reporta nome+tempo por teste; golden atualizado |
+| ✅ G7 *(feito 0.0.14)* | `jwt.*` com entrada explícita em `supportedOn` — Native reporta SECN004 em compile-time; `supportedOn` revisado função a função | zero erros de link silenciosos no security/web |
+| ✅ G6 *(feito 0.0.14)* | `kof.test` estruturado: `test "nome" { }`, runner sintetizado em compile-time (desugar → `kof_test_N`), PASS/FAIL por nome nos 3 targets, `--target js` no CLI, `process.exit(code)` nos 3 targets | `StructuredTestE2ETest` 11/11; golden/integração verdes |
 | JSON Native | fechar JSN001 (Float/Double), JSN002 (objetos), JSN003 (arrays) | parity JSON total JVM×Native no BackendParityTest |
 | Config/Log Native | `kof.config`/`kof.log` no Native (env + arquivo; stderr) | CONFIG001/LOG001 viram ✅ ou ficam só no JS |
 | Processo doc | checklist DoD-doc no PR template; `status.md` regenerado por release | docs nunca mais defasam 9 versões |
