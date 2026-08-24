@@ -122,8 +122,18 @@ class SemanticAnalyzer {
     private void preDeclareType(AstNode decl) {
         if (decl instanceof ClassDeclarationNode cls) {
             SymbolTable members = new SymbolTable();
+            // superclasse qualificada pelos imports: "extends Activity" com
+            // "import android.app.Activity" vira "android.app.Activity" —
+            // sem isso a resolução externa (classpath) nunca encontra a classe
+            String superQualified = cls.superClass();
+            if (superQualified != null && !"Object".equals(superQualified)) {
+                Type viaImports = qualifyViaImports(superQualified);
+                if (viaImports instanceof Type.ClassType qt) {
+                    superQualified = qt.packageName() + "." + qt.name();
+                }
+            }
             SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(cls.name(), currentPackage,
-                    cls.superClass() != null ? cls.superClass() : "Object",
+                    cls.superClass() != null ? superQualified : "Object",
                     cls.interfaces(), members);
             knownClasses.put(cls.name(), sym);
             currentScope.define(sym);

@@ -144,6 +144,11 @@ final class ExternalClasspath {
         return loaded && internalName != null && classBytes.containsKey(internalName);
     }
 
+    /** Superclasse declarada da classe externa (nome interno), ou null. */
+    public synchronized String superClassOf(String internalName) {
+        return superclassOf(internalName);
+    }
+
     /**
      * Construtor da classe externa com a aridade dada ("<init>").
      */

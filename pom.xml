@@ -68,6 +68,10 @@
                     <configuration>
                         <release>21</release>
                         <compilerReuseStrategy>alwaysNew</compilerReuseStrategy>
+                        <!-- o incremental do javac corrompe o target/classes
+                             (NoClassDefFoundError intermitente de inner
+                             classes: KofLog$LogCall, KofUi$UiCall...) -->
+                        <useIncrementalCompilation>false</useIncrementalCompilation>
                     </configuration>
                 </plugin>
             </plugins>

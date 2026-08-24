@@ -217,13 +217,18 @@ private Target target = Target.JVM;
 
     private Backend selectBackend(Target target) {
         return switch (target) {
-            case JVM -> new JvmBackend();
+            case JVM -> backendWithClasspath(new JvmBackend());
             case NATIVE -> new NativeBackend();
             case JS -> new JsBackend();
             // Android: ART executa bytecode dex'd — a emissão é a mesma do
             // backend JVM; o alvo vive nas validações AND* e no empacotamento
-            case ANDROID -> new JvmBackend();
+            case ANDROID -> backendWithClasspath(new JvmBackend());
         };
+    }
+
+    private Backend backendWithClasspath(JvmBackend backend) {
+        backend.setExternalTypes(externalClasspath);
+        return backend;
     }
 
     private Type toType(String typeName) {
@@ -1440,6 +1445,10 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case MethodCallExpr mc -> {
+                if (System.getProperty("kof.trace") != null) {
+                    System.err.println("ENTER ." + mc.methodName() + " recvNull=" + (mc.receiver() == null)
+                            + " owner=" + owner);
+                }
                 // User-defined classes take precedence over builtin helpers
                 // with the same name: ClassName(args) is implicit construction.
                 SymbolTable.ClassSymbol userCtor = semanticAnalyzer != null
@@ -2119,6 +2128,10 @@ private Target target = Target.JVM;
                     }
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (System.getProperty("kof.trace") != null) {
+                        System.err.println("TRACE ." + mc.methodName() + " recvType=" + recvType
+                                + " resolved=" + (semanticAnalyzer.getResolvedMethod(mc) != null));
+                    }
                     if (KofUi.isUiType(recvType)) {
                         localIdx = emitUiInstance(recvType, mc, ops, owner, localIdx, locals);
                         yield localIdx;
@@ -4087,7 +4100,19 @@ private Target target = Target.JVM;
 
     private IRClass lowerClass(ClassDeclarationNode cls, String packageName, int typeId) {
         String internalName = toInternalName(packageName, cls.name());
-        String superName = cls.superClass() != null ? toInternalName("", cls.superClass()) : "java/lang/Object";
+        // usa o superClass QUALIFICADO pelo analyzer ("extends Activity" +
+        // import → android/app/Activity); cai pro cru se analyzer ausente
+        String superName = null;
+        if (semanticAnalyzer != null) {
+            SymbolTable.ClassSymbol sym = semanticAnalyzer.getClass(cls.name());
+            if (sym != null && sym.superClass() != null && !"Object".equals(sym.superClass())) {
+                superName = toInternalName("", sym.superClass());
+            }
+        }
+        if (superName == null) {
+            superName = cls.superClass() != null ? toInternalName("", cls.superClass())
+                    : "java/lang/Object";
+        }
         List<String> ifaces = cls.interfaces().stream().map(i -> toInternalName("", i)).toList();
         int access = computeAccess(cls.modifiers());
         List<IRField> fields = new ArrayList<>();

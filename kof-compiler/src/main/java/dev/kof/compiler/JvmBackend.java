@@ -17,6 +17,13 @@ import static org.objectweb.asm.Opcodes.*;
 
 class JvmBackend implements Backend {
 
+    /** Classpath externo para computar ancestrais comuns de frames (android.*). */
+    private ExternalClasspath externalTypes;
+
+    void setExternalTypes(ExternalClasspath externalTypes) {
+        this.externalTypes = externalTypes;
+    }
+
     private final Map<LabelId, Label> labelMap = new HashMap<>();
 
     private record TryRegion(LabelId start, LabelId end) {
@@ -156,15 +163,49 @@ class JvmBackend implements Backend {
         Path classFile = outputDir.resolve(clazz.name() + ".class");
         Files.createDirectories(classFile.getParent());
 
-        // getCommonSuperClass consultaria Class.forName; classes externas
-        // (android.* etc.) não estão no classpath da compilação — o merge
-        // conservador para java/lang/Object mantém o compile vivo
+        // getCommonSuperClass: ASM consulta Class.forName; classes externas
+        // (android.* etc.) não estão no classpath da compilação. Caminhamos
+        // nas DUAS hierarquias (classpath externo + JDK) e devolvemos o
+        // ancestral comum real — nunca um palpite que corrompa os frames.
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
             @Override
             protected String getCommonSuperClass(String type1, String type2) {
+                if (type1.equals(type2)) return type1;
+                java.util.Set<String> ancestors2 = ancestorSet(type2);
+                String current = type1;
+                int hops = 0;
+                while (current != null && hops++ < 64) {
+                    if (ancestors2.contains(current)) return current;
+                    if ("java/lang/Object".equals(current)) break;
+                    current = superClassOfInternal(current);
+                }
+                // sem ancestral computável: Object é o único seguro
+                return "java/lang/Object";
+            }
+
+            private java.util.Set<String> ancestorSet(String type) {
+                java.util.Set<String> set = new java.util.HashSet<>();
+                String current = type;
+                int hops = 0;
+                while (current != null && hops++ < 64) {
+                    set.add(current);
+                    if ("java/lang/Object".equals(current)) break;
+                    current = superClassOfInternal(current);
+                }
+                return set;
+            }
+
+            private String superClassOfInternal(String internalName) {
+                if (externalTypes != null && externalTypes.knows(internalName)) {
+                    String sup = externalTypes.superClassOf(internalName);
+                    return sup != null ? sup : "java/lang/Object";
+                }
                 try {
-                    return super.getCommonSuperClass(type1, type2);
-                } catch (Exception e) {
+                    Class<?> c = Class.forName(internalName.replace('/', '.'), false,
+                            JvmBackend.class.getClassLoader());
+                    Class<?> sup = c.getSuperclass();
+                    return sup != null ? sup.getName().replace('.', '/') : "java/lang/Object";
+                } catch (Throwable e) {
                     return "java/lang/Object";
                 }
             }
@@ -191,7 +232,12 @@ class JvmBackend implements Backend {
         }
 
         for (IRMethod method : clazz.methods()) {
-            emitMethod(cw, clazz.name(), method, clazz.superName());
+            try {
+                emitMethod(cw, clazz.name(), method, clazz.superName());
+            } catch (RuntimeException e) {
+                throw new RuntimeException("frame crash em " + clazz.name() + "."
+                        + method.name() + " (super=" + superName + "): " + e.getMessage(), e);
+            }
         }
 
         if ("java/lang/Record".equals(superName)) {
