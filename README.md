@@ -385,6 +385,12 @@ Adoptium e monta o layout completo de distribuição.
 Versionamento centralizado em `VERSION` — ver
 [docs/distribution/VERSIONING.md](docs/distribution/VERSIONING.md).
 
+**Windows:** use o **Git Bash** para `scripts/package.sh` — o `bash`
+genérico do PATH pode resolver para o WSL e gerar uma distribuição Linux
+(OBS-005). No Windows, o Python pode estar disponível apenas como o
+launcher `py` — o script o descobre automaticamente (`python3`/`python`/
+`py -3`).
+
 ---
 
 # Arquitetura
