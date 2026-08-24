@@ -111,6 +111,40 @@ final class JvmOrmRuntime {
                     return kof_db_execute(id, ddl.toString()) >= 0;
                 }
 
+                private static java.lang.reflect.Method kof_mongo_method(Class<?> type, String name, int arity,
+                                                                           Class<?>... argTypes) {
+                    // escolhe a sobrecarga compatível com os argumentos
+                    // (ex.: find(Bson) vs find(Class)); variantes com
+                    // ClientSession são evitadas
+                    java.lang.reflect.Method fallback = null;
+                    for (java.lang.reflect.Method m : type.getMethods()) {
+                        if (m.getName().equals(name) && m.getParameterCount() == arity) {
+                            if (m.getParameterCount() > 0
+                                    && m.getParameterTypes()[0].getName().contains("ClientSession")) {
+                                continue;
+                            }
+                            boolean compatible = true;
+                            for (int i = 0; i < arity && i < argTypes.length; i++) {
+                                if (!m.getParameterTypes()[i].isAssignableFrom(argTypes[i])) {
+                                    compatible = false;
+                                    break;
+                                }
+                            }
+                            if (compatible) {
+                                m.setAccessible(true);
+                                System.err.println("[mongo-method] " + name + " -> " + m);
+                                return m;
+                            }
+                            fallback = m;
+                        }
+                    }
+                    if (fallback != null) {
+                        fallback.setAccessible(true);
+                        return fallback;
+                    }
+                    throw new IllegalStateException("MongoDB method not found: " + name + "/" + arity);
+                }
+
                 public static Object kof_orm_save(String id, Object obj, String table, String schema) throws Exception {
                     java.util.List<OrmField> fields = kof_orm_schema(schema);
                     int pkIndex = kof_orm_pkIndex(fields);
@@ -127,10 +161,9 @@ final class JvmOrmRuntime {
                         Object doc = kof_mongo_values(comps, values);
                         Class<?> optsType = Class.forName("com.mongodb.client.model.ReplaceOptions");
                         Object opts = optsType.getConstructor().newInstance();
-                        optsType.getMethod("upsert", boolean.class).invoke(opts, true);
-                        coll.getClass().getMethod("replaceOne", Object.class, Object.class, optsType)
-                                .invoke(coll, filter, doc, opts);
-                        return obj;
+optsType.getMethod("upsert", boolean.class).invoke(opts, true);
+                         kof_mongo_method(coll.getClass(), "replaceOne", 3, filter.getClass(), doc.getClass(), optsType).invoke(coll, filter, doc, opts);
+                         return obj;
                     }
                     boolean pkIsNumeric = pk instanceof Number
                             || "int".equals(fields.get(pkIndex).type)
@@ -208,8 +241,8 @@ final class JvmOrmRuntime {
                     if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq("_id", key);
-                        Object iter = coll.getClass().getMethod("find", Object.class).invoke(coll, filter);
-                        Object doc = iter.getClass().getMethod("first").invoke(iter);
+                        Object iter = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass()).invoke(coll, filter);
+                        Object doc = kof_mongo_method(iter.getClass(), "first", 0).invoke(iter);
                         if (doc == null) return null;
                         return kof_json_bind(Class.forName(className), (java.util.Map<String, Object>) doc);
                     }
@@ -229,8 +262,8 @@ final class JvmOrmRuntime {
 
                 private static java.util.ArrayList<Object> kof_mongo_query_all(String id, String table, String className) throws Exception {
                     Object coll = kof_mongo_coll(id, table);
-                    Object iter = coll.getClass().getMethod("find").invoke(coll);
-                    java.util.List<?> raw = (java.util.List<?>) iter.getClass().getMethod("into", Class.class)
+                    Object iter = kof_mongo_method(coll.getClass(), "find", 0).invoke(coll);
+                    java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1, Class.class)
                             .invoke(iter, java.util.ArrayList.class);
                     java.util.ArrayList<Object> out = new java.util.ArrayList<>();
                     Class<?> target = Class.forName(className);
@@ -244,8 +277,10 @@ final class JvmOrmRuntime {
                     if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq(field, value);
-                        Object iter = coll.getClass().getMethod("find", Object.class).invoke(coll, filter);
-                        java.util.List<?> raw = (java.util.List<?>) iter.getClass().getMethod("into", Class.class)
+                        java.lang.reflect.Method wm = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass());
+                        System.err.println("[where] method=" + wm + " coll=" + coll.getClass() + " filter=" + filter.getClass());
+                        Object iter = wm.invoke(coll, filter);
+                        java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1, Class.class)
                                 .invoke(iter, java.util.ArrayList.class);
                         java.util.ArrayList<Object> out = new java.util.ArrayList<>();
                         Class<?> target = Class.forName(className);
@@ -261,7 +296,7 @@ final class JvmOrmRuntime {
                 public static long kof_orm_count(String id, String table, String schema) throws Exception {
                     if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
-                        Object n = coll.getClass().getMethod("countDocuments").invoke(coll);
+                        Object n = kof_mongo_method(coll.getClass(), "countDocuments", 0).invoke(coll);
                         return ((Number) n).longValue();
                     }
                     try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
@@ -305,8 +340,8 @@ final class JvmOrmRuntime {
                     if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq("_id", key);
-                        Object r = coll.getClass().getMethod("deleteOne", Object.class).invoke(coll, filter);
-                        return ((Number) r.getClass().getMethod("getDeletedCount").invoke(r)).longValue() > 0;
+                        Object r = kof_mongo_method(coll.getClass(), "deleteOne", 1, filter.getClass()).invoke(coll, filter);
+                        return ((Number) kof_mongo_method(r.getClass(), "getDeletedCount", 0).invoke(r)).longValue() > 0;
                     }
                     java.util.List<OrmField> fields = kof_orm_schema(schema);
                     String pk = fields.get(kof_orm_pkIndex(fields)).name;

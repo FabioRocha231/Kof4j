@@ -26,6 +26,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_log_")
                 || methodName.startsWith("kof_db_")
                 || methodName.startsWith("kof_orm_")
+                || methodName.startsWith("kof_string_to_")
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.startsWith("kof_tetris_")
@@ -150,6 +151,10 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_db_query3" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_db_query4" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_db_transaction" -> "(Ljava/lang/Object;)V";
+            case "kof_string_to_int" -> "(Ljava/lang/String;)I";
+            case "kof_string_to_long" -> "(Ljava/lang/String;)J";
+            case "kof_string_to_double" -> "(Ljava/lang/String;)D";
+            case "kof_string_to_float" -> "(Ljava/lang/String;)F";
             case "kof_orm_create" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
             case "kof_orm_save" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
             case "kof_orm_find" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
@@ -222,6 +227,10 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_db_execute", "kof_db_execute1", "kof_db_execute2", "kof_db_execute3", "kof_db_execute4" -> "I";
             case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4",
                     "kof_orm_all", "kof_orm_where" -> "Ljava/util/ArrayList;";
+            case "kof_string_to_int" -> "I";
+            case "kof_string_to_long" -> "J";
+            case "kof_string_to_double" -> "D";
+            case "kof_string_to_float" -> "F";
             case "kof_orm_create", "kof_orm_delete", "kof_orm_migrate" -> "Z";
             case "kof_orm_save", "kof_orm_find" -> "Ljava/lang/Object;";
             case "kof_orm_count" -> "J";
@@ -1770,6 +1779,26 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
 """ + JvmOrmRuntime.source() + """
+                // ── String → numérico (OBS-010: toInt/toLong/toDouble/toFloat)
+                // As conversões do String são funções do runtime Kof — o
+                // java.lang.String não tem toInt().
+
+                public static int kof_string_to_int(String s) {
+                    return Integer.parseInt(s.trim());
+                }
+
+                public static long kof_string_to_long(String s) {
+                    return Long.parseLong(s.trim());
+                }
+
+                public static double kof_string_to_double(String s) {
+                    return Double.parseDouble(s.trim());
+                }
+
+                public static float kof_string_to_float(String s) {
+                    return Float.parseFloat(s.trim());
+                }
+
                 // ── kof.security (docs/security.md §5) ──────────────────
 
                 private static final java.security.SecureRandom KOF_SEC_RANDOM = new java.security.SecureRandom();

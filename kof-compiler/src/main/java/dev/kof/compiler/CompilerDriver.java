@@ -1841,7 +1841,11 @@ private Target target = Target.JVM;
                             callKind = KofCallKind.INTERFACE;
                         }
                     }
-                    ops.add(new KofCall(recvType, mc.methodName(), methodParamTypes, methodReturnType, callKind));
+                    String runtimeMethod = BuiltinTypes.isString(recvType)
+                            ? stringRuntimeMethod(mc.methodName()) : null;
+                    ops.add(new KofCall(recvType,
+                            runtimeMethod != null ? runtimeMethod : mc.methodName(),
+                            methodParamTypes, methodReturnType, callKind));
                     if (methodReturnType instanceof Type.TypeVariable) {
                         Type effective = inferExprType(mc, locals);
                         if (isPrimitiveType(effective)) {
@@ -2884,6 +2888,10 @@ private Target target = Target.JVM;
                     : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
             case "concat" -> argCount == 1 ? new StringMethodSig(str, List.of(str)) : null;
             case "trim" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
+            case "toInt" -> argCount == 0 ? new StringMethodSig(INT, List.of()) : null;
+            case "toLong" -> argCount == 0 ? new StringMethodSig(Type.PrimitiveType.LONG, List.of()) : null;
+            case "toDouble" -> argCount == 0 ? new StringMethodSig(Type.PrimitiveType.DOUBLE, List.of()) : null;
+            case "toFloat" -> argCount == 0 ? new StringMethodSig(Type.PrimitiveType.FLOAT, List.of()) : null;
             case "toUpperCase", "toLowerCase" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
             case "replace" -> argCount == 2 ? replaceSignature(argTypes, str, CHAR, charSeq) : null;
             case "split" -> argCount == 1 ? new StringMethodSig(strArray, List.of(str))
@@ -2899,6 +2907,18 @@ private Target target = Target.JVM;
      * argument types — a previous version always picked (char, char), which
      * pushed Strings onto a (C, C) descriptor (VerifyError on the JVM).
      */
+    /** Métodos do String implementados pelo runtime Kof (não existem no
+     *  java.lang.String): as conversões numéricas. */
+    private static String stringRuntimeMethod(String name) {
+        return switch (name) {
+            case "toInt" -> "kof_string_to_int";
+            case "toLong" -> "kof_string_to_long";
+            case "toDouble" -> "kof_string_to_double";
+            case "toFloat" -> "kof_string_to_float";
+            default -> null;
+        };
+    }
+
     private StringMethodSig replaceSignature(List<Type> argTypes, Type str, Type CHAR, Type charSeq) {
         boolean stringArgs = argTypes.size() == 2
                 && BuiltinTypes.isString(argTypes.get(0)) && BuiltinTypes.isString(argTypes.get(1));
