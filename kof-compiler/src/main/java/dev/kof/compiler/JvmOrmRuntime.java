@@ -278,8 +278,7 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                     if (kof_mongo_id(id)) {
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq(field, value);
-                        java.lang.reflect.Method wm = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass());
-                        Object iter = wm.invoke(coll, filter);
+                        Object iter = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass()).invoke(coll, filter);
                         // FindIterable.into(target) preenche a coleção passada —
                         // o argumento é a instância, não o Class.
                         java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1,

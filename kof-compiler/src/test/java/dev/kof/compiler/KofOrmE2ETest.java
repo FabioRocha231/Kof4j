@@ -44,7 +44,9 @@ class KofOrmE2ETest {
             ProcessBuilder pb = new ProcessBuilder("java", "-Dfile.encoding=UTF-8",
                     "-Dstdout.encoding=UTF-8", "--enable-native-access=ALL-UNNAMED",
                     "-cp", cp, "Default.Main");
-            pb.redirectErrorStream(true);
+            // stderr separado: drivers (Mongo/SQLite) podem logar avisos de
+            // inicialização no stderr — o stdout é o output do programa Kof
+            pb.redirectError(java.io.File.createTempFile("kof-orm-stderr", ".txt"));
             Process p = pb.start();
             String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
                 .replace("\r\n", "\n").trim();
@@ -245,7 +247,8 @@ class KofOrmE2ETest {
         StringBuilder cp = new StringBuilder();
         String classpath = System.getProperty("java.class.path");
         for (String entry : classpath.split(java.io.File.pathSeparator)) {
-            if ((entry.contains("mongodb") || entry.contains("bson")) && entry.endsWith(".jar")) {
+            if ((entry.contains("mongodb") || entry.contains("bson") || entry.contains("slf4j"))
+                    && entry.endsWith(".jar")) {
                 if (cp.length() > 0) cp.append(java.io.File.pathSeparator);
                 cp.append(entry);
             }
