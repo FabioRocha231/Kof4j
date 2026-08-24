@@ -1498,6 +1498,18 @@ class JsBackend implements Backend {
                     args));
             return;
         }
+        if (kc.kind() == KofCallKind.SUPER) {
+            // super.method(args) — JS supports it natively inside class
+            // methods; the receiver on the stack is this and is discarded.
+            pop(stack);
+            JsIr.JsExpression call = new JsIr.JsCall(
+                    new JsIr.JsMember(new JsIr.JsIdentifier("super"), sanitizeName(kc.methodName())), args);
+            if (Type.isVoid(kc.returnType())) {
+                throw new StatementEnd(call);
+            }
+            stack.add(call);
+            return;
+        }
         if (kc.kind() == KofCallKind.STATIC) {
             String owner = jsClassName(ownerInternalName(kc.ownerType()));
             stack.add(new JsIr.JsCall(

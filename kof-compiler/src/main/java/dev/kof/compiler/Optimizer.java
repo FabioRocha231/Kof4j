@@ -36,7 +36,7 @@ public final class Optimizer {
             }
             classes.add(new IRClass(cls.name(), cls.superName(), cls.interfaces(),
                     cls.accessFlags(), cls.fields(), methods,
-                    cls.innerClasses(), cls.signature(), cls.typeId()));
+                    cls.innerClasses(), cls.signature(), cls.typeId(), cls.annotations()));
         }
         return new IRModule(module.name(), classes, module.imports(), module.sourceName());
     }
@@ -61,7 +61,8 @@ public final class Optimizer {
                 : new KofDebugInfo(positions);
         return new IRMethod(method.name(), method.returnType(), method.parameterTypes(),
                 method.accessFlags(), method.thrownExceptions(),
-                List.of(new IRBasicBlock(0, ops)), method.localVariables(), debugInfo);
+                List.of(new IRBasicBlock(0, ops)), method.localVariables(), debugInfo,
+                method.annotations(), method.parameterAnnotations());
     }
 
     private static List<KofOperation> passes(List<KofOperation> ops,

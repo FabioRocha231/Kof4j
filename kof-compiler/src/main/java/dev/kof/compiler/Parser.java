@@ -28,15 +28,133 @@ class Parser {
         List<String> imports = parseImports();
         List<AstNode> declarations = new ArrayList<>();
         while (!atEnd()) {
+            List<AnnotationNode> annos = parseAnnotations();
             if (check(TokenType.IDENTIFIER) && "test".equals(peek().value()) && checkNext(TokenType.STRING_LITERAL)) {
                 declarations.add(parseTestDeclaration());
+            } else if (!annos.isEmpty()
+                    && (check(TokenType.CLASS, TokenType.INTERFACE, TokenType.RECORD, TokenType.ENTITY))) {
+                declarations.add(parseTypeDeclaration(annos));
             } else if (check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType()) {
-                declarations.add(parseFunctionDeclaration(List.of()));
+                declarations.add(parseFunctionDeclaration(List.of(), annos));
             } else {
-                declarations.add(parseTypeDeclaration());
+                declarations.add(parseTypeDeclaration(annos));
             }
         }
         return new CompilationUnitNode(pos0, packageName, imports, List.copyOf(declarations));
+    }
+
+    /**
+     * @Name, @pkg.Name e @Name(valor | key = valor, ...) — valores são
+     * constantes em compile-time (literais ou arrays {a, b}). Annotations
+     * são metadados de interop: parseadas aqui, preservadas na IR e
+     * emitidas no bytecode pelo backend; nunca substituem APIs idiomáticas.
+     */
+    private List<AnnotationNode> parseAnnotations() {
+        List<AnnotationNode> out = new ArrayList<>();
+        while (check(TokenType.AT)) {
+            SourcePosition p = pos();
+            advance();
+            StringBuilder name = new StringBuilder(expectId("Expected annotation name", "PARSE080"));
+            while (check(TokenType.DOT) && checkNext(TokenType.IDENTIFIER)) {
+                advance();
+                name.append('.').append(advance().value());
+            }
+            List<AnnotationPair> pairs = new ArrayList<>();
+            if (check(TokenType.LPAREN)) {
+                advance();
+                if (!check(TokenType.RPAREN)) {
+                    do {
+                        String key = null;
+                        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.EQUAL)) {
+                            key = advance().value();
+                            advance();
+                        }
+                        Object value = parseAnnotationValue();
+                        if (value instanceof ParseError) continue;
+                        pairs.add(new AnnotationPair(key, value));
+                    } while (check(TokenType.COMMA) && !advance().is(TokenType.EOF));
+                }
+                expect(TokenType.RPAREN, "Expected ')' after annotation arguments", "PARSE081");
+            }
+            out.add(new AnnotationNode(p, name.toString(), List.copyOf(pairs)));
+        }
+        return out;
+    }
+
+    /** Marcador interno: valor de annotation inválido (já diagnosticado). */
+    private static final class ParseError {
+        static final ParseError INSTANCE = new ParseError();
+    }
+
+    private boolean isParseError(Object v) {
+        return v == ParseError.INSTANCE;
+    }
+
+    /**
+     * Valor constante de annotation: literal, array {v1, v2} de literais
+     * ou identificador simples. Identificadores não-constantes produzem
+     * ANNOT001 (nunca um valor silenciosamente errado).
+     */
+    private Object parseAnnotationValue() {
+        if (check(TokenType.LBRACE)) {
+            advance();
+            List<Object> items = new ArrayList<>();
+            if (!check(TokenType.RBRACE)) {
+                do {
+                    Object v = parseAnnotationValue();
+                    if (!isParseError(v)) items.add(v);
+                } while (check(TokenType.COMMA) && !advance().is(TokenType.EOF));
+            }
+            expect(TokenType.RBRACE, "Expected '}' after annotation array", "PARSE082");
+            return items;
+        }
+        if (check(TokenType.STRING_LITERAL) || check(TokenType.INT_LITERAL) || check(TokenType.LONG_LITERAL)
+                || check(TokenType.FLOAT_LITERAL) || check(TokenType.DOUBLE_LITERAL)
+                || check(TokenType.BOOLEAN_LITERAL) || check(TokenType.CHAR_LITERAL)
+                || check(TokenType.NULL_LITERAL)) {
+            Token t = advance();
+            try {
+                return switch (t.type()) {
+                    case STRING_LITERAL -> t.value();
+                    case INT_LITERAL -> Integer.parseInt(t.value());
+                    case LONG_LITERAL -> Long.parseLong(t.value().replaceAll("[lL]$", ""));
+                    case FLOAT_LITERAL -> Float.parseFloat(t.value().replaceAll("[fF]$", ""));
+                    case DOUBLE_LITERAL -> Double.parseDouble(t.value().replaceAll("[dD]$", ""));
+                    case BOOLEAN_LITERAL -> Boolean.parseBoolean(t.value());
+                    case CHAR_LITERAL -> t.value().charAt(0);
+                    default -> null;
+                };
+            } catch (NumberFormatException e) {
+                error("Invalid numeric literal in annotation", "PARSE083");
+                return ParseError.INSTANCE;
+            }
+        }
+        // negativos
+        if (check(TokenType.MINUS) && (checkNext(TokenType.INT_LITERAL) || checkNext(TokenType.LONG_LITERAL)
+                || checkNext(TokenType.FLOAT_LITERAL) || checkNext(TokenType.DOUBLE_LITERAL))) {
+            advance();
+            Token t = advance();
+            try {
+                return switch (t.type()) {
+                    case INT_LITERAL -> Integer.parseInt("-" + t.value());
+                    case LONG_LITERAL -> Long.parseLong("-" + t.value().replaceAll("[lL]$", ""));
+                    case FLOAT_LITERAL -> Float.parseFloat("-" + t.value().replaceAll("[fF]$", ""));
+                    default -> Double.parseDouble("-" + t.value().replaceAll("[dD]$", ""));
+                };
+            } catch (NumberFormatException e) {
+                error("Invalid numeric literal in annotation", "PARSE083");
+                return ParseError.INSTANCE;
+            }
+        }
+        if (check(TokenType.IDENTIFIER)) {
+            String name = advance().value();
+            error("Annotation values must be compile-time constants ('" + name
+                    + "' is not supported yet)", "ANNOT001");
+            return ParseError.INSTANCE;
+        }
+        error("Expected annotation value", "PARSE084");
+        advance();
+        return ParseError.INSTANCE;
     }
 
     /**
@@ -52,6 +170,10 @@ class Parser {
     }
 
     private FunctionDeclarationNode parseFunctionDeclaration(List<String> mods) {
+        return parseFunctionDeclaration(mods, List.of());
+    }
+
+    private FunctionDeclarationNode parseFunctionDeclaration(List<String> mods, List<AnnotationNode> annos) {
         SourcePosition p = pos();
         String returnType = "void";
         String name;
@@ -90,7 +212,7 @@ class Parser {
         } else {
             expectSemicolon();
         }
-        return new FunctionDeclarationNode(p, mods, returnType, name, params, thrown, typeParams, body);
+        return new FunctionDeclarationNode(p, mods, returnType, name, params, thrown, typeParams, body, annos);
     }
 
     /**
@@ -209,14 +331,18 @@ class Parser {
     }
 
     private AstNode parseTypeDeclaration() {
+        return parseTypeDeclaration(List.of());
+    }
+
+    private AstNode parseTypeDeclaration(List<AnnotationNode> annos) {
         List<String> mods = parseModifiers();
-        if (check(TokenType.CLASS)) return parseClassDeclaration(mods);
-        if (check(TokenType.INTERFACE)) return parseInterfaceDeclaration(mods);
-        if (check(TokenType.RECORD)) return parseRecordDeclaration(mods);
-        if (check(TokenType.ENTITY)) return parseEntityDeclaration(mods);
+        if (check(TokenType.CLASS)) return parseClassDeclaration(mods, annos);
+        if (check(TokenType.INTERFACE)) return parseInterfaceDeclaration(mods, annos);
+        if (check(TokenType.RECORD)) return parseRecordDeclaration(mods, annos);
+        if (check(TokenType.ENTITY)) return parseEntityDeclaration(mods, annos);
         error("Expected type declaration", "PARSE007");
         advance();
-        return new ClassDeclarationNode(pos(), "error", List.of(), null, List.of(), List.of(), List.of());
+        return new ClassDeclarationNode(pos(), "error", List.of(), null, List.of(), List.of(), List.of(), annos);
     }
 
     private List<String> parseModifiers() {
@@ -230,6 +356,10 @@ class Parser {
     }
 
     private AstNode parseClassDeclaration(List<String> mods) {
+        return parseClassDeclaration(mods, List.of());
+    }
+
+    private AstNode parseClassDeclaration(List<String> mods, List<AnnotationNode> annos) {
         advance();
         String name = expectId("Expected class name", "PARSE008");
         currentClassName = name;
@@ -252,10 +382,15 @@ class Parser {
             }
             expect(TokenType.RBRACE, "Expected '}' after class body", "PARSE009");
         }
-        return new ClassDeclarationNode(pos(), name, mods, superClass, ifaces, typeParams, List.copyOf(members));
+        return new ClassDeclarationNode(pos(), name, mods, superClass, ifaces, typeParams,
+                List.copyOf(members), annos);
     }
 
     private InterfaceDeclarationNode parseInterfaceDeclaration(List<String> mods) {
+        return parseInterfaceDeclaration(mods, List.of());
+    }
+
+    private InterfaceDeclarationNode parseInterfaceDeclaration(List<String> mods, List<AnnotationNode> annos) {
         advance();
         String name = expectId("Expected interface name", "PARSE010");
         List<String> ifaces = new ArrayList<>();
@@ -275,7 +410,7 @@ class Parser {
             }
             expect(TokenType.RBRACE, "Expected '}' after interface body", "PARSE011");
         }
-        return new InterfaceDeclarationNode(pos(), name, mods, ifaces, List.copyOf(members));
+        return new InterfaceDeclarationNode(pos(), name, mods, ifaces, List.copyOf(members), annos);
     }
 
     /**
@@ -286,6 +421,10 @@ class Parser {
      * }
      */
     private EntityDeclarationNode parseEntityDeclaration(List<String> mods) {
+        return parseEntityDeclaration(mods, List.of());
+    }
+
+    private EntityDeclarationNode parseEntityDeclaration(List<String> mods, List<AnnotationNode> annos) {
         advance(); // entity
         String name = expectId("Expected entity name", "PARSE024");
         List<EntityFieldNode> fields = new ArrayList<>();
@@ -305,10 +444,14 @@ class Parser {
             fields.add(new EntityFieldNode(fieldPos, fieldType, fieldName, generated, unique));
         }
         expect(TokenType.RBRACE, "Expected '}' after entity body", "PARSE024");
-        return new EntityDeclarationNode(pos(), name, mods, fields);
+        return new EntityDeclarationNode(pos(), name, mods, fields, annos);
     }
 
     private RecordDeclarationNode parseRecordDeclaration(List<String> mods) {
+        return parseRecordDeclaration(mods, List.of());
+    }
+
+    private RecordDeclarationNode parseRecordDeclaration(List<String> mods, List<AnnotationNode> annos) {
         advance();
         String name = expectId("Expected record name", "PARSE012");
         List<String> typeParams = parseTypeParameters();
@@ -318,7 +461,9 @@ class Parser {
             superClass = parseTypeRef();
         }
         List<String> ifaces = parseImplementedInterfaces();
-        return parseRecordBody(name, mods, superClass, ifaces, typeParams);
+        RecordDeclarationNode rec = parseRecordBody(name, mods, superClass, ifaces, typeParams);
+        return new RecordDeclarationNode(rec.position(), rec.name(), rec.modifiers(), rec.superClass(),
+                rec.interfaces(), rec.components(), rec.members(), annos);
     }
 
     private RecordDeclarationNode parseRecordBody(String name, List<String> mods, String superClass,
@@ -361,6 +506,7 @@ class Parser {
     }
 
     private RecordComponentNode parseRecordComponent() {
+        List<AnnotationNode> annos = parseAnnotations();
         List<String> mods = parseModifiers();
         String type = parseTypeRef();
         String name = expectId("Expected component name", "PARSE015");
@@ -369,13 +515,16 @@ class Parser {
             advance();
             init = parseExpression();
         }
-        return new RecordComponentNode(pos(), mods, type, name, init);
+        return new RecordComponentNode(pos(), mods, type, name, init, annos);
     }
 
     private AstNode parseClassMember() {
+        List<AnnotationNode> annos = parseAnnotations();
         List<String> mods = parseModifiers();
         if (check(TokenType.IDENTIFIER) && peek().value().equals("constructor") && checkNext(TokenType.LPAREN)) {
-            return parseConstructor(mods);
+            ConstructorDeclarationNode ctor = parseConstructor(mods);
+            return new ConstructorDeclarationNode(ctor.position(), ctor.modifiers(), ctor.name(),
+                    ctor.parameters(), ctor.thrownExceptions(), ctor.body(), annos);
         }
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.LPAREN)) {
             String name = advance().value();
@@ -392,18 +541,7 @@ class Parser {
                 returnType = parseTypeRef();
             }
             List<String> thrown = parseThrows();
-            if (check(TokenType.LBRACE)) {
-                List<StatementNode> body = parseBlock();
-                return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, body);
-            }
-            if (check(TokenType.EQUAL)) {
-                advance();
-                ExpressionNode expr = parseExpression();
-                if (check(TokenType.SEMICOLON)) advance();
-                return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(new ReturnStmt(pos(), expr)));
-            }
-            expectSemicolon();
-            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of());
+            return finishMethod(mods, annos, name, params, returnType, thrown);
         }
         if (check(TokenType.IDENTIFIER, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE, TokenType.SHORT_TYPE,
                 TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE, TokenType.DOUBLE_TYPE,
@@ -413,22 +551,46 @@ class Parser {
             Token afterNext = pos + 2 < tokens.size() ? tokens.get(pos + 2) : peek();
             if (next.is(TokenType.IDENTIFIER) && afterNext.is(TokenType.LPAREN)) {
                 advance();
-                return parseMethod(mods, nameTok.value());
+                MethodDeclarationNode m = parseMethod(mods, nameTok.value());
+                return new MethodDeclarationNode(m.position(), m.modifiers(), m.returnType(), m.name(),
+                        m.parameters(), m.thrownExceptions(), m.body(), annos);
             }
-            return parseField(mods);
+            FieldDeclarationNode f = (FieldDeclarationNode) parseField(mods);
+            return new FieldDeclarationNode(f.position(), f.modifiers(), f.type(), f.name(),
+                    f.initializer(), annos);
         }
         if (check(TokenType.CLASS, TokenType.INTERFACE, TokenType.RECORD, TokenType.ENTITY)) {
-            return parseTypeDeclaration();
+            return parseTypeDeclaration(annos);
         }
         if (check(TokenType.LBRACE)) {
-            return parseConstructor(mods);
+            ConstructorDeclarationNode ctor = parseConstructor(mods);
+            return new ConstructorDeclarationNode(ctor.position(), ctor.modifiers(), ctor.name(),
+                    ctor.parameters(), ctor.thrownExceptions(), ctor.body(), annos);
         }
         error("Unexpected token in class body", "PARSE016");
         advance();
-        return new FieldDeclarationNode(pos(), mods, "Object", "error", null);
+        return new FieldDeclarationNode(pos(), mods, "Object", "error", null, annos);
     }
 
-    private AstNode parseField(List<String> mods) {
+    /** Corpo de método nas três formas: bloco, `= expr` e declaração vazia. */
+    private AstNode finishMethod(List<String> mods, List<AnnotationNode> annos, String name,
+                                 List<FormalParameterNode> params, String returnType, List<String> thrown) {
+        if (check(TokenType.LBRACE)) {
+            List<StatementNode> body = parseBlock();
+            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, body, annos);
+        }
+        if (check(TokenType.EQUAL)) {
+            advance();
+            ExpressionNode expr = parseExpression();
+            if (check(TokenType.SEMICOLON)) advance();
+            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown,
+                    List.of(new ReturnStmt(pos(), expr)), annos);
+        }
+        expectSemicolon();
+        return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(), annos);
+    }
+
+    private FieldDeclarationNode parseField(List<String> mods) {
         String type = parseTypeRef();
         String name = expectId("Expected field name", "PARSE017");
         ExpressionNode init = null;
@@ -440,7 +602,7 @@ class Parser {
         return new FieldDeclarationNode(pos(), mods, type, name, init);
     }
 
-    private AstNode parseMethod(List<String> mods, String returnType) {
+    private MethodDeclarationNode parseMethod(List<String> mods, String returnType) {
         String name = advance().value();
         List<FormalParameterNode> params = parseFormalParameters();
         if (check(TokenType.COLON)) {
@@ -450,16 +612,16 @@ class Parser {
         List<String> thrown = parseThrows();
         if (check(TokenType.LBRACE)) {
             List<StatementNode> body = parseBlock();
-            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, body);
+            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, body, List.of());
         }
         if (check(TokenType.EQUAL)) {
             advance();
             ExpressionNode expr = parseExpression();
             if (check(TokenType.SEMICOLON)) advance();
-            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(new ReturnStmt(pos(), expr)));
+            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(new ReturnStmt(pos(), expr)), List.of());
         }
         expectSemicolon();
-        return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of());
+        return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(), List.of());
     }
 
     private ConstructorDeclarationNode parseConstructor(List<String> mods) {
@@ -497,6 +659,7 @@ class Parser {
     }
 
     private FormalParameterNode parseFormalParameter() {
+        List<AnnotationNode> annos = parseAnnotations();
         List<String> mods = parseModifiers();
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             // name: Type — annotation form (idiomatic for main(args: List<String>))
@@ -508,7 +671,7 @@ class Parser {
                 advance();
                 defaultValue = parseExpression();
             }
-            return new FormalParameterNode(pos(), mods, type, name, defaultValue);
+            return new FormalParameterNode(pos(), mods, type, name, defaultValue, annos);
         }
         String type = parseTypeRef();
         String name = expectId("Expected parameter name", "PARSE023");
@@ -517,7 +680,7 @@ class Parser {
             advance();
             defaultValue = parseExpression();
         }
-        return new FormalParameterNode(pos(), mods, type, name, defaultValue);
+        return new FormalParameterNode(pos(), mods, type, name, defaultValue, annos);
     }
 
     private List<String> parseThrows() {

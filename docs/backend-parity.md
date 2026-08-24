@@ -27,7 +27,7 @@
 | Records (`record Point(Int x, Int y)`) | ✅ | ✅ | ✅ | toString/equals/hashCode |
 | Classes, campos, métodos | ✅ | ✅ | ✅ | |
 | `constructor(...)` e primary `class X(...)` | ✅ | ✅ | ✅ | |
-| Herança, `super`, override | ✅ | ✅ | ✅ | |
+| Herança, `super`, override | ✅ | ✅* | ✅ | Native: `super.metodo()` = SUP001 |
 | Virtual dispatch | ✅ | ✅ | ✅ | |
 | Interfaces | ✅ | ✅ | ✅ | |
 | Generics (erasure) | ✅ | ✅ | ✅ | |

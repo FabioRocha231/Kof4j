@@ -1,6 +1,7 @@
 package dev.kof.compiler;
 
 import java.util.List;
+import java.util.Map;
 
 
 
@@ -14,15 +15,45 @@ record IRModule(String name, List<IRClass> classes, List<String> imports, String
 
 record IRClass(String name, String superName, List<String> interfaces,
                int accessFlags, List<IRField> fields, List<IRMethod> methods,
-               List<String> innerClasses, String signature, int typeId) {
+               List<String> innerClasses, String signature, int typeId,
+               List<IRAnnotation> annotations) {
+
+    IRClass(String name, String superName, List<String> interfaces,
+            int accessFlags, List<IRField> fields, List<IRMethod> methods,
+            List<String> innerClasses, String signature, int typeId) {
+        this(name, superName, interfaces, accessFlags, fields, methods,
+                innerClasses, signature, typeId, List.of());
+    }
 }
 
-record IRField(String name, Type type, int accessFlags, Object initialValue) {
+/**
+ * Annotation preservada na IR: nome interno JVM ("androidx/annotation/NonNull")
+ * e valores constantes em compile-time (String/Integer/Long/Float/Double/
+ * Boolean/Character/null ou List desses para arrays).
+ */
+record IRAnnotation(String name, Map<String, Object> values) {
+}
+
+record IRField(String name, Type type, int accessFlags, Object initialValue,
+               List<IRAnnotation> annotations) {
+
+    IRField(String name, Type type, int accessFlags, Object initialValue) {
+        this(name, type, accessFlags, initialValue, List.of());
+    }
 }
 
 record IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
                 List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
-                List<IRLocalVariable> localVariables, KofDebugInfo debugInfo) {
+                List<IRLocalVariable> localVariables, KofDebugInfo debugInfo,
+                List<IRAnnotation> annotations, List<List<IRAnnotation>> parameterAnnotations) {
+
+    IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
+             List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
+             List<IRLocalVariable> localVariables, KofDebugInfo debugInfo) {
+        this(name, returnType, parameterTypes, accessFlags, thrownExceptions,
+                basicBlocks, localVariables, debugInfo, List.of(), List.of());
+    }
+
     IRMethod(String name, Type returnType, List<Type> parameterTypes, int accessFlags,
              List<String> thrownExceptions, List<IRBasicBlock> basicBlocks,
              List<IRLocalVariable> localVariables) {
@@ -133,7 +164,11 @@ record KofConditionalJump(KofComparison comparison, Type operandType, LabelId tr
 
 
 
-enum KofCallKind { INSTANCE, STATIC, CONSTRUCTOR, FUNCTION, INTERFACE }
+/**
+ * SUPER: non-virtual call to a superclass implementation (super.method()).
+ * JVM backend lowers it to INVOKESPECIAL; the owner is the direct superclass.
+ */
+enum KofCallKind { INSTANCE, STATIC, CONSTRUCTOR, FUNCTION, INTERFACE, SUPER }
 
 record KofCall(Type ownerType, String methodName, List<Type> parameterTypes,
                Type returnType, KofCallKind kind) implements KofOperation {

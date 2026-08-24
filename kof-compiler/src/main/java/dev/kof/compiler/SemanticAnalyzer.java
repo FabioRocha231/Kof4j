@@ -138,7 +138,24 @@ class SemanticAnalyzer {
     private Type resolveType(String name, SymbolTable scope) {
         SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
         if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
-        return Type.of(name);
+        return qualifiedType(Type.of(name));
+    }
+
+    /**
+     * Nomes qualificados ("android.os.Bundle") precisam do pacote separado
+     * do nome simples — senão o descritor JVM sai com pontos
+     * (Landroid.os.Bundle;) e a classe não carrega.
+     */
+    static Type qualifiedType(Type type) {
+        if (type instanceof Type.ClassType ct && !ct.name().contains("<")
+                && ct.packageName().isEmpty()) {
+            int lastDot = ct.name().lastIndexOf('.');
+            if (lastDot > 0) {
+                return new Type.ClassType(ct.name().substring(0, lastDot),
+                        ct.name().substring(lastDot + 1), ct.typeArguments());
+            }
+        }
+        return type;
     }
 
     private void analyzeClass(ClassDeclarationNode cls) {

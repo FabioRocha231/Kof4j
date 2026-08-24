@@ -89,6 +89,7 @@ private Target target = Target.JVM;
      * descritor exato declarado na classe externa.
      */
     private final ExternalClasspath externalClasspath = new ExternalClasspath();
+    private final List<String> pendingClasspathWarnings = new ArrayList<>();
 
     public CompilerDriver setExternalClasspath(java.util.List<Path> entries) {
         try {
@@ -97,15 +98,29 @@ private Target target = Target.JVM;
             if (currentDiagnostics != null) {
                 currentDiagnostics.error("", 0, 0, 0,
                         "external classpath could not be read: " + e.getMessage(), "CP001");
+            } else {
+                pendingClasspathWarnings.add("external classpath could not be read: " + e.getMessage());
             }
         }
+        pendingClasspathWarnings.addAll(externalClasspath.loadWarnings());
         return this;
+    }
+
+    /** Emite warnings acumulados do classpath externo quando houver coletor. */
+    private void flushClasspathWarnings() {
+        if (currentDiagnostics != null && !pendingClasspathWarnings.isEmpty()) {
+            for (String w : pendingClasspathWarnings) {
+                currentDiagnostics.warning("", 0, 0, 0, w, "CP002");
+            }
+            pendingClasspathWarnings.clear();
+        }
     }
 
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
         this.currentDiagnostics = diagnostics;
+        flushClasspathWarnings();
         this.currentSourceName = sourceFile.getFileName() != null ? sourceFile.getFileName().toString() : null;
         this.entitySchemas.clear();
         try {
@@ -170,6 +185,13 @@ private Target target = Target.JVM;
 
     private Type toType(String typeName) {
         if ("List".equals(typeName) || "ArrayList".equals(typeName)) return BuiltinTypes.LIST;
+        // tipos qualificados (android.os.Bundle): pacote vai no packageName
+        // para o descritor JVM sair com barras (Landroid/os/Bundle;)
+        int lastDot = typeName.lastIndexOf('.');
+        if (lastDot > 0 && !typeName.contains("<") && !typeName.contains("/")) {
+            return new Type.ClassType(typeName.substring(0, lastDot),
+                    typeName.substring(lastDot + 1), List.of());
+        }
         return Type.of(typeName);
     }
 
@@ -686,7 +708,8 @@ private Target target = Target.JVM;
         loweringMain = prevMain;
         mainArgsListField = prevMainArgsList;
         return new IRMethod(func.name(), returnType, paramTypes, access, func.thrownExceptions(),
-                List.of(new IRBasicBlock(0, body)), locals, debugInfo);
+                List.of(new IRBasicBlock(0, body)), locals, debugInfo,
+                lowerAnnotations(func.annotations()), lowerParameterAnnotations(func.parameters()));
     }
 
     /**

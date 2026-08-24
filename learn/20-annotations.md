@@ -1,12 +1,15 @@
 # 20 — Annotations
 
-> **Status: planejado**
+> **Status: implementado (JVM/KofJS)**
 >
-> O token `@` existe no lexer, mas annotations não são parseadas nem geradas no bytecode.
+> O parser aceita `@Name` e `@Name(valor | key = valor, ...)` em classes,
+> records, interfaces, entities, campos, métodos, construtores, funções,
+> componentes de record e parâmetros. O backend JVM emite as annotations
+> no bytecode; Native ignora metadados.
 
 ## O que são annotations
 
-Annotations são metadados que podem ser adicionados a classes, métodos, campos e parâmetros.
+Annotations são metadados que podem ser adicionados a classes, métodos, campos e parâmetros. No Kof elas existem para **interoperação** — quando um target externo (Android, framework JVM) exige metadata no bytecode. O código idiomático Kof continua preferindo intenção explícita (`app.get(...)`, `entity { ... }`) a annotations+container.
 
 ## Annotations em Kof
 
@@ -14,10 +17,10 @@ Annotations são metadados que podem ser adicionados a classes, métodos, campos
 @Entity
 class User {
     @Id
-    UUID id;
+    UUID id
 
     @Column("user_name")
-    String name;
+    String name
 }
 ```
 
@@ -30,14 +33,29 @@ User findUser(@PathVariable UUID id) {
 }
 ```
 
-## Annotations que o compilador gera no bytecode
+Formas aceitas:
 
-O compilador Kof gera:
-- `RuntimeVisibleAnnotations` — visíveis em runtime via reflection
-- `RuntimeInvisibleAnnotations` — não visíveis em runtime
-- Anotações em parâmetros
+| Forma | Exemplo |
+|-------|---------|
+| simples | `@Override` |
+| valor único (vai para `value`) | `@Column("user_name")` |
+| pares `key = value` | `@JsonFormat(pattern = "yyyy")` |
+| array de literais | `@Roles({"admin", "dev"})` |
+| qualificada por pacote | `@androidx.annotation.NonNull` |
+
+Valores precisam ser **constantes em compile-time**: literais `String`, `Int`, `Long`, `Float`, `Double`, `Bool`, `Char`, `null`, ou arrays `{...}` desses literais. Identificadores não constantes viram diagnóstico `ANNOT001` — nunca um valor silenciosamente errado.
+
+## O que o compilador gera no bytecode
+
+- `RuntimeVisibleAnnotations` / `RuntimeInvisibleAnnotations`
+- Anotações em parâmetros (`RuntimeVisible/InvisibleParameterAnnotations`)
 - Anotações em campos
-- Anotações em métodos
+
+A retenção é decidida por tabela: annotations de `java.lang` (`Deprecated`, `FunctionalInterface`, `SafeVarargs`) e pacotes de metadata (`androidx.annotation`, `javax.annotation`, `org.jetbrains.annotations`) são emitidas como invisíveis; todo o resto vai como visível (escolha conservadora para frameworks que leem em runtime).
+
+## Resolução do nome
+
+Nomes qualificados (`androidx.annotation.NonNull`) vão direto para o bytecode. Nomes simples usam os imports do arquivo (`import androidx.annotation.NonNull` torna `@NonNull` resolvível) e os embutidos de `java.lang`.
 
 ## Interoperabilidade com frameworks Java
 
@@ -46,18 +64,14 @@ Annotations funcionam normalmente com:
 - JPA (`@Entity`, `@Table`, `@Column`)
 - Jackson (`@JsonProperty`, `@JsonIgnore`)
 - JUnit (`@Test`, `@BeforeEach`)
-- Qualquer framework que use annotations
-
-```kf
-@Service
-class UserService(UserRepository repository) {
-    User find(UUID id) {
-        return repository.findById(id);
-    }
-}
-```
+- Android (`@Override`, `@NonNull`, ciclo de vida via superclasses)
 
 O Spring enxerga `@Service` normalmente porque a annotation está no bytecode.
+
+## Limitações conhecidas
+
+- Valores enum ou `Class<?>` ainda não suportados (`ANNOT001`).
+- O Native ignora annotations (metadado não tem semântica executável lá).
 
 ## Próximo passo
 

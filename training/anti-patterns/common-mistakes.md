@@ -80,14 +80,23 @@ var x: String = "hello"
 
 ## 7. Unnecessary annotations
 
+Annotations existem no Kof para **interoperação** (frameworks JVM, Android). Para recursos da própria plataforma, use as APIs idiomáticas — annotation+container é vazar mecanismo na intenção.
+
 ```kof
-// WRONG — Kof doesn't need annotations for this
-@Service
-class UserService {
+// WRONG — HTTP routing é intenção da linguagem, não annotation
+@RestController
+class UserController {
     // ...
 }
 
 // RIGHT
+main() {
+    var app = web.app()
+    app.get("/users") { ... }
+}
+
+// RIGHT — annotation como metadado de interop (o framework externo exige)
+@Service
 class UserService {
     // ...
 }

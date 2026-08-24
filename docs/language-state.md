@@ -9,6 +9,12 @@
 
 ## Novidades 0.0.5 → 0.0.14
 
+- **Interop Android/JVM**: `super.metodo()` com INVOKESPECIAL (owner é a
+  superclasse direta; assinaturas externas resolvidas via classpath
+  `.jar`/`.aar` — `CompilerDriver.setExternalClasspath`) e annotations
+  `@Name`/`@Name(valor | key = valor, ...)` emitidas no bytecode
+  (RuntimeVisible/Invisible) em classes, campos, métodos e parâmetros.
+  `super.metodo()` no Native reporta `SUP001`.
 - `entity Name { field: Type constraint }` — schema declarativo (compile-time)
   para o `kof.orm` (`generated`, `unique`, PK não-numérica).
 - Namespaces da stdlib: `kof.db`, `kof.orm`, `kof.process`, `kof.ui`
@@ -308,7 +314,7 @@ Fields:
 - `await`/resultado de tarefa, filas (`kof.concurrent.Queue`)
 - `spawn` no Native (CONC001)
 - JSON objetos/records no Native (JSN002)
-- Reflection, Annotations, Macros
+- Reflection, Macros; annotations de enum/Classe em valores (`ANNOT001`)
 - Captura em lambdas
 - Database
 - REPL

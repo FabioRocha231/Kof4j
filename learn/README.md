@@ -122,7 +122,7 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 17 | Programação Funcional | Parcial |
 | 18 | Concorrência (spawn) | ✅ (JVM; Native CONC001) |
 | 19 | Packages e Módulos | ✅ Parcial |
-| 20 | Annotations | Planejado |
+| 20 | Annotations | Implementado (JVM/KofJS) |
 | 21 | Java Interop | Planejado |
 | 22 | JVM | ✅ |
 | 23 | Testes (kof test + assert) | ✅ |
@@ -186,7 +186,7 @@ Native e KofJS.
 | Programação Funcional | `17-functional-programming.md` | Planejado |
 | Concorrência | `18-concurrency.md` | Planejado |
 | Packages e Módulos | `19-packages-and-modules.md` | ✅ Parcial |
-| Annotations | `20-annotations.md` | Planejado |
+| Annotations | `20-annotations.md` | Implementado (JVM/KofJS) |
 | Java Interop | `21-java-interoperability.md` | Planejado |
 | JVM | `22-jvm.md` | Planejado |
 | Testes | `23-testing.md` | ✅ Parcial |
