@@ -109,7 +109,12 @@ if [ "$WITH_JDK" = true ]; then
         case "$JDK_EXT" in
             tar.gz) tar -xzf "$TMP_JDK" -C "$DIST_DIR/jdk" --strip-components=1 ;;
             zip)    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('$DIST_DIR/jdk')" "$TMP_JDK"
-                    mv "$DIST_DIR"/jdk/jdk-*/* "$DIST_DIR/jdk/" 2>/dev/null || true ;;
+                    SUB="$(ls -d "$DIST_DIR"/jdk/jdk-* 2>/dev/null | head -1 || true)"
+                    if [ -n "$SUB" ] && [ "$SUB" != "$DIST_DIR/jdk" ]; then
+                        mv "$SUB"/* "$DIST_DIR/jdk/"
+                        rmdir "$SUB" 2>/dev/null || true
+                    fi ;;
+
         esac
         # Layout padronizado: bin/java em todas as plataformas. O tarball do
         # macOS tem a estrutura jdk-*/Contents/Home/... — aplainar.
