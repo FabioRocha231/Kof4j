@@ -164,6 +164,9 @@ private Target target = Target.JVM;
             Files.createDirectories(outputDir);
             Backend backend = selectBackend(target);
             backend.emit(irModule, outputDir, debugInfoEnabled);
+            if (target == Target.ANDROID) {
+                new AndroidProjectWriter().write(outputDir, irModule);
+            }
             return new CompilationResult(true, diagnostics, outputDir);
         } catch (IOException e) {
             diagnostics.error(sourceFile.toString(), 0, 0, 0, "Error reading source file: " + e.getMessage(), "COMP001");
@@ -180,6 +183,9 @@ private Target target = Target.JVM;
             case JVM -> new JvmBackend();
             case NATIVE -> new NativeBackend();
             case JS -> new JsBackend();
+            // Android: ART executa bytecode dex'd — a emissão é a mesma do
+            // backend JVM; o alvo vive nas validações AND* e no empacotamento
+            case ANDROID -> new JvmBackend();
         };
     }
 
@@ -1038,6 +1044,15 @@ private Target target = Target.JVM;
                     if (currentDiagnostics != null) {
                         currentDiagnostics.error("", 0, 0, 0,
                                 "spawn: not supported on the Native target yet (JVM supports it)", "CONC001");
+                    }
+                    yield localIdx;
+                }
+                if (target == Target.ANDROID) {
+                    // ART não tem virtual threads (Java 21) — a semântica de
+                    // spawn não é realizável no alvo hoje
+                    if (currentDiagnostics != null) {
+                        currentDiagnostics.error("", 0, 0, 0,
+                                "spawn: not supported on the Android target yet (no virtual threads on ART)", "AND001");
                     }
                     yield localIdx;
                 }
