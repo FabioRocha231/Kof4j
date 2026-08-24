@@ -42,9 +42,9 @@ final class KofLog {
 
     record LogCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.log is JVM-only for now; native and JS report LOG001. */
+    /** kof.log: JVM + Native (asm próprio); JS reporta LOG001. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM;
+        return target == Target.JVM || target == Target.NATIVE;
     }
 
     static String gapCode() {

@@ -280,7 +280,8 @@ class KofLogE2ETest {
     }
 
     @Test
-    void nativeAndJsReportLog001(@TempDir Path tempDir) throws IOException {
+    void nativeSupportedAndJsReportsLog001(@TempDir Path tempDir) throws IOException {
+        // Native agora tem kof.log próprio (asm); só o JS mantém o gap LOG001
         Path source = tempDir.resolve("Log.kf");
         Files.writeString(source, """
                 main() {
@@ -288,9 +289,8 @@ class KofLogE2ETest {
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("LOG001"),
-                nativeResult.diagnostics().getDiagnostics().toString());
+        assertTrue(nativeResult.success(),
+                "Native supports kof.log: " + nativeResult.diagnostics().getDiagnostics());
 
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
         assertFalse(jsResult.success());
