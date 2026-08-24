@@ -101,6 +101,7 @@ private Target target = Target.JVM;
             if (diagnostics.hasErrors()) {
                 return new CompilationResult(false, diagnostics, outputDir);
             }
+            unit = desugarTests(unit);
             semanticAnalyzer = new SemanticAnalyzer();
             semanticAnalyzer.analyze(unit, diagnostics);
             if (diagnostics.hasErrors()) {
@@ -191,34 +192,7 @@ private Target target = Target.JVM;
         List<IRMethod> topLevelFunctions = new ArrayList<>();
         String moduleName = unit.packageName().isEmpty() ? "Default" : unit.packageName().replace('.', '/');
         int nextTypeId = 10;
-
-        // G6: descobrir os testes antes de baixar — o runner sintetizado
-        // precisa da lista completa (nomes na ordem de declaração).
-        discoveredTests.clear();
-        {
-            int ti = 0;
-            for (AstNode decl : unit.declarations()) {
-                if (decl instanceof TestDeclarationNode t) {
-                    discoveredTests.add(new TestInfo(t.name(), "kof_test_" + ti++));
-                }
-            }
-        }
-        FunctionDeclarationNode harnessMain =
-                testHarnessMode && !discoveredTests.isEmpty() ? buildTestHarnessMain() : null;
-
-        java.util.List<AstNode> decls = new ArrayList<>();
         for (AstNode decl : unit.declarations()) {
-            if (harnessMain != null && decl instanceof FunctionDeclarationNode f && "main".equals(f.name())) {
-                continue; // kof test roda só os testes (como cargo test)
-            }
-            decls.add(decl);
-        }
-        if (harnessMain != null) {
-            decls.add(harnessMain);
-        }
-
-        int testIndex = 0;
-        for (AstNode decl : decls) {
             if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
             else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
             else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
@@ -231,14 +205,6 @@ private Target target = Target.JVM;
                 classes.add(lowerRecord(new RecordDeclarationNode(ent.position(), ent.name(),
                         ent.modifiers(), null, List.of(), components, List.of()),
                         unit.packageName(), nextTypeId++));
-            }
-            else if (decl instanceof TestDeclarationNode test) {
-                // teste vira função void sem argumentos — todos os backends
-                // o executam como qualquer outra função
-                FunctionDeclarationNode asFunc = new FunctionDeclarationNode(test.position(),
-                        List.of(), "void", "kof_test_" + testIndex++,
-                        List.of(), List.of(), List.of(), test.body());
-                topLevelFunctions.add(lowerFunction(asFunc));
             }
             else if (decl instanceof FunctionDeclarationNode func) {
                 topLevelFunctions.add(lowerFunction(func));
@@ -255,6 +221,125 @@ private Target target = Target.JVM;
     }
 
     private final List<IRClass> syntheticClasses = new ArrayList<>();
+
+    /**
+     * G6: desugar `test "nome" { }` para função void `kof_test_N` logo
+     * após o parse — semântica, resolução e lowering tratam os testes como
+     * funções comuns (zero casos especiais). Com o harness ativo, o main
+     * do usuário é substituído pelo runner sintetizado em compile-time
+     * (nunca reflection): cada teste roda isolado por try/catch, PASS/FAIL
+     * por nome e exit code != 0 quando há falha.
+     */
+    private CompilationUnitNode desugarTests(CompilationUnitNode unit) {
+        discoveredTests.clear();
+        java.util.List<AstNode> decls = new ArrayList<>();
+        int ti = 0;
+        for (AstNode d : unit.declarations()) {
+            if (d instanceof TestDeclarationNode t) {
+                String fn = "kof_test_" + ti++;
+                discoveredTests.add(new TestInfo(t.name(), fn));
+                decls.add(new FunctionDeclarationNode(t.position(), List.of(), "void", fn,
+                        List.of(), List.of(), List.of(), t.body()));
+            } else {
+                decls.add(d);
+            }
+        }
+        if (testHarnessMode && !discoveredTests.isEmpty()) {
+            java.util.List<AstNode> withHarness = new ArrayList<>();
+            for (AstNode d : decls) {
+                if (d instanceof FunctionDeclarationNode f && "main".equals(f.name())) {
+                    continue; // kof test roda só os testes (como cargo test)
+                }
+                withHarness.add(d);
+            }
+            withHarness.add(buildTestHarnessMain());
+            decls = withHarness;
+        }
+        return new CompilationUnitNode(unit.position(), unit.packageName(), unit.imports(),
+                java.util.Collections.unmodifiableList(decls));
+    }
+
+
+    /**
+     * Runner de testes sintetizado em compile-time (nunca reflection):
+     *
+     * main() {
+     *     var __kof_failed = 0
+     *     try {
+     *         kof_test_0()
+     *         println("PASS " + "nome")
+     *     } catch (String e) {
+     *         println("FAIL " + "nome" + ": " + e)
+     *         __kof_failed = __kof_failed + 1
+     *     }
+     *     ...
+     *     println("────────")
+     *     println(__kof_failed + " failed of N tests")
+     *     if (__kof_failed > 0) {
+     *         throw "__kof_tests_failed__"
+     *     }
+     * }
+     *
+     * O throw final vira exit code != 0 em todos os targets (JVM: exceção
+     * não capturada; Native: kof_panic; JS: runner reporta 1).
+     */
+    private FunctionDeclarationNode buildTestHarnessMain() {
+        SourcePosition p = new SourcePosition(currentSourceName != null ? currentSourceName : "", 0, 0, 0, 0);
+        List<StatementNode> body = new ArrayList<>();
+        ExpressionNode failedVar = new IdentifierExpr(p, "__kof_failed");
+        body.add(new VarDeclStmt(p, "Int", "__kof_failed",
+                new LiteralExpr(p, ConcreteLiteralKind.INT, "0")));
+        for (int i = 0; i < discoveredTests.size(); i++) {
+            TestInfo test = discoveredTests.get(i);
+            ExpressionNode nameLit = new LiteralExpr(p, ConcreteLiteralKind.STRING, test.name());
+            List<StatementNode> tryBody = new ArrayList<>();
+            tryBody.add(new ExpressionStmt(p, new MethodCallExpr(p, null,
+                    test.functionName(), List.of(), List.of())));
+            tryBody.add(new ExpressionStmt(p, callPrintln(p, concat(p,
+                    new LiteralExpr(p, ConcreteLiteralKind.STRING, "PASS "), nameLit))));
+            ExpressionNode failMsg = concat(p,
+                    new LiteralExpr(p, ConcreteLiteralKind.STRING, "FAIL "), nameLit,
+                    new LiteralExpr(p, ConcreteLiteralKind.STRING, ": "),
+                    new IdentifierExpr(p, "e"));
+            List<StatementNode> catchBody = new ArrayList<>();
+            catchBody.add(new ExpressionStmt(p, callPrintln(p, failMsg)));
+            catchBody.add(new ExpressionStmt(p, new AssignmentExpr(p, failedVar, "=",
+                    new BinaryExpr(p, "+", failedVar,
+                            new LiteralExpr(p, ConcreteLiteralKind.INT, "1")))));
+            body.add(new TryStmt(p, tryBody,
+                    List.of(new CatchClause(p, "String", "e", catchBody)), List.of()));
+        }
+        body.add(new ExpressionStmt(p, callPrintln(p,
+                new LiteralExpr(p, ConcreteLiteralKind.STRING, "────────"))));
+        ExpressionNode summary = concat(p,
+                failedVar,
+                new LiteralExpr(p, ConcreteLiteralKind.STRING, " failed of "
+                        + discoveredTests.size() + " tests"));
+        body.add(new ExpressionStmt(p, callPrintln(p, summary)));
+        // falha = exit code != 0 em todos os targets, sem stack trace:
+        // JVM System.exit / Native syscall exit / JS sentinel no runner
+        body.add(new IfStmt(p,
+                new BinaryExpr(p, ">", failedVar, new LiteralExpr(p, ConcreteLiteralKind.INT, "0")),
+                new BlockStmt(p, List.of(new ExpressionStmt(p, new MethodCallExpr(p,
+                        new IdentifierExpr(p, "process"), "exit", List.of(),
+                        List.of(new LiteralExpr(p, ConcreteLiteralKind.INT, "1")))))),
+                null));
+        return new FunctionDeclarationNode(p, List.of(), "void", "main",
+                List.of(), List.of(), List.of(), List.copyOf(body));
+    }
+
+    private static ExpressionNode concat(SourcePosition p, ExpressionNode... parts) {
+        ExpressionNode acc = parts[0];
+        for (int i = 1; i < parts.length; i++) {
+            acc = new BinaryExpr(p, "+", acc, parts[i]);
+        }
+        return acc;
+    }
+
+    private static ExpressionNode callPrintln(SourcePosition p, ExpressionNode arg) {
+        return new MethodCallExpr(p, null, "println", List.of(), List.of(arg));
+    }
+
     private final java.util.Map<String, List<EntityFieldNode>> entitySchemas = new java.util.HashMap<>();
     private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
     private final java.util.List<TestInfo> discoveredTests = new java.util.ArrayList<>();
@@ -1548,7 +1633,8 @@ private Target target = Target.JVM;
                         String schema = entityName == null ? "" : KofOrm.schemaString(fields);
                         boolean needsClassName = "find".equals(mc.methodName())
                                 || "all".equals(mc.methodName())
-                                || "where".equals(mc.methodName());
+                                || "where".equals(mc.methodName())
+                                || "page".equals(mc.methodName());
                         List<Type> params = new ArrayList<>(ormCall.parameterTypes());
                         if (!isMigrate) {
                             ops.add(new KofLoadLiteral(BuiltinTypes.STRING, table));
@@ -1564,7 +1650,8 @@ private Target target = Target.JVM;
                         if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
                             retType = argTypes.get(argTypes.size() - 1);
                         } else if (typed) {
-                            if ("all".equals(mc.methodName())) {
+                            if ("all".equals(mc.methodName()) || "page".equals(mc.methodName())
+                                    || "where".equals(mc.methodName())) {
                                 retType = new Type.ClassType("kof", "List",
                                         List.of(toType(mc.typeArguments().get(0))));
                             } else if ("find".equals(mc.methodName())) {
@@ -1633,6 +1720,15 @@ private Target target = Target.JVM;
                         ops.add(new KofCall(KofProcess.RESULT, "kof_process_run",
                                 List.of(BuiltinTypes.STRING, KofProcess.STRING_LIST),
                                 KofProcess.RESULT, KofCallKind.FUNCTION));
+                    } else {
+                        // process.exit(code) — todos os targets
+                        KofProcess.ProcessCall exitCall = KofProcess.exitCall(argTypes);
+                        if (exitCall != null) {
+                            localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(new Type.ClassType("kof.process", "Process", List.of()),
+                                    exitCall.function(), exitCall.parameterTypes(), exitCall.returnType(),
+                                    KofCallKind.FUNCTION));
+                        }
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
@@ -2522,7 +2618,8 @@ private Target target = Target.JVM;
                             yield argTypes.get(argTypes.size() - 1);
                         }
                         if (typed && !mc.typeArguments().isEmpty()) {
-                            if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())) {
+                            if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())
+                                    || "page".equals(mc.methodName())) {
                                 yield new Type.ClassType("kof", "List",
                                         List.of(toType(mc.typeArguments().get(0))));
                             }

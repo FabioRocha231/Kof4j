@@ -132,6 +132,9 @@ main() {
     orm.save(db, User(0, "Mel", "mel@kof.dev", 30))       // insert/update
     var u = orm.find<User>(db, 1)                         // PK
     var adultos = orm.where<User>(db, "age", 30)          // query por campo
+    var veteranos = orm.where<User>(db, "age", ">", 30)   // operadores: > < >= <= != LIKE
+    orm.saveAll<User>(db, l)                              // batch (upsert por PK)
+    var pg = orm.page<User>(db, 20, 40)                   // paginação (limit, offset)
     println(orm.count<User>(db))
     orm.delete<User>(db, 1)
     orm.migrate(db, "add-phone", "ALTER TABLE user ADD phone VARCHAR")
@@ -142,7 +145,7 @@ main() {
   tipos e constraints em compile-time (nunca reflection para descobrir
   schema); `generated`, `unique`, PK não-numérica.
 - Backends SQL: H2/SQLite/MySQL via JDBC (JVM).
-- **MongoDB**: `save/find/all/where/delete/count` sobre o driver oficial via
+- **MongoDB**: `save/find/all/where/delete/count/saveAll/page` sobre o driver oficial via
   reflexão compatível (`Bson`/`Class`, sem ClientSession); teste E2E com
   container real (`docker run -d -p 27017:27017 mongo:7`, skip condicional).
 - Migrations versionadas: tabela `kof_migrations`, cada migração roda uma vez.

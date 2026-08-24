@@ -81,6 +81,17 @@ final class KofOrm {
             case "where" -> typed && argTypes.size() == 3
                     ? new OrmCall("kof_orm_where", new Type.ClassType("kof", "List", List.of(STR)),
                     List.of(STR, STR, OBJ), entityName, true)
+                    : typed && argTypes.size() == 4
+                    ? new OrmCall("kof_orm_where_op", new Type.ClassType("kof", "List", List.of(STR)),
+                    List.of(STR, STR, STR, OBJ), entityName, true)
+                    : null;
+            case "saveAll" -> typed && argTypes.size() == 2
+                    ? new OrmCall("kof_orm_save_all", BOOL, List.of(STR, new Type.ClassType("kof", "List", List.of(STR))),
+                    entityName, false)
+                    : null;
+            case "page" -> typed && argTypes.size() == 3
+                    ? new OrmCall("kof_orm_page", new Type.ClassType("kof", "List", List.of(STR)),
+                    List.of(STR, OBJ, OBJ), entityName, true)
                     : null;
             case "migrate" -> argTypes.size() == 3
                     ? new OrmCall("kof_orm_migrate", BOOL, List.of(STR, STR, STR), entityName, false)

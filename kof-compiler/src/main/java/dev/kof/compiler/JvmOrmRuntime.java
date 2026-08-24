@@ -350,6 +350,64 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                             + kof_orm_q(pk) + " = ?", key) >= 0;
                 }
 
+                public static java.util.ArrayList<Object> kof_orm_where_op(String id, String field, String op,
+                        Object value, String table, String schema, String className) throws Exception {
+                    // whitelist: o operador é um literal do usuário, nunca
+                    // concatenado direto no SQL
+                    String sqlOp = switch (op) {
+                        case ">", "<", ">=", "<=", "!=", "LIKE" -> op;
+                        case "==" -> "=";
+                        default -> throw new IllegalArgumentException("ORM operator not allowed: " + op);
+                    };
+                    if (kof_mongo_id(id)) {
+                        Object coll = kof_mongo_coll(id, table);
+                        Object filter = kof_mongo_op(field, op, value);
+                        Object iter = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass()).invoke(coll, filter);
+                        java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1,
+                                java.util.Collection.class).invoke(iter, new java.util.ArrayList<>());
+                        java.util.ArrayList<Object> out = new java.util.ArrayList<>();
+                        Class<?> target = Class.forName(className);
+                        for (Object d : raw) {
+                            out.add(kof_json_bind(target, (java.util.Map<String, Object>) d));
+                        }
+                        return out;
+                    }
+                    return kof_db_query1(id, "SELECT * FROM " + kof_orm_q(table) + " WHERE "
+                            + kof_orm_q(field) + " " + sqlOp + " ?", value, className);
+                }
+
+                public static boolean kof_orm_save_all(String id, java.util.List<?> items, String table, String schema)
+                        throws Exception {
+                    // batch: cada item segue o mesmo caminho do save
+                    // (upsert por PK; no MongoDB, replaceOne com upsert)
+                    for (Object item : items) {
+                        kof_orm_save(id, item, table, schema);
+                    }
+                    return true;
+                }
+
+                public static java.util.ArrayList<Object> kof_orm_page(String id, Object limit, Object offset,
+                        String table, String schema, String className) throws Exception {
+                    int lim = ((Number) limit).intValue();
+                    int off = ((Number) offset).intValue();
+                    if (kof_mongo_id(id)) {
+                        Object coll = kof_mongo_coll(id, table);
+                        Object iter = kof_mongo_method(coll.getClass(), "find", 0).invoke(coll);
+                        Object it2 = kof_mongo_method(iter.getClass(), "skip", 1, int.class).invoke(iter, off);
+                        Object it3 = kof_mongo_method(it2.getClass(), "limit", 1, int.class).invoke(it2, lim);
+                        java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(it3.getClass(), "into", 1,
+                                java.util.Collection.class).invoke(it3, new java.util.ArrayList<>());
+                        java.util.ArrayList<Object> out = new java.util.ArrayList<>();
+                        Class<?> target = Class.forName(className);
+                        for (Object d : raw) {
+                            out.add(kof_json_bind(target, (java.util.Map<String, Object>) d));
+                        }
+                        return out;
+                    }
+                    return kof_db_query2(id, "SELECT * FROM " + kof_orm_q(table)
+                            + " LIMIT ? OFFSET ?", lim, off, className);
+                }
+
 """;
     }
 }

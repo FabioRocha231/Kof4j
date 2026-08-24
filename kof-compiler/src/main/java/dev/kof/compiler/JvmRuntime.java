@@ -36,6 +36,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_write_file")
                 || methodName.equals("kof_spawn")
                 || methodName.equals("kof_process_run")
+                || methodName.equals("kof_process_exit")
                 || methodName.equals("kof_args_list");
     }
 
@@ -100,6 +101,7 @@ static boolean hasRuntimeFn(String methodName) {
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/List;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_process_exit" -> "(I)V";
             case "kof_args_list" -> "([Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
@@ -163,6 +165,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_orm_delete" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Z";
             case "kof_orm_count" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J";
             case "kof_orm_migrate" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_where_op" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_save_all" -> "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_page" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -212,6 +217,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_io_path_extension", "kof_io_path_normalize", "kof_io_path_resolve",
                     "kof_io_path_to_absolute" -> "Ljava/lang/String;";
             case "kof_process_run" -> "Ldev/kof/runtime/KofRuntime$ProcessResult;";
+            case "kof_process_exit" -> "V";
             case "kof_args_list" -> "Ljava/util/ArrayList;";
             case "kof_io_read_bytes" -> "[I";
             case "kof_io_file_size" -> "J";
@@ -925,8 +931,12 @@ static boolean hasRuntimeFn(String methodName) {
                     }
                 }
 
-                public static ProcessResult kof_process_run(String program, List<String> args) {
-                    try {
+                public static void kof_process_exit(int code) {
+                    // process.exit(code): termina na hora, sem stack trace
+                    System.exit(code);
+                }
+
+                public static ProcessResult kof_process_run(String program, List<String> args) {                    try {
                         List<String> cmd = new ArrayList<>();
                         cmd.add(program);
                         cmd.addAll(args);
@@ -1642,6 +1652,27 @@ static boolean hasRuntimeFn(String methodName) {
                 private static Object kof_mongo_eq(String field, Object value) throws Exception {
                     Class<?> filters = Class.forName("com.mongodb.client.model.Filters");
                     return filters.getMethod("eq", String.class, Object.class).invoke(null, field, value);
+                }
+
+                private static Object kof_mongo_op(String field, String op, Object value) throws Exception {
+                    // operador → filtro do MongoDB (whitelist — mesmo
+                    // conjunto aceito no SQL; LIKE vira regex simples)
+                    Class<?> filters = Class.forName("com.mongodb.client.model.Filters");
+                    String m = switch (op) {
+                        case ">" -> "gt";
+                        case "<" -> "lt";
+                        case ">=" -> "gte";
+                        case "<=" -> "lte";
+                        case "!=" -> "ne";
+                        case "==" -> "eq";
+                        case "LIKE" -> "regex";
+                        default -> throw new IllegalArgumentException("ORM operator not allowed: " + op);
+                    };
+                    if ("LIKE".equals(op)) {
+                        String pattern = String.valueOf(value).replace("%", ".*").replace("_", ".");
+                        return filters.getMethod(m, String.class, String.class).invoke(null, field, pattern);
+                    }
+                    return filters.getMethod(m, String.class, Object.class).invoke(null, field, value);
                 }
 
                 private static Object kof_mongo_doc(String key, Object value) throws Exception {

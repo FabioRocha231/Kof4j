@@ -126,24 +126,8 @@ class SemanticAnalyzer {
             case EntityDeclarationNode ent -> analyzeEntity(ent);
             case InterfaceDeclarationNode iface -> analyzeInterface(iface);
             case FunctionDeclarationNode func -> analyzeFunction(func);
-            case TestDeclarationNode test -> analyzeTest(test);
             default -> {}
         }
-    }
-
-    /**
-     * `test "nome" { ... }` — corpo void sem parâmetros; assert falho
-     * propaga como exceção e marca o teste como falho.
-     */
-    private void analyzeTest(TestDeclarationNode test) {
-        String prevFunction = currentFunctionName;
-        currentFunctionName = "test \"" + test.name() + "\"";
-        SymbolTable testScope = currentScope.enterScope();
-        SymbolTable prevScope = currentScope;
-        currentScope = testScope;
-        analyzeBody(test.body(), testScope, Type.PrimitiveType.VOID);
-        currentScope = prevScope;
-        currentFunctionName = prevFunction;
     }
 
     private boolean isLocalName(String name, SymbolTable scope) {
@@ -713,7 +697,8 @@ class SemanticAnalyzer {
                                 yield argTypes.get(argTypes.size() - 1);
                             }
                             if (typed && !mc.typeArguments().isEmpty()) {
-                                if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())) {
+                                if ("all".equals(mc.methodName()) || "where".equals(mc.methodName())
+                                        || "page".equals(mc.methodName())) {
                                     yield new Type.ClassType("kof", "List",
                                             List.of(resolveType(mc.typeArguments().get(0), scope)));
                                 }
@@ -731,6 +716,8 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
                         if (procCall != null) yield procCall.returnType();
+                        KofProcess.ProcessCall exitCall = KofProcess.exitCall(argTypes);
+                        if (exitCall != null) yield exitCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {

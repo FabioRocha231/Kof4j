@@ -82,6 +82,29 @@ public final class KofJsRunner {
                 }
             }
             return 0;
+        } catch (org.graalvm.polyglot.PolyglotException pe) {
+            // process.exit(code): o guest lança { __kof_exit__: code }
+            if (pe.isGuestException()) {
+                try {
+                    Value guest = pe.getGuestObject();
+                    if (guest != null && guest.hasMembers()) {
+                        Value exit = guest.getMember("__kof_exit__");
+                        if (exit != null && exit.isNumber()) {
+                            return exit.asInt();
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+            try {
+                String message = pe.getMessage();
+                if (message != null && !message.isBlank()) {
+                    err.write((message + "\n").getBytes(StandardCharsets.UTF_8));
+                    err.flush();
+                }
+            } catch (IOException ignored) {
+            }
+            return 1;
         } catch (Exception e) {
             try {
                 String message = e.getMessage();

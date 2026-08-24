@@ -351,11 +351,16 @@ private static void build(String[] args) {
             Path tmp;
             try { tmp = Files.createTempDirectory("kof-test-"); }
             catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
-            CompilationResult result = driver.compile(f, tmp, target);
+            // modo harness: `test "nome" { }` vira função + runner sintetizado;
+            // arquivos sem testes compilam idênticos ao modo normal
+            CompilationResult result = driver.compileForTests(f, tmp, target);
             boolean ok = result.success();
             StringBuilder output = new StringBuilder();
             if (ok) {
                 for (Diagnostic d : result.diagnostics().getDiagnostics()) output.append(d.format()).append('\n');
+                if (!driver.discoveredTests().isEmpty()) {
+                    System.out.println("SUITE " + f + " (" + driver.discoveredTests().size() + " tests)");
+                }
                 if (target == Target.JVM) {
                     String className = findMainClass(tmp);
                     if (className == null) {
@@ -401,7 +406,8 @@ private static void build(String[] args) {
             cleanup(tmp);
             if (ok) {
                 passed++;
-                System.out.println("PASS " + f);
+                if (driver.discoveredTests().isEmpty()) System.out.println("PASS " + f);
+                else System.out.print(output);
             } else {
                 failed++;
                 System.out.println("FAIL " + f);

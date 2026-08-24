@@ -447,6 +447,19 @@ final class NativeRuntime {
     }
 
 
+    /** process.exit(code): syscall exit — termina o processo na hora. */
+    private static void emitProcessExit(StringBuilder sb) {
+        sb.append("""
+            .section .text
+            .globl kof_process_exit
+            .type kof_process_exit, @function
+            kof_process_exit:
+                movq %rdi, %rdi
+                movq $60, %rax
+                syscall
+            """);
+    }
+
     private static void emitPanic(StringBuilder sb) {
         sb.append("""
             .section .data
