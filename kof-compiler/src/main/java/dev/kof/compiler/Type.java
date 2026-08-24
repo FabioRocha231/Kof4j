@@ -91,6 +91,16 @@ sealed interface Type {
         return type instanceof ArrayType;
     }
 
+    // Tipos cuja divisão/resto por zero lança ArithmeticException no JVM
+    // (float/double produzem Infinity/NaN e não são inteiros aqui).
+    static boolean isInteger(Type type) {
+        if (!(type instanceof PrimitiveType pt)) return false;
+        return switch (canonicalPrimitiveName(pt.name())) {
+            case "int", "long", "byte", "short", "char" -> true;
+            default -> false;
+        };
+    }
+
     static String canonicalPrimitiveName(String name) {
         return switch (name) {
             case "bool", "boolean", "Bool", "Boolean" -> "bool";

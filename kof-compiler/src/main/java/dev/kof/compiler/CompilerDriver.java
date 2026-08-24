@@ -1078,7 +1078,8 @@ private Target target = Target.JVM;
                         // detectada em compile-time — o compilador conhece a
                         // intenção; o usuário não vê o ArithmeticException do
                         // JVM.
-                        if (("/".equals(be.operator()) || "%".equals(be.operator()))
+                        boolean integerArithmetic = Type.isInteger(accType) && Type.isInteger(rightType);
+                        if (integerArithmetic && ("/".equals(be.operator()) || "%".equals(be.operator()))
                                 && be.right() instanceof LiteralExpr lit
                                 && isZeroLiteral(lit)) {
                             if (currentDiagnostics != null) {

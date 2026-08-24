@@ -263,8 +263,10 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                 private static java.util.ArrayList<Object> kof_mongo_query_all(String id, String table, String className) throws Exception {
                     Object coll = kof_mongo_coll(id, table);
                     Object iter = kof_mongo_method(coll.getClass(), "find", 0).invoke(coll);
-                    java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1, Class.class)
-                            .invoke(iter, java.util.ArrayList.class);
+                    // FindIterable.into(target) preenche a coleção passada —
+                    // o argumento é a instância, não o Class.
+                    java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1,
+                            java.util.Collection.class).invoke(iter, new java.util.ArrayList<>());
                     java.util.ArrayList<Object> out = new java.util.ArrayList<>();
                     Class<?> target = Class.forName(className);
                     for (Object d : raw) {
@@ -278,10 +280,11 @@ optsType.getMethod("upsert", boolean.class).invoke(opts, true);
                         Object coll = kof_mongo_coll(id, table);
                         Object filter = kof_mongo_eq(field, value);
                         java.lang.reflect.Method wm = kof_mongo_method(coll.getClass(), "find", 1, filter.getClass());
-                        System.err.println("[where] method=" + wm + " coll=" + coll.getClass() + " filter=" + filter.getClass());
                         Object iter = wm.invoke(coll, filter);
-                        java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1, Class.class)
-                                .invoke(iter, java.util.ArrayList.class);
+                        // FindIterable.into(target) preenche a coleção passada —
+                        // o argumento é a instância, não o Class.
+                        java.util.List<?> raw = (java.util.List<?>) kof_mongo_method(iter.getClass(), "into", 1,
+                                java.util.Collection.class).invoke(iter, new java.util.ArrayList<>());
                         java.util.ArrayList<Object> out = new java.util.ArrayList<>();
                         Class<?> target = Class.forName(className);
                         for (Object d : raw) {
