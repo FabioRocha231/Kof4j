@@ -48,6 +48,14 @@ case "$ARCH" in
     aarch64|arm64) ARCH=arm64 ;;
 esac
 
+# Adoptium Tooling API usa x64 e aarch64 (não x86_64/arm64) — mapear
+# para o download do JDK embarcado sem mudar o nome do target.
+JDK_ARCH="$ARCH"
+case "$JDK_ARCH" in
+    x86_64) JDK_ARCH=x64 ;;
+    arm64)  JDK_ARCH=aarch64 ;;
+esac
+
 TARGET="$OS-$ARCH"
 DIST_NAME="kof-$VERSION-$TARGET"
 DIST_DIR="$OUT/$DIST_NAME"
@@ -94,7 +102,7 @@ if [ "$WITH_JDK" = true ]; then
         *) echo "package: no JDK mapping for $OS — skipping embedded JDK" >&2 ;;
     esac
     if [ -n "${JDK_OS:-}" ]; then
-        URL="https://api.adoptium.net/v3/binary/latest/21/ga/$JDK_OS/$ARCH/jdk/hotspot/normal/eclipse"
+        URL="https://api.adoptium.net/v3/binary/latest/21/ga/$JDK_OS/$JDK_ARCH/jdk/hotspot/normal/eclipse"
         TMP_JDK="$OUT/.jdk-download.$JDK_EXT"
         curl -fL --retry 3 -o "$TMP_JDK" "$URL"
         mkdir -p "$DIST_DIR/jdk"

@@ -87,7 +87,7 @@ jobs:
           - os: windows-latest
             target: windows-x86_64
           - os: macos-latest
-            target: macos-x86_64
+            target: macos-arm64
     steps:
       - name: Checkout (bumped main)
         uses: actions/checkout@v4
@@ -113,7 +113,12 @@ jobs:
         shell: bash
         run: |
           VERSION=$(cat VERSION)
-          ARCHIVE=$(ls dist/kof-${VERSION}-*.tar.gz dist/kof-${VERSION}-*.zip 2>/dev/null | head -1)
+          ARCHIVE=$(ls dist/kof-${VERSION}-*.tar.gz dist/kof-${VERSION}-*.zip 2>/dev/null | head -1 || true)
+          if [ -z "$ARCHIVE" ]; then
+            echo "no archive found in dist/ for kof-${VERSION}" >&2
+            ls -la dist/ >&2 || true
+            exit 1
+          fi
           echo "validating $ARCHIVE"
           rm -rf /tmp/kof-validate && mkdir -p /tmp/kof-validate
           if [[ "$ARCHIVE" == *.zip ]]; then
