@@ -1,10 +1,13 @@
 # KofAndroid — o target Android da Kof
 
-> **Status: proposto (design).** Este documento define o quarto target da Kof.
-> A base técnica necessária já existe e está funcional: herança de classes
+> **Status: Fase 1 implementada.** `kof build --target android` gera o
+> projeto Maven + APK pipeline com o host Activity escrito EM KOF
+> (`dev/kof/android-host.kf`) — zero Java, zero Kotlin, zero Gradle no
+> projeto gerado; dependências resolvidas pelo Kof (ExternalClasspath).
+> A base de compilador que isso exige está funcional: herança de classes
 > externas, `super(...)`/`super.metodo()` com INVOKESPECIAL correto,
-> annotations emitidas no bytecode e resolução de assinaturas via
-> `ExternalClasspath` (`.jar`/`.aar` fornecidos pelo Gradle).
+> chamadas encadeadas em receivers externos, construtores e campos
+> externos, annotations emitidas no bytecode.
 
 ## O que é
 
@@ -81,11 +84,13 @@ MainActivity (sintetizada pelo target)
               └── widgets → DOM (mesma camada de render do desktop)
 ```
 
-A `MainActivity` é gerada pelo compilador — o usuário nunca a escreve.
-Quem precisa de UI **nativa de verdade** usa interop direta: com
-`ExternalClasspath` no classpath, `class Tela extends android.view.View`
-com `super.onCreate(...)` já compila hoje (ver
-[learn/10-inheritance.md](../../learn/10-inheritance.md)).
+A `MainActivity` é escrita **em Kof** (`dev/kof/android-host.kf`) e
+compilada junto com o programa pelo mesmo frontend — o usuário nunca
+escreve Activity em Java. Quem precisa de UI **nativa de verdade** usa
+interop direta: com `ExternalClasspath` no classpath,
+`class Tela extends android.view.View` com `super.onCreate(...)` e
+chamadas encadeadas (`web.getSettings().setJavaScriptEnabled(true)`)
+já compilam hoje (ver [learn/10-inheritance.md](../../learn/10-inheritance.md)).
 
 ## Ciclo de vida e convenções
 
@@ -107,33 +112,46 @@ Regras de convenção (nenhuma configuração obrigatória):
 
 ## Fases
 
-### Fase 1 — Gradle empacota, Kof compila
+### Fase 1 — implementada: pipeline Maven, código 100% Kof
 
 `kof build app.kf --target android` produz:
 
 ```text
-dist/android/
-├── settings.gradle.kts
-├── app/
-│   ├── build.gradle.kts          (usa libs/kof-app.jar)
-│   └── src/main/
-│       ├── AndroidManifest.xml   (gerado; aponta MainActivity sintetizada)
-│       ├── java/…                (vazio: tudo no jar)
-│       ├── res/                  (ícone/tema mínimos)
-│       └── assets/kof/main.mjs   (saída KofJS do mesmo programa)
-└── libs/kof-app.jar              (bytecode das classes Kof + runtime necessário)
+<output>/
+├── pom.xml                          ← cola do pipeline SDK; NENHUMA <dependencies>
+├── src/main/AndroidManifest.xml     ← dados da plataforma (label, launcher)
+├── src/main/assets/kof/
+│   ├── index.html, Default.mjs      ← saída KofJS do MESMO programa
+│   └── kof-runtime*.mjs
+├── libs/kof-app.jar                 ← bytecode: programa + host Activity EM KOF
+└── README.txt
 ```
 
-O desenvolvedor roda `gradle assembleDebug` (ou Android Studio). Isso
-mantém a Fase 1 honesta e útil sem exigir SDK toolchain licenciado dentro
-da distribuição Kof.
+Pontos centrais:
 
-### Fase 2 — standalone
+- **Zero Java. Zero Kotlin. Zero Gradle.** A host `MainActivity` é escrita
+  EM KOF (`kof-compiler/src/main/resources/dev/kof/android-host.kf`),
+  compilada junto pelo mesmo frontend e vai no jar. O usuário que quiser
+  um host próprio declara `class MainActivity extends Activity` em Kof —
+  a versão embutida cede o lugar.
+- **Dependências geridas pelo Kof**: assinaturas de `android.*` vêm do
+  ExternalClasspath (o android.jar que o fluxo do projeto fornecer). O
+  `pom.xml` não declara dependência nenhuma — ele só orquestra os
+  binários oficiais do SDK nas fases do Maven (antrun puro):
+  `d8 → aapt2 link -A assets → zipalign → apksigner`.
+- Uso:
 
-Quando o SDK Android estiver presente (`kof doctor --android` detecta),
-`kof build --target android --apk` invoca `aapt2`, `d8` e `apksigner`
-diretamente e entrega o APK — sem Gradle no caminho. Mesma semântica,
-menos cerimônia.
+```bash
+ANDROID_HOME=... kof build app.kf --target android --output app-android
+cd app-android && mvn verify
+adb install target/kof-app.apk
+```
+
+### Fase 2 — refinamentos
+
+- ícone/label derivados do programa (hoje: label fixa "Kof App");
+- modo standalone sem Maven chamando aapt2/d8/apksigner direto do CLI;
+- release signing parametrizável (`--keystore`).
 
 ## Restrições e gaps (diagnosticados em compile-time)
 

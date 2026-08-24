@@ -74,6 +74,17 @@
                         <useIncrementalCompilation>false</useIncrementalCompilation>
                     </configuration>
                 </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.4</version>
+                    <configuration>
+                        <!-- -Xshare:off: o CDS do fork quebra o class loading
+                             com NoClassDefFoundError intermitente de classes
+                             que existem no classpath -->
+                        <argLine>-Xshare:off -Xmx1g</argLine>
+                    </configuration>
+                </plugin>
             </plugins>
         </pluginManagement>
     </build>

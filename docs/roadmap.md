@@ -37,8 +37,10 @@ Objetivos:
   (`extends Activity`, `super.onCreate`, annotations androidx);
 - gaps honestos por compile-time (`AND001..003`).
 
-Estado atual: 📐 proposto — pré-requisitos funcionando (herança externa,
-super/INVOKESPECIAL, annotations, ExternalClasspath).
+Estado atual: 🟡 Fase 1 implementada — `kof build --target android` gera
+projeto Maven (zero Java/Kotlin/Gradle) com host Activity EM KOF
+(`android-host.kf`) compilada pelo próprio frontend; pipeline
+d8/aapt2/apksigner via pom sem dependências.
 
 ### Kof4J — JVM
 

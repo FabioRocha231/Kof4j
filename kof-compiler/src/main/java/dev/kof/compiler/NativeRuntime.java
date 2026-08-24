@@ -3280,6 +3280,8 @@ final class NativeRuntime {
                 ret
 
             # .Lcfg_file_find(rdi=path C-string, rsi=key KofString*) -> KofString*|0
+            # Ponteiros ABSOLUTOS apenas: rbx=buffer base, r14=fim dos dados,
+            # r13=key data, r15=key len, r12=cursor de linha, r10/r8/r11=temp.
             .Lcfg_file_find:
                 pushq %rbx
                 pushq %r12
@@ -3296,53 +3298,53 @@ final class NativeRuntime {
                 syscall
                 testq %rax, %rax
                 js .Lcff_fail
-                movq %rax, %r13              # fd
-                movq %r13, %rdi
-                leaq 0(%rsp), %rsi
+                movq %rax, %rcx              # fd
+                movq %rcx, %rdi
+                movq %rsp, %rsi
                 movq $16384, %rdx
                 xorq %rax, %rax              # SYS_read
                 syscall
-                movq %rax, %r14              # len
-                movq %r13, %rdi
+                movq %rsp, %rbx              # rbx = buffer base (fixo)
+                movq %rax, %r14              # r14 = bytes lidos
+                movq %rcx, %rdi
                 movq $3, %rax                # close
                 syscall
                 testq %r14, %r14
                 jle .Lcff_fail
-                leaq 24(%r12), %r13          # r13 = key data (fd ja fechado)
-                movl 16(%r12), %r15d         # r15d = key len
-                xorq %rbx, %rbx              # pos
+                leaq 24(%r12), %r13          # r13 = endereco dos dados da chave
+                movl 16(%r12), %r15d         # r15 = key len
+                leaq (%rbx,%r14), %r9        # r9 = fim dos dados
+                movq %rbx, %r12              # r12 = inicio da linha corrente
             .Lcff_line:
-                cmpq %r14, %rbx
-                jge .Lcff_fail
-                movq %rbx, %rcx              # fim da linha
+                cmpq %r9, %r12
+                jae .Lcff_fail
+                movq %r12, %r10              # acha o fim da linha (LF ou fim)
             .Lcff_findeol:
-                cmpq %r14, %rcx
-                jge .Lcff_haveeol
-                cmpb $10, (%rsp,%rcx)
+                cmpq %r9, %r10
+                jae .Lcff_haveeol
+                cmpb $10, (%r10)
                 je .Lcff_haveeol
-                incq %rcx
+                incq %r10
                 jmp .Lcff_findeol
             .Lcff_haveeol:
-                movq %rcx, %r8               # eol exclusivo
-                movq %rbx, %r9               # trim esquerdo
+                movq %r12, %r11              # trim esquerdo -> r11
             .Lcff_tls:
-                cmpq %r8, %r9
-                jge .Lcff_blank
-                movzbl (%rsp,%r9), %eax
+                cmpq %r10, %r11
+                jae .Lcff_blank
+                movzbl (%r11), %eax
                 cmpb $32, %al
                 je .Lcff_tls1
                 cmpb $9, %al
-                je .Lcff_tls1
-                jmp .Lcff_tle
+                jne .Lcff_tle
             .Lcff_tls1:
-                incq %r9
+                incq %r11
                 jmp .Lcff_tls
             .Lcff_tle:
-                movq %r8, %r10               # trim direito (' ', tab, CR)
+                movq %r10, %r8               # trim direito -> r8 (exclusivo)
             .Lcff_tle_loop:
-                cmpq %r9, %r10
-                jle .Lcff_blank
-                movzbl -1(%rsp,%r10), %eax
+                cmpq %r11, %r8
+                jbe .Lcff_blank
+                movzbl -1(%r8), %eax
                 cmpb $32, %al
                 je .Lcff_tle1
                 cmpb $9, %al
@@ -3351,59 +3353,58 @@ final class NativeRuntime {
                 je .Lcff_tle1
                 jmp .Lcff_hash
             .Lcff_tle1:
-                decq %r10
+                decq %r8
                 jmp .Lcff_tle_loop
             .Lcff_blank:
-                movq %r8, %rbx
-                incq %rbx
+                leaq 1(%r10), %r12
                 jmp .Lcff_line
             .Lcff_hash:
-                cmpb $35, (%rsp,%r9)         # '#'
+                cmpb $35, (%r11)             # '#'
                 je .Lcff_blank
-                movq %r9, %rcx               # '=' dentro de [r9,r10)
-            .Lcff_eq:
-                cmpq %r10, %rcx
-                jge .Lcff_blank
-                cmpb $61, (%rsp,%rcx)
-                je .Lcff_keytrim
+                movq %r11, %rcx              # procura '=' em [r11,r8)
+            .Lcff_eqscan:
+                cmpq %r8, %rcx
+                jae .Lcff_blank
+                cmpb $61, (%rcx)
+                je .Lcff_eqfound
                 incq %rcx
-                jmp .Lcff_eq
+                jmp .Lcff_eqscan
+            .Lcff_eqfound:
+                movq %rcx, %r12              # salva o offset do '=' 
             .Lcff_keytrim:
-                movq %rcx, %r11              # chave direita-aparada [r9,r11)
+                movq %rcx, %rdi              # chave direita-aparada: [r11, rdi)
             .Lcff_keyt:
-                cmpq %r9, %r11
-                jle .Lcff_keycmp
-                movzbl -1(%rsp,%r11), %eax
+                cmpq %r11, %rdi
+                jbe .Lcff_blank
+                movzbl -1(%rdi), %eax
                 cmpb $32, %al
                 je .Lcff_keyt1
                 cmpb $9, %al
                 jne .Lcff_keycmp
             .Lcff_keyt1:
-                decq %r11
+                decq %rdi
                 jmp .Lcff_keyt
             .Lcff_keycmp:
-                movq %r11, %rdx
-                subq %r9, %rdx
+                movq %rdi, %rdx              # comprimento da chave na linha
+                subq %r11, %rdx
                 cmpq %r15, %rdx
                 jne .Lcff_valskip
-                xorq %rdx, %rdx
-                movq %rcx, %r12              # salva o offset do '=' (a key KofString ja foi consumida)
+                xorq %rcx, %rcx              # indice i
             .Lcff_cmpline:
-                cmpq %r15, %rdx
-                jge .Lcff_matched
-                movzbl (%rsp,%r9), %eax
-                movzbl (%r13,%rdx), %ecx
-                cmpl %ecx, %eax
+                cmpq %r15, %rcx
+                jae .Lcff_matched
+                movzbl (%r11,%rcx), %eax     # linha[i]
+                movzbl (%r13,%rcx), %edx     # key[i]
+                cmpb %dl, %al
                 jne .Lcff_valskip
-                incq %rdx
-                incq %r9
+                incq %rcx
                 jmp .Lcff_cmpline
             .Lcff_matched:
-                leaq 1(%r12), %rsi           # vs = '=' + 1 (offset)
+                leaq 1(%r12), %rsi           # vs = eq + 1 (r12 guarda o offset do '=')
             .Lcff_vtls:
-                cmpq %r10, %rsi
-                jge .Lcff_vmk
-                movzbl (%rsp,%rsi), %eax
+                cmpq %r8, %rsi
+                jae .Lcff_vmk
+                movzbl (%rsi), %eax
                 cmpb $32, %al
                 je .Lcff_vtls1
                 cmpb $9, %al
@@ -3412,14 +3413,14 @@ final class NativeRuntime {
                 incq %rsi
                 jmp .Lcff_vtls
             .Lcff_vmk:
-                movq %r10, %rdx
-                subq %rsi, %rdx              # vallen = fim da linha - inicio do valor
-                leaq (%rsp,%rsi), %rdi       # endereco do valor (rsi e OFFSET!)
+                movq %r8, %rax               # vallen = fim efetivo - inicio do valor
+                subq %rsi, %rax
+                movq %rsi, %rdi              # rdi = endereco do valor
+                movl %eax, %esi              # ESI = vallen (contrato do from_literal!)
                 call kof_string_from_literal
                 jmp .Lcff_exit
             .Lcff_valskip:
-                movq %r8, %rbx
-                incq %rbx
+                leaq 1(%r10), %r12
                 jmp .Lcff_line
             .Lcff_fail:
                 xorl %eax, %eax
@@ -3431,7 +3432,6 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
-
             # .Lcfg_envname(rdi=key KofString*, rsi=dest) -> escreve "KOF_<KEY>" C-string
             .Lcfg_envname:
                 movl 16(%rdi), %ecx          # keylen
@@ -3503,7 +3503,7 @@ final class NativeRuntime {
                 # monta "kof.<profile>.config" no buffer do frame
                 movq %rax, %r12              # profile KofString (antes de clobber rax)
                 movq %rsp, %r8
-                movl $1699939949, %eax       # "kof." little-endian
+                movl $778465131, %eax        # "kof." little-endian (6B 6F 66 2E)
                 movl %eax, 0(%r8)
                 movq $4, %rax
                 movl 16(%r12), %ecx          # profile len

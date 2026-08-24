@@ -191,6 +191,17 @@ private Target target = Target.JVM;
         boolean userHasHost = unit.declarations().stream()
                 .anyMatch(d -> d instanceof TypeDeclarationNode t && "MainActivity".equals(t.name()));
         if (userHasHost) return unit;
+        // sem android.jar no ExternalClasspath o host não resolve — avisar
+        // (AND004) e seguir com o programa puro em vez de SEM015 confuso
+        if (externalClasspath == null || !externalClasspath.knows("android/app/Activity")) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.warning("", 0, 0, 0,
+                        "target android sem android.jar no ExternalClasspath: "
+                                + "a host Activity não foi incluída no jar",
+                        "AND004");
+            }
+            return unit;
+        }
         try (var in = CompilerDriver.class.getResourceAsStream("/dev/kof/android-host.kf")) {
             String hostSource = in != null
                     ? new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
@@ -1665,8 +1676,7 @@ private Target target = Target.JVM;
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-} else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
-                            && KofDb.isDbNamespace(rid.name())) {
+} else if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
