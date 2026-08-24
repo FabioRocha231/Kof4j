@@ -96,6 +96,22 @@ public final class Main {
             return;
         }
 
+        // Target nativo: executa o ELF produzido — não há classes JVM aqui
+        if (target == Target.NATIVE) {
+            Path bin = tempDir.resolve("Default/Main");
+            if (!Files.exists(bin)) {
+                System.err.println("no native binary produced");
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+            List<String> cmd = new ArrayList<>();
+            cmd.add(bin.toString());
+            for (int i = argStart; i < args.length; i++) cmd.add(args[i]);
+            executeProcess(cmd, tempDir);
+            return;
+        }
+
         String className = findMainClass(tempDir);
         if (className == null) {
             System.err.println("no main class found");
