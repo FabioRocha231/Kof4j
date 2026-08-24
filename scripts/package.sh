@@ -111,6 +111,12 @@ if [ "$WITH_JDK" = true ]; then
             zip)    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('$DIST_DIR/jdk')" "$TMP_JDK"
                     mv "$DIST_DIR"/jdk/jdk-*/* "$DIST_DIR/jdk/" 2>/dev/null || true ;;
         esac
+        # Layout padronizado: bin/java em todas as plataformas. O tarball do
+        # macOS tem a estrutura jdk-*/Contents/Home/... — aplainar.
+        if [ -d "$DIST_DIR/jdk/Contents/Home" ]; then
+            mv "$DIST_DIR"/jdk/Contents/Home/* "$DIST_DIR/jdk/"
+            rm -rf "$DIST_DIR/jdk/Contents"
+        fi
         rm -f "$TMP_JDK"
         echo "package: embedded JDK ready at jdk/"
     fi

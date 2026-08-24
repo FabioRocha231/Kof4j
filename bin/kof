@@ -30,6 +30,12 @@ JAVA="$(command -v java || true)"
 if [ -x "$KOF_HOME/jdk/bin/java" ]; then
     JAVA="$KOF_HOME/jdk/bin/java"
     EMBEDDED=true
+elif [ -x "$KOF_HOME/jdk/bin/java.exe" ]; then
+    JAVA="$KOF_HOME/jdk/bin/java.exe"
+    EMBEDDED=true
+elif [ -x "$KOF_HOME/jdk/Contents/Home/bin/java" ]; then
+    JAVA="$KOF_HOME/jdk/Contents/Home/bin/java"
+    EMBEDDED=true
 fi
 if [ -z "$JAVA" ]; then
     echo "kof: no java found — install the official Kof distribution (it embeds a JDK)" >&2
