@@ -230,7 +230,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
-| kof.config (env, arquivos, profiles, typed) | ✅ | 🟡 WIP (asm; defaults/env OK) | CONF001 |
+| kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | CONF001 |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
 | kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite; MySQL WIP) | DB001 |
@@ -317,8 +317,9 @@ main() {
 - Precedência: arquivo explícito (`KOF_CONFIG`) > env `KOF_<KEY>` >
   profile (`kof.<KOF_PROFILE>.config`) > arquivo padrão (`kof.config`).
 - Tipagem em compile-time; valores ausentes/inválidos → default.
-- Native: em progresso (asm próprio — defaults/env/arquivo explícito já
-  funcionam manualmente; perfil e casos raros pendentes, WIP no stash).
+- Native: implementação asm própria completa — precedência total
+  (KOF_CONFIG > env KOF_<KEY> > perfil > kof.config), typed com default
+  em valor inválido, trim e comentários (`NativeConfigE2ETest`, 8 testes).
   JS reporta `CONF001`. Docs: `docs/stdlib-config.md`
   (`KofConfigE2ETest`, 8 E2E).
 
