@@ -748,7 +748,7 @@ class SemanticAnalyzer {
                         yield Type.UnknownType.UNKNOWN;
                     }
                     Type recvType = inferType(mc.receiver(), scope);
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofDb.isDbNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
@@ -762,14 +762,14 @@ class SemanticAnalyzer {
                         }
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofLog.isLogNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
                         if (logCall != null) yield logCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofOrm.isOrmNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         boolean typed = !mc.typeArguments().isEmpty();
@@ -803,35 +803,35 @@ class SemanticAnalyzer {
                         if (exitCall != null) yield exitCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofConfig.isConfigNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
                         if (cfgCall != null) yield cfgCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofHttp.isHttpNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
                         if (httpCall != null) yield httpCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofMq.isMqNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
                         if (mqCall != null) yield mqCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofSecurity.isSecurityNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
                         if (secCall != null) yield secCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofTetris.isTetrisNamespace(rid.name())) {
                         KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
                                 mc.arguments().size());
                         if (tetrisCall != null) {
@@ -840,7 +840,7 @@ class SemanticAnalyzer {
                         }
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofWeb.isWebNamespace(rid.name())
                             && "app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         yield KofWeb.APP;
                     }
@@ -992,6 +992,34 @@ class SemanticAnalyzer {
                         resolvedConstructors.put(ne, ctor);
                     }
                     yield new Type.ClassType(cs.packageName(), cs.name(), List.of());
+                }
+                // classe EXTERNA (android.webkit.WebView etc.): qualifica pelo
+                // import e registra o construtor do classpath — sem isso a
+                // variável fica Unknown e toda a cadeia de chamadas seguinte
+                // perde o tipo
+                String qname = ne.typeName();
+                if (!qname.contains(".")) {
+                    Type viaImport = qualifyViaImports(qname);
+                    if (viaImport != null) qname = viaImport instanceof Type.ClassType qt
+                            ? qt.packageName() + "." + qt.name() : qname;
+                }
+                if (qname.contains(".") && externalTypes != null) {
+                    String internal = qname.replace('.', '/');
+                    if (externalTypes.knows(internal)) {
+                        ExternalClasspath.MethodSignature sig =
+                                externalTypes.resolveConstructor(internal, ne.arguments().size());
+                        if (sig != null) {
+                            List<Type> params = new ArrayList<>();
+                            for (String d : sig.parameterDescriptors()) {
+                                params.add(ExternalClasspath.typeFromDescriptor(d));
+                            }
+                            resolvedConstructors.put(ne, new SymbolTable.ConstructorSymbol(
+                                    internal.substring(internal.lastIndexOf('/') + 1), params, 1));
+                        }
+                        int lastDot = qname.lastIndexOf('.');
+                        yield new Type.ClassType(qname.substring(0, lastDot),
+                                qname.substring(lastDot + 1), List.of());
+                    }
                 }
                 yield Type.UnknownType.UNKNOWN;
             }

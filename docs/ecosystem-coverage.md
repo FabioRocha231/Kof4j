@@ -183,7 +183,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| event bus / pub-sub | `PLANNED` | — | — | — | — | concurrency |
+| event bus / pub-sub | ✅ `kof.mq` (publish/subscribe/unsubscribe + queue/push/pop) — JVM; MQ001 no Native/JS | KofMq | KofMqE2ETest (4) | — | — | concurrency |
 | queues (`kof.concurrent.Queue`) | `PLANNED` | — | — | — | — | concurrency |
 | Kafka / AMQP / Pulsar | `PLANNED` (adapters externos) | — | — | — | — | roadmap.md |
 | retry / dead-letter / backpressure | `PLANNED` | — | — | — | — | — |
@@ -321,7 +321,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | # | Gap | Impacto | Local proposto |
 |---|-----|---------|----------------|
 | G1 | ~~**Database/SQL** inexistente~~ — ✅ **nível 0 implementado**: `kof.db` (JDBC JVM, SQLite nativo, MySQL WIP) + `kof.orm` (entity, CRUD, where, migrate, MongoDB) | apps reais com persistência no JVM/Native-SQLite | próximo: query DSL tipada, pools, kof.db fora do JVM |
-| G2 | **HTTP client** inexistente | integrações, testes, frontend | `kof.http` client (get/post/put/delete, headers, JSON, timeout) |
+| G2 | ~~**HTTP client** inexistente~~ — ✅ **implementado**: `kof.http` client (get/post/put/delete/patch/options/status/timeout, headers, HTTP002 no Native/JS) | integrações, testes, frontend | `kof.http` client (get/post/put/delete, headers, JSON, timeout) |
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (JVM; arquivo > env > profile > default, typed `str/int/long/bool`); falta Native/JS (CONFIG001) | — | estender targets (P0/G10) |
 | G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
 | G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM + Native asm; LOG001 só no JS); faltam health checks, metrics e request IDs no Native/JS | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |

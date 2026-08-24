@@ -250,6 +250,9 @@ private Target target = Target.JVM;
     private Type qualifyViaImports(String name) {
         if (name.contains(".") || name.contains("<") || name.endsWith("[]")) return null;
         if (currentUnit == null) return null;
+        if (System.getProperty("kof.trace") != null && name.equals("WebView")) {
+            System.err.println("QVI WebView imports=" + currentUnit.imports());
+        }
         for (String imp : currentUnit.imports()) {
             if (!imp.endsWith("*") && imp.endsWith("." + name)) {
                 String pkg = imp.substring(0, imp.lastIndexOf('.'));
@@ -1445,10 +1448,6 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case MethodCallExpr mc -> {
-                if (System.getProperty("kof.trace") != null) {
-                    System.err.println("ENTER ." + mc.methodName() + " recvNull=" + (mc.receiver() == null)
-                            + " owner=" + owner);
-                }
                 // User-defined classes take precedence over builtin helpers
                 // with the same name: ClassName(args) is implicit construction.
                 SymbolTable.ClassSymbol userCtor = semanticAnalyzer != null
@@ -1625,7 +1624,8 @@ private Target target = Target.JVM;
                             new Type.ClassType("java.io", "PrintStream", List.of()),
                             mc.methodName(), List.of(BuiltinTypes.STRING),
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
-                } else if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName()) && mc.arguments().size() == 1) {
                         Type argType = inferExprType(mc.arguments().get(0), locals);
                         if (!jsonSupported(argType, false)) {
@@ -1665,7 +1665,8 @@ private Target target = Target.JVM;
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-} else if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+} else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofDb.isDbNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
@@ -1714,7 +1715,8 @@ private Target target = Target.JVM;
                                 dbCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofOrm.isOrmNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     boolean typed = !mc.typeArguments().isEmpty();
@@ -1797,7 +1799,8 @@ private Target target = Target.JVM;
                                 ormCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
@@ -1866,7 +1869,8 @@ private Target target = Target.JVM;
                         }
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofHttp.isHttpNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
@@ -1891,7 +1895,8 @@ private Target target = Target.JVM;
                                 httpCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofMq.isMqNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
@@ -1916,7 +1921,8 @@ private Target target = Target.JVM;
                                 mqCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofConfig.isConfigNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
@@ -1941,7 +1947,8 @@ private Target target = Target.JVM;
                                 cfgCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofSecurity.isSecurityNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
@@ -1967,7 +1974,8 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofTetris.isTetrisNamespace(rid.name())) {
                     KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
                             mc.arguments().size());
                     if (tetrisCall != null) {
@@ -1992,7 +2000,8 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         if (target != Target.JVM) {
                             if (currentDiagnostics != null) {
@@ -2128,10 +2137,6 @@ private Target target = Target.JVM;
                     }
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
-                    if (System.getProperty("kof.trace") != null) {
-                        System.err.println("TRACE ." + mc.methodName() + " recvType=" + recvType
-                                + " resolved=" + (semanticAnalyzer.getResolvedMethod(mc) != null));
-                    }
                     if (KofUi.isUiType(recvType)) {
                         localIdx = emitUiInstance(recvType, mc, ops, owner, localIdx, locals);
                         yield localIdx;
@@ -2309,6 +2314,33 @@ private Target target = Target.JVM;
                     }
                     String runtimeMethod = BuiltinTypes.isString(recvType)
                             ? stringRuntimeMethod(mc.methodName()) : null;
+                    // receiver de classe EXTERNA sem símbolo resolvido: última
+                    // linha de defesa — assinatura vem do classpath, senão o
+                    // descritor sairia errado (owner vazio / retorno Object)
+                    if (resolvedMethod == null && runtimeMethod == null
+                            && mc.receiver() != null && currentDiagnostics != null) {
+                        Type rt2 = semanticAnalyzer != null
+                                ? semanticAnalyzer.getExpressionType(mc.receiver())
+                                : Type.UnknownType.UNKNOWN;
+                        if (!(rt2 instanceof Type.ClassType)) {
+                            rt2 = inferExprType(mc.receiver(), locals);
+                        }
+                        if (rt2 instanceof Type.ClassType ct2 && !ct2.packageName().isEmpty()
+                                && externalClasspath != null
+                                && externalClasspath.knows(ct2.internalName())) {
+                            ExternalClasspath.MethodSignature sig = externalClasspath.resolveMethod(
+                                    ct2.internalName(), mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> formal = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    formal.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                recvType = ct2;
+                                methodParamTypes = formal;
+                                methodReturnType = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                            }
+                        }
+                    }
                     ops.add(new KofCall(recvType,
                             runtimeMethod != null ? runtimeMethod : mc.methodName(),
                             methodParamTypes, methodReturnType, callKind));
@@ -3557,6 +3589,14 @@ private Target target = Target.JVM;
             if (locals.get(i).name().equals(name)) return locals.get(i);
         }
         return null;
+    }
+
+    /**
+     * Namespace da stdlib (web/db/log/...) sombreado por variável local:
+     * "var web = ..." torna "web.foo()" chamada de instância, não de namespace.
+     */
+    private boolean isLocalVarName(String name, List<IRLocalVariable> locals) {
+        return findLocalVar(name, locals) != null;
     }
 
     private int findLocalIndex(String name, List<IRLocalVariable> locals) {

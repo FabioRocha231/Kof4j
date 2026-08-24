@@ -3387,23 +3387,19 @@ final class NativeRuntime {
                 cmpq %r15, %rdx
                 jne .Lcff_valskip
                 xorq %rdx, %rdx
-                pushq %rcx                   # salva o offset do '=' (rcx e scratch do loop)
+                movq %rcx, %r12              # salva o offset do '=' (a key KofString ja foi consumida)
             .Lcff_cmpline:
                 cmpq %r15, %rdx
                 jge .Lcff_matched
                 movzbl (%rsp,%r9), %eax
                 movzbl (%r13,%rdx), %ecx
                 cmpl %ecx, %eax
-                jne .Lcff_keyfail
+                jne .Lcff_valskip
                 incq %rdx
                 incq %r9
                 jmp .Lcff_cmpline
-            .Lcff_keyfail:
-                popq %rcx                    # rebalanceia e vai para a proxima linha
-                jmp .Lcff_valskip
             .Lcff_matched:
-                popq %rcx                    # recupera o offset do '='
-                leaq 1(%rcx), %rsi           # vs = '=' + 1
+                leaq 1(%r12), %rsi           # vs = '=' + 1 (offset)
             .Lcff_vtls:
                 cmpq %r10, %rsi
                 jge .Lcff_vmk
@@ -3505,10 +3501,7 @@ final class NativeRuntime {
                 testq %rax, %rax
                 jz .Lcl_defaultfile
                 # monta "kof.<profile>.config" no buffer do frame
-                movq %rsp, %r8
-                movl $1699939949, %eax       # "kof."
-                movl %eax, 0(%r8)
-                movq %rax, %r12              # profile KofString
+                movq %rax, %r12              # profile KofString (antes de clobber rax)
                 movq %rsp, %r8
                 movl $1699939949, %eax       # "kof." little-endian
                 movl %eax, 0(%r8)
