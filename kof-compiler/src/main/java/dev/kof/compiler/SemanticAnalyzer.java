@@ -10,6 +10,36 @@ class SemanticAnalyzer {
 
     private SymbolTable currentScope;
     private CompilationUnitNode currentUnit;
+
+    /** Classpath externo (android.jar etc.) para resolver membros de classes fora da IR. */
+    private ExternalClasspath externalTypes;
+
+    void setExternalTypes(ExternalClasspath cp) {
+        this.externalTypes = cp;
+    }
+
+    private boolean isExternal(Type.ClassType ct) {
+        return externalTypes != null && !ct.packageName().isEmpty()
+                && externalTypes.knows(ct.internalName());
+    }
+
+    /**
+     * Nome simples declarado em import vira tipo qualificado
+     * ("import android.webkit.WebView" → ClassType("android.webkit","WebView")).
+     * Sem isso, tipos de classes externas saem sem pacote e o descritor
+     * JVM quebra.
+     */
+    private Type qualifyViaImports(String name) {
+        if (name.contains(".") || name.contains("<") || name.endsWith("[]")) return null;
+        if (currentUnit == null) return null;
+        for (String imp : currentUnit.imports()) {
+            if (!imp.endsWith("*") && imp.endsWith("." + name)) {
+                String pkg = imp.substring(0, imp.lastIndexOf('.'));
+                return new Type.ClassType(pkg, name, List.of());
+            }
+        }
+        return null;
+    }
     private final Map<String, SymbolTable.ClassSymbol> knownClasses = new HashMap<>();
     private final java.util.Set<String> interfaceNames = new java.util.HashSet<>();
     private final Map<ExpressionNode, Type> expressionTypes = new IdentityHashMap<>();
@@ -92,8 +122,18 @@ class SemanticAnalyzer {
     private void preDeclareType(AstNode decl) {
         if (decl instanceof ClassDeclarationNode cls) {
             SymbolTable members = new SymbolTable();
+            // superclasse qualificada pelos imports: "extends Activity" com
+            // "import android.app.Activity" vira "android.app.Activity" —
+            // sem isso a resolução externa (classpath) nunca encontra a classe
+            String superQualified = cls.superClass();
+            if (superQualified != null && !"Object".equals(superQualified)) {
+                Type viaImports = qualifyViaImports(superQualified);
+                if (viaImports instanceof Type.ClassType qt) {
+                    superQualified = qt.packageName() + "." + qt.name();
+                }
+            }
             SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(cls.name(), currentPackage,
-                    cls.superClass() != null ? cls.superClass() : "Object",
+                    cls.superClass() != null ? superQualified : "Object",
                     cls.interfaces(), members);
             knownClasses.put(cls.name(), sym);
             currentScope.define(sym);
@@ -138,6 +178,8 @@ class SemanticAnalyzer {
     private Type resolveType(String name, SymbolTable scope) {
         SymbolTable.Symbol sym = scope != null ? scope.resolve(name) : null;
         if (sym instanceof SymbolTable.TypeParameterSymbol) return sym.type();
+        Type viaImports = qualifyViaImports(name);
+        if (viaImports != null) return viaImports;
         return qualifiedType(Type.of(name));
     }
 
@@ -409,7 +451,8 @@ class SemanticAnalyzer {
             case VarDeclStmt vds -> {
                 Type varType;
                 if (vds.type() != null && !vds.type().isEmpty() && !"var".equals(vds.type())) {
-                    varType = Type.of(vds.type());
+                    Type viaImports = qualifyViaImports(vds.type());
+                    varType = viaImports != null ? viaImports : Type.of(vds.type());
                 } else if (vds.initializer() != null) {
                     varType = inferType(vds.initializer(), scope);
                 } else {
@@ -705,7 +748,7 @@ class SemanticAnalyzer {
                         yield Type.UnknownType.UNKNOWN;
                     }
                     Type recvType = inferType(mc.receiver(), scope);
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofDb.isDbNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
@@ -719,14 +762,14 @@ class SemanticAnalyzer {
                         }
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofLog.isLogNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
                         if (logCall != null) yield logCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofOrm.isOrmNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         boolean typed = !mc.typeArguments().isEmpty();
@@ -760,35 +803,35 @@ class SemanticAnalyzer {
                         if (exitCall != null) yield exitCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofConfig.isConfigNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
                         if (cfgCall != null) yield cfgCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofHttp.isHttpNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
                         if (httpCall != null) yield httpCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofMq.isMqNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
                         if (mqCall != null) yield mqCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofSecurity.isSecurityNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
                         if (secCall != null) yield secCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofTetris.isTetrisNamespace(rid.name())) {
                         KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
                                 mc.arguments().size());
                         if (tetrisCall != null) {
@@ -797,7 +840,7 @@ class SemanticAnalyzer {
                         }
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofWeb.isWebNamespace(rid.name())
                             && "app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         yield KofWeb.APP;
                     }
@@ -823,6 +866,24 @@ class SemanticAnalyzer {
                             checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
                             yield ms.returnType();
                         }
+                        // receiver de classe EXTERNA (android.* etc.): assinatura
+                        // vem do classpath — sem isso o lowering emitiria
+                        // invokevirtual com owner vazio
+                        if (isExternal(ct)) {
+                            ExternalClasspath.MethodSignature sig = externalTypes.resolveMethod(
+                                    ct.internalName(), mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> params = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    params.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                Type ret = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                                resolvedMethods.put(mc, new SymbolTable.MethodSymbol(mc.methodName(),
+                                        ct.internalName(), ret, params, 1,
+                                        SymbolTable.DispatchKind.INSTANCE));
+                                yield ret;
+                            }
+                        }
                     }
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.UnknownType.UNKNOWN;
@@ -843,6 +904,27 @@ class SemanticAnalyzer {
                             checkArgTypes(mc.methodName(), argTypes, ms.parameterTypes());
                             resolvedMethods.put(mc, ms);
                             yield ms.returnType();
+                        }
+                        // chamada implícita (this) herdada de SUPERCLASSE
+                        // EXTERNA: setContentView(...) dentro da Activity Kof
+                        SymbolTable.ClassSymbol self = knownClasses.get(currentClassName);
+                        String superName = self != null ? self.superClass() : null;
+                        if (superName != null && externalTypes != null && !"Object".equals(superName)) {
+                            String superInternal = superName.contains(".")
+                                    ? superName.replace('.', '/') : superName;
+                            ExternalClasspath.MethodSignature sig = externalTypes.resolveMethod(
+                                    superInternal, mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> params = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    params.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                Type ret = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                                resolvedMethods.put(mc, new SymbolTable.MethodSymbol(mc.methodName(),
+                                        superInternal, ret, params, 1,
+                                        SymbolTable.DispatchKind.INSTANCE));
+                                yield ret;
+                            }
                         }
                     }
                 }
@@ -911,6 +993,34 @@ class SemanticAnalyzer {
                     }
                     yield new Type.ClassType(cs.packageName(), cs.name(), List.of());
                 }
+                // classe EXTERNA (android.webkit.WebView etc.): qualifica pelo
+                // import e registra o construtor do classpath — sem isso a
+                // variável fica Unknown e toda a cadeia de chamadas seguinte
+                // perde o tipo
+                String qname = ne.typeName();
+                if (!qname.contains(".")) {
+                    Type viaImport = qualifyViaImports(qname);
+                    if (viaImport != null) qname = viaImport instanceof Type.ClassType qt
+                            ? qt.packageName() + "." + qt.name() : qname;
+                }
+                if (qname.contains(".") && externalTypes != null) {
+                    String internal = qname.replace('.', '/');
+                    if (externalTypes.knows(internal)) {
+                        ExternalClasspath.MethodSignature sig =
+                                externalTypes.resolveConstructor(internal, ne.arguments().size());
+                        if (sig != null) {
+                            List<Type> params = new ArrayList<>();
+                            for (String d : sig.parameterDescriptors()) {
+                                params.add(ExternalClasspath.typeFromDescriptor(d));
+                            }
+                            resolvedConstructors.put(ne, new SymbolTable.ConstructorSymbol(
+                                    internal.substring(internal.lastIndexOf('/') + 1), params, 1));
+                        }
+                        int lastDot = qname.lastIndexOf('.');
+                        yield new Type.ClassType(qname.substring(0, lastDot),
+                                qname.substring(lastDot + 1), List.of());
+                    }
+                }
                 yield Type.UnknownType.UNKNOWN;
             }
             case FieldAccessExpr fa -> {
@@ -934,6 +1044,12 @@ class SemanticAnalyzer {
                 if (recvType instanceof Type.ClassType ct) {
                     SymbolTable.Symbol field = resolveInHierarchy(ct.name(), fa.fieldName());
                     if (field != null) yield field.type();
+                    if (isExternal(ct)) {
+                        String desc = externalTypes.resolveFieldType(ct.internalName(), fa.fieldName());
+                        if (desc != null) {
+                            yield ExternalClasspath.typeFromDescriptor(desc);
+                        }
+                    }
                 }
                 yield Type.UnknownType.UNKNOWN;
             }

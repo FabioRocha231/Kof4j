@@ -1,0 +1,178 @@
+# KofAndroid — o target Android da Kof
+
+> **Status: proposto (design).** Este documento define o quarto target da Kof.
+> A base técnica necessária já existe e está funcional: herança de classes
+> externas, `super(...)`/`super.metodo()` com INVOKESPECIAL correto,
+> annotations emitidas no bytecode e resolução de assinaturas via
+> `ExternalClasspath` (`.jar`/`.aar` fornecidos pelo Gradle).
+
+## O que é
+
+`kof-android` é o target que transforma um programa Kof em um **aplicativo
+Android instalável** — APK/AAB — mantendo a promessa central da linguagem:
+
+> **A linguagem não muda. O target muda.**
+
+O mesmo `.kf` que abre uma `Window` no desktop abre um app no celular:
+
+```kof
+main() {
+    var w = Window("Contador")
+    var label = Label("contagem: 0")
+    w.bind(label)
+    w.bind(Button("+1", () -> {
+        label.text = "contagem: " + App.count
+    }))
+    w.show()
+}
+```
+
+Nada de `Activity`, `Intent`, `LayoutInflater`, XML de layout ou
+`findViewById` no código do usuário. Se é essencial para qualquer programa,
+pertence à plataforma (linguagem + compilador + runtime) — nunca ao
+mecanismo vazando na intenção.
+
+## Por que NÃO é um novo compilador
+
+Android não tem linguagem própria: o ART executa **bytecode convertido para
+dex**. O pipeline reaproveita tudo o que existe:
+
+```text
+                    Kof Source
+                         │
+                         ▼
+                 ┌──────────────┐
+                 │ Kof Frontend │   (um só: lexer/parser/tipos/IR)
+                 └──────┬───────┘
+                        ▼
+                    Kof IR
+                        │
+                ┌───────┴────────┐
+                ▼                ▼
+          JvmBackend        validações AND*
+          (.class bytecode)
+                │
+        ┌───────┼──────────────────┐
+        ▼       ▼                  ▼
+   d8/dex    AndroidManifest   projeto/pacote
+   (dx)      sintético         (Gradle fase 1;
+   │                            aapt2+d8+apksigner fase 2)
+        ▼
+     APK/AAB → instalação → ART
+```
+
+**Não é transpilar para Java.** É o mesmo bytecode do backend JVM, com
+restrições e pós-processamento próprios do alvo — a mesma relação que
+KofJS tem com o frontend único.
+
+## Modelo de execução do kof.ui
+
+Hoje o `kof.ui` renderiza widgets como **DOM via KofJS** no webview nativo
+do desktop (WebKitGTK embutido). O Android já traz um WebView maduro
+(`android.webkit.WebView`). A realização por target, sem mudar o código:
+
+```text
+Window/Label/Button/Input/Column/Row/View/Style
+        │  (mesma IR, mesmos handles Int)
+        ▼
+MainActivity (sintetizada pelo target)
+  └── WebView (fullscreen, JS habilitado)
+        └── engine embarcada carrega o .mjs do programa
+              └── widgets → DOM (mesma camada de render do desktop)
+```
+
+A `MainActivity` é gerada pelo compilador — o usuário nunca a escreve.
+Quem precisa de UI **nativa de verdade** usa interop direta: com
+`ExternalClasspath` no classpath, `class Tela extends android.view.View`
+com `super.onCreate(...)` já compila hoje (ver
+[learn/10-inheritance.md](../../learn/10-inheritance.md)).
+
+## Ciclo de vida e convenções
+
+| Intenção | Como o usuário escreve | O que o target faz |
+|----------|------------------------|--------------------|
+| app de UI | `main()` com `Window(...)` | sintetiza host Activity + WebView |
+| componente Android | `class MinhaTela extends android.app.Activity` | respeita a hierarquia; exige assinaturas reais via classpath |
+| metadado de framework | `@Override`, `@NonNull`, ... | emite RuntimeVisible/Invisible no bytecode |
+| ponto de entrada lógico | `main()` | continua existindo e testável (`kof test`) |
+
+Regras de convenção (nenhuma configuração obrigatória):
+
+1. **Pacote/aplicação**: derivado do `package` do arquivo; default
+   `dev.kof.app`.
+2. **Label/ícone**: label vem do título da primeira `Window`; ícone default
+   do Kof (override futuro por metadado declarativo, não annotation).
+3. **minSdk/targetSdk**: defaults conservadores fixados pelo target
+   (ex.: minSdk 24); override por flag explícita do CLI, não arquivo mágico.
+
+## Fases
+
+### Fase 1 — Gradle empacota, Kof compila
+
+`kof build app.kf --target android` produz:
+
+```text
+dist/android/
+├── settings.gradle.kts
+├── app/
+│   ├── build.gradle.kts          (usa libs/kof-app.jar)
+│   └── src/main/
+│       ├── AndroidManifest.xml   (gerado; aponta MainActivity sintetizada)
+│       ├── java/…                (vazio: tudo no jar)
+│       ├── res/                  (ícone/tema mínimos)
+│       └── assets/kof/main.mjs   (saída KofJS do mesmo programa)
+└── libs/kof-app.jar              (bytecode das classes Kof + runtime necessário)
+```
+
+O desenvolvedor roda `gradle assembleDebug` (ou Android Studio). Isso
+mantém a Fase 1 honesta e útil sem exigir SDK toolchain licenciado dentro
+da distribuição Kof.
+
+### Fase 2 — standalone
+
+Quando o SDK Android estiver presente (`kof doctor --android` detecta),
+`kof build --target android --apk` invoca `aapt2`, `d8` e `apksigner`
+diretamente e entrega o APK — sem Gradle no caminho. Mesma semântica,
+menos cerimônia.
+
+## Restrições e gaps (diagnosticados em compile-time)
+
+O contrato é o mesmo dos outros targets: **a intenção compila em todos os
+alvos; o alvo que não consegue realizá-la diz isso na hora, com código.**
+
+| Código | Situação | Motivo |
+|--------|----------|--------|
+| `AND001` | `spawn { ... }` | ART não tem virtual threads (Java 21) |
+| `AND002` | `kof.web` (servidor embutido) | app mobile não escuta porta; usar interop |
+| `AND003` | reflexão dinâmica sobre classes Kof | desugaring/R8 pode remover símbolos |
+| `SUP001` | `super.metodo()` no Native | já coberto; ANDROID reusa o caminho JVM |
+
+Bytecode: o JvmBackend emite nível moderno; o `d8` do Gradle plugin faz
+desugaring para dispositivos antigos. Se a Fase 2 precisar de nível menor,
+a flag vira parâmetro do backend — não um segundo backend.
+
+## Integração com o trabalho em andamento
+
+- **ExternalClasspath** (Gradle → `.jar`/`.aar`): fonte das assinaturas
+  para INVOKESPECIAL exato em `super.metodo()` contra `android.*`;
+  warnings `CP002` para entradas ilegíveis.
+- **Annotations**: `@Override`/`@NonNull`/androidx já emitidos com
+  retenção correta; frameworks Android que leem metadata em runtime
+  continuam funcionando.
+- **kof.ui**: nenhum widget novo; o WebView host substitui o WebKitGTK
+  desktop. `Palette`/`Theme` seguem idênticos.
+
+## Roadmap resumido
+
+1. `Target.ANDROID` no enum + dispatch no CLI (`--target android`) com as
+   validações `AND*` antes da emissão (reuso do JvmBackend).
+2. Gerador do projeto Gradle + manifesto + assets (`AndroidProjectWriter`).
+3. Host Activity + bridge WebView ↔ handles do `kof.ui` (reusar runtime.mjs).
+4. E2E: build → assembleDebug em CI com emulator smoke test.
+5. Fase 2: standalone aapt2/d8/apksigner.
+
+## Próximo passo
+
+Comparativo de filosofia entre backends:
+[KOFJS.md](KOFJS.md) · interop Java/Android:
+[../../learn/21-java-interoperability.md](../../learn/21-java-interoperability.md)

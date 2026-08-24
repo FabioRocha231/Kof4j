@@ -1618,6 +1618,22 @@ final class NativeRuntime {
             .globl kof_string_equals
             .type kof_string_equals, @function
             kof_string_equals:
+                # null-safe: comparar String com null compara ponteiros
+                testq %rdi, %rdi
+                jz .Lkof_streq_nulla
+                testq %rsi, %rsi
+                jnz .Lkof_streq_body
+                xorl %eax, %eax          # a != null, b == null
+                ret
+            .Lkof_streq_nulla:
+                testq %rsi, %rsi
+                jnz .Lkof_streq_nullb
+                movl $1, %eax            # ambas nulas
+                ret
+            .Lkof_streq_nullb:
+                xorl %eax, %eax          # a == null, b != null
+                ret
+            .Lkof_streq_body:
                 pushq %rbx
                 pushq %r12
                 pushq %r13
@@ -3159,6 +3175,9 @@ final class NativeRuntime {
             .section .text
 
             # kof_env_getc(rdi=nome C-string) -> rax = KofString*|0
+            # busca linear simples: acha "NAME=" como substring do environ;
+            # valor = ate o NUL da entrada. Estado: r10=nlen, r13=len,
+            # r14=i (posicao), r9=j (casamento), r8=ptr corrente.
             kof_env_getc:
                 pushq %rbx
                 pushq %r12
@@ -3190,55 +3209,64 @@ final class NativeRuntime {
                 movq %rax, %r13              # bytes lidos
                 movq %r12, %rdi
                 movq $3, %rax                # close
-                syscall
-                cmpq %r10, %r13
+                testq %r10, %r10             # nome vazio -> falha
                 jle .Lceg_fail
-                xorq %r14, %r14              # inicio da entrada corrente
+                cmpq %r10, %r13
+                jle .Lceg_fail               # buffer menor que o nome
+                xorq %r14, %r14              # i = 0
             .Lceg_scan:
                 cmpq %r13, %r14
-                jge .Lceg_fail               # consumiu o buffer sem achar
+                jge .Lceg_fail
                 movq %rsp, %r8
-                addq %r14, %r8
-                movq %r14, %rcx              # fim da entrada (NUL ou fim)
-            .Lceg_eentry:
-                cmpq %r13, %rcx
-                jge .Lceg_eentry_end
-                cmpb $0, (%rsp,%rcx)
-                je .Lceg_eentry_end
-                incq %rcx
-                jmp .Lceg_eentry
-            .Lceg_eentry_end:
-                movq %rcx, %r15              # fim exclusivo
-                movq %r14, %rcx              # procura '='
-            .Lceg_findeq:
-                cmpq %r15, %rcx
-                jge .Lceg_next
-                cmpb $61, (%rsp,%rcx)
-                je .Lceg_eq
-                incq %rcx
-                jmp .Lceg_findeq
-            .Lceg_eq:
-                movq %rcx, %rdx              # namelen da entrada
-                subq %r14, %rdx
-                cmpq %r10, %rdx
-                jne .Lceg_next
-                xorq %r9, %r9
-            .Lceg_cmpname:
+                addq %r14, %r8               # r8 = buf + i
+                xorq %r9, %r9                # j = 0
+            .Lceg_pcmp:
                 cmpq %r10, %r9
-                jge .Lceg_match
-                movzbl (%rbx,%r9), %eax
-                movzbl (%rsp,%r9), %ecx
+                je .Lceg_pmatched            # casou o nome inteiro
+                movq %r14, %rax
+                addq %r9, %rax
+                cmpq %r13, %rax
+                jge .Lceg_fail
+                movzbl (%rbx,%r9), %eax      # name[j]
+                movzbl (%r8,%r9), %ecx       # buf[i+j]
                 cmpl %ecx, %eax
-                jne .Lceg_next
+                jne .Lceg_advance
                 incq %r9
-                jmp .Lceg_cmpname
-            .Lceg_match:
-                leaq 1(%rcx), %rdi           # valor = depois do '='
-                movq %r15, %rsi              # vallen
+                jmp .Lceg_pcmp
+            .Lceg_pmatched:
+                # exige '=' imediatamente apos o nome
+                cmpb $61, (%r8,%r10)
+                jne .Lceg_advance
+                leaq 1(%r8,%r10), %rdi       # valor = buf + i + nlen + 1
+                movq %r14, %rsi
+                addq %r10, %rsi
+                incq %rsi                    # inicio do valor (offset)
+                movq %r13, %rdx
+                subq %rsi, %rdx              # limite restante
+                movq %rdx, %r15              # r15 = len maximo
+                xorq %rcx, %rcx              # comprimento do valor ate NUL
+            .Lceg_vscan:
+                cmpq %r15, %rcx
+                jge .Lceg_vdone
+                cmpb $0, (%rdi,%rcx)
+                je .Lceg_vdone
+                incq %rcx
+                jmp .Lceg_vscan
+            .Lceg_vdone:
+                movq %rcx, %rsi              # vallen
                 call kof_string_from_literal
                 jmp .Lceg_exit
-            .Lceg_next:
-                leaq 1(%r15), %r14
+            .Lceg_advance:
+                # avanca ate passar do proximo NUL (fim da entrada)
+                cmpq %r13, %r14
+                jge .Lceg_fail
+                cmpb $0, (%r8)
+                je .Lceg_adv_null
+                incq %r8
+                incq %r14
+                jmp .Lceg_advance
+            .Lceg_adv_null:
+                incq %r14                    # pula o proprio NUL
                 jmp .Lceg_scan
             .Lceg_fail:
                 xorl %eax, %eax
@@ -3359,9 +3387,10 @@ final class NativeRuntime {
                 cmpq %r15, %rdx
                 jne .Lcff_valskip
                 xorq %rdx, %rdx
+                movq %rcx, %r12              # salva o offset do '=' (a key KofString ja foi consumida)
             .Lcff_cmpline:
                 cmpq %r15, %rdx
-                jge .Lcff_foundkey
+                jge .Lcff_matched
                 movzbl (%rsp,%r9), %eax
                 movzbl (%r13,%rdx), %ecx
                 cmpl %ecx, %eax
@@ -3369,8 +3398,8 @@ final class NativeRuntime {
                 incq %rdx
                 incq %r9
                 jmp .Lcff_cmpline
-            .Lcff_foundkey:
-                leaq 1(%rcx), %rsi           # vs = '=' + 1
+            .Lcff_matched:
+                leaq 1(%r12), %rsi           # vs = '=' + 1 (offset)
             .Lcff_vtls:
                 cmpq %r10, %rsi
                 jge .Lcff_vmk
@@ -3384,7 +3413,8 @@ final class NativeRuntime {
                 jmp .Lcff_vtls
             .Lcff_vmk:
                 movq %r10, %rdx
-                subq %rsi, %rdx              # vallen
+                subq %rsi, %rdx              # vallen = fim da linha - inicio do valor
+                leaq (%rsp,%rsi), %rdi       # endereco do valor (rsi e OFFSET!)
                 call kof_string_from_literal
                 jmp .Lcff_exit
             .Lcff_valskip:
@@ -3471,10 +3501,7 @@ final class NativeRuntime {
                 testq %rax, %rax
                 jz .Lcl_defaultfile
                 # monta "kof.<profile>.config" no buffer do frame
-                movq %rsp, %r8
-                movl $1699939949, %eax       # "kof."
-                movl %eax, 0(%r8)
-                movq %rax, %r12              # profile KofString
+                movq %rax, %r12              # profile KofString (antes de clobber rax)
                 movq %rsp, %r8
                 movl $1699939949, %eax       # "kof." little-endian
                 movl %eax, 0(%r8)

@@ -32,9 +32,9 @@ public final class Main {
     }
 
     private static void run(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js|android] [args...]"); return; }
         if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
-            System.out.println("usage: kof run <file.kf> [--target jvm|native|js] [args...]");
+            System.out.println("usage: kof run <file.kf> [--target jvm|native|js|android] [args...]");
             return;
         }
         Path file = Path.of(args[1]);
@@ -93,6 +93,18 @@ public final class Main {
             }
             cleanup(tempDir);
             System.exit(exitCode);
+            return;
+        }
+
+        // Target android: a compilação já gerou o projeto Maven; não há o
+        // que executar no desktop — orientar o próximo passo
+        if (target == Target.ANDROID) {
+            System.out.println("Android project generated (temp): " + tempDir);
+            System.out.println("For a persistent project use:");
+            System.out.println("  kof build <dir> --target android --output <projeto>");
+            System.out.println("Then (ANDROID_HOME apontando pro SDK):");
+            System.out.println("  mvn verify              # APK em target/kof-app.apk");
+            System.out.println("  adb install target/kof-app.apk");
             return;
         }
 
@@ -165,9 +177,9 @@ public final class Main {
     }
 
 private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]");
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release]");
         if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
-            System.out.println("usage: kof build <source-dir> [--target jvm|native|js] [--output <dir>] [--release]");
+            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release]");
             return;
         } return; }
         Path src = Path.of(args[1]);
@@ -208,6 +220,7 @@ private static void build(String[] args) {
             case "jvm" -> Target.JVM;
             case "native" -> Target.NATIVE;
             case "js" -> Target.JS;
+            case "android" -> Target.ANDROID;
             default -> {
                 System.err.println("unknown target: " + value);
                 System.exit(1);
@@ -260,16 +273,16 @@ private static void build(String[] args) {
 
     private static void printUsage() {
         System.out.println("usage: kof <command>");
-        System.out.println("  build <dir> [--target jvm|native|js] [--output <dir>] [--release]");
-        System.out.println("  run <file.kf> [--target jvm|native|js] [--release] [args...]");
+        System.out.println("  build <dir> [--target jvm|native|js|android] [--output <dir>] [--release]");
+        System.out.println("  run <file.kf> [--target jvm|native|js|android] [--release] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
         System.out.println("  test <file.kf|dir> [--target jvm|native]   run programs, PASS/FAIL by exit code");
-        System.out.println("  bench [paths...] [--target jvm|native|js] [--iterations N] [--warmup N] [--baseline <file>]");
+        System.out.println("  bench [paths...] [--target jvm|native|js|android] [--iterations N] [--warmup N] [--baseline <file>]");
         System.out.println("                          [--update-baseline <file>] [--threshold <ratio>] [--json] [--quick]");
         System.out.println("                          [--fail-on-regression]");
         System.out.println("                          compile, run, validate output, collect metrics, compare baseline");
-        System.out.println("  profile <file.kf> [--target jvm|native|js] [args...]   run + execution metrics (CPU, RSS, GC)");
+        System.out.println("  profile <file.kf> [--target jvm|native|js|android] [args...]   run + execution metrics (CPU, RSS, GC)");
         System.out.println("  inspect <file.kf> [--json]   IR statistics: ops before/after optimization");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
@@ -348,7 +361,7 @@ private static void build(String[] args) {
     }
 
     private static void test(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native|js]"); System.exit(1); return; }
+        if (args.length < 2) { System.err.println("usage: kof test <file.kf|dir> [--target jvm|native|js|android]"); System.exit(1); return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         for (int i = 2; i < args.length; i++) {

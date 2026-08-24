@@ -30,6 +30,8 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.startsWith("kof_tetris_")
+                || methodName.startsWith("kof_http_")
+                || methodName.startsWith("kof_mq_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
@@ -1358,7 +1360,7 @@ static boolean hasRuntimeFn(String methodName) {
                             java.net.URI.create(url))
                             .timeout(java.time.Duration.ofSeconds(KOF_HTTP_TIMEOUT.get()));
                     if (headers != null && !headers.isBlank()) {
-                        for (String line : headers.split("\n")) {
+                        for (String line : headers.split("\\n")) {
                             int c = line.indexOf(':');
                             if (c > 0) {
                                 b.header(line.substring(0, c).trim(), line.substring(c + 1).trim());

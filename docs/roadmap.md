@@ -24,6 +24,22 @@ Princípios:
 
 ## 1. Targets da Plataforma
 
+### KofAndroid — Android
+
+Kof compilado para aplicativos Android (APK/AAB). Design completo em
+[docs/targets/KOFANDROID.md](targets/KOFANDROID.md).
+
+Objetivos:
+- mesmo código, mesma intenção: `Window(...)` abre um app de verdade;
+- reuso do backend JVM (bytecode → dex) — não há codegen alternativo;
+- `kof.ui` via WebView host sintetizado (mesma camada KofJS do desktop);
+- interop direta com `android.*` via ExternalClasspath
+  (`extends Activity`, `super.onCreate`, annotations androidx);
+- gaps honestos por compile-time (`AND001..003`).
+
+Estado atual: 📐 proposto — pré-requisitos funcionando (herança externa,
+super/INVOKESPECIAL, annotations, ExternalClasspath).
+
 ### Kof4J — JVM
 
 Kof compilado para JVM/bytecode.

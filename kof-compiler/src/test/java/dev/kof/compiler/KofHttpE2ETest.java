@@ -131,7 +131,7 @@ class KofHttpE2ETest {
                     println(http.status("http://127.0.0.1:%d/nope"))
                     println(http.get("http://127.0.0.1:%d/nope"))
                 }
-                """.formatted(port, port, port, port, port), "Hello from Kof\n200\ngot:abc\n404\n404");
+                """.formatted(port, port, port, port, port), "Hello from Kof\n200\ngot:abc\n404\n{\"error\": \"not found\"}");
     }
 
     @Test

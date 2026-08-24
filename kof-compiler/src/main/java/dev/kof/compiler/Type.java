@@ -67,6 +67,7 @@ sealed interface Type {
             case "char", "Char" -> PrimitiveType.CHAR;
             case "void", "Void" -> PrimitiveType.VOID;
             case "string", "String" -> BuiltinTypes.STRING;
+            case "Object" -> new ClassType("java.lang", "Object", List.of());
             default -> new ClassType("", name, List.of());
         };
     }

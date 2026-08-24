@@ -137,7 +137,11 @@ private Target target = Target.JVM;
                 return new CompilationResult(false, diagnostics, outputDir);
             }
             unit = desugarTests(unit);
+            if (target == Target.ANDROID) {
+                unit = appendAndroidHostIfNeeded(unit);
+            }
             semanticAnalyzer = new SemanticAnalyzer();
+            semanticAnalyzer.setExternalTypes(externalClasspath);
             semanticAnalyzer.analyze(unit, diagnostics);
             if (diagnostics.hasErrors()) {
                 return new CompilationResult(false, diagnostics, outputDir);
@@ -164,6 +168,9 @@ private Target target = Target.JVM;
             Files.createDirectories(outputDir);
             Backend backend = selectBackend(target);
             backend.emit(irModule, outputDir, debugInfoEnabled);
+            if (target == Target.ANDROID) {
+                new AndroidProjectWriter().write(outputDir, irModule);
+            }
             return new CompilationResult(true, diagnostics, outputDir);
         } catch (IOException e) {
             diagnostics.error(sourceFile.toString(), 0, 0, 0, "Error reading source file: " + e.getMessage(), "COMP001");
@@ -175,16 +182,60 @@ private Target target = Target.JVM;
         }
     }
 
+    /**
+     * Target android: se o programa não declarou a própria MainActivity
+     * (em Kof), injeta o host WebView embutido — escrito EM KOF, compilado
+     * pelo mesmo frontend. Nenhum arquivo Java é gerado.
+     */
+    private CompilationUnitNode appendAndroidHostIfNeeded(CompilationUnitNode unit) {
+        boolean userHasHost = unit.declarations().stream()
+                .anyMatch(d -> d instanceof TypeDeclarationNode t && "MainActivity".equals(t.name()));
+        if (userHasHost) return unit;
+        try (var in = CompilerDriver.class.getResourceAsStream("/dev/kof/android-host.kf")) {
+            String hostSource = in != null
+                    ? new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    : Files.readString(Path.of("src/main/resources/dev/kof/android-host.kf"));
+            DiagnosticCollector silent = new DiagnosticCollector();
+            Lexer lexer = new Lexer(hostSource, "android-host.kf", silent);
+            Parser parser = new Parser(lexer.tokenize(), silent, "android-host.kf");
+            CompilationUnitNode hostUnit = parser.parse();
+            List<String> imports = new ArrayList<>(unit.imports());
+            for (String imp : hostUnit.imports()) {
+                if (!imports.contains(imp)) imports.add(imp);
+            }
+            List<AstNode> decls = new ArrayList<>(unit.declarations());
+            decls.addAll(hostUnit.declarations());
+            return new CompilationUnitNode(unit.position(), unit.packageName(), imports, decls);
+        } catch (IOException e) {
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "android host could not be loaded: " + e.getMessage(), "AND004");
+            }
+            return unit;
+        }
+    }
+
     private Backend selectBackend(Target target) {
         return switch (target) {
-            case JVM -> new JvmBackend();
+            case JVM -> backendWithClasspath(new JvmBackend());
             case NATIVE -> new NativeBackend();
             case JS -> new JsBackend();
+            // Android: ART executa bytecode dex'd — a emissão é a mesma do
+            // backend JVM; o alvo vive nas validações AND* e no empacotamento
+            case ANDROID -> backendWithClasspath(new JvmBackend());
         };
+    }
+
+    private Backend backendWithClasspath(JvmBackend backend) {
+        backend.setExternalTypes(externalClasspath);
+        return backend;
     }
 
     private Type toType(String typeName) {
         if ("List".equals(typeName) || "ArrayList".equals(typeName)) return BuiltinTypes.LIST;
+        // tipos simples declarados em import ("import android.webkit.WebView")
+        Type viaImports = qualifyViaImports(typeName);
+        if (viaImports != null) return viaImports;
         // tipos qualificados (android.os.Bundle): pacote vai no packageName
         // para o descritor JVM sair com barras (Landroid/os/Bundle;)
         int lastDot = typeName.lastIndexOf('.');
@@ -193,6 +244,22 @@ private Target target = Target.JVM;
                     typeName.substring(lastDot + 1), List.of());
         }
         return Type.of(typeName);
+    }
+
+    /** Espelho driver-side do qualifyViaImports do SemanticAnalyzer. */
+    private Type qualifyViaImports(String name) {
+        if (name.contains(".") || name.contains("<") || name.endsWith("[]")) return null;
+        if (currentUnit == null) return null;
+        if (System.getProperty("kof.trace") != null && name.equals("WebView")) {
+            System.err.println("QVI WebView imports=" + currentUnit.imports());
+        }
+        for (String imp : currentUnit.imports()) {
+            if (!imp.endsWith("*") && imp.endsWith("." + name)) {
+                String pkg = imp.substring(0, imp.lastIndexOf('.'));
+                return new Type.ClassType(pkg, name, List.of());
+            }
+        }
+        return null;
     }
 
     /** Nome JVM da entidade: as classes top-level do programa ficam sem
@@ -1041,6 +1108,15 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
+                if (target == Target.ANDROID) {
+                    // ART não tem virtual threads (Java 21) — a semântica de
+                    // spawn não é realizável no alvo hoje
+                    if (currentDiagnostics != null) {
+                        currentDiagnostics.error("", 0, 0, 0,
+                                "spawn: not supported on the Android target yet (no virtual threads on ART)", "AND001");
+                    }
+                    yield localIdx;
+                }
                 LambdaExpr le;
                 if (ss.expression() instanceof LambdaExpr le0) {
                     le = le0;
@@ -1548,7 +1624,8 @@ private Target target = Target.JVM;
                             new Type.ClassType("java.io", "PrintStream", List.of()),
                             mc.methodName(), List.of(BuiltinTypes.STRING),
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
-                } else if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName()) && mc.arguments().size() == 1) {
                         Type argType = inferExprType(mc.arguments().get(0), locals);
                         if (!jsonSupported(argType, false)) {
@@ -1588,7 +1665,8 @@ private Target target = Target.JVM;
                                 targetType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-} else if (mc.receiver() instanceof IdentifierExpr rid && KofDb.isDbNamespace(rid.name())) {
+} else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofDb.isDbNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     boolean typed = KofDb.isQuery(mc.methodName()) && !mc.typeArguments().isEmpty();
@@ -1637,7 +1715,8 @@ private Target target = Target.JVM;
                                 dbCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofOrm.isOrmNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     boolean typed = !mc.typeArguments().isEmpty();
@@ -1720,7 +1799,8 @@ private Target target = Target.JVM;
                                 ormCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
@@ -1789,7 +1869,8 @@ private Target target = Target.JVM;
                         }
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofHttp.isHttpNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofHttp.isHttpNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofHttp.HttpCall httpCall = KofHttp.staticCall(mc.methodName(), argTypes);
@@ -1814,7 +1895,8 @@ private Target target = Target.JVM;
                                 httpCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofMq.isMqNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofMq.isMqNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofMq.MqCall mqCall = KofMq.staticCall(mc.methodName(), argTypes);
@@ -1839,7 +1921,8 @@ private Target target = Target.JVM;
                                 mqCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofConfig.isConfigNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofConfig.isConfigNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
@@ -1864,7 +1947,8 @@ private Target target = Target.JVM;
                                 cfgCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofSecurity.isSecurityNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofSecurity.SecCall secCall = KofSecurity.staticMethod(rid.name(), mc.methodName(), argTypes);
@@ -1890,7 +1974,8 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofTetris.isTetrisNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofTetris.isTetrisNamespace(rid.name())) {
                     KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
                             mc.arguments().size());
                     if (tetrisCall != null) {
@@ -1915,7 +2000,8 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                     }
                     yield localIdx;
-                } else if (mc.receiver() instanceof IdentifierExpr rid && KofWeb.isWebNamespace(rid.name())) {
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         if (target != Target.JVM) {
                             if (currentDiagnostics != null) {
@@ -2228,6 +2314,33 @@ private Target target = Target.JVM;
                     }
                     String runtimeMethod = BuiltinTypes.isString(recvType)
                             ? stringRuntimeMethod(mc.methodName()) : null;
+                    // receiver de classe EXTERNA sem símbolo resolvido: última
+                    // linha de defesa — assinatura vem do classpath, senão o
+                    // descritor sairia errado (owner vazio / retorno Object)
+                    if (resolvedMethod == null && runtimeMethod == null
+                            && mc.receiver() != null && currentDiagnostics != null) {
+                        Type rt2 = semanticAnalyzer != null
+                                ? semanticAnalyzer.getExpressionType(mc.receiver())
+                                : Type.UnknownType.UNKNOWN;
+                        if (!(rt2 instanceof Type.ClassType)) {
+                            rt2 = inferExprType(mc.receiver(), locals);
+                        }
+                        if (rt2 instanceof Type.ClassType ct2 && !ct2.packageName().isEmpty()
+                                && externalClasspath != null
+                                && externalClasspath.knows(ct2.internalName())) {
+                            ExternalClasspath.MethodSignature sig = externalClasspath.resolveMethod(
+                                    ct2.internalName(), mc.methodName(), mc.arguments().size());
+                            if (sig != null) {
+                                List<Type> formal = new ArrayList<>();
+                                for (String d : sig.parameterDescriptors()) {
+                                    formal.add(ExternalClasspath.typeFromDescriptor(d));
+                                }
+                                recvType = ct2;
+                                methodParamTypes = formal;
+                                methodReturnType = ExternalClasspath.typeFromDescriptor(sig.returnDescriptor());
+                            }
+                        }
+                    }
                     ops.add(new KofCall(recvType,
                             runtimeMethod != null ? runtimeMethod : mc.methodName(),
                             methodParamTypes, methodReturnType, callKind));
@@ -2511,9 +2624,28 @@ private Target target = Target.JVM;
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
                 ops.add(new KofNewObject(type, argTypes));
                 ops.add(new KofDup());
-                List<Type> ctorParamTypes = (resolvedCtor != null
-                        && resolvedCtor.parameterTypes().size() == ne.arguments().size())
-                        ? resolvedCtor.parameterTypes() : argTypes;
+                List<Type> ctorParamTypes;
+                if (resolvedCtor != null
+                        && resolvedCtor.parameterTypes().size() == ne.arguments().size()) {
+                    ctorParamTypes = resolvedCtor.parameterTypes();
+                } else if (type instanceof Type.ClassType ct && !ct.packageName().isEmpty()
+                        && externalClasspath != null
+                        && externalClasspath.knows(ct.internalName())) {
+                    // construtor de classe externa: descritor exato do classpath
+                    ExternalClasspath.MethodSignature extCtor =
+                            externalClasspath.resolveConstructor(ct.internalName(), ne.arguments().size());
+                    if (extCtor != null) {
+                        List<Type> formal = new ArrayList<>();
+                        for (String d : extCtor.parameterDescriptors()) {
+                            formal.add(ExternalClasspath.typeFromDescriptor(d));
+                        }
+                        ctorParamTypes = formal;
+                    } else {
+                        ctorParamTypes = argTypes;
+                    }
+                } else {
+                    ctorParamTypes = argTypes;
+                }
                 localIdx = emitArgumentsWithFormalTypes(ne.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                 ops.add(new KofCall(type, "<init>", ctorParamTypes, Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
@@ -2553,6 +2685,21 @@ private Target target = Target.JVM;
                     ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
                     ops.add(new KofLoadField(superType, fa.fieldName(), fieldType));
                     yield localIdx;
+                }
+                {
+                    // campo de classe EXTERNA: owner e tipo vêm do classpath
+                    Type extRecv = inferExprType(fa.receiver(), locals);
+                    if (extRecv instanceof Type.ClassType ect && !ect.packageName().isEmpty()
+                            && externalClasspath != null
+                            && externalClasspath.knows(ect.internalName())) {
+                        String desc = externalClasspath.resolveFieldType(ect.internalName(), fa.fieldName());
+                        if (desc != null) {
+                            localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                            ops.add(new KofLoadField(ect, fa.fieldName(),
+                                    ExternalClasspath.typeFromDescriptor(desc)));
+                            yield localIdx;
+                        }
+                    }
                 }
                 Type faType = inferExprType(fa.receiver(), locals);
                 if (KofProcess.isResult(faType) && KofProcess.isField(fa.fieldName())) {
@@ -3444,6 +3591,14 @@ private Target target = Target.JVM;
         return null;
     }
 
+    /**
+     * Namespace da stdlib (web/db/log/...) sombreado por variável local:
+     * "var web = ..." torna "web.foo()" chamada de instância, não de namespace.
+     */
+    private boolean isLocalVarName(String name, List<IRLocalVariable> locals) {
+        return findLocalVar(name, locals) != null;
+    }
+
     private int findLocalIndex(String name, List<IRLocalVariable> locals) {
         for (int i = locals.size() - 1; i >= 0; i--) {
             if (locals.get(i).name().equals(name)) return locals.get(i).index();
@@ -3985,7 +4140,19 @@ private Target target = Target.JVM;
 
     private IRClass lowerClass(ClassDeclarationNode cls, String packageName, int typeId) {
         String internalName = toInternalName(packageName, cls.name());
-        String superName = cls.superClass() != null ? toInternalName("", cls.superClass()) : "java/lang/Object";
+        // usa o superClass QUALIFICADO pelo analyzer ("extends Activity" +
+        // import → android/app/Activity); cai pro cru se analyzer ausente
+        String superName = null;
+        if (semanticAnalyzer != null) {
+            SymbolTable.ClassSymbol sym = semanticAnalyzer.getClass(cls.name());
+            if (sym != null && sym.superClass() != null && !"Object".equals(sym.superClass())) {
+                superName = toInternalName("", sym.superClass());
+            }
+        }
+        if (superName == null) {
+            superName = cls.superClass() != null ? toInternalName("", cls.superClass())
+                    : "java/lang/Object";
+        }
         List<String> ifaces = cls.interfaces().stream().map(i -> toInternalName("", i)).toList();
         int access = computeAccess(cls.modifiers());
         List<IRField> fields = new ArrayList<>();
