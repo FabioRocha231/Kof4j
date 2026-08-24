@@ -30,7 +30,8 @@ JAVA="$(command -v java || true)"
 if [ -x "$KOF_HOME/jdk/bin/java" ]; then
     JAVA="$KOF_HOME/jdk/bin/java"
     EMBEDDED=true
-elif [ -x "$KOF_HOME/jdk/bin/java.exe" ]; then
+elif [ -f "$KOF_HOME/jdk/bin/java.exe" ]; then
+    # no Windows o zip não preserva o bit de execução unix — basta existir
     JAVA="$KOF_HOME/jdk/bin/java.exe"
     EMBEDDED=true
 elif [ -x "$KOF_HOME/jdk/Contents/Home/bin/java" ]; then

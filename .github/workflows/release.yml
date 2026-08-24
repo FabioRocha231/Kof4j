@@ -129,7 +129,7 @@ jobs:
           DIR=$(ls -d /tmp/kof-validate/*/)
           "$DIR/bin/kof" version
           "$DIR/bin/kof" info
-          test -x "$DIR/jdk/bin/java" || test -x "$DIR/jdk/bin/java.exe" \
+          test -x "$DIR/jdk/bin/java" || test -f "$DIR/jdk/bin/java.exe" \
             && echo "embedded JDK present"
 
       - name: Upload artifact
