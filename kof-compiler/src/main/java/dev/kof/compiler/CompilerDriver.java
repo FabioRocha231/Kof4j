@@ -62,6 +62,7 @@ private Target target = Target.JVM;
         this.target = target;
         this.currentDiagnostics = diagnostics;
         this.currentSourceName = sourceFile.getFileName() != null ? sourceFile.getFileName().toString() : null;
+        this.entitySchemas.clear();
         try {
             String source = Files.readString(sourceFile);
             String fileName = sourceFile.getFileName().toString();
@@ -126,6 +127,12 @@ private Target target = Target.JVM;
         return Type.of(typeName);
     }
 
+    /** Nome JVM da entidade: as classes top-level do programa ficam sem
+     *  pacote (User.class); o Main é Default/Main. */
+    private String classNameFor(String simpleName) {
+        return simpleName;
+    }
+
     private Type ownerTypeFromInternal(String internalName) {
         if (semanticAnalyzer != null) {
             String simpleName = internalName.substring(internalName.lastIndexOf('/') + 1);
@@ -163,6 +170,16 @@ private Target target = Target.JVM;
             if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
             else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
             else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
+            else if (decl instanceof EntityDeclarationNode ent) {
+                entitySchemas.put(ent.name(), ent.fields());
+                List<RecordComponentNode> components = new java.util.ArrayList<>();
+                for (EntityFieldNode f : ent.fields()) {
+                    components.add(new RecordComponentNode(f.position(), List.of(), f.type(), f.name(), null));
+                }
+                classes.add(lowerRecord(new RecordDeclarationNode(ent.position(), ent.name(),
+                        ent.modifiers(), null, List.of(), components, List.of()),
+                        unit.packageName(), nextTypeId++));
+            }
             else if (decl instanceof FunctionDeclarationNode func) {
                 topLevelFunctions.add(lowerFunction(func));
                 topLevelFunctions.addAll(lowerFunctionDefaults(func));
@@ -178,6 +195,7 @@ private Target target = Target.JVM;
     }
 
     private final List<IRClass> syntheticClasses = new ArrayList<>();
+    private final java.util.Map<String, List<EntityFieldNode>> entitySchemas = new java.util.HashMap<>();
     private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
     private int lambdaCounter = 0;
 
@@ -602,6 +620,8 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
                     if ("var".equals(vds.type()) || "val".equals(vds.type())) {
                         varType = inferExprType(vds.initializer(), locals);
+                    } else {
+                        emitWideningIfNeeded(ops, inferExprType(vds.initializer(), locals), varType);
                     }
                 }
                 ops.add(new KofStoreLocal(varType, localIdx));
@@ -1393,6 +1413,82 @@ private Target target = Target.JVM;
                                 dbCall.function(), params, retType, KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    boolean typed = !mc.typeArguments().isEmpty();
+                    String entityName = typed ? mc.typeArguments().get(0) : null;
+                    if (entityName == null && "save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                        Type objType = argTypes.get(argTypes.size() - 1);
+                        if (objType instanceof Type.ClassType ct) entityName = ct.name();
+                    }
+                    KofOrm.OrmCall ormCall = KofOrm.staticCall(mc.methodName(), argTypes, typed, entityName);
+                    if (ormCall != null) {
+                        if (!KofOrm.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofOrm.gapCode() + ")",
+                                        KofOrm.gapCode());
+                            }
+                            yield localIdx;
+                        }
+                        List<EntityFieldNode> fields = entityName == null ? null : entitySchemas.get(entityName);
+                        if (fields == null) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        "orm." + mc.methodName() + ": unknown entity '"
+                                                + (entityName == null ? "?" : entityName) + "' (ORM002)",
+                                        "ORM002");
+                            }
+                            yield localIdx;
+                        }
+                        // args do usuário: (db[, obj|id]) — primitivos são
+                        // boxed (o runtime espera Object para obj/id)
+                        for (int ai = 0; ai < mc.arguments().size(); ai++) {
+                            ExpressionNode arg = mc.arguments().get(ai);
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            if (ai > 0 && isPrimitiveType(inferExprType(arg, locals))) {
+                                boxPrimitive(ops, inferExprType(arg, locals));
+                            }
+                        }
+                        // literais do schema (conhecidos em compile-time):
+                        // table, schema, [className]
+                        String table = KofOrm.tableName(entityName);
+                        String schema = KofOrm.schemaString(fields);
+                        boolean needsClassName = "find".equals(mc.methodName())
+                                || "all".equals(mc.methodName());
+                        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, table));
+                        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, schema));
+                        if (needsClassName) {
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, classNameFor(entityName)));
+                        }
+                        List<Type> params = new ArrayList<>(ormCall.parameterTypes());
+                        params.add(BuiltinTypes.STRING); // table
+                        params.add(BuiltinTypes.STRING); // schema
+                        if (needsClassName) params.add(BuiltinTypes.STRING); // className
+                        Type retType = ormCall.returnType();
+                        if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                            retType = argTypes.get(argTypes.size() - 1);
+                        } else if (typed) {
+                            if ("all".equals(mc.methodName())) {
+                                retType = new Type.ClassType("kof", "List",
+                                        List.of(toType(mc.typeArguments().get(0))));
+                            } else if ("find".equals(mc.methodName())) {
+                                retType = toType(mc.typeArguments().get(0));
+                            }
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.orm", "Orm", List.of()),
+                                ormCall.function(), params, retType, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -1960,6 +2056,7 @@ private Target target = Target.JVM;
                 if (ae.target() instanceof IdentifierExpr ie) {
                     for (int i = locals.size() - 1; i >= 0; i--) {
                         if (locals.get(i).name().equals(ie.name())) {
+                            emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), locals.get(i).type());
                             ops.add(new KofStoreLocal(locals.get(i).type(), locals.get(i).index()));
                             yield localIdx;
                         }
@@ -2313,6 +2410,29 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
                     if (logCall != null) yield logCall.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    boolean typed = !mc.typeArguments().isEmpty();
+                    String entityName = typed ? mc.typeArguments().get(0) : null;
+                    KofOrm.OrmCall ormCall = KofOrm.staticCall(mc.methodName(), argTypes, typed, entityName);
+                    if (ormCall != null) {
+                        if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                            yield argTypes.get(argTypes.size() - 1);
+                        }
+                        if (typed && !mc.typeArguments().isEmpty()) {
+                            if ("all".equals(mc.methodName())) {
+                                yield new Type.ClassType("kof", "List",
+                                        List.of(toType(mc.typeArguments().get(0))));
+                            }
+                            if ("find".equals(mc.methodName())) {
+                                yield toType(mc.typeArguments().get(0));
+                            }
+                        }
+                        yield ormCall.returnType();
+                    }
                     yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())
@@ -2701,6 +2821,11 @@ private Target target = Target.JVM;
             localIdx = emitExpression(args.get(i), ops, owner, localIdx, locals);
             Type argType = inferExprType(args.get(i), locals);
             Type formal = i < formalTypes.size() ? formalTypes.get(i) : null;
+            if (formal != null && formal instanceof Type.PrimitiveType fpt
+                    && argType instanceof Type.PrimitiveType apt
+                    && !BuiltinTypes.isString(formal)) {
+                emitWideningIfNeeded(ops, argType, formal);
+            }
             if (formal != null && erasesToReference(formal) && isPrimitiveType(argType)
                     && !BuiltinTypes.isString(formal)) {
                 emitErasureBox(ops, argType);
@@ -3276,6 +3401,11 @@ private Target target = Target.JVM;
                             "contains", "isEmpty" -> true;
                     default -> false;
                 };
+            }
+            if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                // todos os orm.* retornam valor (Bool/Object/List/Long) — antes
+                // dos checks genéricos (o "delete" também é rota do web)
+                return true;
             }
             if (mc.receiver() != null) {
                 List<Type> webArgTypes = new ArrayList<>();

@@ -199,6 +199,7 @@ class Parser {
         if (check(TokenType.CLASS)) return parseClassDeclaration(mods);
         if (check(TokenType.INTERFACE)) return parseInterfaceDeclaration(mods);
         if (check(TokenType.RECORD)) return parseRecordDeclaration(mods);
+        if (check(TokenType.ENTITY)) return parseEntityDeclaration(mods);
         error("Expected type declaration", "PARSE007");
         advance();
         return new ClassDeclarationNode(pos(), "error", List.of(), null, List.of(), List.of(), List.of());
@@ -261,6 +262,36 @@ class Parser {
             expect(TokenType.RBRACE, "Expected '}' after interface body", "PARSE011");
         }
         return new InterfaceDeclarationNode(pos(), name, mods, ifaces, List.copyOf(members));
+    }
+
+    /**
+     * entity Name {
+     *     id: Long generated
+     *     name: String
+     *     email: String unique
+     * }
+     */
+    private EntityDeclarationNode parseEntityDeclaration(List<String> mods) {
+        advance(); // entity
+        String name = expectId("Expected entity name", "PARSE024");
+        List<EntityFieldNode> fields = new ArrayList<>();
+        expect(TokenType.LBRACE, "Expected '{' after entity name", "PARSE024");
+        while (!check(TokenType.RBRACE) && !atEnd()) {
+            SourcePosition fieldPos = pos();
+            String fieldName = expectId("Expected field name in entity", "PARSE024");
+            expect(TokenType.COLON, "Expected ':' after field name", "PARSE024");
+            String fieldType = parseTypeRef();
+            boolean generated = false;
+            boolean unique = false;
+            while (check(TokenType.GENERATED, TokenType.UNIQUE)) {
+                if (check(TokenType.GENERATED)) generated = true;
+                if (check(TokenType.UNIQUE)) unique = true;
+                advance();
+            }
+            fields.add(new EntityFieldNode(fieldPos, fieldType, fieldName, generated, unique));
+        }
+        expect(TokenType.RBRACE, "Expected '}' after entity body", "PARSE024");
+        return new EntityDeclarationNode(pos(), name, mods, fields);
     }
 
     private RecordDeclarationNode parseRecordDeclaration(List<String> mods) {
@@ -372,7 +403,7 @@ class Parser {
             }
             return parseField(mods);
         }
-        if (check(TokenType.CLASS, TokenType.INTERFACE, TokenType.RECORD)) {
+        if (check(TokenType.CLASS, TokenType.INTERFACE, TokenType.RECORD, TokenType.ENTITY)) {
             return parseTypeDeclaration();
         }
         if (check(TokenType.LBRACE)) {

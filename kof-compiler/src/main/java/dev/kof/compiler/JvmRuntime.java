@@ -25,6 +25,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_config_")
                 || methodName.startsWith("kof_log_")
                 || methodName.startsWith("kof_db_")
+                || methodName.startsWith("kof_orm_")
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.startsWith("kof_tetris_")
@@ -149,6 +150,12 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_db_query3" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_db_query4" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_db_transaction" -> "(Ljava/lang/Object;)V";
+            case "kof_orm_create" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_save" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
+            case "kof_orm_find" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
+            case "kof_orm_all" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/ArrayList;";
+            case "kof_orm_delete" -> "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_orm_count" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J";
             // ── kof.security (docs/security.md §5) ───────────────────
             case "kof_sec_sha256", "kof_sec_sha512", "kof_sec_redact", "kof_sec_secret_get",
                     "kof_sec_password_hash", "kof_sec_auth_user" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -211,8 +218,11 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_db_connect", "kof_db_connect2" -> "Ljava/lang/String;";
             case "kof_db_close", "kof_db_transaction" -> "V";
             case "kof_db_execute", "kof_db_execute1", "kof_db_execute2", "kof_db_execute3", "kof_db_execute4" -> "I";
-            case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4"
-                    -> "Ljava/util/ArrayList;";
+            case "kof_db_query0", "kof_db_query1", "kof_db_query2", "kof_db_query3", "kof_db_query4",
+                    "kof_orm_all" -> "Ljava/util/ArrayList;";
+            case "kof_orm_create", "kof_orm_delete" -> "Z";
+            case "kof_orm_save", "kof_orm_find" -> "Ljava/lang/Object;";
+            case "kof_orm_count" -> "J";
              case "kof_web_port" -> "I";
              case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "I";
              case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
@@ -1700,6 +1710,186 @@ static boolean hasRuntimeFn(String methodName) {
                         c.setAutoCommit(prevAuto);
                         KOF_DB_TX.remove();
                     }
+                }
+
+                // ── kof.orm — ORM sobre kof.db (JDBC) ───────────────────
+                // O schema é gerado pelo compilador a partir da entity
+                // (nunca reflection para descobrir schema); o mapping de
+                // records reutiliza o binding do JSON.
+
+                private static final class OrmField {
+                    final String name;
+                    final String type;
+                    final boolean generated;
+                    final boolean unique;
+                    OrmField(String name, String type, boolean generated, boolean unique) {
+                        this.name = name;
+                        this.type = type;
+                        this.generated = generated;
+                        this.unique = unique;
+                    }
+                }
+
+                private static java.util.List<OrmField> kof_orm_schema(String schema) {
+                    java.util.List<OrmField> out = new java.util.ArrayList<>();
+                    for (String part : schema.split(",")) {
+                        String[] bits = part.split(":");
+                        boolean generated = false;
+                        boolean unique = false;
+                        for (int i = 2; i < bits.length; i++) {
+                            if ("generated".equals(bits[i])) generated = true;
+                            if ("unique".equals(bits[i])) unique = true;
+                        }
+                        out.add(new OrmField(bits[0], bits[1], generated, unique));
+                    }
+                    return out;
+                }
+
+                private static String kof_orm_sql_type(String type) {
+                    return switch (type) {
+                        case "int" -> "INT";
+                        case "long" -> "BIGINT";
+                        case "bool" -> "BOOLEAN";
+                        case "double" -> "DOUBLE";
+                        case "float" -> "REAL";
+                        default -> "VARCHAR(255)";
+                    };
+                }
+
+                private static String kof_orm_q(String ident) {
+                    // identificadores sempre quotados — nomes de entidades
+                    // podem ser palavras reservadas do SQL (ex.: user)
+                    return "\\"" + ident + "\\"";
+                }
+
+                private static int kof_orm_pkIndex(java.util.List<OrmField> fields) {
+                    for (int i = 0; i < fields.size(); i++) {
+                        if (fields.get(i).generated) return i;
+                    }
+                    return 0;
+                }
+
+                public static boolean kof_orm_create(String id, String table, String schema) throws Exception {
+                    java.util.List<OrmField> fields = kof_orm_schema(schema);
+                    StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS ").append(kof_orm_q(table)).append(" (");
+                    for (int i = 0; i < fields.size(); i++) {
+                        if (i > 0) ddl.append(", ");
+                        OrmField f = fields.get(i);
+                        ddl.append(kof_orm_q(f.name)).append(' ').append(kof_orm_sql_type(f.type));
+                        if (f.generated) ddl.append(" GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY");
+                        if (f.unique) ddl.append(" UNIQUE");
+                    }
+                    ddl.append(')');
+                    return kof_db_execute(id, ddl.toString()) >= 0;
+                }
+
+                public static Object kof_orm_save(String id, Object obj, String table, String schema) throws Exception {
+                    java.util.List<OrmField> fields = kof_orm_schema(schema);
+                    int pkIndex = kof_orm_pkIndex(fields);
+                    java.lang.reflect.RecordComponent[] comps = obj.getClass().getRecordComponents();
+                    Object[] values = new Object[comps.length];
+                    for (int i = 0; i < comps.length; i++) {
+                        values[i] = comps[i].getAccessor().invoke(obj);
+                    }
+                    Object pk = values[pkIndex];
+                    boolean pkIsNumeric = pk instanceof Number
+                            || "int".equals(fields.get(pkIndex).type)
+                            || "long".equals(fields.get(pkIndex).type);
+                    long pkLong = pk instanceof Number n ? n.longValue()
+                            : (pk == null ? 0L : 0L);
+                    if (pk == null || (pkIsNumeric && pkLong == 0L)) {
+                        // INSERT sem a PK — o banco gera o id
+                        StringBuilder cols = new StringBuilder();
+                        StringBuilder marks = new StringBuilder();
+                        java.util.List<Object> binds = new java.util.ArrayList<>();
+                        for (int i = 0; i < fields.size(); i++) {
+                            if (i == pkIndex) continue;
+                            if (cols.length() > 0) { cols.append(", "); marks.append(", "); }
+                            cols.append(kof_orm_q(fields.get(i).name));
+                            marks.append('?');
+                            binds.add(values[i]);
+                        }
+                        try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                                "INSERT INTO " + kof_orm_q(table) + " (" + cols + ") VALUES (" + marks + ")",
+                                java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                            for (int i = 0; i < binds.size(); i++) ps.setObject(i + 1, binds.get(i));
+                            ps.executeUpdate();
+                            try (java.sql.ResultSet keys = ps.getGeneratedKeys()) {
+                                if (keys.next()) {
+                                    values[pkIndex] = keys.getObject(1);
+                                }
+                            }
+                        }
+                        return kof_orm_newInstance(obj.getClass(), values);
+                    }
+                    // UPDATE
+                    StringBuilder sets = new StringBuilder();
+                    java.util.List<Object> binds = new java.util.ArrayList<>();
+                    for (int i = 0; i < fields.size(); i++) {
+                        if (i == pkIndex) continue;
+                        if (sets.length() > 0) sets.append(", ");
+                        sets.append(kof_orm_q(fields.get(i).name)).append(" = ?");
+                        binds.add(values[i]);
+                    }
+                    binds.add(pk);
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                            "UPDATE " + kof_orm_q(table) + " SET " + sets + " WHERE "
+                                    + kof_orm_q(fields.get(pkIndex).name) + " = ?")) {
+                        for (int i = 0; i < binds.size(); i++) ps.setObject(i + 1, binds.get(i));
+                        if (ps.executeUpdate() > 0) {
+                            return obj;
+                        }
+                    }
+                    // PK não-numérica ou id inexistente: INSERT (upsert-like)
+                    StringBuilder cols = new StringBuilder();
+                    StringBuilder marks = new StringBuilder();
+                    java.util.List<Object> insertBinds = new java.util.ArrayList<>();
+                    for (int i = 0; i < fields.size(); i++) {
+                        if (cols.length() > 0) { cols.append(", "); marks.append(", "); }
+                        cols.append(kof_orm_q(fields.get(i).name));
+                        marks.append('?');
+                        insertBinds.add(values[i]);
+                    }
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                            "INSERT INTO " + kof_orm_q(table) + " (" + cols + ") VALUES (" + marks + ")")) {
+                        for (int i = 0; i < insertBinds.size(); i++) ps.setObject(i + 1, insertBinds.get(i));
+                        ps.executeUpdate();
+                    }
+                    return obj;
+                }
+
+                private static Object kof_orm_newInstance(Class<?> type, Object[] values) throws Exception {
+                    java.lang.reflect.Constructor<?> ctor = type.getDeclaredConstructors()[0];
+                    ctor.setAccessible(true);
+                    return ctor.newInstance(values);
+                }
+
+                public static Object kof_orm_find(String id, Object key, String table, String schema, String className) throws Exception {
+                    java.util.List<OrmField> fields = kof_orm_schema(schema);
+                    String pk = fields.get(kof_orm_pkIndex(fields)).name;
+                    java.util.ArrayList<Object> rows = kof_db_query1(id,
+                            "SELECT * FROM " + kof_orm_q(table) + " WHERE " + kof_orm_q(pk) + " = ?", key, className);
+                    return rows.isEmpty() ? null : rows.get(0);
+                }
+
+                public static java.util.ArrayList<Object> kof_orm_all(String id, String table, String schema, String className) throws Exception {
+                    return kof_db_query0(id, "SELECT * FROM " + kof_orm_q(table), className);
+                }
+
+                public static long kof_orm_count(String id, String table, String schema) throws Exception {
+                    try (java.sql.PreparedStatement ps = kof_db_conn(id).prepareStatement(
+                            "SELECT COUNT(*) FROM " + kof_orm_q(table))) {
+                        try (java.sql.ResultSet rs = ps.executeQuery()) {
+                            return rs.next() ? rs.getLong(1) : 0L;
+                        }
+                    }
+                }
+
+                public static boolean kof_orm_delete(String id, Object key, String table, String schema) throws Exception {
+                    java.util.List<OrmField> fields = kof_orm_schema(schema);
+                    String pk = fields.get(kof_orm_pkIndex(fields)).name;
+                    return kof_db_execute1(id, "DELETE FROM " + kof_orm_q(table) + " WHERE "
+                            + kof_orm_q(pk) + " = ?", key) >= 0;
                 }
 
                 // ── kof.security (docs/security.md §5) ──────────────────

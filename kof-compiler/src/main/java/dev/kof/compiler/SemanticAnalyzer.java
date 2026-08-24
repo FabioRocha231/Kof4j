@@ -103,6 +103,12 @@ class SemanticAnalyzer {
                     "Record", rec.interfaces(), members);
             knownClasses.put(rec.name(), sym);
             currentScope.define(sym);
+        } else if (decl instanceof EntityDeclarationNode ent) {
+            SymbolTable members = new SymbolTable();
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(ent.name(), currentPackage,
+                    "Record", List.of(), members);
+            knownClasses.put(ent.name(), sym);
+            currentScope.define(sym);
         } else if (decl instanceof InterfaceDeclarationNode iface) {
             SymbolTable members = new SymbolTable();
             SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(iface.name(), currentPackage,
@@ -117,6 +123,7 @@ class SemanticAnalyzer {
         switch (decl) {
             case ClassDeclarationNode cls -> analyzeClass(cls);
             case RecordDeclarationNode rec -> analyzeRecord(rec);
+            case EntityDeclarationNode ent -> analyzeEntity(ent);
             case InterfaceDeclarationNode iface -> analyzeInterface(iface);
             case FunctionDeclarationNode func -> analyzeFunction(func);
             default -> {}
@@ -262,6 +269,15 @@ class SemanticAnalyzer {
                 ms.setReturnType(inferred);
             }
         }
+    }
+
+    private void analyzeEntity(EntityDeclarationNode ent) {
+        List<RecordComponentNode> components = new java.util.ArrayList<>();
+        for (EntityFieldNode f : ent.fields()) {
+            components.add(new RecordComponentNode(f.position(), List.of(), f.type(), f.name(), null));
+        }
+        analyzeRecord(new RecordDeclarationNode(ent.position(), ent.name(), ent.modifiers(),
+                null, List.of(), components, List.of()));
     }
 
     private void analyzeRecord(RecordDeclarationNode rec) {
@@ -494,6 +510,7 @@ class SemanticAnalyzer {
                         && !KofWeb.isWebNamespace(ie.name())
                         && !KofConfig.isConfigNamespace(ie.name())
                         && !KofDb.isDbNamespace(ie.name())
+                        && !KofOrm.isOrmNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
@@ -667,6 +684,29 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofLog.LogCall logCall = KofLog.staticCall(mc.methodName(), argTypes);
                         if (logCall != null) yield logCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofOrm.isOrmNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        boolean typed = !mc.typeArguments().isEmpty();
+                        String entityName = typed ? mc.typeArguments().get(0) : null;
+                        KofOrm.OrmCall ormCall = KofOrm.staticCall(mc.methodName(), argTypes, typed, entityName);
+                        if (ormCall != null) {
+                            if ("save".equals(mc.methodName()) && !argTypes.isEmpty()) {
+                                yield argTypes.get(argTypes.size() - 1);
+                            }
+                            if (typed && !mc.typeArguments().isEmpty()) {
+                                if ("all".equals(mc.methodName())) {
+                                    yield new Type.ClassType("kof", "List",
+                                            List.of(resolveType(mc.typeArguments().get(0), scope)));
+                                }
+                                if ("find".equals(mc.methodName())) {
+                                    yield resolveType(mc.typeArguments().get(0), scope);
+                                }
+                            }
+                            yield ormCall.returnType();
+                        }
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && "process".equals(rid.name())

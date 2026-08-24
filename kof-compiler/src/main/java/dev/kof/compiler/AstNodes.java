@@ -41,6 +41,26 @@ record RecordComponentNode(SourcePosition position, List<String> modifiers, Stri
                             ExpressionNode initializer) implements AstNode {
 }
 
+/**
+ * entity User {
+ *     id: Long generated
+ *     name: String
+ *     email: String unique
+ *     age: Int
+ * }
+ *
+ * A entity é um record gerado pelo compilador + um schema registrado para
+ * o ORM (kof.orm): o compilador conhece os campos, os tipos e as
+ * constraints em compile-time — nunca reflection para descobrir schema.
+ */
+record EntityDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                             List<EntityFieldNode> fields) implements TypeDeclarationNode {
+}
+
+record EntityFieldNode(SourcePosition position, String type, String name,
+                       boolean generated, boolean unique) implements AstNode {
+}
+
 sealed interface MemberNode extends AstNode {
 }
 
