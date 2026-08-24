@@ -31,17 +31,19 @@ class KofOrmE2ETest {
             """;
 
     private String runJvm(Path source, Path outDir, String expected) throws IOException {
+        return runJvmWithExtra(source, outDir, null, expected);
+    }
+
+    private String runJvmWithExtra(Path source, Path outDir, String extraJar, String expected) throws IOException {
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
         String h2 = findH2Jar();
+        String cp = outDir + java.io.File.pathSeparator + h2
+                + (extraJar != null ? java.io.File.pathSeparator + extraJar : "");
         try {
-            java.nio.file.Files.walk(outDir).filter(Files::isRegularFile)
-                    .forEach(f -> { try {
-                        java.nio.file.Files.copy(f, Path.of("/tmp/orm-keeper").resolve(outDir.getFileName()).resolve(outDir.relativize(f).toString()),
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    } catch (Exception ignored) {} });
             ProcessBuilder pb = new ProcessBuilder("java", "-Dfile.encoding=UTF-8",
-                    "-Dstdout.encoding=UTF-8", "-cp", outDir + java.io.File.pathSeparator + h2, "Default.Main");
+                    "-Dstdout.encoding=UTF-8", "--enable-native-access=ALL-UNNAMED",
+                    "-cp", cp, "Default.Main");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
@@ -56,11 +58,15 @@ class KofOrmE2ETest {
     }
 
     private static String findH2Jar() {
+        return findDriverJar("h2", "H2");
+    }
+
+    private static String findDriverJar(String marker, String label) {
         String cp = System.getProperty("java.class.path");
         for (String entry : cp.split(java.io.File.pathSeparator)) {
-            if (entry.contains("h2") && entry.endsWith(".jar")) return entry;
+            if (entry.contains(marker) && entry.endsWith(".jar")) return entry;
         }
-        throw new IllegalStateException("H2 jar not found on test classpath");
+        throw new IllegalStateException(label + " jar not found on test classpath");
     }
 
     @Test
@@ -175,6 +181,75 @@ class KofOrmE2ETest {
                 + "                }\n"
                 + "                ");
         runJvm(source, tempDir.resolve("out"), "ok");
+    }
+
+    @Test
+    void sqliteDialectViaJdbc(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + """
+                main() {
+                    var db = db.connect("jdbc:sqlite:%s")
+                    orm.create<User>(db)
+                    var mel = orm.save(db, User(0, "Mel", "mel@kof.dev", 30))
+                    var u = orm.find<User>(db, mel.id)
+                    println(u.name)
+                    println(orm.count<User>(db))
+                    db.close(db)
+                }
+                """.formatted(tempDir.resolve("orm.db")));
+        runJvmWithExtra(source, tempDir.resolve("out"), findDriverJar("sqlite-jdbc", "SQLite"),
+                "Mel\n1");
+    }
+
+    @Test
+    void mongoCrud(@TempDir Path tempDir) throws Exception {
+        int port;
+        try (java.net.ServerSocket ss = new java.net.ServerSocket(0)) {
+            port = ss.getLocalPort();
+        }
+        de.flapdoodle.embed.mongo.transitions.Mongod mongod = de.flapdoodle.embed.mongo.transitions.Mongod.builder()
+                .net(de.flapdoodle.reverse.transitions.Start.to(de.flapdoodle.embed.mongo.config.Net.class)
+                        .providedBy(() -> de.flapdoodle.embed.mongo.config.ImmutableNet.builder().port(port).build()))
+                .build();
+        try (de.flapdoodle.reverse.TransitionWalker.ReachedState<
+                de.flapdoodle.embed.mongo.transitions.RunningMongodProcess> state =
+                mongod.start(de.flapdoodle.embed.mongo.distribution.Version.V7_0_1)) {
+            Path source = tempDir.resolve("Main.kf");
+            Files.writeString(source, """
+                entity User {
+                    id: Long
+                    name: String
+                    email: String unique
+                    age: Int
+                }
+                main() {
+                    var db = db.connect("mongodb://localhost:%d/kof_test")
+                    orm.create<User>(db)
+                    orm.save(db, User(1, "Mel", "mel@kof.dev", 30))
+                    var u = orm.find<User>(db, 1)
+                    println(u.name)
+                    var adultos = orm.where<User>(db, "age", 30)
+                    println(adultos.size)
+                    println(orm.count<User>(db))
+                    orm.delete<User>(db, 1)
+                    println(orm.count<User>(db))
+                    db.close(db)
+                }
+                """.formatted(port));
+            runJvmWithExtra(source, tempDir.resolve("out"), mongoClasspath(), "Mel\n1\n1\n0");
+        }
+    }
+
+    private static String mongoClasspath() {
+        StringBuilder cp = new StringBuilder();
+        String classpath = System.getProperty("java.class.path");
+        for (String entry : classpath.split(java.io.File.pathSeparator)) {
+            if ((entry.contains("mongodb") || entry.contains("bson")) && entry.endsWith(".jar")) {
+                if (cp.length() > 0) cp.append(java.io.File.pathSeparator);
+                cp.append(entry);
+            }
+        }
+        return cp.toString();
     }
 
     @Test

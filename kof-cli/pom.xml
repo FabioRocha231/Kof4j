@@ -74,6 +74,12 @@
                                 <exclude>META-INF/*.SF</exclude>
                                 <exclude>META-INF/*.DSA</exclude>
                                 <exclude>META-INF/*.RSA</exclude>
+                                <!-- multi-release deps (GraalJS/Truffle) trazem
+                                     module-info; o uber-jar não é um módulo JPMS -->
+                                <exclude>module-info.class</exclude>
+                                <exclude>META-INF/versions/*/module-info.class</exclude>
+                                <!-- o Manifest vem do transformer -->
+                                <exclude>META-INF/MANIFEST.MF</exclude>
                             </excludes>
                         </filter>
                     </filters>
