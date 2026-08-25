@@ -1088,6 +1088,20 @@ class Parser {
     }
 
     private ExpressionNode parseUnary() {
+        // spawn <expr> / await <expr> em posição de expressão — baixados como
+        // chamadas sintéticas __kof_spawn_expr / __kof_await (sem AST novo)
+        if (check(TokenType.SPAWN)) {
+            SourcePosition p = pos();
+            advance();
+            ExpressionNode e = parseUnary();
+            return new MethodCallExpr(p, null, "__kof_spawn_expr", List.of(), List.of(e));
+        }
+        if (check(TokenType.AWAIT)) {
+            SourcePosition p = pos();
+            advance();
+            ExpressionNode e = parseUnary();
+            return new MethodCallExpr(p, null, "__kof_await", List.of(), List.of(e));
+        }
         if (check(TokenType.BANG)) {
             SourcePosition p = pos();
             advance();

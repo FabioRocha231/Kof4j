@@ -1189,6 +1189,19 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.VOID;
                 }
+                if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
+                    Type t = inferType(mc.arguments().get(0), scope);
+                    yield new Type.ClassType("kof.concurrent", "Handle", List.of(t));
+                }
+                if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                    Type t = inferType(mc.arguments().get(0), scope);
+                    if (t instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
                 if (mc.receiver() == null && currentUnit != null
                         && !"println".equals(mc.methodName()) && !"print".equals(mc.methodName())
                         && !"listOf".equals(mc.methodName()) && !"mapOf".equals(mc.methodName()) && !"setOf".equals(mc.methodName())

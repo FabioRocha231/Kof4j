@@ -60,6 +60,7 @@ enum TokenType {
     CATCH,
     FINALLY,
     SPAWN,
+    AWAIT,
     ASSERT,
     INSTANCEOF,
     VAR,

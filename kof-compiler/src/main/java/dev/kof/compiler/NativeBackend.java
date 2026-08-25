@@ -277,6 +277,7 @@ public class NativeBackend implements Backend {
         Path binFile = outputDir.resolve(mainClassName);
         Files.createDirectories(asmFile.getParent());
         Files.writeString(asmFile, sb.toString());
+        try { Files.writeString(java.nio.file.Path.of("/tmp/kof_asm_debug.s"), sb.toString(), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING); } catch(Exception ignore){}
         System.err.println("NativeBackend: Generated " + asmFile + " (" + Files.size(asmFile) + " bytes)");
         assemble(asmFile, binFile);
     }
@@ -440,7 +441,7 @@ public class NativeBackend implements Backend {
         currentClass = clazz;
 
         String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
-        if (clazz.name().contains("MemoryLayer") && "get".equals(method.name())) {
+        if (clazz.name().contains("MemoryLayer") && ("get".equals(method.name()) || "purgeExpired".equals(method.name()))) {
             try {
                 StringBuilder sb2 = new StringBuilder();
                 sb2.append("IRMethod ").append(clazz.name()).append(".").append(method.name()).append(" locals=").append(method.localVariables()).append("\n");
@@ -448,7 +449,8 @@ public class NativeBackend implements Backend {
                     sb2.append("Block ").append(block.index()).append(":\n");
                     for (KofOperation op : block.operations()) sb2.append("  ").append(op).append("\n");
                 }
-                java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_MemoryLayer_get_ir.txt"), sb2.toString(), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                String fn = "/tmp/dbg_MemoryLayer_" + method.name() + "_ir.txt";
+                java.nio.file.Files.writeString(java.nio.file.Path.of(fn), sb2.toString(), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
             } catch(Exception e){}
         }
         if ("<init>".equals(method.name())) {
@@ -480,6 +482,13 @@ public class NativeBackend implements Backend {
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             if (intArgIdx < 6) {
                 sb.append("    movq ").append(intRegs[intArgIdx]).append(", -").append((lv.index() + 1) * 8).append("(%rbp)\n");
+            } else {
+                // Args beyond register capacity are on the stack.
+                // After push %rbp, stack layout is: [saved_rbp][ret_addr][arg7][arg8]...
+                // Stack arg index: 7th arg = 16(%rbp), 8th = 24(%rbp), etc.
+                int stackOffset = 16 + (intArgIdx - 6) * 8;
+                sb.append("    movq ").append(stackOffset).append("(%rbp), %rax\n");
+                sb.append("    movq %rax, -").append((lv.index() + 1) * 8).append("(%rbp)\n");
             }
             intArgIdx++;
         }
@@ -995,17 +1004,20 @@ public class NativeBackend implements Backend {
         if (kc.kind() == KofCallKind.CONSTRUCTOR && "<init>".equals(kc.methodName())) {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            int stackArgs = Math.max(0, argCount - 5);
             for (int i = argCount - 1; i >= 0; i--) {
                 if (i < 5) {
                     sb.append("    popq ").append(intRegs[i + 1]).append("\n");
-                } else {
-                    sb.append("    addq $8, %rsp\n");
                 }
+                // Args at index >= 5 stay on the stack for ABI stack-passing
             }
             sb.append("    popq %rax\n");
             sb.append("    movq %rax, %rdi\n");
             String ctorLabel = resolveCalleeName(kc);
             sb.append("    call ").append(ctorLabel).append("\n");
+            if (stackArgs > 0) {
+                sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+            }
             return;
         }
 

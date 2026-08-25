@@ -2266,6 +2266,67 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
+                if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
+                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    "spawn expr: not supported on the " + target + " target yet",
+                                    target == Target.NATIVE ? "CONC001" : "AND001");
+                        }
+                        yield localIdx;
+                    }
+                    ExpressionNode body = mc.arguments().get(0);
+                    Type resultT = inferExprType(body, locals);
+                    if (isPrimitiveType(resultT)) {
+                        // MVP: resultado de spawn-expr precisa ser referência
+                        // (unbox pós-await não é emitido no runtime path)
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    "spawn com resultado primitivo não suportado; capture numa variável ou use referência (CONC002)",
+                                    "CONC002");
+                        }
+                        yield localIdx;
+                    }
+                    Type handleT = new Type.ClassType("kof.concurrent", "Handle", List.of(resultT));
+                    LambdaExpr le = body instanceof LambdaExpr l0 ? l0
+                            : new LambdaExpr(body.position() != null ? body.position() : mc.position(),
+                                    List.of(), List.of(new ExpressionStmt(
+                                            body.position() != null ? body.position() : mc.position(), body)));
+                    Type.FunctionType ft = new Type.FunctionType(List.of(), resultT, null);
+                    String lambdaClass = lambdaClass(le, ft, List.of());
+                    Type taskType = new Type.ClassType("", lambdaClass, List.of());
+                    ops.add(new KofNewObject(taskType, List.of()));
+                    ops.add(new KofDup());
+                    ops.add(new KofCall(taskType, "<init>", List.of(),
+                            Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                    ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_spawn_result", List.of(taskType), handleT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    "await: not supported on the " + target + " target yet",
+                                    target == Target.NATIVE ? "CONC001" : "AND001");
+                        }
+                        yield localIdx;
+                    }
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    Type hT = inferExprType(mc.arguments().get(0), locals);
+                    Type resT = Type.UnknownType.UNKNOWN;
+                    if (hT instanceof Type.ClassType ct
+                            && !ct.typeArguments().isEmpty()) resT = ct.typeArguments().get(0);
+                    ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_await", List.of(hT), resT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid && isEnumName(rid.name())
                         && !isLocalVarName(rid.name(), locals)) {
                     Type enumT = new Type.ClassType("", rid.name(), List.of());
@@ -4286,6 +4347,19 @@ private Target target = Target.JVM;
                 if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN : inferExprType(mc.arguments().get(0), locals);
                     yield new Type.ClassType("kof", "Set", List.of(elemType));
+                }
+                if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
+                    Type t = inferExprType(mc.arguments().get(0), locals);
+                    yield new Type.ClassType("kof.concurrent", "Handle", List.of(t));
+                }
+                if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                    Type t = inferExprType(mc.arguments().get(0), locals);
+                    if (t instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid && isEnumName(rid.name())
                         && findLocalVar(rid.name(), locals) == null) {
