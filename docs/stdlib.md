@@ -48,7 +48,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.time` | ✅ | `now()` |
 | `kof.json` | ✅ | encode/decode; objetos só JVM (JSN002), Float/Double gap (JSN001) |
 | `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM |
-| `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use` — JVM |
+| `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use`, `listenSecure(port)` TLS — JVM (Native/JS `WEB001/002`) |
 | `kof.security` | ✅ (v1 + G9) | passwords, crypto, jwt, secrets, auth, security, rateLimit, sessions, apiKeys — ver `docs/security.md` |
 | `kof.concurrent` | ✅ | `spawn` (virtual threads) — JVM; Native CONC001 |
 | `kof.test` | ✅ | `kof test`, `assert` |
@@ -115,6 +115,6 @@ Resumo executivo (0.0.5-alpha):
 8. G8 — `kof.time.sleep` + scheduler básico.
 9. G10 — security no Native (jwt, passwords, sha512, aesgcm).
 10. ~~G9~~ — ✅ rate limiting, sessions, API keys (`security.rateLimit`, `sessionCreate`/`sessionGet`/`sessionDestroy`, `apiKeyGenerate`/`apiKeyValid` — JVM/Native/JS).
-11. G12 — TLS/HTTPS no servidor web.
+11. ~~G12~~ — ✅ TLS/HTTPS (`web.listenSecure(port)` — JVM, `SSLServerSocket` + self-signed; `KofWebTlsTest` 5/5).
 
 Prioridades e estratégia completas: `docs/ecosystem-coverage.md` §7-§8.

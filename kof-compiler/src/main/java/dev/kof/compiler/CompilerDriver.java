@@ -2255,12 +2255,24 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type argType = inferExprType(mc.arguments().get(0), locals);
                     if (isPrimitiveType(argType)) {
-                        boxPrimitive(ops, argType);
+                        if (target == Target.NATIVE) {
+                            ops.add(new KofCall(
+                                    BuiltinTypes.STRING,
+                                    "valueOf", List.of(argType),
+                                    BuiltinTypes.STRING, KofCallKind.STATIC));
+                        } else {
+                            boxPrimitive(ops, argType);
+                            ops.add(new KofCall(
+                                    BuiltinTypes.STRING,
+                                    "valueOf", List.of(Type.UnknownType.UNKNOWN),
+                                    BuiltinTypes.STRING, KofCallKind.STATIC));
+                        }
+                    } else {
+                        ops.add(new KofCall(
+                                BuiltinTypes.STRING,
+                                "valueOf", List.of(Type.UnknownType.UNKNOWN),
+                                BuiltinTypes.STRING, KofCallKind.STATIC));
                     }
-                    ops.add(new KofCall(
-                            BuiltinTypes.STRING,
-                            "valueOf", List.of(Type.UnknownType.UNKNOWN),
-                            BuiltinTypes.STRING, KofCallKind.STATIC));
                     ops.add(new KofCall(
                             new Type.ClassType("java.io", "PrintStream", List.of()),
                             mc.methodName(), List.of(BuiltinTypes.STRING),
@@ -3033,14 +3045,15 @@ private Target target = Target.JVM;
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) {
                             if (target != Target.JVM) {
+                                String webCode = "kof_web_listen_secure".equals(webCall.function()) ? "WEB002" : "WEB001";
+                                String webMsg = "kof_web_listen_secure".equals(webCall.function())
+                                        ? "web TLS: not available on the " + target + " target yet (WEB002)"
+                                        : "web: not available on the " + target + " target yet (WEB001)";
                                 if (currentDiagnostics != null) {
                                     currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                             mc.position() != null ? mc.position().line() : 0,
                                             mc.position() != null ? mc.position().column() : 0,
-                                            0,
-                                            "web: not available on the " + target
-                                                    + " target yet (WEB001)",
-                                            "WEB001");
+                                            0, webMsg, webCode);
                                 }
                                 yield localIdx;
                             }
@@ -3955,7 +3968,14 @@ private Target target = Target.JVM;
                 // fonte secundária para os demais casos
                 if (semanticAnalyzer != null) {
                     Type semantic = semanticAnalyzer.getExpressionType(mc);
-                    if (!(semantic instanceof Type.UnknownType)) yield semantic;
+                    if (!(semantic instanceof Type.UnknownType)) {
+                        if (semantic instanceof Type.TypeVariable tv && mc.receiver() != null) {
+                            Type recvT = inferExprType(mc.receiver(), locals);
+                            Type subst = substituteTypeVariable(tv.name(), recvT);
+                            if (subst != null) yield subst;
+                        }
+                        yield semantic;
+                    }
                 }
                 if (mc.receiver() == null && semanticAnalyzer != null
                         && semanticAnalyzer.getClass(mc.methodName()) != null) {
@@ -4230,7 +4250,14 @@ private Target target = Target.JVM;
                     Type recvT = inferExprType(mc.receiver(), locals);
                     if (recvT instanceof Type.ClassType ct && semanticAnalyzer != null) {
                         SymbolTable.Symbol m = semanticAnalyzer.resolveInHierarchy(ct.name(), mc.methodName());
-                        if (m instanceof SymbolTable.MethodSymbol ms) yield ms.returnType();
+                        if (m instanceof SymbolTable.MethodSymbol ms) {
+                            Type rt = ms.returnType();
+                            if (rt instanceof Type.TypeVariable tv) {
+                                Type subst = substituteTypeVariable(tv.name(), recvT);
+                                if (subst != null) yield subst;
+                            }
+                            yield rt;
+                        }
                     }
                     if (recvT instanceof Type.ClassType) {
                         ObjectMethodSig osig = objectMethodSignature(mc.methodName(), mc.arguments().size());

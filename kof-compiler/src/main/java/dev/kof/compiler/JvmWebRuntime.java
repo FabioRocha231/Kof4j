@@ -192,12 +192,36 @@ final class JvmWebRuntime {
                     return kof_http_request(url, "PATCH", headers, body);
                 }
 
+                private static final java.net.http.HttpClient KOF_HTTP_CLIENT_INSECURE;
+                static {
+                    java.net.http.HttpClient tmp = null;
+                    try {
+                        javax.net.ssl.SSLContext sc = javax.net.ssl.SSLContext.getInstance("TLS");
+                        sc.init(null, new javax.net.ssl.TrustManager[]{new javax.net.ssl.X509TrustManager() {
+                            public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+                            public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                            public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                        }}, new java.security.SecureRandom());
+                        javax.net.ssl.SSLParameters sslParams = new javax.net.ssl.SSLParameters();
+                        sslParams.setEndpointIdentificationAlgorithm("");
+                        tmp = java.net.http.HttpClient.newBuilder()
+                                .sslContext(sc)
+                                .sslParameters(sslParams)
+                                .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                                .connectTimeout(java.time.Duration.ofSeconds(15))
+                                .build();
+                    } catch (Exception e) { tmp = java.net.http.HttpClient.newHttpClient(); }
+                    KOF_HTTP_CLIENT_INSECURE = tmp;
+                }
+
                 public static int kof_http_status(String url) throws Exception {
+                    boolean isHttps = url != null && url.toLowerCase().startsWith("https://");
+                    java.net.http.HttpClient client = isHttps ? KOF_HTTP_CLIENT_INSECURE : java.net.http.HttpClient.newHttpClient();
                     java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
                             java.net.URI.create(url))
                             .timeout(java.time.Duration.ofSeconds(KOF_HTTP_TIMEOUT.get()))
                             .method("GET", java.net.http.HttpRequest.BodyPublishers.noBody());
-                    java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient()
+                    java.net.http.HttpResponse<String> r = client
                             .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
                     return r.statusCode();
                 }
@@ -220,7 +244,9 @@ final class JvmWebRuntime {
                     } else {
                         b.method(method, java.net.http.HttpRequest.BodyPublishers.noBody());
                     }
-                    java.net.http.HttpResponse<String> r = java.net.http.HttpClient.newHttpClient()
+                    boolean isHttps2 = url != null && url.toLowerCase().startsWith("https://");
+                    java.net.http.HttpClient client2 = isHttps2 ? KOF_HTTP_CLIENT_INSECURE : java.net.http.HttpClient.newHttpClient();
+                    java.net.http.HttpResponse<String> r = client2
                             .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
                     return r.body();
                 }

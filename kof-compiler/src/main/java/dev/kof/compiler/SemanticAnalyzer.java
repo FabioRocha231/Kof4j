@@ -1029,8 +1029,10 @@ class SemanticAnalyzer {
                         // Nota: String/Int/Long/Bool são tipos JDK — métodos como
                         // contains/split são resolvidos via lowering direto (JVM) ou
                         // via runtime (Native/JS), não via externalTypes. Evita SEM025
-                        // falso-positivo para esses tipos.
-                        if (diagnostics != null && !BuiltinTypes.isList(ct)) {
+                        // falso-positivo para esses tipos. Object methods (hashCode etc.)
+                        // são válidos para qualquer classe.
+                        if (diagnostics != null && !BuiltinTypes.isList(ct)
+                                && !isObjectMethod(mc.methodName(), mc.arguments().size())) {
                             boolean isKnownReceiver = knownClasses.containsKey(ct.name())
                                     || isExternal(ct);
                             if (isKnownReceiver) {

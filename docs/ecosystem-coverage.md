@@ -215,7 +215,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | sessions | ✅ `security.sessionCreate/sessionGet/sessionDestroy` — JVM/Native/JS | y | y | y | KofSecurityG9Test | security.md |
 | API keys | ✅ `security.apiKeyGenerate/apiKeyValid` — JVM/Native/JS | y | y | y | KofSecurityG9Test | security.md |
 | OAuth2 / OIDC (client, resource server, provider) | `PLANNED` | — | — | — | — | security.md |
-| TLS / certificates / HTTPS | `PLANNED` | — | — | — | — | http.md |
+| TLS / certificates / HTTPS | ✅ `web.listenSecure(port)` + `kof.http` HTTPS — JVM (self-signed via keytool) | y | — WEB002 | — WEB002 | KofWebTlsTest | http.md |
 | secure cookies | `PLANNED` | — | — | — | — | — |
 | token rotation / replay protection | `PLANNED` | — | — | — | — | — |
 | audit logging | `PLANNED` | — | — | — | — | — |
@@ -336,7 +336,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | G9 | ~~**Rate limiting / sessions / API keys** inexistentes~~ — ✅ **implementado**: `security.rateLimit`/`sessionCreate`/`sessionGet`/`sessionDestroy`/`apiKeyGenerate`/`apiKeyValid` — JVM/Native/JS (`KofSecurityG9Test` 3/3) | — | `KofSecurityG9Test` |
 | G10 | ~~kof.security no Native~~ — ✅ **fechado**: PBKDF2, SHA-512, JWT HS256 e AES-GCM em asm (SECN001-004) | — | manter os vetores de teste (FIPS 197, NIST SP 800-38D, RFC 7519) |
 | G11 | ~~**Lambdas com captura**~~ — ✅ **captura implementada** (mutable via box sintético `BoxN` + captura por valor; `Lambda0`/`Box0` gerados); **Map/Set** e **await/join** seguem em aberto | expressividade | compilador (documentado em backend-parity.md) |
-| G12 | **TLS/HTTPS** no servidor web | tráfego seguro | kof.web + kof.security (certs) |
+| G12 | ~~**TLS/HTTPS** no servidor web~~ — ✅ **implementado**: `web.listenSecure(port)` (JVM, `SSLServerSocket` + `keytool` self-signed, `SAN=IP:127.0.0.1,DNS:localhost`; `kof.http` trust-all) — Native/JS reportam `WEB002` | — | `KofWebTlsTest` (5) |
 
 ---
 
@@ -431,7 +431,7 @@ Princípios mantidos:
 8. ~~G8~~ — ✅ `kof.time.sleep` + `interval`/`cancel` (JVM); Native/JS TIME001.
 9. G10 — security no Native (jwt, passwords, sha512, aesgcm) + config/log.
 10. ~~G9~~ — ✅ rate limiting, sessions, API keys (`security.rateLimit`, `sessionCreate`/`sessionGet`/`sessionDestroy`, `apiKeyGenerate`/`apiKeyValid` — JVM/Native/JS; `KofSecurityG9Test` 3/3).
-11. G12 — TLS/HTTPS no servidor web.
+11. ~~G12~~ — ✅ TLS/HTTPS (`web.listenSecure(port)` — JVM, `SSLServerSocket` + self-signed; `kof.http` HTTPS trust-all; `KofWebTlsTest` 5/5; Native/JS `WEB002`).
 
 ## P1
 

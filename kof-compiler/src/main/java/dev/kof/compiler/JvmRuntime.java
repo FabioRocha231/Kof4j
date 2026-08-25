@@ -147,6 +147,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
             case "kof_web_use" -> "(Ljava/lang/String;Ljava/lang/Object;)V";
             case "kof_web_listen" -> "(Ljava/lang/String;I)V";
+            case "kof_web_listen_secure" -> "(Ljava/lang/String;I)V";
             case "kof_web_port" -> "(Ljava/lang/String;)I";
             case "kof_web_close" -> "(Ljava/lang/String;)V";
             case "kof_web_param", "kof_web_query", "kof_web_header"
@@ -387,6 +388,58 @@ static boolean hasRuntimeFn(String methodName) {
                         } catch (java.io.IOException e) {
                             if (!app.running) break;
                         }
+                    }
+                }
+
+                public static void kof_web_listen_secure(String appId, int port) {
+                    WebApp app = kof_web_app(appId);
+                    if (app.serverSocket != null) {
+                        throw new IllegalStateException("app already listening: " + appId);
+                    }
+                    try {
+                        javax.net.ssl.SSLContext ctx = kof_web_ssl_context();
+                        javax.net.ssl.SSLServerSocketFactory ssf = ctx.getServerSocketFactory();
+                        javax.net.ssl.SSLServerSocket ss = (javax.net.ssl.SSLServerSocket) ssf.createServerSocket(port, 64,
+                                java.net.InetAddress.getByName("0.0.0.0"));
+                        ss.setNeedClientAuth(false);
+                        app.serverSocket = ss;
+                    } catch (Exception e) {
+                        throw new RuntimeException("cannot bind TLS port " + port + ": " + e.getMessage(), e);
+                    }
+                    app.running = true;
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> kof_web_close(appId)));
+                    while (app.running) {
+                        try {
+                            java.net.Socket client = app.serverSocket.accept();
+                            client.setSoTimeout(15000);
+                            Thread.startVirtualThread(() -> kof_web_handle(app, client));
+                        } catch (java.io.IOException e) {
+                            if (!app.running) break;
+                        }
+                    }
+                }
+
+                private static javax.net.ssl.SSLContext kof_web_ssl_context() throws Exception {
+                    String ksPath = System.getProperty("java.io.tmpdir") + "/kof-tls-" + System.nanoTime() + ".jks";
+                    try {
+                        Process p = new ProcessBuilder("keytool", "-genkeypair", "-alias", "kof", "-keyalg", "RSA", "-keysize", "2048", "-validity", "365", "-dname", "CN=localhost, OU=Kof, O=Kof, L=Test, ST=Test, C=US", "-ext", "SAN=IP:127.0.0.1,DNS:localhost", "-keystore", ksPath, "-storepass", "changeit", "-keypass", "changeit", "-storetype", "JKS", "-noprompt").redirectErrorStream(true).start();
+                        String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                        int ec = p.waitFor();
+                        if (ec != 0) throw new RuntimeException("keytool failed: " + out);
+                        java.security.KeyStore ks = java.security.KeyStore.getInstance("JKS");
+                        try (java.io.FileInputStream fis = new java.io.FileInputStream(ksPath)) { ks.load(fis, "changeit".toCharArray()); }
+                        javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance("SunX509");
+                        kmf.init(ks, "changeit".toCharArray());
+                        javax.net.ssl.TrustManager[] trustAll = new javax.net.ssl.TrustManager[]{new javax.net.ssl.X509TrustManager() {
+                            public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+                            public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                            public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                        }};
+                        javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
+                        ctx.init(kmf.getKeyManagers(), trustAll, new java.security.SecureRandom());
+                        return ctx;
+                    } finally {
+                        try { java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(ksPath)); } catch (Exception ignored) {}
                     }
                 }
 
