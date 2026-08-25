@@ -576,6 +576,17 @@ final class JvmStringRuntime {
                     return KOF_API_KEYS.containsKey(key);
                 }
 
+                // ── kof.enum (P1) ──────────────────────────────────────
+
+                public static String kof_enum_value_of(java.util.List<?> values, String name) {
+                    if (values != null && name != null) {
+                        for (Object v : values) {
+                            if (name.equals(v)) return (String) v;
+                        }
+                    }
+                    return null;
+                }
+
                 // ── kof.tetris — hidden easter egg ────────────────────
                 // `tetris.run()` starts a simplified terminal tetris.
                 // Keys: a=left d=right s=down w=rotate space=hard drop

@@ -98,6 +98,7 @@ class SemanticAnalyzer {
             case RecordDeclarationNode rec -> defineRecordMembers(rec);
             case EntityDeclarationNode ent -> defineEntityMembers(ent);
             case InterfaceDeclarationNode iface -> defineInterfaceMembers(iface);
+            case EnumDeclarationNode en -> { }
             default -> {}
         }
     }
@@ -281,6 +282,22 @@ class SemanticAnalyzer {
                     "Record", List.of(), members);
             knownClasses.put(ent.name(), sym);
             currentScope.define(sym);
+        } else if (decl instanceof EnumDeclarationNode en) {
+            SymbolTable members = new SymbolTable();
+            Type self = new Type.ClassType("", en.name(), List.of());
+            members.define(new SymbolTable.MethodSymbol("values", en.name(),
+                    new Type.ClassType("kof", "List", List.of(BuiltinTypes.STRING)), List.of(),
+                    AccessFlags.STATIC, SymbolTable.DispatchKind.STATIC));
+            members.define(new SymbolTable.MethodSymbol("valueOf", en.name(),
+                    self, List.of(BuiltinTypes.STRING),
+                    AccessFlags.STATIC, SymbolTable.DispatchKind.STATIC));
+            members.define(new SymbolTable.MethodSymbol("name", en.name(),
+                    BuiltinTypes.STRING, List.of(),
+                    0, SymbolTable.DispatchKind.INSTANCE));
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(en.name(), packageOf(en),
+                    "Object", List.of(), members);
+            knownClasses.put(en.name(), sym);
+            currentScope.define(sym);
         } else if (decl instanceof InterfaceDeclarationNode iface) {
             SymbolTable members = new SymbolTable();
             SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(iface.name(), packageOf(iface),
@@ -297,6 +314,7 @@ class SemanticAnalyzer {
             case RecordDeclarationNode rec -> analyzeRecord(rec);
             case EntityDeclarationNode ent -> analyzeEntity(ent);
             case InterfaceDeclarationNode iface -> analyzeInterface(iface);
+            case EnumDeclarationNode en -> { }
             case FunctionDeclarationNode func -> analyzeFunction(func);
             default -> {}
         }

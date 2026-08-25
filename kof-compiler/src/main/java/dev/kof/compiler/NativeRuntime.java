@@ -12123,7 +12123,53 @@ cmpl %r14d, %r15d
 
             """);
         sb.append("""
-            # ── kof.security G9 (rate limiting / sessions / API keys) ───────
+                        # ── kof.enum (P1) ────────────────────────────────────────────
+            # kof_enum_value_of(rdi=list KofList*, rsi=name KofString*) -> KofString*|0
+            .globl kof_enum_value_of
+            .type kof_enum_value_of, @function
+            kof_enum_value_of:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx              # list
+                movq %rsi, %r12              # name
+                testq %rbx, %rbx
+                jz .Lenum_fail
+                testq %r12, %r12
+                jz .Lenum_fail
+                xorq %r13, %r13              # i = 0
+            .Lenum_loop:
+                cmpl 16(%rbx), %r13d
+                jge .Lenum_fail
+                movq 24(%rbx), %rdi          # data array
+                movq (%rdi,%r13,8), %rsi     # item
+                testq %rsi, %rsi
+                jz .Lenum_next
+                movq %r12, %rdi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .Lenum_found
+            .Lenum_next:
+                incq %r13
+                jmp .Lenum_loop
+            .Lenum_found:
+                movq 24(%rbx), %rax
+                movq (%rax,%r13,8), %rax     # retorna o próprio item (internado)
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lenum_fail:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+# ── kof.security G9 (rate limiting / sessions / API keys) ───────
             # kof_sec_rate_limit(rdi=key String*, rsi=limit int, rdx=window int) -> Bool
             # Simple fixed-window without time (Native best-effort): per-key counter, denies when count >= limit
             .globl kof_sec_rate_limit

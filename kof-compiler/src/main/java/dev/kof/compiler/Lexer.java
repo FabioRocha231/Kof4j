@@ -13,6 +13,7 @@ class Lexer {
         KEYWORDS.put("class", TokenType.CLASS);
         KEYWORDS.put("interface", TokenType.INTERFACE);
         KEYWORDS.put("record", TokenType.RECORD);
+        KEYWORDS.put("enum", TokenType.ENUM);
         KEYWORDS.put("entity", TokenType.ENTITY);
         KEYWORDS.put("generated", TokenType.GENERATED);
         KEYWORDS.put("unique", TokenType.UNIQUE);

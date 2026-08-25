@@ -19,6 +19,7 @@ enum TokenType {
     CLASS,
     INTERFACE,
     RECORD,
+    ENUM,
     ENTITY,
     GENERATED,
     UNIQUE,

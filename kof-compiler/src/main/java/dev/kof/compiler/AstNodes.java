@@ -81,6 +81,16 @@ record ClassDeclarationNode(SourcePosition position, String name, List<String> m
     }
 }
 
+record EnumDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                            List<String> constants,
+                            List<AnnotationNode> annotations) implements TypeDeclarationNode {
+
+    public EnumDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                               List<String> constants) {
+        this(position, name, modifiers, constants, List.of());
+    }
+}
+
 record InterfaceDeclarationNode(SourcePosition position, String name, List<String> modifiers,
                                 List<String> interfaces,
                                 List<? extends AstNode> members,

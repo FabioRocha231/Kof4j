@@ -1170,6 +1170,27 @@ private Target target = Target.JVM;
         return boxName;
     }
 
+    /** Constantes por enum declarado na unidade atual (nome → [A, B, ...]). */
+    private java.util.List<String> enumConstantsOf(String name) {
+        if (name == null || currentUnit == null) return List.of();
+        for (AstNode d : currentUnit.declarations()) {
+            if (d instanceof EnumDeclarationNode en && en.name().equals(name)) {
+                return en.constants();
+            }
+        }
+        return List.of();
+    }
+
+    private boolean isEnumType(Type t) {
+        if (!(t instanceof Type.ClassType ct) || !ct.packageName().isEmpty() || !ct.typeArguments().isEmpty()) return false;
+        return !enumConstantsOf(ct.name()).isEmpty();
+    }
+
+    private boolean isEnumName(String name) {
+        return currentUnit != null && currentUnit.declarations().stream()
+                .anyMatch(d -> d instanceof EnumDeclarationNode en && en.name().equals(name));
+    }
+
     private Type listOfElementType(MethodCallExpr mc, List<IRLocalVariable> locals) {
         if (!mc.arguments().isEmpty()) {
             return inferExprType(mc.arguments().get(0), locals);
@@ -1982,7 +2003,8 @@ private Target target = Target.JVM;
                                 BuiltinTypes.STRING, KofCallKind.FUNCTION));
                         accType = BuiltinTypes.STRING;
                     } else if (("==".equals(be.operator()) || "!=".equals(be.operator()))
-                            && (Type.isString(accType) || Type.isString(rightType))) {
+                            && (Type.isString(accType) || Type.isString(rightType)
+                                || isEnumType(accType) || isEnumType(rightType))) {
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
                         ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_equals",
                                 List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
@@ -2241,6 +2263,42 @@ private Target target = Target.JVM;
                         localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                         ops.add(new KofCall(listType, "kof_list_add",
                                 List.of(inferExprType(arg, locals)), Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                    }
+                    yield localIdx;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && isEnumName(rid.name())
+                        && !isLocalVarName(rid.name(), locals)) {
+                    Type enumT = new Type.ClassType("", rid.name(), List.of());
+                    // lista interna com elemento STRING (runtime do enum é o nome);
+                    // a tipagem List<Color> fica na checagem de tipos
+                    Type stringListT = new Type.ClassType("kof", "List", List.of(BuiltinTypes.STRING));
+                    if ("values".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        ops.add(new KofCall(stringListT,
+                                "kof_list_new", List.of(), stringListT,
+                                KofCallKind.FUNCTION));
+                        for (String c : enumConstantsOf(rid.name())) {
+                            ops.add(new KofDup());
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, c));
+                            ops.add(new KofCall(stringListT,
+                                    "kof_list_add", List.of(BuiltinTypes.STRING), Type.PrimitiveType.VOID,
+                                    KofCallKind.INSTANCE));
+                        }
+                        yield localIdx;
+                    }
+                    if ("valueOf".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                        Type listT = stringListT;
+                        ops.add(new KofCall(listT, "kof_list_new", List.of(), listT,
+                                KofCallKind.FUNCTION));
+                        for (String c : enumConstantsOf(rid.name())) {
+                            ops.add(new KofDup());
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, c));
+                            ops.add(new KofCall(listT, "kof_list_add", List.of(enumT),
+                                    Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                        }
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(enumT, "kof_enum_value_of",
+                                List.of(listT, BuiltinTypes.STRING), enumT, KofCallKind.FUNCTION));
+                        yield localIdx;
                     }
                     yield localIdx;
                 }
@@ -3081,6 +3139,10 @@ private Target target = Target.JVM;
                     Type recvType = inferExprType(mc.receiver(), locals);
                     if (KofUi.isUiType(recvType)) {
                         localIdx = emitUiInstance(recvType, mc, ops, owner, localIdx, locals);
+                        yield localIdx;
+                    }
+                    if (isEnumType(recvType) && "name".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        // o valor do enum JÁ é o nome (String em runtime): identidade
                         yield localIdx;
                     }
                     if (KofWeb.isAppType(recvType)) {
@@ -3941,7 +4003,28 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     yield localIdx;
                 }
+                // enum constant access: Color.Red — literal String tipado como Color
+                if (recvType instanceof Type.ClassType ct && ct.packageName().isEmpty()
+                        && isEnumName(ct.name())) {
+                    if (!enumConstantsOf(ct.name()).contains(fa.fieldName())) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(fa.position() != null ? fa.position().file() : "",
+                                    fa.position() != null ? fa.position().line() : 0,
+                                    fa.position() != null ? fa.position().column() : 0, 0,
+                                    "enum '" + ct.name() + "' não tem constante '" + fa.fieldName() + "'",
+                                    "SEM030");
+                        }
+                        yield localIdx;
+                    }
+                    ops.add(new KofLoadLiteral(BuiltinTypes.STRING, fa.fieldName()));
+                    yield localIdx;
+                }
                 // static field access: Class.field — no receiver on the stack
+                if (recvType instanceof Type.ClassType ct && ct.packageName().isEmpty()
+                        && isEnumName(ct.name()) && enumConstantsOf(ct.name()).contains(fa.fieldName())) {
+                    ops.add(new KofLoadLiteral(BuiltinTypes.STRING, fa.fieldName()));
+                    yield localIdx;
+                }
                 if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
                     SymbolTable.Symbol staticSym = resolveFieldInHierarchy(ct.name(), fa.fieldName());
                     if (staticSym instanceof SymbolTable.FieldSymbol fs
@@ -4047,10 +4130,20 @@ private Target target = Target.JVM;
                     }
                 }
                 if (semanticAnalyzer != null) {
-                    SymbolTable.Symbol sym = resolveFromSemantic(ie.name());
-                    if ("entries".equals(ie.name())) {
-                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_entries2.txt"), "Identifier entries sym=" + sym + " type=" + (sym!=null?sym.type():null) + " locals=" + locals + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                    // Resolve field within the current class first (via 'this'
+                    // at index 0) to avoid picking a same-named field from an
+                    // unrelated class — e.g. Config.entries vs MemoryLayer.entries.
+                    if (!locals.isEmpty() && locals.get(0).type() instanceof Type.ClassType thisType
+                            && !thisType.name().equals("Object")) {
+                        SymbolTable.Symbol thisField = semanticAnalyzer.resolveInHierarchy(
+                                thisType.name(), ie.name());
+                        if (thisField != null) {
+                            if (thisField instanceof SymbolTable.FieldSymbol fs) yield fs.type();
+                            if (thisField instanceof SymbolTable.MethodSymbol ms
+                                    && ms.parameterTypes().isEmpty()) yield ms.returnType();
+                        }
                     }
+                    SymbolTable.Symbol sym = resolveFromSemantic(ie.name());
                     if (sym != null) yield sym.type();
                     SymbolTable.ClassSymbol cls = semanticAnalyzer.getClass(ie.name());
                     if (cls != null) yield cls.type();
@@ -4193,6 +4286,22 @@ private Target target = Target.JVM;
                 if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN : inferExprType(mc.arguments().get(0), locals);
                     yield new Type.ClassType("kof", "Set", List.of(elemType));
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && isEnumName(rid.name())
+                        && findLocalVar(rid.name(), locals) == null) {
+                    java.util.List<String> consts = enumConstantsOf(rid.name());
+                    Type enumT = new Type.ClassType("", rid.name(), List.of());
+                    // MVP: elementos tipados como String (runtime do enum é o nome);
+                    // comparação com constantes funciona via string-equals
+                    if ("values".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        yield new Type.ClassType("kof", "List", List.of(BuiltinTypes.STRING));
+                    }
+                    if ("valueOf".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                        yield enumT;
+                    }
+                    // constante via sintaxe de método? Color.Red() — não suportado
+                    if (consts.contains(mc.methodName())) yield enumT;
+                    yield Type.UnknownType.UNKNOWN;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName())) yield BuiltinTypes.STRING;
@@ -4339,6 +4448,9 @@ private Target target = Target.JVM;
                     }
                     if (recvType instanceof Type.FunctionType ft) {
                         yield ft.returnType();
+                    }
+                    if (isEnumType(recvType) && "name".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                        yield BuiltinTypes.STRING;
                     }
                     if (BuiltinTypes.isList(recvType)) {
                         String mn = mc.methodName();
@@ -4504,6 +4616,15 @@ private Target target = Target.JVM;
                 }
                 if (Type.isString(recvType) && ("name".equals(fa.fieldName()) || "path".equals(fa.fieldName()))) {
                     yield BuiltinTypes.STRING;
+                }
+                if (recvType instanceof Type.ClassType ct && ct.packageName().isEmpty()
+                        && isEnumName(ct.name())) {
+                    if (!enumConstantsOf(ct.name()).contains(fa.fieldName()) && currentDiagnostics != null) {
+                        currentDiagnostics.error("", 0, 0, 0,
+                                "enum '" + ct.name() + "' não tem constante '" + fa.fieldName() + "'",
+                                "SEM030");
+                    }
+                    yield recvType;
                 }
                 if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
                     SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(ct.name(), fa.fieldName());
@@ -5534,6 +5655,8 @@ private Target target = Target.JVM;
             Type left = inferExprType(bin.left(), locals);
             Type right = inferExprType(bin.right(), locals);
             if (Type.isString(left) || Type.isString(right)) return false;
+            // enum == enum compara conteúdo (string) — nunca identidade
+            if (isEnumType(left) || isEnumType(right)) return false;
         }
         return true;
     }

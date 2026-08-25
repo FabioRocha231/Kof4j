@@ -30,6 +30,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.startsWith("kof_validation_")
+                || methodName.startsWith("kof_enum_")
                 || methodName.startsWith("kof_observability_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
@@ -247,6 +248,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_session_destroy" -> "(Ljava/lang/String;)Z";
             case "kof_sec_api_key_generate" -> "()Ljava/lang/String;";
             case "kof_sec_api_key_valid" -> "(Ljava/lang/String;)Z";
+            case "kof_enum_value_of" -> "(Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -343,7 +345,7 @@ static boolean hasRuntimeFn(String methodName) {
             // ── kof.security G9 (rate limiting / sessions / API keys) ──
             case "kof_sec_session_create", "kof_sec_api_key_generate" -> "Ljava/lang/String;";
             case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";
-            case "kof_sec_session_get" -> "Ljava/lang/String;";
+            case "kof_sec_session_get", "kof_enum_value_of" -> "Ljava/lang/String;";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };

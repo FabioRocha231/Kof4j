@@ -374,6 +374,7 @@ class Parser {
         if (check(TokenType.CLASS)) return parseClassDeclaration(mods, annos);
         if (check(TokenType.INTERFACE)) return parseInterfaceDeclaration(mods, annos);
         if (check(TokenType.RECORD)) return parseRecordDeclaration(mods, annos);
+        if (check(TokenType.ENUM)) return parseEnumDeclaration(mods, annos);
         if (check(TokenType.ENTITY)) return parseEntityDeclaration(mods, annos);
         error("Expected type declaration", "PARSE007");
         advance();
@@ -388,6 +389,27 @@ class Parser {
             mods.add(advance().value());
         }
         return mods;
+    }
+
+    /** enum Name { A, B, C } — constantes apenas (MVP P1). */
+    private AstNode parseEnumDeclaration(List<String> mods, List<AnnotationNode> annos) {
+        expect(TokenType.ENUM, "Expected 'enum'", "PARSE030");
+        String name = expectId("Expected enum name", "PARSE031");
+        java.util.List<String> constants = new ArrayList<>();
+        if (check(TokenType.LBRACE)) {
+            advance();
+            while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
+                if (check(TokenType.IDENTIFIER)) {
+                    constants.add(advance().value());
+                } else {
+                    error("Expected enum constant", "PARSE032");
+                    advance();
+                }
+                if (check(TokenType.COMMA)) advance();
+            }
+            expect(TokenType.RBRACE, "Expected '}' after enum body", "PARSE033");
+        }
+        return new EnumDeclarationNode(pos(), name, mods, constants, annos);
     }
 
     private AstNode parseClassDeclaration(List<String> mods) {
