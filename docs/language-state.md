@@ -1,13 +1,13 @@
 # Estado Atual da Linguagem Kof
 
-**Data:** 24 de agosto de 2026
-**Versão:** 0.0.14-alpha
-**Testes:** 527 passando (+1 skip condicional; inclui execução real de binários nativos, JS via GraalJS, JSON, exceptions, web, db/orm, UI e security E2E)
-**Status:** Compilador funcional com backends JVM, Native e KofJS; web server, distribuição e tooling oficiais
+**Data:** 25 de agosto de 2026
+**Versão:** 0.1.0-beta
+**Testes:** 590 JUnit (581 declarados) passando (+1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35; inclui JSON, exceptions, web, db/orm, UI, security G9 e generics `Box<T>` fix em 25/08)
+**Status:** Compilador funcional com backends JVM, Native e KofJS; web server, distribuição e tooling oficiais (0.1.0-beta; generics `Box<T>` + `SEM025` fix 25/08)
 
 ---
 
-## Novidades 0.0.5 → 0.0.14
+## Novidades 0.0.5 → 0.1.0-beta (25/08)
 
 - **Interop Android/JVM**: `super.metodo()` com INVOKESPECIAL (owner é a
   superclasse direta; assinaturas externas resolvidas via classpath
@@ -19,12 +19,13 @@
   para o `kof.orm` (`generated`, `unique`, PK não-numérica).
 - Namespaces da stdlib: `kof.db`, `kof.orm`, `kof.process`, `kof.ui`
   (Window/Label/Button/Input/Column/Row/View/Style), além de `kof.web`,
-  `kof.io`, `kof.time`, `kof.config`, `kof.log`, `kof.security`.
+  `kof.io`, `kof.time`, `kof.config`, `kof.log`, `kof.security`, `kof.validation`, `kof.observability`, `kof.http`, `kof.mq`.
 - Conversões `String.toInt()/toLong()/toDouble()/toFloat()` (runtime).
 - ARITH001: divisão/resto por zero **constante** rejeitada em compile-time
   (apenas inteiros — float/double produzem Infinity/NaN).
 - Lexer tolera UTF-8 BOM inicial.
-- Lambdas com capturas em todos os targets; múltiplas janelas no kof.ui.
+- Lambdas com capturas em todos os targets (box `BoxN`); múltiplas janelas no kof.ui.
+- **25/08:** generics `Box<T>` com `T` primitivo (`Box<Int>`) fix — `substituteTypeVariable` + `kof_int_to_string` nativo; `SEM025` sem falso-positivo em `hashCode/equals/toString`.
 
 ---
 
@@ -308,30 +309,30 @@ Fields:
 
 ---
 
-## O que NÃO existe (planejado)
+## O que NÃO existe (planejado — P1 em progresso por outro agente)
 
-- Map, Set
-- `await`/resultado de tarefa, filas (`kof.concurrent.Queue`)
+- Map, Set (P1)
+- `await`/resultado de tarefa, filas (`kof.concurrent.Queue`) (P1)
 - `spawn` no Native (CONC001)
 - JSON objetos/records no Native (JSN002)
 - Reflection, Macros; annotations de enum/Classe em valores (`ANNOT001`)
-- Captura em lambdas
-- Database
 - REPL
 - Formatter (`kof fmt` planejado)
+- Database nível 1 (query DSL tipada) — `kof.db` nível 0 e `kof.orm` nível 2/4 já DONE
 
 ## O que existe desde 0.0.5
 
-- Generics (com erasure)
+- Generics (com erasure) — 25/08 `Box<T>` `T` primitivo fixo (`Box<Int>` + `println` nativo)
 - `List<T>` (JVM + Native + JS), `listOf`, for-in
-- Lambdas `(x: Int) -> expr` + if-expr
-- JSON encode/decode (JVM + Native + JS; objetos/records no JVM/JS)
+- Lambdas `(x: Int) -> expr` + if-expr + capturas (box `BoxN`) em 3 targets
+- JSON encode/decode (JVM + Native + JS; objetos/records no JVM/JS; arrays nativos `JSN003`)
 - Exceptions reais (JVM table + Native unwinding)
-- `assert` + `kof test` (PASS/FAIL por exit code)
+- `assert` + `kof test` estruturado (`test "nome" {}`) + `process.exit`
 - `spawn` (concorrência — JVM, virtual threads)
-- kof.io (File/Path/Directory, readFile/writeFile), kof.time (`now()`)
-- HTTP (`kof serve` — KofHttpServer com thread pool)
-- KofJS (target `js` — GraalJS embutido)
+- kof.io (File/Path/Directory, readFile/writeFile), kof.time (`now()`, `sleep`, `interval`)
+- HTTP (`kof serve` — KofHttpServer com thread pool), `kof.http` client, `kof.mq`
+- `kof.validation`, `kof.observability` (health/metrics), `kof.security` (PBKDF2/SHA/JWT/AES-GCM + G9 rateLimit/session/apiKey em 3 targets), `kof.db`/`kof.orm` + `kof.config`/`kof.log` (asm Native)
+- KofJS (target `js` — GraalJS embutido), TLS `web.listenSecure` (JVM)
 - Language Server (`kof lsp` — frontend real do compilador)
-- `kof check`, `kof info`, `kof install`
-- Distribuição oficial com JDK embutido, versionamento e releases automáticas
+- `kof check`, `kof info`, `kof install`, `kof bench`/`profile`/`inspect`/`debug`
+- Distribuição oficial com JDK embutido, versionamento e releases automáticas (0.1.0-beta)

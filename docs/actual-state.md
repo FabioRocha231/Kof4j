@@ -1,6 +1,6 @@
 # Estado Atual do Projeto Kof
 
-**Última atualização:** 24 de agosto de 2026
+**Última atualização:** 25 de agosto de 2026
 **Versão:** 0.1.0-beta
 
 ---
@@ -17,7 +17,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Pipeline 0.0.5 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
 
-**Plataforma 0.0.7-0.0.14**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol WIP), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001 (divisão por zero constante em compile-time), tolerância a BOM UTF-8.
+**Plataforma 0.0.7-0.1.0-beta (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol WIP), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
 
 ---
 
@@ -26,7 +26,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (527; +1 skip condicional) |
+| `mvn test` | ✅ PASSA (590 JUnit / 581 declarados; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35 em 25/08; +1 skip condicional) |
 | `kof run` | ✅ FUNCIONA |
 | `kof build --target jvm` | ✅ FUNCIONA |
 | `kof build --target native` | ✅ FUNCIONA |
@@ -208,8 +208,8 @@ handles no-ops.
 |---------|--------|
 | `Type.java` | ✅ PrimitiveType, ClassType, TypeVariable, ArrayType, WildcardType |
 | `SymbolTable.java` | ✅ Scopes encadeados, resolução em hierarquia |
-| `SemanticAnalyzer.java` | ✅ Métodos, constructors, fields, locals, generics por erasure |
-| Type checking | ✅ Assignability, larguras primitivas, arg types |
+| `SemanticAnalyzer.java` | ✅ Métodos, constructors, fields, locals, generics por erasure; 25/08 `SEM025` ignora `hashCode/equals/toString` |
+| Type checking | ✅ Assignability, larguras primitivas, arg types; 25/08 `Box<T>` `T→Int` via `substituteTypeVariable` |
 
 ### IR Lowering
 
@@ -222,24 +222,25 @@ handles no-ops.
 | `if`/`else`, `while`, `for`, `do-while`, `switch`, `break`/`continue` | ✅ |
 | `try`/`catch`/`finally` + `throw` | ✅ (JVM real; Native panic) |
 | Expressões binárias, unárias, bitwise | ✅ |
-| Arrays, List\<T\>, generics | ✅ |
+| Arrays, List\<T\>, generics | ✅ (25/08 `Box<T>` `T` primitivo/Boxed + `println` nativo `kof_int_to_string`) |
 | JSON, strings (API completa), `instanceof`/`as` | ✅ |
 
 ### Segurança (kof.security — docs/security.md)
 
 | Feature | Status |
 |---------|--------|
-| `passwords.hash/verify/needsRehash` | ✅ JVM/JS (PBKDF2-HMAC-SHA256 600k); Native SECN001 |
+| `passwords.hash/verify/needsRehash` | ✅ JVM/JS (PBKDF2-HMAC-SHA256 600k); Native ✅ PBKDF2/SHA-512/JWT/AES-GCM asm (G10 fechado 25/08) |
 | `crypto.sha256/sha512/hmacSha256` | ✅ JVM/Native (asm)/JS — valores idênticos |
-| `crypto.aesGcm` | ✅ JVM; outros SECN002 |
+| `crypto.aesGcm` | ✅ JVM/Native (asm) |
 | `crypto.randomHex/randomInt` | ✅ JVM (SecureRandom)/Native (getrandom)/JS |
-| `jwt.create/verify` (HS256, exp/iss/aud) | ✅ JVM/JS; Native pendente |
+| `jwt.create/verify` (HS256, exp/iss/aud) | ✅ JVM/Native (asm)/JS |
 | `secrets.get/redact` | ✅ JVM/Native (/proc/self/environ)/JS |
 | `security.constantTimeEquals` | ✅ 3 targets |
 | `security.csrf*/corsAllowed/headers` | ✅ JVM |
 | `auth.*` (contexto web Bearer JWT) | ✅ JVM |
-| Gaps por target | ✅ Diagnostics claros SECN001/002/003 |
-| `KofSecurityTest` | ✅ 22 testes (unit + E2E + adversariais) |
+| `security.rateLimit/session/apiKey` | ✅ 3 targets (G9 `KofSecurityG9Test` 3/3) |
+| Gaps por target | ✅ Diagnostics claros SECN001/002/003/004 |
+| `KofSecurityTest` | ✅ 22 testes (unit + E2E + adversariais) + `KofSecurityG9Test` 3/3 |
 | `benchmarks/security/` | ✅ password-hash, jwt, hash-speed, aes-gcm |
 
 ### Backend JVM (ASM)
@@ -316,10 +317,10 @@ handles no-ops.
 
 ### Plataforma (gaps da auditoria — docs/ecosystem-coverage.md §4)
 - HTTP client (G2), validation (G4), health/metrics (G5), suíte estruturada
-  de testes (G6), scheduling (G8), rate limiting/sessions/API keys (G9),
-  TLS/HTTPS (G12).
+  de testes (G6), scheduling (G8) — todos ✅ em 0.1.0-beta (25/08).
+- Rate limiting/sessions/API keys (G9), TLS/HTTPS (G12), kof.security Native (G10) — ✅ 25/08.
 - ~~Database/SQL (G1)~~ — ✅ nível 0 do kof.db/kof.orm implementado.
-- `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001.
+- `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001 (paridade JVM/Native asm; JS CONF001/LOG001).
 
 ### Tooling
 - Suíte estruturada `test "nome" { }` (hoje: PASS/FAIL por exit code com `assert`)
@@ -351,14 +352,15 @@ Source (.kf)
 
 | Métrica | Valor |
 |---------|-------|
-| Testes JUnit | 527 (+1 skip condicional) |
+| Testes JUnit | 590 (581 declarados em 25/08; +1 skip condicional) |
 | E2E JVM | 29 |
 | E2E Native | 50 |
 | E2E JS (KofJS) | 35 |
 | E2E JSON | 14 + 7 (completo) |
 | E2E Exceptions | 9 |
-| E2E HTTP/Web | 8 + 9 |
+| E2E HTTP/Web | 8 + 9 (TLS 5) |
 | E2E kof.io | 15 |
 | E2E UI | 14 + 3 (Window) |
-| E2E kof.db / kof.orm | 8 + 10 |
+| E2E kof.db / kof.orm | 8 + 16 |
+| E2E kof.security + G9 | 22 + 3 |
 | Benchmarks | 37 em 17 categorias |

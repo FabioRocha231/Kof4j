@@ -1,13 +1,10 @@
 # Backend Parity — Kof JVM × Native × KofJS
 
-**Última atualização:** 24 de agosto de 2026
-**Versão:** 0.0.14-alpha
+**Última atualização:** 25 de agosto de 2026
+**Versão:** 0.1.0-beta
 
-> Deltas desde 0.0.5: `kof.db` agora tem SQLite **nativo** (link direto da
-> `.so`) e MySQL por wire protocol (WIP); `kof.orm`/MongoDB são JVM-only
-> (ORM001 fora dele); logging estruturado no JVM; UI renderizada via KofJS.
-> A tabela abaixo reflete a base 0.0.5 — sincronizar célula a célula é
-> parte do DoD de cada fase do plano (`docs/plan-platform-completion.md`).
+> Deltas desde 0.0.5: `kof.db` SQLite **nativo** + MySQL WIP; `kof.orm`/MongoDB JVM-only (ORM001); `kof.security` Native completo (PBKDF2/SHA512/JWT/AES-GCM asm, G10), G9 rateLimit/session/apiKey 3 targets, `kof.config`/`kof.log` asm Native, TLS `listenSecure` JVM, `kof.validation`/`kof.observability`/`kof.http`/`kof.mq` 3 targets, generics `Box<T>` fix 25/08, `SEM025` Object fix.
+> Tabela reflete 0.1.0-beta (25/08) — DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -30,19 +27,28 @@
 | Herança, `super`, override | ✅ | ✅* | ✅ | Native: `super.metodo()` = SUP001 |
 | Virtual dispatch | ✅ | ✅ | ✅ | |
 | Interfaces | ✅ | ✅ | ✅ | |
-| Generics (erasure) | ✅ | ✅ | ✅ | |
-| Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | sem capturas |
+| Generics (erasure) — `Box<T>` `T` primitivo | ✅ | ✅ | ✅ | 25/08 `substituteTypeVariable` + `kof_int_to_string` |
+| Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
 | `spawn` | ✅ | CONC001 | — | gap documentado |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |
-| JSON encode/decode (primitivos, List) | ✅ | ✅ | ✅ | |
+| JSON encode/decode (primitivos, List) | ✅ | ✅ | ✅ | arrays `JSN003` fechado |
 | JSON objetos/records | ✅ | JSN002 | ✅ | gap no Native documentado |
 | kof.io (File, Path, Directory) | ✅ | ✅ | ✅ | |
-| kof.time (`now()`) | ✅ | ✅ | ✅ | |
+| kof.time (`now()`, `sleep`, `interval`) | ✅ | ✅ | ✅ | `interval` JVM; TIME001 Native/JS |
 | `readLine`, `readFile`, `writeFile` | ✅ | ✅ | ✅ | |
+| `kof.validation` (13 preds) | ✅ | ✅ | ✅ | `KofValidationTest` |
+| `kof.observability` (health/metrics/requestId) | ✅ | ✅ | ✅ | `KofObservabilityTest` |
+| `kof.http` client | ✅ | HTTP002 | HTTP002 | `KofHttpE2ETest` |
+| `kof.mq` (pub/sub + queue) | ✅ | MQ001 | MQ001 | `KofMqE2ETest` |
+| `kof.config` (typed) | ✅ | ✅ | CONF001 | asm Native |
+| `kof.log` | ✅ | ✅ | LOG001 | asm Native |
+| `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM asm |
+| `kof.db`/`kof.orm` | ✅ | ✅/ORM001 | DB001/ORM001 | SQLite nativo; MongoDB JVM |
+| `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
 
 ## Gaps documentados (não mascarados)
 

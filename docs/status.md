@@ -1,6 +1,6 @@
 # Status do Projeto Kof
 
-**Última atualização:** 24 de agosto de 2026
+**Última atualização:** 25 de agosto de 2026
 **Versão:** 0.1.0-beta
 
 ---
@@ -54,7 +54,7 @@ scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
 - Regra de features novas: docs/performance.md §40-§41 (Definition of Done
   inclui benchmark, stress, memory, resource e debug metadata).
 
-### Correções de backend descobertas pelos benchmarks
+### Correções de backend descobertas pelos benchmarks e E2E
 
 | Bug | Correção |
 |-----|----------|
@@ -63,6 +63,8 @@ scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
 | `if (long > long)` / `if (float > f)` / `if (double > d)` geravam `IF_ICMP` sobre não-ints (stack underflow) | `KofConditionalJump` ganhou `operandType`; JVM emite `LCMP`/`FCMPL`/`DCMPL` + jumps de 1 operando |
 | `while (longExpr < intLiteral)` gerava `LCMP` sobre [long, int] (stack underflow) | shortcut de comparação faz widening dos operandos (`emitComparisonShortcut`) |
 | JS: call com efeito descartada em statement com Pop (ex.: `users.remove(0)` silenciosamente não executava) | handler de `KofPop` no JsBackend preserva `JsCall`/`JsSequence` como statement |
+| `Box<Int>` / `Box<T>` com `b.get()` retornando `T` imprimia `T` como `String` no Native → segfault `0x7` (`NativeE2ETest.execGenericClass`) | `CompilerDriver.inferExprType` substitui `T` via `substituteTypeVariable` (receiver `Box<Int>`); `println` nativo `valueOf(Int)` → `kof_int_to_string` (`CompilerDriver.java:3972,2257`) |
+| `record Ponto` `hashCode()` reportava `SEM025` falso-positivo | `SemanticAnalyzer.java:1033` ignora `isObjectMethod(hashCode/equals/toString)` |
 
 ---
 
@@ -225,6 +227,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | strings (concat `+`, `==`, indexOf, trim, split...) | ✅ | ✅ | ✅ |
 | arrays | ✅ | ✅ | ✅ |
 | `List<T>`, `listOf` | ✅ | ✅ | ✅ |
+| `Box<T>` generics com `T` primitivo/Boxed (ex.: `Box<Int>`) | ✅ | ✅ | ✅ | 25/08 fix `substituteTypeVariable` |
 | JSON encode/decode (objetos/records no JVM) + arrays nativos | ✅ | ✅ | ✅ |
 | JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
@@ -368,7 +371,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (527/528 — 1 skip condicional)
+## Testes (581 declarados / 590 JUnit no ecossistema — 1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35 em 25/08)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -470,19 +473,21 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 5. ~~JSON decode de arrays (`Int[]`)~~ — ✅ JSN003 fechado: decoders
    nativos para Int[]/Long[]/Bool[]/String[]; Float/Double[] segue sob
    o JSN001 (FP sem SSE)
-6. Lambdas sem captura (planned)
-7. Resultado de tarefa (`await`/join explícito): planned
-8. `kof fmt`: planned
-9. Map/Set, Option/null safety, pattern matching: planned
-10. Web: status codes/headers customizados por handler (planned)
-11. Web: target `js` reporta WEB001; target `native` sem servidor web
-12. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
+6. ~~Lambdas sem captura~~ — ✅ captura implementada (mutable via box `BoxN`; `Lambda0`/`Box0`)
+7. ~~Generics `Box<T>` com println nativo~~ — ✅ 25/08 `Box<Int>`/`T` substituído + `kof_int_to_string`
+8. ~~`SEM025` falso-positivo em `hashCode/equals/toString`~~ — ✅ `isObjectMethod` em 25/08
+9. Resultado de tarefa (`await`/join explícito): planned
+10. `kof fmt`: planned
+11. Map/Set, Option/null safety, pattern matching: planned (P1 — outro agente em progresso)
+12. Web: status codes/headers customizados por handler (planned)
+13. Web: target `js` reporta WEB001; target `native` sem servidor web
+14. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
     feito; falta handshake completo, query e prepared statements)
-13. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão
+15. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão
     linear dos demais; segfault e fragmentos errados eliminados.
-14. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em
+16. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em
     compile-time; SSE real + dtoa são trabalho futuro do backend.
-14. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
+17. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
     inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time.
     Fechar exige backend SSE + formatação double→string.
 
