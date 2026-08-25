@@ -845,7 +845,15 @@ private Target target = Target.JVM;
         }
         java.util.Set<String> savedMutated = mutatedCapturedNames;
         mutatedCapturedNames = new java.util.HashSet<>();
-        for (StatementNode stmt : le.body()) {
+        // lambda não-void com corpo de expressão única: a expressão É o retorno
+        // (ExpressionStmt emitiria POP e mataria o valor antes do areturn)
+        java.util.List<StatementNode> bodyStmts = le.body();
+        if (!Type.isVoid(returnType) && bodyStmts.size() == 1
+                && bodyStmts.get(0) instanceof ExpressionStmt es) {
+            bodyStmts = java.util.List.of(new ReturnStmt(
+                    es.position() != null ? es.position() : le.position(), es.expression()));
+        }
+        for (StatementNode stmt : bodyStmts) {
             localIdx = emitStatement(stmt, ops, name, localIdx, locals, returnType);
         }
         mutatedCapturedNames = savedMutated;
@@ -2267,13 +2275,15 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
-                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                    if (target != Target.JVM) {
                         if (currentDiagnostics != null) {
+                            String code = target == Target.NATIVE ? "CONC001"
+                                    : target == Target.ANDROID ? "AND001" : "CONC003";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
-                                    "spawn expr: not supported on the " + target + " target yet",
-                                    target == Target.NATIVE ? "CONC001" : "AND001");
+                                    "spawn expr: not supported on the " + target + " target yet (" + code + ")",
+                                    code);
                         }
                         yield localIdx;
                     }
@@ -2308,13 +2318,15 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
-                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                    if (target != Target.JVM) {
                         if (currentDiagnostics != null) {
+                            String code = target == Target.NATIVE ? "CONC001"
+                                    : target == Target.ANDROID ? "AND001" : "CONC003";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
-                                    "await: not supported on the " + target + " target yet",
-                                    target == Target.NATIVE ? "CONC001" : "AND001");
+                                    "await: not supported on the " + target + " target yet (" + code + ")",
+                                    code);
                         }
                         yield localIdx;
                     }

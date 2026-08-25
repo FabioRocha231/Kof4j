@@ -11,7 +11,7 @@ class KofAwaitTest {
     @Test
     void awaitJvm(@TempDir Path tmp) throws Exception {
         runJvm(tmp, """
-                fn trabalho() -> String {
+                String trabalho() {
                     return "feito"
                 }
 
@@ -25,25 +25,30 @@ class KofAwaitTest {
     }
 
     @Test
-    void awaitJs(@TempDir Path tmp) throws Exception {
-        runJs(tmp, """
-                fn calc() -> String {
+    void awaitJsGap(@TempDir Path tmp) throws Exception {
+        // MVP: handle de spawn é JVM-only (virtual threads); JS reporta CONC003
+        Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
+        Files.writeString(file, """
+                String calc() {
                     return "js-ok"
                 }
 
                 main() {
                     val r = spawn calc()
                     println(await r)
-                    println("done")
                 }
-                """, "js-ok\ndone");
+                """);
+        CompilationResult result = driver.compile(file, tmp.resolve("out"), Target.JS);
+        assertFalse(result.success(), "JS spawn-expr/await deve reportar CONC003");
+        assertTrue(result.diagnostics().getDiagnostics().stream().anyMatch(d -> "CONC003".equals(d.code())),
+                "Esperado CONC003: " + result.diagnostics().getDiagnostics());
     }
 
     @Test
     void awaitNativeGap(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, """
-                fn t() -> String { return "x" }
+                String t() { return "x" }
                 main() {
                     val r = spawn t()
                     val v = await r
@@ -60,7 +65,7 @@ class KofAwaitTest {
     void awaitPrimitiveGapJvm(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, """
-                fn n() -> Int { return 42 }
+                Int n() { return 42 }
                 main() {
                     val r = spawn n()
                     println("x")
