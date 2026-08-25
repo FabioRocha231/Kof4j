@@ -306,6 +306,14 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_sec_password_needs_rehash", "kof_sec_csrf_valid", "kof_sec_cors_allowed",
                     "kof_sec_auth_secret", "kof_sec_auth_authenticated", "kof_sec_auth_has_role",
                     "kof_sec_auth_has_permission" -> "I";
+            // ── kof.validation (G4) ─────────────────────────────────────
+            case "kof_validation_required", "kof_validation_notBlank", "kof_validation_isEmail",
+                    "kof_validation_isUrl", "kof_validation_isInt", "kof_validation_isLong" -> "(Ljava/lang/String;)Z";
+            case "kof_validation_minLength", "kof_validation_maxLength" -> "(Ljava/lang/String;I)Z";
+            case "kof_validation_lengthBetween" -> "(Ljava/lang/String;II)Z";
+            case "kof_validation_matches" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_validation_inRange" -> "(III)Z";
+            case "kof_validation_min", "kof_validation_max" -> "(II)Z";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };

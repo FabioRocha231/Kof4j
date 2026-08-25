@@ -608,6 +608,7 @@ class SemanticAnalyzer {
                         && !KofOrm.isOrmNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
+                        && !KofValidation.isValidationNamespace(ie.name())
                         && !KofHttp.isHttpNamespace(ie.name())
                         && !KofMq.isMqNamespace(ie.name())
                         && !KofTime.isTimeNamespace(ie.name())
@@ -639,6 +640,7 @@ class SemanticAnalyzer {
                                 && !KofOrm.isOrmNamespace(ie.name())
                                 && !KofLog.isLogNamespace(ie.name())
                                 && !KofSecurity.isSecurityNamespace(ie.name())
+                                && !KofValidation.isValidationNamespace(ie.name())
                                 && !knownClasses.containsKey(ie.name())) {
                             diagnostics.error("", 0, 0, 0,
                                     "undefined variable: '" + ie.name() + "'", "SEM020");
@@ -954,6 +956,13 @@ class SemanticAnalyzer {
                         if (secCall != null) yield secCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofValidation.isValidationNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofValidation.ValidationCall vCall = KofValidation.staticMethod(rid.name(), mc.methodName(), argTypes);
+                        if (vCall != null) yield vCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofTetris.isTetrisNamespace(rid.name())) {
                         KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
                                 mc.arguments().size());
@@ -1005,6 +1014,20 @@ class SemanticAnalyzer {
                                         ct.internalName(), ret, params, 1,
                                         SymbolTable.DispatchKind.INSTANCE));
                                 yield ret;
+                            }
+                        }
+                        // Nenhum símbolo encontrado — método inexistente (SC3)
+                        if (diagnostics != null && !BuiltinTypes.isList(ct)) {
+                            // Evita falsos positivos para List dinâmico e UNKNOWN
+                            boolean isKnownReceiver = knownClasses.containsKey(ct.name())
+                                    || ct.name().equals("String") || ct.name().equals("Int")
+                                    || ct.name().equals("Long") || ct.name().equals("Bool")
+                                    || isExternal(ct);
+                            if (isKnownReceiver) {
+                                diagnostics.error("", 0, 0, 0,
+                                        "Cannot resolve method '" + mc.methodName()
+                                                + "' on type '" + ct.name() + "'",
+                                        "SEM025");
                             }
                         }
                     }
