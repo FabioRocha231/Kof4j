@@ -281,9 +281,9 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 | `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ❌ SECN002 | ❌ SECN002 | |
 | `crypto.randomHex(n)` | ✅ SecureRandom | ✅ getrandom | ✅ platform | hex |
 | `crypto.randomInt(bound)` | ✅ | ✅ getrandom + rejection | ✅ platform | |
-| `jwt.create(claims, secret[, ttl])` | ✅ HS256 + iat/exp | ❌ SECN001 (depende de PBKDF2? não — JWT depende de HMAC; falta apenas o binding) | ✅ | RFC 7519 HS256 |
-| `jwt.verify(token, secret[, iss, aud])` | ✅ (sig, exp, iss, aud) | ❌ | ✅ | alg fixado HS256 |
-| `jwt.secret()` | ✅ env `KOF_JWT_SECRET` ou gerado | ❌ | ✅ | 32 bytes hex |
+| `jwt.create(claims, secret[, ttl])` | ✅ HS256 + iat/exp | ✅ (asm: base64url + HMAC + kof_now) | ✅ | RFC 7519 HS256 |
+| `jwt.verify(token, secret[, iss, aud])` | ✅ (sig, exp, iss, aud) | ✅ (asm, constant-time + exp/iss/aud) | ✅ | alg fixado HS256 |
+| `jwt.secret()` | ✅ env `KOF_JWT_SECRET` ou gerado | ✅ | ✅ | 32 bytes hex |
 | `secrets.get(name[, fallback])` | ✅ env | ✅ `/proc/self/environ` | ✅ platform | |
 | `secrets.redact(value)` | ✅ | ✅ (asm) | ✅ | `abcd********wxyz` |
 | `security.constantTimeEquals(a, b)` | ✅ `MessageDigest.isEqual` | ✅ (asm) | ✅ | |
@@ -314,8 +314,8 @@ de target gap (SECN001/002/003). Casos adversariais incluídos (§18).
 
 ## 7.5 Gaps documentados
 
-- JWT no Native: falta apenas expor o binding (depende de HMAC asm — que
-  existe); planejado.
+- ~~JWT no Native~~ — ✅ fechado: `kof_sec_jwt_*` em asm (base64url + HMAC
+  + iat/exp + exp/iss/aud + constant-time + exceções via try/catch).
 - `passwords.*` no Native: PBKDF2 asm planejado.
 - SHA-512 asm: planejado (SECN003 hoje).
 - AES-GCM fora do JVM: primitiva com requisitos de constante de tempo;

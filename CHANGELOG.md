@@ -7,6 +7,29 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## [0.1.0-beta] - 2026-08-25
+
+### Features
+
+- kof.security no Native (asm x86-64, sem libc): PBKDF2-HMAC-SHA256 600k
+  (hash/verify/needsRehash), SHA-512 (FIPS 180-4), JWT HS256
+  (create/verify + iat/exp/iss/aud + exceções via try/catch) — fecham
+  SECN001/SECN003/SECN004 do G10
+- lambdas com captura mutável (box sintético) — kof.time.interval real
+- kof.http client + kof.mq + kof.time (scheduler) + kof.config nativo
+- ORM completo (where com operadores, saveAll, page, count, deleteAll,
+  MariaDB/PostgreSQL reais, MongoDB)
+- auditoria + matriz de cobertura + plano kof.security (docs)
+- split do JvmRuntime em runtimes separados (fix constant pool 65535)
+
+### Fixes
+
+- success=false do compile (gaps de target falhavam o build)
+- kof_json_find_value reescrito (ponteiro/offset + limite do scan)
+- hmac_internal com data >64 (opad sobreposto)
+- .Ljf_mkstr (kof_alloc clobbered len)
+- JDT autobuild do VS Code desativado (corrompia o target/ com ECJ)
+
 ## [0.0.5-alpha] - 2026-08-22
 
 ### Features

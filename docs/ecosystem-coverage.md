@@ -333,7 +333,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | G7 | ~~**Diagnósticos de target incompletos no security/web**~~ — ✅ **fechado**: `jwt.*` com entrada explícita (SECN004 no Native); `csrf/cors/auth/headers` já cobertos; WEB001 emitido para web.app() e métodos de app fora do JVM | viola "nunca silencioso" | manter: toda função nova entra em `supportedOn` no mesmo PR |
 | G8 | ~~**Scheduling** inexistente~~ — ✅ `kof.time.sleep` + `interval`/`cancel` (scheduler JVM; `KofTimeE2ETest` 4/4); Native/JS reportam TIME001 | jobs periódicos | próximos: scheduler nativo, cron (P1) |
 | G9 | **Rate limiting / sessions / API keys** inexistentes | produção web | kof.security (web security layer) |
-| G10 | **JWT/passwords/SHA-512/AES-GCM no Native** sem binding (asm parcial) | multiplataforma incompleta | implementar `kof_sec_jwt_*`, `kof_sec_password_*`, sha512, aesgcm no asm |
+| G10 | **AES-GCM no Native** — passwords (PBKDF2), SHA-512 e JWT HS256 já em asm (SECN001/003/004 fechados) | multiplataforma incompleta | implementar `kof_sec_aesgcm_*` no asm (SECN002) |
 | G11 | ~~**Lambdas com captura**~~ — ✅ **captura implementada** (mutable via box sintético `BoxN` + captura por valor; `Lambda0`/`Box0` gerados); **Map/Set** e **await/join** seguem em aberto | expressividade | compilador (documentado em backend-parity.md) |
 | G12 | **TLS/HTTPS** no servidor web | tráfego seguro | kof.web + kof.security (certs) |
 

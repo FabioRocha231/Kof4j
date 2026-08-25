@@ -70,7 +70,7 @@ adversariais + benchmark + security review + docs.
 
 | # | Capacidade | Estado | Ação |
 |---|-----------|--------|------|
-| 7 | **JWT/JWS** | ✅ HS256 create/verify (iat/exp/iss/aud) JVM/JS; ❌ SECN004 Native | Native: JWT depende só de HMAC+base64 → implementar `kof_sec_jwt_*` no asm; JWS (algoritmos HS256/HS384/HS512) como extensão |
+| 7 | **JWT/JWS** | ✅ HS256 create/verify (iat/exp/iss/aud) nos 3 targets (SECN004 fechado) | manter; JWS (HS384/HS512) como extensão |
 | 8 | **authentication** | ✅ `auth.*` Bearer JWT no JVM (ThreadLocal por request) | expor `auth.authenticate(token)` como função pura (fora de request); integrar ao middleware (`app.use { auth.require() }`) |
 | 9 | **authorization** | ✅ `auth.hasRole/hasPermission` (RBAC) JVM | RBAC/ABAC via claims + `auth.requireRole(r)`/`auth.requirePermission(p)` em rotas; modelo de policy declarativo sem framework |
 
