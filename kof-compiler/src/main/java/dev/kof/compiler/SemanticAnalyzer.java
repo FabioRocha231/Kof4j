@@ -473,7 +473,27 @@ class SemanticAnalyzer {
                 } else {
                     varType = Type.UnknownType.UNKNOWN;
                 }
+                // SC5: redeclaração no MESMO escopo é erro
+                if (scope.hasLocal(vds.name()) && diagnostics != null) {
+                    diagnostics.error("", 0, 0, 0,
+                            "variable '" + vds.name() + "' is already defined in this scope",
+                            "SEM024");
+                }
                 if (vds.initializer() != null) inferType(vds.initializer(), scope);
+                // SC2: tipo explícito ≠ tipo do inicializador
+                if (diagnostics != null && vds.initializer() != null
+                        && !varType.equals(Type.UnknownType.UNKNOWN)) {
+                    Type initType = inferType(vds.initializer(), scope);
+                    if (!initType.equals(Type.UnknownType.UNKNOWN)
+                            && !isAssignable(initType, varType)
+                            && !(initType instanceof Type.FunctionType)
+                            && !(varType instanceof Type.FunctionType)) {
+                        diagnostics.error("", 0, 0, 0,
+                                "type mismatch: cannot assign " + initType
+                                        + " to '" + vds.name() + ": " + varType + "'",
+                                "SEM021");
+                    }
+                }
                 scope.define(new SymbolTable.LocalVariableSymbol(vds.name(), varType, 0));
             }
             case ReturnStmt ret -> {
@@ -605,6 +625,25 @@ class SemanticAnalyzer {
                 Type targetType = Type.UnknownType.UNKNOWN;
                 if (ae.target() instanceof IdentifierExpr ie) {
                     SymbolTable.Symbol sym = scope.resolve(ie.name());
+                    // SC1: atribuição a variável nunca declarada
+                    if (sym == null && diagnostics != null) {
+                        boolean hasField = false;
+                        if (currentClassName != null) {
+                            hasField = resolveInHierarchy(currentClassName, ie.name()) != null;
+                        }
+                        if (!hasField
+                                && !"json".equals(ie.name()) && !"process".equals(ie.name())
+                                && !KofWeb.isWebNamespace(ie.name())
+                                && !KofConfig.isConfigNamespace(ie.name())
+                                && !KofDb.isDbNamespace(ie.name())
+                                && !KofOrm.isOrmNamespace(ie.name())
+                                && !KofLog.isLogNamespace(ie.name())
+                                && !KofSecurity.isSecurityNamespace(ie.name())
+                                && !knownClasses.containsKey(ie.name())) {
+                            diagnostics.error("", 0, 0, 0,
+                                    "undefined variable: '" + ie.name() + "'", "SEM020");
+                        }
+                    }
                     if (sym != null) {
                         targetType = sym.type();
                         if (diagnostics != null && !Type.isUnknown(targetType) && !Type.isUnknown(valueType)
@@ -1076,6 +1115,21 @@ class SemanticAnalyzer {
                             SymbolTable.constructorFor(cs.members(), ne.arguments().size());
                     if (ctor3 != null) {
                         resolvedConstructors.put(ne, ctor3);
+                    } else if (diagnostics != null) {
+                        SymbolTable.Symbol anyInit = cs.members().resolve("<init>");
+                        if (anyInit instanceof SymbolTable.ConstructorSymbol c) {
+                            diagnostics.error("", 0, 0, 0,
+                                    "no constructor of '" + ne.typeName() + "' with "
+                                            + ne.arguments().size() + " argument(s) (expected "
+                                            + c.parameterTypes().size() + ")",
+                                    "SEM023");
+                        } else if (anyInit instanceof SymbolTable.ConstructorSet set
+                                && !set.constructors().isEmpty()) {
+                            diagnostics.error("", 0, 0, 0,
+                                    "no constructor of '" + ne.typeName() + "' with "
+                                            + ne.arguments().size() + " argument(s)",
+                                    "SEM023");
+                        }
                     }
                     yield new Type.ClassType(cs.packageName(), cs.name(), List.of());
                 }

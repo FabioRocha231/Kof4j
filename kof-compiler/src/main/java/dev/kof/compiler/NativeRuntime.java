@@ -3369,188 +3369,181 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $16, %rsp              # [rsp]=json ptr [rsp+8]=cursor
-                movq %rdi, %rbx             # json kstr (fixo)
-                movl 16(%rbx), %r13d        # json len
-                leaq 24(%rbx), %r12         # json data (fixo)
-                movl 16(%rsi), %r15d        # key len (fixo em r15d)
+                movq %rdi, %rbx          # json
+                movl 16(%rbx), %r13d     # json len
+                leaq 24(%rbx), %r12      # json data
+                movl 16(%rsi), %r15d     # key len
                 testl %r15d, %r15d
-                jz .Ljf_empty
-                addq $24, %rsi              # rsi = key data (nao mexe mais)
-                movq %r12, %r14             # scan ptr = inicio
-            .Ljf_scan:
-                # procura '"' que inicia uma chave candidata
-                cmpq %r13, %r14
-                jae .Ljf_empty
+                jz .Jfv_empty
+                addq $24, %rsi           # key data
+                leaq (%r12,%r13), %rbx   # json end
+                movq %r12, %r14          # i (offset)
+            .Jfv_scan:
+                cmpq %rbx, %r14
+                jae .Jfv_empty
                 cmpb $34, (%r14)
-                jne .Ljf_adv
-                # compara key data com os proximos keylen bytes apos '"'
-                leaq 1(%r14), %rdi          # primeiro char apos '"'
-                xorl %ecx, %ecx             # j = 0
-            .Ljf_kc:
-                cmpl %r15d, %ecx
-                jge .Ljf_kc_done
-                cmpq %r13, %r14
-                jae .Ljf_empty
-                movzbl (%rdi,%rcx), %eax    # candidate char
-                movzbl (%rsi,%rcx), %edx    # key char (rsi = key data)
-                cmpl %edx, %eax
-                jne .Ljf_nomatch
-                incl %ecx
-                jmp .Ljf_kc
-            .Ljf_kc_done:
-                # todos os chars da chave casaram; verifica aspa de fechamento
-                cmpb $34, (%rdi,%rcx)
-                jne .Ljf_nomatch
-                # agora espera ':' apos a aspa de fechamento
-                leaq 1(%rdi,%rcx), %rsi     # pos apos aspa de fechamento
-            .Ljf_ws1:
-                cmpq %r13, %rsi
-                jae .Ljf_empty
-                movzbl (%r12,%rsi), %eax
-                cmpb $32, %al
-                je .Ljf_ws1_n
-                cmpb $9, %al
-                je .Ljf_ws1_n
-                cmpb $10, %al
-                je .Ljf_ws1_n
-                cmpb $13, %al
-                jne .Ljf_colon
-            .Ljf_ws1_n:
-                incq %rsi
-                jmp .Ljf_ws1
-            .Ljf_colon:
-                cmpb $58, (%r12,%rsi)       # ':'
-                jne .Ljf_nomatch
-                incq %rsi
-            .Ljf_ws2:
-                cmpq %r13, %rsi
-                jae .Ljf_empty
-                movzbl (%r12,%rsi), %eax
-                cmpb $32, %al
-                je .Ljf_ws2_n
-                cmpb $9, %al
-                je .Ljf_ws2_n
-                cmpb $10, %al
-                je .Ljf_ws2_n
-                cmpb $13, %al
-                je .Ljf_ws2_n
-                jmp .Ljf_capture
-            .Ljf_ws2_n:
-                incq %rsi
-                jmp .Ljf_ws2
-            .Ljf_capture:
-                # DEBUG: escreve json na stderr para ver o buffer
-                movq $2, %rax
-                movq $1, %rdi
-                movq %r12, %rsi
-                movq %r13, %rdx
-                syscall
-                # fim debug
-                movzbl (%r12,%rsi), %eax
-                cmpb $34, %al               # string com aspas
-                je .Ljf_cap_str
-                # primitivo: ate ',' '}' ']' ou ws final
-                movq %rsi, %r8              # start do valor
-            .Ljf_prim:
-                cmpq %r13, %rsi
-                jae .Ljf_prim_end
-                movzbl (%r12,%rsi), %eax
-                cmpb $44, %al               # ','
-                je .Ljf_prim_end
-                cmpb $125, %al              # '}'
-                je .Ljf_prim_end
-                cmpb $93, %al               # ']'
-                je .Ljf_prim_end
-                incq %rsi
-                jmp .Ljf_prim
-            .Ljf_prim_end:
-                # volta espacos no fim
-                cmpq %r8, %rsi
-                jbe .Ljf_prim_mk
-                movzbl -1(%r12,%rsi), %eax
-                cmpb $32, %al
-                je .Ljf_prim_trim
-                cmpb $9, %al
-                je .Ljf_prim_trim
-                cmpb $10, %al
-                je .Ljf_prim_trim
-                cmpb $13, %al
-                jne .Ljf_prim_mk
-            .Ljf_prim_trim:
-                decq %rsi
-                jmp .Ljf_prim_end
-            .Ljf_prim_mk:
-                movq %r8, %rdi              # start
-                movq %rsi, %rsi             # end (ja em rsi)
-                subq %rdi, %rsi             # vallen
-                call .Ljf_mkstr
-                jmp .Ljf_exit
-            .Ljf_cap_str:
-                incq %rsi                   # pula aspa de abertura
-                movq %rsi, %r8              # inicio do conteudo
-            .Ljf_str_l:
-                cmpq %r13, %rsi
-                jae .Ljf_empty
-                movzbl (%r12,%rsi), %eax
-                cmpb $92, %al               # escape
-                je .Ljf_str_esc
-                cmpb $34, %al               # fecha aspa
-                je .Ljf_str_end
-                incq %rsi
-                jmp .Ljf_str_l
-            .Ljf_str_esc:
-                addq $2, %rsi
-                jmp .Ljf_str_l
-            .Ljf_str_end:
-                # conteudo = [r8, rsi)
-                movq %r8, %rdi
-                movq %rsi, %rsi
-                subq %r8, %rsi              # vallen
-                call .Ljf_mkstr
-                jmp .Ljf_exit
-            .Ljf_adv:
+                jne .Jfv_adv
+                leaq 1(%r14), %rdi       # inicio da string candidata
+                movq %rdi, %r8
+                xorq %r9, %r9            # klen
+            .Jfv_strwalk:
+                cmpq %rbx, %rdi
+                jae .Jfv_adv
+                movzbl (%rdi), %eax
+                cmpb $92, %al            # escape
+                je .Jfv_esc
+                cmpb $34, %al
+                je .Jfv_strdone
+                incq %rdi
+                incq %r9
+                jmp .Jfv_strwalk
+            .Jfv_esc:
+                addq $2, %rdi
+                addq $2, %r9
+                jmp .Jfv_strwalk
+            .Jfv_strdone:
+                cmpq %r15, %r9
+                jne .Jfv_nomatch
+                xorq %rcx, %rcx
+            .Jfv_kcmp:
+                cmpq %r15, %rcx
+                jge .Jfv_match
+                movzbl (%r8,%rcx), %eax
+                cmpb (%rsi,%rcx), %al
+                jne .Jfv_nomatch
+                incq %rcx
+                jmp .Jfv_kcmp
+            .Jfv_nomatch:
                 incq %r14
-                jmp .Ljf_scan
-            .Ljf_nomatch:
-                incq %r14                   # avança 1 e tenta de novo
-                jmp .Ljf_scan
-            .Ljf_empty:
+                jmp .Jfv_scan
+            .Jfv_adv:
+                incq %r14
+                jmp .Jfv_scan
+            .Jfv_match:
+                incq %rdi                # apos a aspa de fechamento
+                movq %rdi, %r8
+            .Jfv_ws1:
+                cmpq %rbx, %r8
+                jae .Jfv_empty
+                movzbl (%r8), %eax
+                cmpb $32, %al
+                je .Jfv_ws1n
+                cmpb $9, %al
+                je .Jfv_ws1n
+                cmpb $10, %al
+                je .Jfv_ws1n
+                cmpb $13, %al
+                jne .Jfv_colon
+            .Jfv_ws1n:
+                incq %r8
+                jmp .Jfv_ws1
+            .Jfv_colon:
+                cmpb $58, (%r8)
+                jne .Jfv_nomatch
+                incq %r8
+            .Jfv_ws2:
+                cmpq %rbx, %r8
+                jae .Jfv_empty
+                movzbl (%r8), %eax
+                cmpb $32, %al
+                je .Jfv_ws2n
+                cmpb $9, %al
+                je .Jfv_ws2n
+                cmpb $10, %al
+                je .Jfv_ws2n
+                cmpb $13, %al
+                jne .Jfv_value
+            .Jfv_ws2n:
+                incq %r8
+                jmp .Jfv_ws2
+            .Jfv_value:
+                cmpb $34, (%r8)
+                je .Jfv_vstr
+                movq %r8, %rdi
+            .Jfv_prim:
+                cmpq %rbx, %r8
+                jae .Jfv_primdone
+                movzbl (%r8), %eax
+                cmpb $44, %al
+                je .Jfv_primdone
+                cmpb $125, %al
+                je .Jfv_primdone
+                cmpb $93, %al
+                je .Jfv_primdone
+                incq %r8
+                jmp .Jfv_prim
+            .Jfv_primdone:
+                movq %rdi, %rcx
+                movq %r8, %rsi
+                subq %rcx, %rsi
+                jmp .Jfv_mk
+            .Jfv_vstr:
+                incq %r8
+                movq %r8, %rdi
+            .Jfv_vstrwalk:
+                cmpq %rbx, %r8
+                jae .Jfv_empty
+                movzbl (%r8), %eax
+                cmpb $92, %al
+                je .Jfv_vscesc
+                cmpb $34, %al
+                je .Jfv_vstrdone
+                incq %r8
+                jmp .Jfv_vstrwalk
+            .Jfv_vscesc:
+                addq $2, %r8
+                jmp .Jfv_vstrwalk
+            .Jfv_vstrdone:
+                movq %r8, %rsi
+                subq %rdi, %rsi
+            .Jfv_mk:
+                call .Ljf_mkstr
+                jmp .Jfv_exit
+            .Jfv_empty:
                 movl $25, %edi
-                call kof_alloc
-                movq %rax, %r12
-                movl $1, 0(%r12)
-                movl $0, 4(%r12)
-                movq $0, 8(%r12)
-                movl $0, 16(%r12)
-                movl $0, 20(%r12)
-                movb $0, 24(%r12)
-                movq %r12, %rax
-                jmp .Ljf_exit
-            .Ljf_mkstr:
-                # rdi=src, rsi=len -> rax=KofString*
-                pushq %rbx
-                movq %rdi, %rbx             # src
-                movq %rsi, %rdx             # len
-                leaq 25(%rdx), %rdi
                 call kof_alloc
                 movq %rax, %rcx
                 movl $1, 0(%rcx)
                 movl $0, 4(%rcx)
                 movq $0, 8(%rcx)
-                movl %edx, 16(%rcx)
+                movl $0, 16(%rcx)
+                movl $0, 20(%rcx)
+                movb $0, 24(%rcx)
+                movq %rcx, %rax
+            .Jfv_exit:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .Ljf_mkstr:
+                # rdi=src, rsi=len -> rax=KofString*
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx             # src
+                movq %rsi, %r12             # len (r12 preservado pelo kof_alloc)
+                leaq 25(%r12), %rdi
+                call kof_alloc
+                movq %rax, %rcx
+                movl $1, 0(%rcx)
+                movl $0, 4(%rcx)
+                movq $0, 8(%rcx)
+                movl %r12d, 16(%rcx)
                 movl $0, 20(%rcx)
                 xorq %rdx, %rdx
             .Ljf_mk_cpy:
-                cmpq %rdx, %rsi
-                jle .Ljf_mk_nul
+                cmpq %r12, %rdx
+                jge .Ljf_mk_nul
                 movzbl (%rbx,%rdx), %eax
                 movb %al, 24(%rcx,%rdx)
                 incq %rdx
                 jmp .Ljf_mk_cpy
             .Ljf_mk_nul:
-                movb $0, 24(%rcx,%rsi)
+                movb $0, 24(%rcx,%r12)
                 movq %rcx, %rax
+                popq %r12
                 popq %rbx
                 ret
             .Ljf_exit:
@@ -7866,6 +7859,20 @@ final class NativeRuntime {
                 .quad 0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c
                 .quad 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
             .Lsec_b64_chars: .ascii "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+            .Lsec_b64url_chars: .ascii "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+            .Lstr_exp_key: .ascii "exp"
+            .Lstr_iss_key: .ascii "iss"
+            .Lstr_aud_key: .ascii "aud"
+            .Lstr_hs256: .ascii "HS256"
+            .Lstr_jwt_invalid: .ascii "invalid token"
+            .Lstr_jwt_alg: .ascii "algorithm not allowed"
+            .Lstr_jwt_sig: .ascii "invalid signature"
+            .Lstr_jwt_exp: .ascii "token expired"
+            .Lstr_jwt_iss: .ascii "issuer mismatch"
+            .Lstr_jwt_aud: .ascii "audience mismatch"
+            .Lstr_jwt_iat: .ascii "\\"iat\\":"
+            .Lstr_jwt_expk: .ascii ",\\"exp\\":"
+            .Lstr_jwt_header: .ascii "{\\"alg\\":\\"HS256\\",\\"typ\\":\\"JWT\\"}"
             .Lsec_pb_prefix: .ascii "pbkdf2$sha256$600000$"
             .Lsec_pb_mid: .ascii "pbkdf2$sha256$"
             .Lsec_sha256_k:
@@ -8859,7 +8866,7 @@ final class NativeRuntime {
                 movq %rsi, %r12          # k64
                 movq %rdx, %r13          # data
                 movq %rcx, %r14          # datalen
-                subq $320, %rsp          # ipad 0, data 64, opad 128, inner 192, outer 224+288
+                subq $704, %rsp          # ipad 0, data 64, opad 512, inner 576, outer 608+672
                 xorq %r15, %r15
             .Lhmaci_k64:
                 cmpq $64, %r15
@@ -8869,7 +8876,7 @@ final class NativeRuntime {
                 movb %al, 0(%rsp,%r15)
                 movzbl (%r12,%r15), %eax
                 xorl $0x5c, %eax
-                movb %al, 128(%rsp,%r15)
+                movb %al, 512(%rsp,%r15)
                 incq %r15
                 jmp .Lhmaci_k64
             .Lhmaci_k64_done:
@@ -8882,7 +8889,7 @@ final class NativeRuntime {
                 incq %r15
                 jmp .Lhmaci_datacopy
             .Lhmaci_datacopy_done:
-                leaq 192(%rsp), %rdi
+                leaq 576(%rsp), %rdi
                 leaq 0(%rsp), %rsi
                 leaq 64(%rsp,%r14), %rdx
                 subq %rsp, %rdx
@@ -8891,8 +8898,8 @@ final class NativeRuntime {
             .Lhmaci_outeropad:
                 cmpq $64, %r15
                 jge .Lhmaci_outeropad_done
-                movb 128(%rsp,%r15), %al
-                movb %al, 224(%rsp,%r15)
+                movb 512(%rsp,%r15), %al
+                movb %al, 608(%rsp,%r15)
                 incq %r15
                 jmp .Lhmaci_outeropad
             .Lhmaci_outeropad_done:
@@ -8900,16 +8907,16 @@ final class NativeRuntime {
             .Lhmaci_outerinner:
                 cmpq $32, %r15
                 jge .Lhmaci_outerinner_done
-                movb 192(%rsp,%r15), %al
-                movb %al, 288(%rsp,%r15)
+                movb 576(%rsp,%r15), %al
+                movb %al, 672(%rsp,%r15)
                 incq %r15
                 jmp .Lhmaci_outerinner
             .Lhmaci_outerinner_done:
                 movq %rbx, %rdi
-                leaq 224(%rsp), %rsi
+                leaq 608(%rsp), %rsi
                 movq $96, %rdx
                 call kof_sec_sha256_internal
-                addq $320, %rsp
+                addq $704, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -9300,6 +9307,769 @@ final class NativeRuntime {
                 ret
             .Lpr_false:
                 xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+""");
+        sb.append("""
+# ── JWT (RFC 7519, HS256 fixo) ────────────────────────────────
+            # kof_b64url_encode_internal(rdi=out, rsi=src, rdx=len) → chars
+            # base64url SEM padding (RFC 4648 §5)
+            kof_b64url_encode_internal:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12          # out
+                movq %rsi, %r13          # src
+                movq %rdx, %r14          # len
+                xorq %r15, %r15          # i
+                leaq .Lsec_b64url_chars(%rip), %rbx
+            .Lb64u_loop:
+                cmpq %r14, %r15
+                jae .Lb64u_done
+                leaq 1(%r15), %rdx
+                cmpq %r14, %rdx
+                jae .Lb64u_one
+                leaq 2(%r15), %rcx
+                cmpq %r14, %rcx
+                jae .Lb64u_two
+                movzbl (%r13,%r15), %eax
+                shll $16, %eax
+                movzbl (%r13,%rdx), %edx
+                shll $8, %edx
+                orl %edx, %eax
+                movzbl (%r13,%rcx), %edx
+                orl %edx, %eax
+                movl %eax, %edx
+                shrl $18, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 0(%r12)
+                movl %edx, %eax
+                shrl $12, %eax
+                andl $63, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 1(%r12)
+                movl %edx, %eax
+                shrl $6, %eax
+                andl $63, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 2(%r12)
+                andl $63, %edx
+                movb (%rbx,%rdx), %al
+                movb %al, 3(%r12)
+                addq $4, %r12
+                addq $3, %r15
+                jmp .Lb64u_loop
+            .Lb64u_two:
+                movzbl (%r13,%r15), %eax
+                shll $8, %eax
+                movzbl (%r13,%rdx), %edx
+                orl %edx, %eax
+                movl %eax, %edx
+                shrl $10, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 0(%r12)
+                movl %edx, %eax
+                shrl $4, %eax
+                andl $63, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 1(%r12)
+                movl %edx, %eax
+                shll $2, %eax
+                andl $63, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 2(%r12)
+                addq $3, %r12
+                addq $2, %r15
+                jmp .Lb64u_loop
+            .Lb64u_one:
+                movzbl (%r13,%r15), %eax
+                movl %eax, %edx
+                shrl $2, %eax
+                movb (%rbx,%rax), %al
+                movb %al, 0(%r12)
+                andl $3, %edx
+                shll $4, %edx
+                movb (%rbx,%rdx), %al
+                movb %al, 1(%r12)
+                addq $2, %r12
+                addq $1, %r15
+                jmp .Lb64u_loop
+            .Lb64u_done:
+                movb $0, 0(%r12)
+                movq %r12, %rax
+                subq %rdi, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_b64url_decode_internal(rdi=out, rsi=src, rdx=len) → nbytes
+            kof_b64url_decode_internal:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12          # out
+                movq %rsi, %r13          # src
+                movq %rdx, %r14          # len
+                xorq %rbx, %rbx          # i
+                xorq %r15, %r15          # nbytes
+                xorq %rcx, %rcx          # acumulador
+                xorq %r9, %r9            # chars no grupo
+            .Lb64ud_loop:
+                cmpq %r14, %rbx
+                jae .Lb64ud_end
+                movzbl (%r13,%rbx), %eax
+                incq %rbx
+                cmpb $65, %al
+                jb .Lb64ud_digit
+                cmpb $90, %al
+                ja .Lb64ud_lower
+                subb $65, %al
+                jmp .Lb64ud_got
+            .Lb64ud_lower:
+                cmpb $97, %al
+                jb .Lb64ud_other
+                cmpb $122, %al
+                ja .Lb64ud_other
+                subb $71, %al
+                jmp .Lb64ud_got
+            .Lb64ud_digit:
+                cmpb $48, %al
+                jb .Lb64ud_other
+                cmpb $57, %al
+                ja .Lb64ud_other
+                addb $4, %al
+                jmp .Lb64ud_got
+            .Lb64ud_other:
+                cmpb $45, %al            # '-'
+                je .Lb64ud_minus
+                cmpb $95, %al            # '_'
+                jne .Lb64ud_loop
+                movb $63, %al
+                jmp .Lb64ud_got
+            .Lb64ud_minus:
+                movb $62, %al
+            .Lb64ud_got:
+                shlq $6, %rcx
+                movzbl %al, %eax
+                orq %rax, %rcx
+                incq %r9
+                cmpq $4, %r9
+                jne .Lb64ud_loop
+                movq %rcx, %rax
+                shrq $16, %rax
+                movb %al, 0(%r12)
+                movq %rcx, %rax
+                shrq $8, %rax
+                movb %al, 1(%r12)
+                movb %cl, 2(%r12)
+                addq $3, %r12
+                addq $3, %r15
+                xorq %rcx, %rcx
+                xorq %r9, %r9
+                jmp .Lb64ud_loop
+            .Lb64ud_end:
+                cmpq $2, %r9
+                jb .Lb64ud_out
+                cmpq $3, %r9
+                je .Lb64ud_three
+                movq %rcx, %rax
+                shrq $4, %rax
+                movb %al, 0(%r12)
+                incq %r12
+                incq %r15
+                jmp .Lb64ud_out
+            .Lb64ud_three:
+                movq %rcx, %rax
+                shrq $10, %rax
+                movb %al, 0(%r12)
+                movq %rcx, %rax
+                shrq $2, %rax
+                movb %al, 1(%r12)
+                addq $2, %r12
+                addq $2, %r15
+            .Lb64ud_out:
+                movq %r15, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_jwt_fail(rdi=.asciz ptr, rsi=len) → lança exceção String
+            kof_jwt_fail:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %r13
+                movq %rsi, %r12
+                leaq 25(%r12), %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r12d, 16(%rbx)
+                movl $0, 20(%rbx)
+                xorq %rcx, %rcx
+            .Ljwt_fail_cp:
+                cmpq %r12, %rcx
+                jge .Ljwt_fail_done
+                movzbl (%r13,%rcx), %eax
+                movb %al, 24(%rbx,%rcx)
+                incq %rcx
+                jmp .Ljwt_fail_cp
+            .Ljwt_fail_done:
+                movb $0, 24(%rbx,%r12)
+                movq %rbx, %rdi
+                call kof_throw_string
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_jwt_sign_buf(rdi=secret, rsi=h_ptr, rdx=h_len,
+            #                        rcx=p_ptr, r8=p_len) → KofString* (b64url do mac)
+            kof_sec_jwt_sign_buf:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12          # secret
+                movq %rsi, %rbx          # h_ptr
+                movq %rdx, %r13          # h_len
+                movq %rcx, %r14          # p_ptr
+                movq %r8, %r15           # p_len
+                subq $448, %rsp          # k64 0, data 64, mac 320, sig 352
+                movl 16(%r12), %eax
+                cmpl $64, %eax
+                jg .Ljs_khash
+                xorq %rcx, %rcx
+            .Ljs_kcopy:
+                cmpl %eax, %ecx
+                jge .Ljs_kzero
+                movb 24(%r12,%rcx), %dl
+                movb %dl, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Ljs_kcopy
+            .Ljs_kzero:
+                movslq %eax, %rcx
+            .Ljs_kzero_loop:
+                cmpq $64, %rcx
+                jge .Ljs_kready
+                movb $0, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Ljs_kzero_loop
+            .Ljs_khash:
+                leaq 192(%rsp), %rdi
+                leaq 24(%r12), %rsi
+                movslq %eax, %rdx
+                call kof_sec_sha256_internal
+                xorq %rcx, %rcx
+            .Ljs_khash_copy:
+                cmpq $32, %rcx
+                jge .Ljs_khash_zero
+                movb 192(%rsp,%rcx), %dl
+                movb %dl, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Ljs_khash_copy
+            .Ljs_khash_zero:
+                cmpq $64, %rcx
+                jge .Ljs_kready
+                movb $0, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Ljs_khash_zero
+            .Ljs_kready:
+                xorq %r8, %r8            # datalen
+            .Ljs_hcpy:
+                cmpq %r13, %r8
+                jge .Ljs_hdot
+                movb 0(%rbx,%r8), %dl
+                movb %dl, 64(%rsp,%r8)
+                incq %r8
+                jmp .Ljs_hcpy
+            .Ljs_hdot:
+                movb $46, 64(%rsp,%r8)
+                incq %r8
+                leaq 1(%r13,%r15), %rcx   # limite = h_len + 1 + p_len
+                movq %rcx, 440(%rsp)
+            .Ljs_pcpy:
+                cmpq 440(%rsp), %r8
+                jge .Ljs_data_done
+                movq %r8, %rcx
+                subq %r13, %rcx
+                decq %rcx
+                movb 0(%r14,%rcx), %dl
+                movb %dl, 64(%rsp,%r8)
+                incq %r8
+                jmp .Ljs_pcpy
+            .Ljs_data_done:
+                leaq 320(%rsp), %rdi
+                leaq 0(%rsp), %rsi
+                leaq 64(%rsp), %rdx
+                movq %r8, %rcx
+                call kof_sec_hmac_internal
+                leaq 352(%rsp), %rdi
+                leaq 320(%rsp), %rsi
+                movq $32, %rdx
+                call kof_b64url_encode_internal
+                movq %rax, %r15          # chars (43)
+                movl %r15d, %eax
+                addl $25, %eax
+                movslq %eax, %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r15d, 16(%rbx)
+                movl $0, 20(%rbx)
+                xorq %rcx, %rcx
+            .Ljs_out_cp:
+                cmpq %r15, %rcx
+                jge .Ljs_out_nul
+                movb 352(%rsp,%rcx), %al
+                movb %al, 24(%rbx,%rcx)
+                incq %rcx
+                jmp .Ljs_out_cp
+            .Ljs_out_nul:
+                movb $0, 24(%rbx,%r15)
+                movq %rbx, %rax
+                addq $448, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_jwt_create_ttl(rdi=claims, rsi=secret, edx=ttl) → token
+            .globl kof_sec_jwt_create_ttl
+            .type kof_sec_jwt_create_ttl, @function
+            kof_sec_jwt_create_ttl:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # claims
+                movq %rsi, %r12          # secret
+                movl %edx, %r13d         # ttl
+                subq $1024, %rsp         # payload 0, hdrb64 300, payloadb64 340
+                call kof_now
+                movq $1000, %rcx
+                xorq %rdx, %rdx
+                divq %rcx
+                movq %rax, %r14          # now_s
+                movl 16(%rbx), %eax
+                leaq 24(%rbx), %r8
+                xorq %rcx, %rcx          # lastBrace
+                xorq %r9, %r9            # i
+            .Ljw_brace:
+                cmpl %eax, %r9d
+                jge .Ljw_brace_done
+                cmpb $125, (%r8,%r9)
+                jne .Ljw_brace_next
+                movq %r9, %rcx
+            .Ljw_brace_next:
+                incq %r9
+                jmp .Ljw_brace
+            .Ljw_brace_done:
+                testq %rcx, %rcx
+                jnz .Ljw_head
+                cmpb $125, (%r8)
+                jne .Ljw_bad_claims
+            .Ljw_head:
+                xorq %r15, %r15          # payload len
+            .Ljw_hcopy:
+                cmpq %rcx, %r15
+                jge .Ljw_hsep
+                movb (%r8,%r15), %al
+                movb %al, (%rsp,%r15)
+                incq %r15
+                jmp .Ljw_hcopy
+            .Ljw_hsep:
+                testq %rcx, %rcx
+                je .Ljw_sep_none
+                movzbl -1(%rsp,%r15), %eax
+                cmpb $123, %al
+                je .Ljw_sep_none
+                movb $44, (%rsp,%r15)
+                incq %r15
+            .Ljw_sep_none:
+                leaq .Lstr_jwt_iat(%rip), %rsi
+                movq $6, %rcx
+            .Ljw_iat:
+                testq %rcx, %rcx
+                jz .Ljw_iat_num
+                movb (%rsi), %al
+                movb %al, (%rsp,%r15)
+                incq %rsi
+                incq %r15
+                decq %rcx
+                jmp .Ljw_iat
+            .Ljw_iat_num:
+                movl %r14d, %edi
+                call kof_int_to_string
+                movq %rax, %r9
+                movl 16(%r9), %edx
+                xorq %rcx, %rcx
+            .Ljw_iat_cp:
+                cmpl %edx, %ecx
+                jge .Ljw_iat_done
+                movb 24(%r9,%rcx), %al
+                movb %al, (%rsp,%r15)
+                incq %r15
+                incq %rcx
+                jmp .Ljw_iat_cp
+            .Ljw_iat_done:
+                leaq .Lstr_jwt_expk(%rip), %rsi
+                movq $7, %rcx
+            .Ljw_expk:
+                testq %rcx, %rcx
+                jz .Ljw_exp_num
+                movb (%rsi), %al
+                movb %al, (%rsp,%r15)
+                incq %rsi
+                incq %r15
+                decq %rcx
+                jmp .Ljw_expk
+            .Ljw_exp_num:
+                movl %r14d, %eax
+                addl %r13d, %eax
+                movl %eax, %edi
+                call kof_int_to_string
+                movq %rax, %r9
+                movl 16(%r9), %edx
+                xorq %rcx, %rcx
+            .Ljw_exp_cp:
+                cmpl %edx, %ecx
+                jge .Ljw_exp_done
+                movb 24(%r9,%rcx), %al
+                movb %al, (%rsp,%r15)
+                incq %r15
+                incq %rcx
+                jmp .Ljw_exp_cp
+            .Ljw_exp_done:
+                movb $125, (%rsp,%r15)
+                incq %r15
+                leaq 300(%rsp), %rdi
+                leaq .Lstr_jwt_header(%rip), %rsi
+                movq $27, %rdx
+                call kof_b64url_encode_internal
+                movq %rax, %r13          # header b64 len (36)
+                leaq 340(%rsp), %rdi
+                movq %rsp, %rsi
+                movq %r15, %rdx
+                call kof_b64url_encode_internal
+                movq %rax, %r14          # payload b64 len
+                movq %r13, 944(%rsp)     # preserva header len
+                movq %r14, 952(%rsp)     # preserva payload len
+                movq %r12, %rdi
+                leaq 300(%rsp), %rsi
+                movq %r13, %rdx
+                leaq 340(%rsp), %rcx
+                movq %r14, %r8
+                call kof_sec_jwt_sign_buf
+                movq %rax, %r15          # sig KofString*
+                movl %r13d, %eax
+                addl %r14d, %eax
+                addl 16(%r15), %eax
+                addl $2, %eax
+                movl %eax, %r13d         # total
+                leaq 25(%rax), %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r13d, 16(%rbx)
+                movl $0, 20(%rbx)
+                xorq %rcx, %rcx
+                xorq %r8, %r8            # out len
+            .Ljw_th:
+                cmpl 944(%rsp), %ecx
+                jge .Ljw_td1
+                movzbl 300(%rsp,%rcx), %eax
+                movb %al, 24(%rbx,%r8)
+                incq %r8
+                incq %rcx
+                jmp .Ljw_th
+            .Ljw_td1:
+                movb $46, 24(%rbx,%r8)
+                incq %r8
+                xorq %rcx, %rcx
+            .Ljw_tp:
+                cmpl 952(%rsp), %ecx
+                jge .Ljw_td2
+                movzbl 340(%rsp,%rcx), %eax
+                movb %al, 24(%rbx,%r8)
+                incq %r8
+                incq %rcx
+                jmp .Ljw_tp
+            .Ljw_td2:
+                movb $46, 24(%rbx,%r8)
+                incq %r8
+                movl 16(%r15), %edx
+                xorq %rcx, %rcx
+            .Ljw_ts:
+                cmpl %edx, %ecx
+                jge .Ljw_tnul
+                movb 24(%r15,%rcx), %al
+                movb %al, 24(%rbx,%r8)
+                incq %r8
+                incq %rcx
+                jmp .Ljw_ts
+            .Ljw_tnul:
+                movb $0, 24(%rbx,%r8)
+                movq %rbx, %rax
+                addq $1024, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Ljw_bad_claims:
+                leaq .Lstr_jwt_invalid(%rip), %rdi
+                movq $13, %rsi
+                call kof_jwt_fail
+
+            # kof_sec_jwt_create(rdi=claims, rsi=secret) → token (ttl 3600)
+            .globl kof_sec_jwt_create
+            .type kof_sec_jwt_create, @function
+            kof_sec_jwt_create:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq %rbx, %rdi
+                movq %r12, %rsi
+                movl $3600, %edx
+                call kof_sec_jwt_create_ttl
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_jwt_verify_iss_aud(rdi=token, rsi=secret, rdx=iss, rcx=aud)
+            # → payloadJson (KofString*); lança em falha
+            .globl kof_sec_jwt_verify_iss_aud
+            .type kof_sec_jwt_verify_iss_aud, @function
+            kof_sec_jwt_verify_iss_aud:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # token
+                movq %rsi, %r12          # secret
+                movq %rdx, %r13          # iss (0 = null)
+                movq %rcx, %r14          # aud (0 = null)
+                subq $1536, %rsp
+                movq 16(%rbx), %rax
+                movq %rax, 1528(%rsp)    # token len
+                leaq 24(%rbx), %r8
+                movq %r8, 1520(%rsp)     # token data
+                xorq %r9, %r9            # i
+                movq $-1, %r15           # d1
+                xorq %r10, %r10          # d2
+            .Ljv_dots:
+                cmpq %rax, %r9
+                jge .Ljv_dots_done
+                cmpb $46, (%r8,%r9)
+                jne .Ljv_dots_next
+                cmpq $-1, %r15
+                jne .Ljv_dots_second
+                movq %r9, %r15
+                jmp .Ljv_dots_next
+            .Ljv_dots_second:
+                movq %r9, %r10
+            .Ljv_dots_next:
+                incq %r9
+                jmp .Ljv_dots
+            .Ljv_dots_done:
+                testq %r10, %r10
+                jz .Ljv_bad_token
+                cmpq $-1, %r15
+                je .Ljv_bad_token
+                movq %r10, 1504(%rsp)    # d2 preservado (r10 é caller-saved)
+                movq %rsp, %rdi
+                movq %r8, %rsi
+                movq %r15, %rdx
+                call kof_b64url_decode_internal
+                cmpq $8, %rax
+                jb .Ljv_bad_token
+                movq %rax, %r9           # hdr len
+                xorq %rcx, %rcx
+            .Ljv_alg:
+                movq %r9, %rax
+                subq %rcx, %rax
+                cmpq $5, %rax
+                jl .Ljv_alg_fail
+                leaq .Lstr_hs256(%rip), %rsi
+                xorq %rdx, %rdx
+            .Ljv_alg_cmp:
+                cmpq $5, %rdx
+                jge .Ljv_alg_ok
+                leaq (%rcx,%rdx), %r8
+                movzbl (%rsp,%r8), %eax
+                cmpb (%rsi,%rdx), %al
+                jne .Ljv_alg_next
+                incq %rdx
+                jmp .Ljv_alg_cmp
+            .Ljv_alg_next:
+                incq %rcx
+                jmp .Ljv_alg
+            .Ljv_alg_fail:
+                leaq .Lstr_jwt_alg(%rip), %rdi
+                movq $22, %rsi
+                call kof_jwt_fail
+            .Ljv_alg_ok:
+                movq %r12, %rdi
+                movq 1520(%rsp), %r8
+                movq %r8, %rsi
+                movq %r15, %rdx
+                leaq 1(%r15,%r8), %rcx
+                movq 1504(%rsp), %r8
+                subq %r15, %r8
+                decq %r8
+                call kof_sec_jwt_sign_buf
+                movq %rax, 704(%rsp)     # expected
+                movq 1528(%rsp), %rax
+                subq 1504(%rsp), %rax
+                decq %rax
+                movq %rax, %r9
+                movq 704(%rsp), %rdx
+                movl 16(%rdx), %ecx
+                cmpl %ecx, %r9d
+                jne .Ljv_bad_sig
+                movq 1520(%rsp), %r8
+                movq 1504(%rsp), %rsi
+                leaq 1(%rsi,%r8), %rsi
+                xorq %r11, %r11
+                xorq %rcx, %rcx
+            .Ljv_sig_cmp:
+                cmpq %r9, %rcx
+                jge .Ljv_sig_done
+                movzbl 24(%rdx,%rcx), %eax
+                movzbl (%rsi,%rcx), %ebx
+                xorl %ebx, %eax
+                orq %rax, %r11
+                incq %rcx
+                jmp .Ljv_sig_cmp
+            .Ljv_sig_done:
+                testq %r11, %r11
+                jnz .Ljv_bad_sig
+                movq 1520(%rsp), %r8
+                leaq 160(%rsp), %rdi
+                leaq 1(%r15,%r8), %rsi
+                movq 1504(%rsp), %rdx
+                subq %r15, %rdx
+                decq %rdx
+                call kof_b64url_decode_internal
+                movq %rax, %r9
+                leaq 160(%rsp), %rdi
+                movq %rax, %rsi
+                call .Ljf_mkstr
+                movq %rax, 672(%rsp)     # payloadJson
+                leaq .Lstr_exp_key(%rip), %rdi
+                movq $3, %rsi
+                call .Ljf_mkstr
+                movq %rax, %rsi
+                movq 672(%rsp), %rdi
+                call kof_json_find_value
+                movq %rax, %rbx
+                movl 16(%rbx), %ecx
+                testl %ecx, %ecx
+                jz .Ljv_exp_ok
+                movq %rbx, %rdi
+                call kof_string_to_long
+                movq %rax, %r9
+                imulq $1000, %r9
+                call kof_now
+                cmpq %rax, %r9
+                jle .Ljv_expired
+            .Ljv_exp_ok:
+                testq %r13, %r13
+                jz .Ljv_aud
+                leaq .Lstr_iss_key(%rip), %rdi
+                movq $3, %rsi
+                call .Ljf_mkstr
+                movq %rax, %rsi
+                movq 672(%rsp), %rdi
+                call kof_json_find_value
+                movq %rax, %rsi
+                movq %r13, %rdi
+                call kof_string_equals
+                testl %eax, %eax
+                jz .Ljv_iss_fail
+            .Ljv_aud:
+                testq %r14, %r14
+                jz .Ljv_ok
+                leaq .Lstr_aud_key(%rip), %rdi
+                movq $3, %rsi
+                call .Ljf_mkstr
+                movq %rax, %rsi
+                movq 672(%rsp), %rdi
+                call kof_json_find_value
+                movq %rax, %rsi
+                movq %r14, %rdi
+                call kof_string_equals
+                testl %eax, %eax
+                jz .Ljv_aud_fail
+            .Ljv_ok:
+                movq 672(%rsp), %rax
+                addq $1536, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Ljv_bad_token:
+                leaq .Lstr_jwt_invalid(%rip), %rdi
+                movq $13, %rsi
+                call kof_jwt_fail
+            .Ljv_bad_sig:
+                leaq .Lstr_jwt_sig(%rip), %rdi
+                movq $17, %rsi
+                call kof_jwt_fail
+            .Ljv_expired:
+                leaq .Lstr_jwt_exp(%rip), %rdi
+                movq $13, %rsi
+                call kof_jwt_fail
+            .Ljv_iss_fail:
+                leaq .Lstr_jwt_iss(%rip), %rdi
+                movq $15, %rsi
+                call kof_jwt_fail
+            .Ljv_aud_fail:
+                leaq .Lstr_jwt_aud(%rip), %rdi
+                movq $17, %rsi
+                call kof_jwt_fail
+
+            # kof_sec_jwt_verify(rdi=token, rsi=secret) → payloadJson
+            .globl kof_sec_jwt_verify
+            .type kof_sec_jwt_verify, @function
+            kof_sec_jwt_verify:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq %rbx, %rdi
+                movq %r12, %rsi
+                xorq %rdx, %rdx
+                xorq %rcx, %rcx
+                call kof_sec_jwt_verify_iss_aud
                 popq %r12
                 popq %rbx
                 ret

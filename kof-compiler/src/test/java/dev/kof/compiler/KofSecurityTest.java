@@ -165,6 +165,27 @@ class KofSecurityTest {
         runJs(tempDir, JWT_SOURCE, "true\ntrue\ntrue");
     }
 
+    @Test
+    void jwtNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, JWT_SOURCE);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "JWT must work on Native: "
+                + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    tempDir.resolve("out").resolve("Default").resolve("Main").toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8).replace("\r\n", "\n").trim();
+            assertEquals(0, p.waitFor(), "exit code, output: " + output);
+            assertEquals("true\ntrue\ntrue", output, "JWT HS256 native: create/verify/try-catch");
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
+    }
+
     private static final String JWT_CLAIMS_SOURCE = """
             main() {
                 var token = jwt.create("{\\"sub\\":\\"u1\\",\\"iss\\":\\"kof\\",\\"aud\\":\\"api\\",\\"roles\\":[\\"admin\\"]}", "s3cret")
@@ -327,20 +348,24 @@ class KofSecurityTest {
     }
 
     @Test
-    void jwtRejectedOnNative(@TempDir Path tempDir) throws IOException {
-        // G7: jwt tem entrada explícita em supportedOn — Native reporta
-        // SECN004 em compile-time (não erro de link silencioso)
+    void jwtIssAudNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
-        Files.writeString(source, """
-                main() {
-                    var token = jwt.create("{\\"sub\\": \\"u\\"}", "s3cret")
-                    println(token)
-                }
-                """);
+        Files.writeString(source, JWT_CLAIMS_SOURCE);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out-n"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("SECN004"),
-                "Native should report SECN004: " + nativeResult.diagnostics().getDiagnostics());
+        assertTrue(nativeResult.success(),
+                "JWT iss/aud must work on Native: " + nativeResult.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    tempDir.resolve("out-n").resolve("Default").resolve("Main").toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8).replace("\r\n", "\n").trim();
+            assertEquals(0, p.waitFor(), "exit code, output: " + output);
+            assertEquals("true\ntrue\ntrue", output, "JWT iss/aud native");
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("out-j"), Target.JS);
         assertTrue(jsResult.success(), "JWT works on JS: " + jsResult.diagnostics().getDiagnostics());
         CompilationResult jvmResult = driver.compile(source, tempDir.resolve("out-v"), Target.JVM);
