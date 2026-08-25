@@ -50,7 +50,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM |
 | `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use`, `listenSecure(port)` TLS — JVM (Native/JS `WEB001/002`) |
 | `kof.security` | ✅ (v1 + G9) | passwords, crypto, jwt, secrets, auth, security, rateLimit, sessions, apiKeys — ver `docs/security.md` |
-| `kof.concurrent` | ✅ | `spawn` (virtual threads) — JVM; Native CONC001 |
+| `kof.concurrent` | ✅ | `spawn` (statement) + **P1**: `val r = spawn f()` / `await r` (handle tipado, virtual threads) — JVM; Native CONC001; spawn-expr/await JS CONC003 |
 | `kof.test` | ✅ | `kof test`, `assert` |
 | `kof.cli` | ✅ | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` (inclui o debugger DAP) |
 | `kof.metrics` | 🟡 | `kof bench`/`kof profile` (tooling) |
