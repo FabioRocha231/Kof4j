@@ -57,7 +57,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.rest` | ⏳ | planejado |
 | `kof.database` | ✅ | `kof.db` (JDBC idiomático + SQLite nativo) + `kof.orm` (entity, create/save/find/all/where/delete/count/migrate) — JVM; ver `future/DATABASE_VISION.md` |
 | `kof.messaging` | ⏳ | planejado |
-| `kof.validation` | ⏳ | planejado |
+| `kof.validation` | ✅ | `validation.required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max` — JVM/Native/JS (`KofValidationTest` 3/3) |
 | `kof.logging` | ✅ | `log.debug/info/warn/error`, níveis, off (JVM; LOG001 outros) — KofLogE2ETest (7) |
 | `kof.observability` | ⏳ | planejado |
 | `kof.process` | ⏳ | planejado |
@@ -94,12 +94,12 @@ Resumo executivo (0.0.5-alpha):
 | Categoria | Estado |
 |-----------|--------|
 | core/collections/io/time/json | DONE (3 targets) |
-| security (crypto, jwt, secrets, auth web) | DONE (JVM; parcial Native/JS) |
+| security (crypto, jwt, secrets, auth web) | DONE (JVM/Native/JS core; web auth JVM) |
 | web server (`web.app()`) | DONE (JVM) |
 | concurrency (`spawn`) | DONE (JVM) |
 | test (`assert`, `kof test`) | PARTIAL (suíte estruturada planejada) |
 | observability | PARTIAL (tooling bench/profile) |
-| database, http client, config, validation, messaging, scheduling, sessions, rate limiting, TLS | PLANNED (gaps P0-P2) |
+| messaging, scheduling (interval done), sessions, rate limiting, TLS | PLANNED (gaps P0-P2) |
 
 # 6. PRÓXIMAS ETAPAS
 

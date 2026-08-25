@@ -135,7 +135,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | configuration model | `config.get/str/int/long/bool/has` (arquivo + env + profiles) | y | y (CONFIG001 fechado) | – CONF001 | KofConfigE2ETest | stdlib.md |
 | dependency injection | `NA` (sem container; resolução direta) | — | — | — | — | philosophy.md |
 | events | `PLANNED` (event bus) | — | — | — | — | roadmap.md |
-| validation | `PLANNED` (`kof.validation`) | — | — | — | — | stdlib.md |
+| validation | ✅ `kof.validation` (required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max) — JVM/Native/JS | y | y | y | KofValidationTest | stdlib.md |
 | scheduling | ✅ `kof.time.sleep/interval/cancel` (JVM); TIME001 no Native/JS | y | – | – | KofTimeE2ETest | stdlib.md |
 | caching | `PLANNED` | — | — | — | — | roadmap.md |
 | transactions | ✅ `transaction {}` (JVM; commit/rollback real) | y | – DB001 | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
@@ -327,7 +327,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | G1 | ~~**Database/SQL** inexistente~~ — ✅ **nível 0 implementado**: `kof.db` (JDBC JVM, SQLite nativo, MySQL WIP) + `kof.orm` (entity, CRUD, where, migrate, MongoDB) | apps reais com persistência no JVM/Native-SQLite | próximo: query DSL tipada, pools, kof.db fora do JVM |
 | G2 | ~~**HTTP client** inexistente~~ — ✅ **implementado**: `kof.http` client (get/post/put/delete/patch/options/status/timeout, headers; HTTP002 no Native/JS) | integrações, testes, frontend | ✅ fechado — `KofHttpE2ETest` (3) |
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (arquivo > env > profile > default, typed `str/int/long/bool`); **CONFIG001 nativo fechado** (asm `/proc/self/environ`); JS reporta CONF001 | — | JS (P1) |
-| G4 | **Validation** inexistente | web sem validação de input | `kof.validation` (integrado ao web + database) |
+| G4 | ~~**Validation** inexistente~~ — ✅ **implementado**: `kof.validation` (13 predicados nos 3 targets) | — | `KofValidationTest` (3/3) |
 | G5 | **Observabilidade runtime parcial**: `kof.log` existe (JVM + Native asm; LOG001 só no JS); faltam health checks, metrics e request IDs no Native/JS | produção sem health/metrics | `kof.observability` (health, metrics, request IDs) |
 | G6 | ~~**kof.test estruturado** inexistente~~ — ✅ **implementado**: `test "nome" { }` nos 3 targets; runner sintetizado em compile-time; PASS/FAIL por nome + exit code (`StructuredTestE2ETest`) | testes como cidadãos de primeira classe | próximo: suites nomeadas por diretório, timeouts, fixtures |
 | G7 | ~~**Diagnósticos de target incompletos no security/web**~~ — ✅ **fechado**: `jwt.*` com entrada explícita (SECN004 no Native); `csrf/cors/auth/headers` já cobertos; WEB001 emitido para web.app() e métodos de app fora do JVM | viola "nunca silencioso" | manter: toda função nova entra em `supportedOn` no mesmo PR |
@@ -425,7 +425,7 @@ Princípios mantidos:
    nativo, transactions, entity, migrations, **where com operadores**,
    **saveAll batch**, **page/count/deleteAll**, **MariaDB/PostgreSQL reais**,
    MongoDB); próximo: query DSL tipada, pools, portabilidade Native/JS.
-6. G4 — `kof.validation`.
+6. ~~G4~~ — ✅ `kof.validation` (13 predicados nos 3 targets; `KofValidationTest` 3/3).
 7. G5 — `kof.observability` (health, metrics; o logging básico já existe
    via `kof.log`).
 8. ~~G8~~ — ✅ `kof.time.sleep` + `interval`/`cancel` (JVM); Native/JS TIME001.
