@@ -225,6 +225,63 @@ final class JvmWebRuntime {
                     return r.body();
                 }
 
+                // ── kof.mq — messageria em memória (pub/sub + filas) ─────
+                private static final java.util.concurrent.ConcurrentHashMap<String,
+                        java.util.concurrent.CopyOnWriteArrayList<Object>> KOF_MQ_SUBS =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_MQ_SEQ =
+                        new java.util.concurrent.atomic.AtomicInteger();
+                private static final java.util.concurrent.ConcurrentHashMap<String,
+                        java.util.concurrent.ArrayBlockingQueue<Object>> KOF_MQ_QUEUES =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+
+                public static void kof_mq_publish(String topic, Object msg) {
+                    java.util.List<Object> subs = KOF_MQ_SUBS.get(topic);
+                    if (subs != null) {
+                        for (Object fn : subs) {
+                            try {
+                                fn.getClass().getMethod("invoke", Object.class).invoke(fn, msg);
+                            } catch (java.lang.reflect.InvocationTargetException e) {
+                                if (e.getCause() instanceof RuntimeException re) throw re;
+                                throw new RuntimeException(e.getCause());
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                }
+
+                public static void kof_mq_subscribe(String topic, Object fn) {
+                    KOF_MQ_SUBS.computeIfAbsent(topic, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
+                            .add(fn);
+                }
+
+                public static void kof_mq_unsubscribe(String topic, Object fn) {
+                    java.util.List<Object> subs = KOF_MQ_SUBS.get(topic);
+                    if (subs != null) {
+                        subs.remove(fn);
+                    }
+                }
+
+                public static String kof_mq_queue() {
+                    return "mq-" + KOF_MQ_SEQ.incrementAndGet();
+                }
+
+                public static void kof_mq_push(String q, Object item) {
+                    KOF_MQ_QUEUES.computeIfAbsent(q,
+                            k -> new java.util.concurrent.ArrayBlockingQueue<>(1024)).add(item);
+                }
+
+                public static Object kof_mq_pop(String q) {
+                    java.util.concurrent.ArrayBlockingQueue<Object> queue = KOF_MQ_QUEUES.get(q);
+                    return queue == null ? null : queue.poll();
+                }
+
+                public static int kof_mq_queue_size(String q) {
+                    java.util.concurrent.ArrayBlockingQueue<Object> queue = KOF_MQ_QUEUES.get(q);
+                    return queue == null ? 0 : queue.size();
+                }
+
 """;
     }
 }

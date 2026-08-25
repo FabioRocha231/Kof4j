@@ -200,10 +200,10 @@ private Target target = Target.JVM;
                     parsedUnits.get(0).position(), "",
                     mergedImports, mergedDecls);
             unit = expandKofImports(unit);
-            lowerAndEmit(unit, diagnostics, outputDir, target);
             if (diagnostics.hasErrors()) {
                 return new CompilationResult(false, diagnostics, outputDir);
             }
+            lowerAndEmit(unit, diagnostics, outputDir, target);
             return new CompilationResult(true, diagnostics, outputDir);
         } catch (IOException e) {
             diagnostics.error(sources.get(0).toString(), 0, 0, 0,
@@ -704,7 +704,8 @@ private Target target = Target.JVM;
     private Path moduleRoot;
 
     /** Pacote declarado de cada declaração (multi-pacote num só módulo). */
-    private final Map<AstNode, String> declarationPackages = new java.util.LinkedHashMap<>();
+    private final Map<AstNode, String> declarationPackages =
+            new java.util.IdentityHashMap<>();
 
 
     /** Pacote derivado do DIRETÓRIO do arquivo relativo à raiz do módulo. */
@@ -2260,13 +2261,65 @@ private Target target = Target.JVM;
                         } else if (target == Target.NATIVE
                                 && argType instanceof Type.ClassType ect
                                 && !BuiltinTypes.isString(argType)) {
-                            // JSN002 fechado: walker generico + tabela de schema
-                            // gerada pelo backend (nomes/offsets de compile-time)
+                            // JSN002: compoe o JSON em compile-time a partir
+                            // dos campos conhecidos (sem reflection, sem
+                            // walker generico) — so primitivas testadas.
                             String cn2 = ect.packageName().isEmpty()
                                     ? ect.name() : ect.packageName() + "." + ect.name();
-                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, cn2));
-                            paramTypes = List.of(argType, BuiltinTypes.STRING);
-                            ops.add(new KofCall(argType, "kof_json_encode_obj", paramTypes,
+                            java.util.List<String[]> flds = classFieldsOrdered(cn2);
+                            // guarda o objeto em local temporario
+                            ops.add(new KofStoreLocal(argType, localIdx));
+                            locals.add(new IRLocalVariable(localIdx, "#jsonobj", argType));
+                            int objTmp = localIdx;
+                            localIdx += isDoubleWidth(argType) ? 2 : 1;
+                            // acc = "{"
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, "{"));
+                            for (int fi = 0; fi < flds.size(); fi++) {
+                                String fname = flds.get(fi)[0];
+                                Type ftype = toType(flds.get(fi)[1]);
+                                if (fi > 0) {
+                                    ops.add(new KofLoadLiteral(BuiltinTypes.STRING, ","));
+                                    ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                            List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                            BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                                }
+                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING,
+                                        "\"" + fname + "\":"));
+                                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                                // valor do campo
+                                ops.add(new KofLoadLocal(argType, objTmp));
+                                ops.add(new KofLoadField(argType, fname, ftype));
+                                switch (ftype instanceof Type.PrimitiveType fp
+                                        ? Type.canonicalPrimitiveName(fp.name()) : "") {
+                                    case "long":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_long_to_string",
+                                                List.of(Type.PrimitiveType.LONG), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
+                                    case "bool":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_bool_to_string",
+                                                List.of(Type.PrimitiveType.BOOL), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
+                                    case "int":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_int_to_string",
+                                                List.of(Type.PrimitiveType.INT), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
+                                    default: // string
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_json_quote",
+                                                List.of(BuiltinTypes.STRING), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                }
+                                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                            }
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, "}"));
+                            ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                    List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                                     BuiltinTypes.STRING, KofCallKind.FUNCTION));
                             yield localIdx;
                         }
@@ -2295,12 +2348,42 @@ private Target target = Target.JVM;
                         } else if (target == Target.NATIVE
                                 && targetType instanceof Type.ClassType dct
                                 && !BuiltinTypes.isString(targetType)) {
-                            // JSN002 fechado: decode via tabela de schema
+                            // JSN002: decode composto — find_value por campo +
+                            // decoders escalares + construtor canonico
                             String cn3 = dct.packageName().isEmpty()
                                     ? dct.name() : dct.packageName() + "." + dct.name();
-                            decodeFn = "kof_json_decode_obj";
-                            decodeParams = List.of(BuiltinTypes.STRING, BuiltinTypes.STRING);
-                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, cn3));
+                            java.util.List<String[]> flds = classFieldsOrdered(cn3);
+                            // json em local temporario
+                            ops.add(new KofStoreLocal(BuiltinTypes.STRING, localIdx));
+                            locals.add(new IRLocalVariable(localIdx, "#jsonsrc", BuiltinTypes.STRING));
+                            int jTmp = localIdx;
+                            localIdx += 1;
+                            List<Type> ctorTypes = new ArrayList<>();
+                            ops.add(new KofNewObject(targetType,
+                                    flds.stream().map(f -> toType(f[1])).toList()));
+                            ops.add(new KofDup());
+                            for (String[] f : flds) {
+                                Type ft = toType(f[1]);
+                                ctorTypes.add(ft);
+                                ops.add(new KofLoadLocal(BuiltinTypes.STRING, jTmp));
+                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING,
+                                        "\"" + f[0] + "\":"));
+                                ops.add(new KofCall(BuiltinTypes.STRING, "kof_json_find_value",
+                                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                                String dec = switch (ft instanceof Type.PrimitiveType fp
+                                        ? Type.canonicalPrimitiveName(fp.name()) : "") {
+                                    case "long" -> "kof_json_decode_long";
+                                    case "bool" -> "kof_json_decode_bool";
+                                    default -> "kof_json_decode_string";
+                                };
+                                if ("int".equals(dec)) dec = "kof_json_decode_int";
+                                ops.add(new KofCall(BuiltinTypes.STRING, dec,
+                                        List.of(BuiltinTypes.STRING), ft, KofCallKind.FUNCTION));
+                            }
+                            ops.add(new KofCall(targetType, "<init>", ctorTypes,
+                                    Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                            yield localIdx;
                         }
                         ops.add(new KofCall(targetType, decodeFn, decodeParams,
                                 targetType, KofCallKind.FUNCTION));
@@ -4849,44 +4932,53 @@ private Target target = Target.JVM;
      * Qualquer campo fora do conjunto (List, Map, float/double) diagnostica
      * explicitamente — nunca resultado silenciosamente errado.
      */
+    /**
+     * Campos ordenados (nome, tipo) de uma classe/record/entity declarada
+     * na unidade corrente — usados pela composicao JSON no Native.
+     */
+    private java.util.List<String[]> classFieldsOrdered(String className) {
+        java.util.List<String[]> out = new ArrayList<>();
+        for (AstNode d : currentUnit.declarations()) {
+            if (d instanceof RecordDeclarationNode r && r.name().equals(className)) {
+                for (RecordComponentNode f : r.components()) {
+                    out.add(new String[]{f.name(), f.type()});
+                }
+            } else if (d instanceof EntityDeclarationNode e && e.name().equals(className)) {
+                for (EntityFieldNode f : e.fields()) {
+                    out.add(new String[]{f.name(), f.type()});
+                }
+            } else if (d instanceof ClassDeclarationNode c && c.name().equals(className)) {
+                for (AstNode m : c.members()) {
+                    if (m instanceof FieldDeclarationNode f) {
+                        out.add(new String[]{f.name(), f.type()});
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     private boolean nativeObjJsonFieldsOk(String className, java.util.Set<String> visiting,
                                           String ownerForDiag) {
         if (visiting.contains(className)) return true; // ciclo: aceita no nivel externo
         visiting.add(className);
         boolean ok = true;
-        for (AstNode d : currentUnit.declarations()) {
-            if (d instanceof RecordDeclarationNode r && r.name().equals(className)) {
-                for (RecordComponentNode f : r.components()) {
-                    if (!fieldOk(f.type(), className, visiting)) ok = false;
-                }
-            } else if (d instanceof EntityDeclarationNode e && e.name().equals(className)) {
-                for (EntityFieldNode f : e.fields()) {
-                    if (!fieldOk(f.type(), className, visiting)) ok = false;
-                }
-            } else if (d instanceof ClassDeclarationNode c && c.name().equals(className)) {
-                for (AstNode m : c.members()) {
-                    if (m instanceof FieldDeclarationNode f) {
-                        if (!fieldOk(f.type(), className, visiting)) ok = false;
-                    }
-                }
-            }
+        for (String[] f : classFieldsOrdered(className)) {
+            if (!fieldOk(f[1], className, visiting)) ok = false;
         }
         return ok;
     }
 
+    // v1 flat: objetos aninhados ainda nao sao suportados pelo walker
     private boolean fieldOk(String typeName, String className, java.util.Set<String> visiting) {
         Type t = toType(typeName);
         if (t instanceof Type.PrimitiveType) return true;
         if (BuiltinTypes.isString(t)) return true;
-        if (t instanceof Type.ClassType ct && !BuiltinTypes.isList(t)) {
-            String cn = ct.packageName().isEmpty() ? ct.name() : ct.packageName() + "." + ct.name();
-            if (nativeObjJsonFieldsOk(cn, visiting, className)) return true;
-        }
         if (currentDiagnostics != null) {
             currentDiagnostics.error("", 0, 0, 0,
                     "json: class " + className + " has field of type " + typeName
-                            + " not supported by the Native JSON walker yet"
-                            + " (use int, long, bool, string or nested classes)",
+                            + " not supported by the Native JSON encoder yet"
+                            + " (use int, long, bool or string fields; nested objects coming soon)",
                     "JSN002");
         }
         return false;
