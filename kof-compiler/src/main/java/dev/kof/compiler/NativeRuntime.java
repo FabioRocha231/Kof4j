@@ -7626,7 +7626,7 @@ final class NativeRuntime {
                 addq %r9, %rax
                 cmpq %r13, %rax
                 jge .Lssg_fail
-                movzbl (%rbx,%r9), %eax      # name[j]
+                movzbl 24(%rbx,%r9), %eax    # name[j] (data da KofString em +24)
                 movzbl (%r8,%r9), %ecx       # buf[i+j]
                 cmpl %ecx, %eax
                 jne .Lssg_advance
@@ -7651,7 +7651,8 @@ final class NativeRuntime {
                 incq %rcx
                 jmp .Lssg_vscan
             .Lssg_vdone:
-                call kof_string_from_literal # (rdi=valor, esi=vallen)
+                movq %rcx, %rsi              # ESI = vallen (contrato do from_literal)
+                call kof_string_from_literal # rdi ja aponta para o valor
                 jmp .Lssg_exit
             .Lssg_advance:
                 cmpb $0, (%r8)
