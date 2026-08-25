@@ -45,7 +45,7 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 | Dependency Injection | Core/Context | — | MISSING (baixa) | Decisão futura deliberada; ver §3 |
 | Expression Language | SpEL | — | MISSING (média) | Pode ser resolvido com funções de primeira classe |
 | AOP | AspectJ | — | MISSING (média) | Composição de funções + middleware cobre casos comuns |
-| Validation | spring-validation | `kof.validation` (planejado) | MISSING (alta) | See security/validation |
+| Validation | spring-validation | `kof.validation` | **EXISTS** | 13 predicados JVM/Native/JS |
 | Web | spring-web | `kof.web` (`web.app()`) | EXISTS | Rotas, params, query, headers, body, middleware `app.use` |
 | Web MVC | WebMVC | `kof.web` + handlers | PARTIAL | Só JVM hoje; JS embarcado (alpha) |
 | WebFlux | WebFlux | `spawn` + virtual threads | PARTIAL | Modelo concorrente próprio |
@@ -69,11 +69,11 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 | Dependency management | starters | — | NOT APPLICABLE | Sem dependências: a stdlib É a plataforma |
 | Auto configuration | auto-config | — | NOT APPLICABLE | Compilador sabe o que o programa usa |
 | Embedded servers | Tomcat/Jetty | `KofHttpServer` | EXISTS | JVM apenas |
-| Actuator | actuator | — | MISSING (alta) | `kof.observability`/health planejado |
-| Health checks | health | — | MISSING (alta) | |
-| Metrics | micrometer | `kof bench`/`kof profile` (tooling) | PARTIAL | Runtime metrics planejadas |
-| Observability | tracing | — | MISSING (média) | |
-| Logging | logback | `println`/`System.err` | PARTIAL | `kof.logging` planejado |
+| Actuator | actuator | `kof.observability` | **EXISTS** | health/metrics/request IDs JVM/Native/JS |
+| Health checks | health | `kof.observability.health` | **EXISTS** | JVM/Native/JS |
+| Metrics | micrometer | `kof.observability` | **EXISTS** | counter/increment/gauge JVM/Native/JS |
+| Observability | tracing | `kof.observability` | **EXISTS** | health/metrics/request IDs; tracing planejado |
+| Logging | logback | `kof.log` + `println` | **EXISTS** | `log.debug/info/warn/error` JVM/Native |
 | Graceful shutdown | shutdown | `web.close()` + spawn join | PARTIAL | |
 | CLI/tooling | spring CLI | `kof` CLI (build/run/serve/test/bench/profile/inspect) | EXISTS | |
 
@@ -85,7 +85,9 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 | Authentication | AuthenticationManager | `kof.security.auth` | **EXISTS (esta etapa)** | CRÍTICA |
 | Authorization (roles) | authorize | `kof.security.auth.hasRole` | **EXISTS (esta etapa)** | CRÍTICA |
 | Authorities/permissions | authorities | `kof.security.auth.hasPermission` | **EXISTS (esta etapa)** | ALTA |
-| Sessions | session management | `kof.security.sessions` (planejado) | MISSING | ALTA |
+| Sessions | session management | `kof.security` (`security.sessionCreate/sessionGet/sessionDestroy`) | **EXISTS** | JVM/Native/JS |
+| Rate limiting | Bucket4j | `kof.security` (`security.rateLimit`) | **EXISTS** | JVM/Native/JS |
+| API keys | ApiKeyFilter | `kof.security` (`security.apiKeyGenerate/apiKeyValid`) | **EXISTS** | JVM/Native/JS |
 | Security context | SecurityContext | `kof.security.auth` (contexto de request) | **EXISTS (esta etapa)** | CRÍTICA |
 | CSRF | CsrfFilter | `kof.security.security.csrf*` | **EXISTS (esta etapa)** | ALTA |
 | CORS | CorsFilter | `kof.security.security.cors*` | **EXISTS (esta etapa)** | ALTA |
@@ -179,14 +181,14 @@ resolve a função de runtime e cada target fornece a implementação.
 | `kof.web` (web.app, rotas, middleware) | SIM | SIM | PARCIAL (auth em construção) | JVM | SIM | SIM (novo) | SIM |
 | `kof.rest` | NÃO | — | — | — | — | — | — |
 | `kof.database` | NÃO | — | — | — | — | — | — |
-| `kof.security` | NÃO (esta etapa implementa) | — | — | — | — | — | — |
+| `kof.security` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.concurrent` (spawn) | SIM | SIM | SIM | JVM (native CONC001) | SIM | SIM | SIM |
 | `kof.messaging` | NÃO | — | — | — | — | — | — |
-| `kof.validation` | NÃO | — | — | — | — | — | — |
+| `kof.validation` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.serialization` | PARCIAL (json) | SIM | SIM | PARCIAL | SIM | SIM | SIM |
 | `kof.logging` | PARCIAL (println) | SIM | SIM | SIM | SIM | SIM | SIM |
-| `kof.observability` | NÃO | — | — | — | — | — | — |
-| `kof.metrics` | PARCIAL (bench/profile) | SIM | SIM | JVM | SIM | SIM | SIM |
+| `kof.observability` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
+| `kof.metrics` | SIM (`kof.observability`) | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.test` (`kof test`, assert) | SIM | SIM | SIM | JVM/Native | SIM | SIM | SIM |
 | `kof.cli` (CLI kof) | SIM | SIM | SIM | JVM | SIM | SIM | SIM |
 | `kof.process` | NÃO | — | — | — | — | — | — |
@@ -218,7 +220,8 @@ kof.security
 ├── crypto           → sha256/sha512, hmacSha256, aesGcm (encrypt/decrypt), randomHex/randomInt
 ├── jwt              → create/verify (HS256, exp/iss/aud, sem confusão de algoritmo)
 ├── secrets          → get (env), redact
-├── security         → constantTimeEquals, randomHex, redact, csrfToken/csrfValid, corsAllowed, headers helpers
+├── security         → constantTimeEquals, randomHex, redact, csrfToken/csrfValid, corsAllowed, headers helpers,
+│                      rateLimit, sessionCreate/sessionGet/sessionDestroy, apiKeyGenerate/apiKeyValid (G9)
 └── auth             → contexto web: secret, token, authenticated, claims, user, hasRole, hasPermission
 ```
 
@@ -292,6 +295,9 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 | `security.corsAllowed(origin, allowed)` | ✅ | ❌ | ❌ | |
 | `security.cspHeader/hstsHeader/contentTypeOptionsHeader/frameHeader/referrerHeader` | ✅ (valores prontos) | ❌ | ❌ | |
 | `auth.secret/token/authenticated/claims/user/hasRole/hasPermission` | ✅ (contexto web, Bearer JWT) | ❌ | ❌ | |
+| `security.rateLimit(key, limit, window)` | ✅ fixed-window per-key | ✅ (asm, per-key counter) | ✅ (JS, Date.now) | per-key count |
+| `security.sessionCreate(data)` / `sessionGet` / `sessionDestroy` | ✅ (ConcurrentHashMap) | ✅ (asm, 32 slots) | ✅ (JS object) | randomHex(16) id |
+| `security.apiKeyGenerate` / `apiKeyValid` | ✅ (ConcurrentHashMap) | ✅ (asm, 32 slots) | ✅ (JS object) | randomHex(32) |
 
 ## 7.2 Verificação cruzada
 
