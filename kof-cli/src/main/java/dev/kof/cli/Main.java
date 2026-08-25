@@ -177,15 +177,17 @@ public final class Main {
     }
 
 private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release]");
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
         if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
-            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release]");
+            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
             return;
         } return; }
         Path src = Path.of(args[1]);
         Target target = Target.JVM;
         Path out = Path.of("build/classes");
         boolean release = false;
+        boolean apk = false;
+        String classpath = null;
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             if (arg.startsWith("--target=")) {
@@ -200,10 +202,25 @@ private static void build(String[] args) {
                 i++;
             } else if (arg.equals("--release")) {
                 release = true;
+            } else if (arg.equals("--apk")) {
+                apk = true;
+            } else if (arg.startsWith("--classpath=")) {
+                classpath = arg.substring("--classpath=".length());
+            } else if (arg.equals("--classpath") && i + 1 < args.length) {
+                classpath = args[++i];
             }
         }
         CompilerDriver driver = new CompilerDriver();
         if (release) driver.setDebugInfoEnabled(false);
+        // dependências externas (android.jar etc.) geridas pelo Kof via
+        // ExternalClasspath — separadas por ':' ou ';'
+        if (classpath != null && !classpath.isBlank()) {
+            List<Path> entries = new ArrayList<>();
+            for (String part : classpath.split("[:;]")) {
+                if (!part.isBlank()) entries.add(Path.of(part));
+            }
+            driver.setExternalClasspath(entries);
+        }
         List<Path> files = collect(src);
         if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
         boolean ok = true;
@@ -213,6 +230,75 @@ private static void build(String[] args) {
             if (!r.success()) ok = false;
         }
         if (!ok) System.exit(1);
+        // target android + --apk: pipeline direto (sem Maven) usando o SDK
+        if (target == Target.ANDROID && apk && ok) {
+            runApkPipeline(out);
+        }
+    }
+
+    /**
+     * Pipeline APK standalone (#6/#7): chama os binários oficiais do SDK
+     * direto — d8 → aapt2 → zip → zipalign → apksigner. Debug keystore
+     * gerado localmente na primeira vez.
+     */
+    private static void runApkPipeline(Path projDir) {
+        String androidHome = System.getenv("ANDROID_HOME");
+        if (androidHome == null || androidHome.isBlank()) {
+            System.err.println("--apk: ANDROID_HOME não definido; gere o projeto e use 'mvn verify'");
+            return;
+        }
+        Path bt = Path.of(androidHome, "build-tools", "34.0.0");
+        Path platformJar = Path.of(androidHome, "platforms", "android-34", "android.jar");
+        if (!Files.isExecutable(bt.resolve("aapt2"))) {
+            System.err.println("--apk: build-tools 34.0.0 não encontrado em " + bt);
+            return;
+        }
+        Path build = projDir.resolve("target");
+        Path apkDir = build.resolve("apk");
+        try {
+            Files.createDirectories(apkDir);
+            // debug keystore local
+            Path ks = build.resolve("debug.keystore");
+            if (!Files.exists(ks)) {
+                run(List.of("keytool", "-genkeypair", "-keystore", ks.toString(),
+                        "-alias", "androiddebugkey", "-storepass", "android",
+                        "-keypass", "android", "-keyalg", "RSA", "-validity", "9999",
+                        "-dname", "CN=Kof Debug,O=Kof,C=BR"), projDir);
+            }
+            run(List.of(bt.resolve("aapt2").toString(), "compile", "--dir",
+                    projDir.resolve("src/main/res").toString(),
+                    "-o", apkDir.resolve("res.zip").toString()), projDir);
+            run(List.of(bt.resolve("aapt2").toString(), "link",
+                    "-o", apkDir.resolve("base.apk").toString(),
+                    "-I", platformJar.toString(),
+                    "--manifest", projDir.resolve("src/main/AndroidManifest.xml").toString(),
+                    "-A", projDir.resolve("src/main/assets").toString(),
+                    "-R", apkDir.resolve("res.zip").toString()), projDir);
+            run(List.of(bt.resolve("d8").toString(), "--release",
+                    "--lib", platformJar.toString(), "--min-api", "24",
+                    "--output", apkDir.toString(),
+                    projDir.resolve("libs/kof-app.jar").toString()), projDir);
+            run(List.of("jar", "uf", apkDir.resolve("base.apk").toString(),
+                    "-C", apkDir.toString(), "classes.dex"), projDir);
+            run(List.of(bt.resolve("zipalign").toString(), "-f", "4",
+                    apkDir.resolve("base.apk").toString(),
+                    apkDir.resolve("aligned.apk").toString()), projDir);
+            run(List.of(bt.resolve("apksigner").toString(), "sign",
+                    "--ks", ks.toString(), "--ks-pass", "pass:android",
+                    "--out", build.resolve("kof-app.apk").toString(),
+                    apkDir.resolve("aligned.apk").toString()), projDir);
+            System.out.println("APK gerado: " + build.resolve("kof-app.apk"));
+        } catch (Exception e) {
+            System.err.println("pipeline apk falhou: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    private static void run(List<String> cmd, Path cwd) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(cwd.toFile()).inheritIO();
+        Process proc = pb.start();
+        int code = proc.waitFor();
+        if (code != 0) throw new IOException("exit " + code + ": " + cmd.get(0));
     }
 
     private static Target parseTarget(String value) {
@@ -273,7 +359,7 @@ private static void build(String[] args) {
 
     private static void printUsage() {
         System.out.println("usage: kof <command>");
-        System.out.println("  build <dir> [--target jvm|native|js|android] [--output <dir>] [--release]");
+        System.out.println("  build <dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
         System.out.println("  run <file.kf> [--target jvm|native|js|android] [--release] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
