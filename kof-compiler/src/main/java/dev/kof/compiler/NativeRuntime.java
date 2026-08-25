@@ -3180,10 +3180,11 @@ final class NativeRuntime {
                 cmpq %r13, %r14
                 jae .Ljfv_null
                 cmpb $34, (%r12,%r14)       # '"' inicia candidato de chave
-                jne .Ljfv_adv
+                je .Ljfv_keystart
             .Ljfv_adv:
                 incq %r14
                 jmp .Ljfv_scan
+            .Ljfv_keystart:
                 # chave candidata: [r14+1, fim) ate '"'
                 leaq 1(%r14), %rax          # ks
                 movq %rax, %rcx             # k = ks
@@ -3208,7 +3209,7 @@ final class NativeRuntime {
                 cmpq %r10, %rdx
                 jne .Ljfv_notthis
                 # byte compare: data[ks+j] vs key[j]
-                leaq 1(%r14), %rsi          # ks
+                leaq (%r12,%r14), %rsi      # rsi = &data[ks]
                 xorq %r8, %r8               # j
                 movq 16(%rsp), %r9          # key KofString*
                 addq $24, %r9               # key data
@@ -8470,8 +8471,7 @@ final class NativeRuntime {
                 movq %rsi, %r12          # k64
                 movq %rdx, %r13          # data
                 movq %rcx, %r14          # datalen
-                subq $288, %rsp          # ipad 0, data 64, opad 128, inner 160,
-                                         # outer 192, outer+inner 256
+                subq $320, %rsp          # ipad 0, data 64, opad 128, inner 192, outer 224+288
                 xorq %r15, %r15
             .Lhmaci_k64:
                 cmpq $64, %r15
@@ -8494,27 +8494,34 @@ final class NativeRuntime {
                 incq %r15
                 jmp .Lhmaci_datacopy
             .Lhmaci_datacopy_done:
-                leaq 160(%rsp), %rdi
+                leaq 192(%rsp), %rdi
                 leaq 0(%rsp), %rsi
                 leaq 64(%rsp,%r14), %rdx
                 subq %rsp, %rdx
                 call kof_sec_sha256_internal
                 xorq %r15, %r15
-            .Lhmaci_outercopy:
-                cmpq $32, %r15
-                jge .Lhmaci_outercopy_done
+            .Lhmaci_outeropad:
+                cmpq $64, %r15
+                jge .Lhmaci_outeropad_done
                 movb 128(%rsp,%r15), %al
-                movb %al, 192(%rsp,%r15)
-                movb 160(%rsp,%r15), %al
-                movb %al, 256(%rsp,%r15)
+                movb %al, 224(%rsp,%r15)
                 incq %r15
-                jmp .Lhmaci_outercopy
-            .Lhmaci_outercopy_done:
+                jmp .Lhmaci_outeropad
+            .Lhmaci_outeropad_done:
+                xorq %r15, %r15
+            .Lhmaci_outerinner:
+                cmpq $32, %r15
+                jge .Lhmaci_outerinner_done
+                movb 192(%rsp,%r15), %al
+                movb %al, 288(%rsp,%r15)
+                incq %r15
+                jmp .Lhmaci_outerinner
+            .Lhmaci_outerinner_done:
                 movq %rbx, %rdi
-                leaq 192(%rsp), %rsi
+                leaq 224(%rsp), %rsi
                 movq $96, %rdx
                 call kof_sec_sha256_internal
-                addq $288, %rsp
+                addq $320, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -8603,7 +8610,7 @@ final class NativeRuntime {
                 cmpq $1, %r12
                 jne .Lpbk_data_u
                 leaq 64(%rsp), %rdx
-                movq $68, %rcx
+                leaq 4(%r14), %rcx       # datalen = saltlen + 4 (INT32BE)
                 jmp .Lpbk_hmac
             .Lpbk_data_u:
                 leaq 132(%rsp), %rdx
@@ -8666,17 +8673,17 @@ final class NativeRuntime {
                 leaq 16(%rsp), %rsi
                 movq $32, %rdx
                 call kof_b64_encode_internal
-                movl $92, %edi
+                movl $91, %edi
                 call kof_alloc
                 movq %rax, %r13
                 movl $1, 0(%r13)
                 movl $0, 4(%r13)
                 movq $0, 8(%r13)
-                movl $91, 16(%r13)
+                movl $90, 16(%r13)
                 movl $0, 20(%r13)
                 leaq 24(%r13), %rdi
                 leaq .Lsec_pb_prefix(%rip), %rsi
-                movq $22, %rcx
+                movq $21, %rcx
             .Lph_pre:
                 testq %rcx, %rcx
                 jz .Lph_salt
@@ -8743,7 +8750,7 @@ final class NativeRuntime {
                 leaq .Lsec_pb_mid(%rip), %rsi
                 xorq %rcx, %rcx
             .Lpv_pre:
-                cmpq $13, %rcx
+                cmpq $14, %rcx
                 jae .Lpv_pre_done
                 movzbl (%r14,%rcx), %eax
                 cmpb (%rsi,%rcx), %al
@@ -8751,7 +8758,7 @@ final class NativeRuntime {
                 incq %rcx
                 jmp .Lpv_pre
             .Lpv_pre_done:
-                leaq 13(%r14), %rsi
+                leaq 14(%r14), %rsi
                 xorq %r15, %r15          # iterations
                 xorq %r8, %r8            # digitos
             .Lpv_iter:
@@ -8790,6 +8797,7 @@ final class NativeRuntime {
                 ja .Lpv_false
                 jmp .Lpv_salt
             .Lpv_salt_done:
+                movq %r9, %r14           # saltlen em registrador preservado
                 subq $96, %rsp            # salt 0, dkexp 16, dkcalc 48
                 # decode salt (b64 -> 0(%rsp))
                 movq %rsp, %rdi
@@ -8798,8 +8806,8 @@ final class NativeRuntime {
                 call kof_b64_decode_internal
                 cmpq $16, %rax
                 jb .Lpv_bad
-                # dk b64: apos o '$' do salt ate o fim (recomputa via r13)
-                leaq 1(%r13,%r9), %r13   # dk start = salt start + saltlen + 1
+                # dk b64: apos o '$' do salt ate o fim (recomputa via r13/r14)
+                leaq 1(%r13,%r14), %r13  # dk start = salt start + saltlen + 1
                 movq 16(%r12), %rax
                 leaq 24(%r12), %rcx
                 addq %rcx, %rax
@@ -8866,7 +8874,7 @@ final class NativeRuntime {
                 leaq .Lsec_pb_mid(%rip), %rcx
                 xorq %r8, %r8
             .Lpr_pre:
-                cmpq $13, %r8
+                cmpq $14, %r8
                 jae .Lpr_parse
                 movzbl (%rsi,%r8), %eax
                 cmpb (%rcx,%r8), %al
@@ -8874,7 +8882,7 @@ final class NativeRuntime {
                 incq %r8
                 jmp .Lpr_pre
             .Lpr_parse:
-                leaq 13(%rsi), %rsi
+                leaq 14(%rsi), %rsi
                 xorq %r9, %r9
                 xorq %r10, %r10
             .Lpr_iter:

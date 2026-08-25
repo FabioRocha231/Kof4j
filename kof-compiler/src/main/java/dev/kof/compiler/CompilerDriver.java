@@ -55,6 +55,17 @@ private Target target = Target.JVM;
         }
     }
 
+    /** Variante multi-arquivo do harness de testes (um diretório = um módulo). */
+    public CompilationResult compileForTestsSources(java.util.List<Path> sources,
+                                                    Path outputDir, Target target, Path moduleRoot) {
+        this.testHarnessMode = true;
+        try {
+            return compileSources(sources, outputDir, target, moduleRoot);
+        } finally {
+            this.testHarnessMode = false;
+        }
+    }
+
     /** Enable or disable IR optimization passes (enabled by default). */
     public CompilerDriver setOptimizationEnabled(boolean enabled) {
         this.optimizeEnabled = enabled;
@@ -204,6 +215,9 @@ private Target target = Target.JVM;
                 return new CompilationResult(false, diagnostics, outputDir);
             }
             lowerAndEmit(unit, diagnostics, outputDir, target);
+            if (diagnostics.hasErrors()) {
+                return new CompilationResult(false, diagnostics, outputDir);
+            }
             return new CompilationResult(true, diagnostics, outputDir);
         } catch (IOException e) {
             diagnostics.error(sources.get(0).toString(), 0, 0, 0,
@@ -2372,12 +2386,12 @@ private Target target = Target.JVM;
                                         BuiltinTypes.STRING, KofCallKind.FUNCTION));
                                 String dec = switch (ft instanceof Type.PrimitiveType fp
                                         ? Type.canonicalPrimitiveName(fp.name()) : "") {
+                                    case "int", "char", "byte", "short" -> "kof_json_decode_int";
                                     case "long" -> "kof_json_decode_long";
                                     case "bool" -> "kof_json_decode_bool";
                                     default -> "kof_json_decode_string";
                                 };
-                                if ("int".equals(dec)) dec = "kof_json_decode_int";
-                                ops.add(new KofCall(BuiltinTypes.STRING, dec,
+                                ops.add(new KofCall(targetType, dec,
                                         List.of(BuiltinTypes.STRING), ft, KofCallKind.FUNCTION));
                             }
                             ops.add(new KofCall(targetType, "<init>", ctorTypes,

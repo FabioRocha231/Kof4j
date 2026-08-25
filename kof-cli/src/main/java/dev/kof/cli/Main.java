@@ -476,13 +476,30 @@ private static void build(String[] args) {
         CompilerDriver driver = new CompilerDriver();
         int passed = 0;
         int failed = 0;
+        // módulo: agrupa irmãos .kf do mesmo diretório (cross-file refs ok)
+        java.util.Map<Path, List<Path>> byDir = new java.util.LinkedHashMap<>();
         for (Path f : files) {
+            Path dirKey = f.toAbsolutePath().normalize().getParent();
+            if (dirKey == null) dirKey = Path.of(".");
+            byDir.computeIfAbsent(dirKey, k -> new ArrayList<>()).add(f);
+        }
+        for (var moduleEntry : byDir.entrySet()) {
+            List<Path> moduleFiles = moduleEntry.getValue();
+            Path f = moduleFiles.get(0);
             Path tmp;
             try { tmp = Files.createTempDirectory("kof-test-"); }
             catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
             // modo harness: `test "nome" { }` vira função + runner sintetizado;
             // arquivos sem testes compilam idênticos ao modo normal
-            CompilationResult result = driver.compileForTests(f, tmp, target);
+            CompilationResult result;
+            if (moduleFiles.size() > 1) {
+                result = driver.compileForTestsSources(moduleFiles.stream()
+                                .map(p -> p.toAbsolutePath().normalize())
+                                .collect(java.util.stream.Collectors.toList()),
+                        tmp, target, moduleEntry.getKey());
+            } else {
+                result = driver.compileForTests(f, tmp, target);
+            }
             boolean ok = result.success();
             StringBuilder output = new StringBuilder();
             if (ok) {
@@ -575,17 +592,20 @@ private static void build(String[] args) {
         if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
         CompilerDriver driver = new CompilerDriver();
         boolean ok = true;
-        int count = 0;
-        for (Path f : files) {
-            Path tmp;
-            try { tmp = Files.createTempDirectory("kof-check-"); }
-            catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
-            CompilationResult r = driver.compile(f, tmp, Target.JVM);
-            for (Diagnostic d : r.diagnostics().getDiagnostics()) System.out.println(d.format());
-            cleanup(tmp);
-            if (!r.success()) ok = false;
-            count++;
-        }
+        int count = files.size();
+        Path tmp;
+        try { tmp = Files.createTempDirectory("kof-check-"); }
+        catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
+        // diretório = um módulo (mesmo modelo do build/run); arquivo único = isolado
+        CompilationResult r = files.size() > 1
+                ? driver.compileSources(files.stream()
+                        .map(p -> p.toAbsolutePath().normalize()).distinct()
+                        .collect(java.util.stream.Collectors.toList()), tmp, Target.JVM,
+                        src.toAbsolutePath().normalize())
+                : driver.compile(files.get(0), tmp, Target.JVM);
+        for (Diagnostic d : r.diagnostics().getDiagnostics()) System.out.println(d.format());
+        cleanup(tmp);
+        if (!r.success()) ok = false;
         if (!ok) System.exit(1);
         System.out.println("checked " + count + " file(s) — no errors");
     }
@@ -691,7 +711,17 @@ private static void build(String[] args) {
         catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
 
         CompilerDriver driver = new CompilerDriver();
-        CompilationResult result = driver.compile(file, tempDir, Target.JVM);
+        // módulo = diretório do arquivo de entrada (irmãos .kf incluídos)
+        java.util.List<Path> serveSources = new ArrayList<>();
+        serveSources.add(file.toAbsolutePath().normalize());
+        Path serveDir = file.toAbsolutePath().normalize().getParent();
+        if (serveDir != null) {
+            for (Path sib : collect(serveDir)) {
+                Path abs = sib.toAbsolutePath().normalize();
+                if (!abs.equals(serveSources.get(0)) && !serveSources.contains(abs)) serveSources.add(abs);
+            }
+        }
+        CompilationResult result = driver.compileSources(serveSources, tempDir, Target.JVM);
         for (Diagnostic d : result.diagnostics().getDiagnostics()) System.err.println(d.format());
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
 
