@@ -23,6 +23,14 @@ class SemanticAnalyzer {
                 && externalTypes.knows(ct.internalName());
     }
 
+    private boolean isObjectMethod(String name, int argCount) {
+        return switch (name) {
+            case "hashCode", "toString", "getClass" -> argCount == 0;
+            case "equals" -> argCount == 1;
+            default -> false;
+        };
+    }
+
     /**
      * Nome simples declarado em import vira tipo qualificado
      * ("import android.webkit.WebView" → ClassType("android.webkit","WebView")).
