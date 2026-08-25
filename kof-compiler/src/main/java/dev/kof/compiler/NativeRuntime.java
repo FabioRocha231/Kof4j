@@ -3440,7 +3440,13 @@ final class NativeRuntime {
                 incq %rsi
                 jmp .Ljf_ws2
             .Ljf_capture:
-                # captura valor a partir de rsi
+                # DEBUG: escreve json na stderr para ver o buffer
+                movq $2, %rax
+                movq $1, %rdi
+                movq %r12, %rsi
+                movq %r13, %rdx
+                syscall
+                # fim debug
                 movzbl (%r12,%rsi), %eax
                 cmpb $34, %al               # string com aspas
                 je .Ljf_cap_str
@@ -7838,6 +7844,27 @@ final class NativeRuntime {
             .section .rodata
             .balign 8
             .Lsec_hex_chars: .ascii "0123456789abcdef"
+            .Lsec_sha512_k:
+                .quad 0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc
+                .quad 0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118
+                .quad 0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2
+                .quad 0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235, 0xc19bf174cf692694
+                .quad 0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65
+                .quad 0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5
+                .quad 0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4
+                .quad 0xc6e00bf33da88fc2, 0xd5a79147930aa725, 0x06ca6351e003826f, 0x142929670a0e6e70
+                .quad 0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df
+                .quad 0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b
+                .quad 0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30
+                .quad 0xd192e819d6ef5218, 0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8
+                .quad 0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8
+                .quad 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3
+                .quad 0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec
+                .quad 0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b
+                .quad 0xca273eceea26619c, 0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178
+                .quad 0x06f067aa72176fba, 0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b
+                .quad 0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c
+                .quad 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
             .Lsec_b64_chars: .ascii "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .Lsec_pb_prefix: .ascii "pbkdf2$sha256$600000$"
             .Lsec_pb_mid: .ascii "pbkdf2$sha256$"
@@ -8158,6 +8185,295 @@ final class NativeRuntime {
                 movb $0, 88(%r13)
                 movq %r13, %rax
                 addq $32, %rsp
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # ── SHA-512 (FIPS 180-4) ──────────────────────────────────────
+            # kof_sec_sha512_block(rdi=h[8] uint64, rsi=block128)
+            kof_sec_sha512_block:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $680, %rsp          # w[80]*8=640 + h_save 8 + block_save 8
+                movq %rdi, 640(%rsp)
+                movq %rsi, 648(%rsp)
+                movq %rsi, %r13          # block
+                xorq %rcx, %rcx
+            .Ls512_w_load:
+                cmpq $16, %rcx
+                jge .Ls512_w_load_done
+                movq (%r13,%rcx,8), %rax
+                bswapq %rax
+                movq %rax, (%rsp,%rcx,8)
+                incq %rcx
+                jmp .Ls512_w_load
+            .Ls512_w_load_done:
+                movq $16, %rcx
+            .Ls512_w_ext:
+                cmpq $80, %rcx
+                jge .Ls512_w_ext_done
+                movq -120(%rsp,%rcx,8), %rax    # w[i-15]
+                movq %rax, %rbx
+                movq %rax, %rdx
+                rorq $1, %rax
+                rorq $8, %rbx
+                shrq $7, %rdx
+                xorq %rbx, %rax
+                xorq %rdx, %rax
+                movq -16(%rsp,%rcx,8), %rbx     # w[i-2]
+                movq %rbx, %rdx
+                movq %rbx, %r8
+                rorq $19, %rbx
+                rorq $61, %rdx
+                shrq $6, %r8
+                xorq %rdx, %rbx
+                xorq %r8, %rbx
+                movq -128(%rsp,%rcx,8), %rdx    # w[i-16]
+                addq %rax, %rdx
+                addq -56(%rsp,%rcx,8), %rdx     # w[i-7]
+                addq %rbx, %rdx
+                movq %rdx, (%rsp,%rcx,8)
+                incq %rcx
+                jmp .Ls512_w_ext
+            .Ls512_w_ext_done:
+                movq 640(%rsp), %rbx
+                movq 0(%rbx), %r8        # a
+                movq 8(%rbx), %r9         # b
+                movq 16(%rbx), %r10       # c
+                movq 24(%rbx), %r11       # d
+                movq 32(%rbx), %r12       # e
+                movq 40(%rbx), %r13       # f
+                movq 48(%rbx), %r14       # g
+                movq 56(%rbx), %r15       # h
+                leaq .Lsec_sha512_k(%rip), %rsi
+                xorq %rcx, %rcx
+            .Ls512_round:
+                cmpq $80, %rcx
+                jge .Ls512_round_done
+                movq %r12, %rax
+                movq %r12, %rbx
+                movq %r12, %rdx
+                rorq $14, %rax
+                rorq $18, %rbx
+                rorq $41, %rdx
+                xorq %rbx, %rax
+                xorq %rdx, %rax          # S1(e)
+                movq %r12, %rbx
+                andq %r13, %rbx          # e&f
+                movq %r12, %rdx
+                notq %rdx
+                andq %r14, %rdx          # ~e&g
+                xorq %rdx, %rbx          # ch
+                movq %r15, %rdi
+                addq %rax, %rdi
+                addq %rbx, %rdi          # T1 = h + S1 + ch
+                movq (%rsi,%rcx,8), %rax
+                addq %rax, %rdi
+                addq (%rsp,%rcx,8), %rdi # T1 += K[i] + w[i]
+                movq %r8, %rax
+                movq %r8, %rbx
+                movq %r8, %rdx
+                rorq $28, %rax
+                rorq $34, %rbx
+                rorq $39, %rdx
+                xorq %rbx, %rax
+                xorq %rdx, %rax          # S0(a)
+                movq %r8, %rbx
+                andq %r9, %rbx           # a&b
+                movq %r8, %rdx
+                andq %r10, %rdx          # a&c
+                xorq %rdx, %rbx
+                movq %r9, %rdx
+                andq %r10, %rdx          # b&c
+                xorq %rdx, %rbx          # maj
+                addq %rbx, %rax          # T2 = S0 + maj
+                movq %r14, %r15          # h = g
+                movq %r13, %r14          # g = f
+                movq %r12, %r13          # f = e
+                movq %r11, %r12          # e = d
+                addq %rdi, %r12          # e += T1
+                movq %r10, %r11          # d = c
+                movq %r9, %r10           # c = b
+                movq %r8, %r9            # b = a
+                leaq (%rdi,%rax), %r8   # a = T1 + T2
+                incq %rcx
+                jmp .Ls512_round
+            .Ls512_round_done:
+                movq 640(%rsp), %rdx
+                addq %r8, 0(%rdx)
+                addq %r9, 8(%rdx)
+                addq %r10, 16(%rdx)
+                addq %r11, 24(%rdx)
+                addq %r12, 32(%rdx)
+                addq %r13, 40(%rdx)
+                addq %r14, 48(%rdx)
+                addq %r15, 56(%rdx)
+                addq $680, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_sec_sha512_internal(rdi=out64, rsi=src, rdx=len)
+            kof_sec_sha512_internal:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12          # out
+                movq %rsi, %r13          # src
+                movq %rdx, %r14          # len
+                subq $560, %rsp          # h[8]=64 + bloco final 256 + reserva
+                movabs $0x6a09e667f3bcc908, %rax
+                movq %rax, 0(%rsp)
+                movabs $0xbb67ae8584caa73b, %rax
+                movq %rax, 8(%rsp)
+                movabs $0x3c6ef372fe94f82b, %rax
+                movq %rax, 16(%rsp)
+                movabs $0xa54ff53a5f1d36f1, %rax
+                movq %rax, 24(%rsp)
+                movabs $0x510e527fade682d1, %rax
+                movq %rax, 32(%rsp)
+                movabs $0x9b05688c2b3e6c1f, %rax
+                movq %rax, 40(%rsp)
+                movabs $0x1f83d9abfb41bd6b, %rax
+                movq %rax, 48(%rsp)
+                movabs $0x5be0cd19137e2179, %rax
+                movq %rax, 56(%rsp)
+                xorq %r15, %r15          # offset
+            .Ls512_full:
+                movq %r14, %rax
+                subq %r15, %rax
+                cmpq $128, %rax
+                jl .Ls512_final
+                movq %rsp, %rdi
+                leaq (%r13,%r15), %rsi
+                call kof_sec_sha512_block
+                addq $128, %r15
+                jmp .Ls512_full
+            .Ls512_final:
+                movq %r14, %rax
+                subq %r15, %rax
+                movq %rax, %rcx          # rem
+                subq $256, %rsp          # bloco final (2 x 128)
+                xorq %rdx, %rdx
+            .Ls512_copy:
+                cmpq %rcx, %rdx
+                jge .Ls512_copy_done
+                leaq (%r13,%r15), %rsi
+                movb (%rsi,%rdx), %al
+                movb %al, (%rsp,%rdx)
+                incq %rdx
+                jmp .Ls512_copy
+            .Ls512_copy_done:
+                movb $0x80, (%rsp,%rcx)
+                movq %rcx, %r15          # rem
+                leaq 1(%rcx), %rdx
+            .Ls512_zeropad:
+                cmpq $256, %rdx
+                jge .Ls512_zeropad_done
+                movb $0, (%rsp,%rdx)
+                incq %rdx
+                jmp .Ls512_zeropad
+            .Ls512_zeropad_done:
+                movq %r15, %rax
+                addq $9, %rax
+                cmpq $128, %rax
+                jg .Ls512_len_second
+                movq $0, 112(%rsp)
+                movq %r14, %rax
+                shlq $3, %rax
+                bswapq %rax
+                movq %rax, 120(%rsp)
+                leaq 256(%rsp), %rdi
+                movq %rsp, %rsi
+                call kof_sec_sha512_block
+                jmp .Ls512_final_done
+            .Ls512_len_second:
+                movq $0, 240(%rsp)
+                movq %r14, %rax
+                shlq $3, %rax
+                bswapq %rax
+                movq %rax, 248(%rsp)
+                leaq 256(%rsp), %rdi
+                movq %rsp, %rsi
+                call kof_sec_sha512_block
+                leaq 256(%rsp), %rdi
+                leaq 128(%rsp), %rsi
+                call kof_sec_sha512_block
+            .Ls512_final_done:
+                addq $256, %rsp
+            .Ls512_out:
+                xorq %rcx, %rcx
+            .Ls512_out_loop:
+                cmpq $8, %rcx
+                jge .Ls512_ret
+                movq (%rsp,%rcx,8), %rax
+                bswapq %rax
+                movq %rax, (%r12,%rcx,8)
+                incq %rcx
+                jmp .Ls512_out_loop
+            .Ls512_ret:
+                addq $560, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .section .text
+
+            # kof_sec_sha512(rdi=src_kstr) → hex string (128 chars)
+            .globl kof_sec_sha512
+            .type kof_sec_sha512, @function
+            kof_sec_sha512:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                subq $64, %rsp
+                movq %rsp, %rdi
+                leaq 24(%rbx), %rsi
+                movslq %r12d, %rdx
+                call kof_sec_sha512_internal
+                movl $153, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movl $1, 0(%r13)
+                movl $0, 4(%r13)
+                movq $0, 8(%r13)
+                movl $128, 16(%r13)
+                movl $0, 20(%r13)
+                xorq %rcx, %rcx
+            .Ls512_hex:
+                cmpq $64, %rcx
+                jge .Ls512_hex_done
+                movzbl (%rsp,%rcx), %eax
+                movl %eax, %edx
+                shrb $4, %al
+                andb $0x0f, %dl
+                leaq .Lsec_hex_chars(%rip), %r14
+                movb (%r14,%rax), %al
+                movb %al, 24(%r13,%rcx,2)
+                movb (%r14,%rdx), %al
+                movb %al, 25(%r13,%rcx,2)
+                incq %rcx
+                jmp .Ls512_hex
+            .Ls512_hex_done:
+                movb $0, 152(%r13)
+                movq %r13, %rax
+                addq $64, %rsp
                 popq %r14
                 popq %r13
                 popq %r12

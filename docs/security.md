@@ -226,7 +226,7 @@ Suporte por target (definição):
 
 | Função | JVM | Native | JS |
 |--------|-----|--------|----|
-| `passwords.hash/verify/needsRehash` | SIM (javax.crypto PBKDF2) | NÃO (diagnóstico SECN001) | SIM (PBKDF2 em JS) |
+| `passwords.hash/verify/needsRehash` | SIM (javax.crypto PBKDF2) | SIM (asm PBKDF2-HMAC-SHA256) | SIM (PBKDF2 em JS) |
 | `crypto.sha256/sha512` | SIM | SIM (asm) | SIM (JS) |
 | `crypto.hmacSha256` | SIM | SIM (asm) | SIM (JS) |
 | `crypto.aesGcm` encrypt/decrypt | SIM | NÃO (SECN002) | NÃO (SECN002) |
@@ -271,11 +271,11 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 
 | API | JVM | Native | JS | Formato |
 |-----|-----|--------|----|---------|
-| `passwords.hash(password)` | ✅ PBKDF2-HMAC-SHA256 600k | ❌ SECN001 | ✅ PBKDF2 (platform-delegated) | `pbkdf2$sha256$600000$salt$hash` |
-| `passwords.verify(password, hash)` | ✅ constant-time | ❌ SECN001 | ✅ | |
-| `passwords.needsRehash(hash)` | ✅ | ❌ SECN001 | ✅ | |
+| `passwords.hash(password)` | ✅ PBKDF2-HMAC-SHA256 600k | ✅ (asm: HMAC interno + b64 + getrandom) | ✅ PBKDF2 (platform-delegated) | `pbkdf2$sha256$600000$salt$hash` |
+| `passwords.verify(password, hash)` | ✅ constant-time | ✅ (asm, constant-time) | ✅ | |
+| `passwords.needsRehash(hash)` | ✅ | ✅ | ✅ | |
 | `crypto.sha256(data)` | ✅ | ✅ (asm FIPS 180-4) | ✅ (JS puro) | hex |
-| `crypto.sha512(data)` | ✅ | ❌ SECN003 | ✅ (JS puro) | hex |
+| `crypto.sha512(data)` | ✅ | ✅ (asm FIPS 180-4, vetores FIPS testados) | ✅ (JS puro) | hex |
 | `crypto.hmacSha256(key, data)` | ✅ | ✅ (asm) | ✅ (JS puro) | hex |
 | `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ❌ SECN002 | ❌ SECN002 | `aesgcm$iv$ct` |
 | `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ❌ SECN002 | ❌ SECN002 | |
