@@ -3356,6 +3356,11 @@ final class NativeRuntime {
 
     private static void emitJsonFindValue(StringBuilder sb) {
         sb.append("""
+            # ---- JSN002: find_value(json kstr@rbx, key kstr@r15) -------
+            # Retorna slice bruto do valor ou string vazia.
+            # Registradores: rbx=json base(fixo), r13=len(fixo),
+            #   r14=scan ptr, r15=key data ptr(fixo),
+            #   rsi=key len, rax/rdx/rcx/rdi=r8-r11 scratch.
             .globl kof_json_find_value
             .type kof_json_find_value, @function
             kof_json_find_value:
@@ -3364,312 +3369,145 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $48, %rsp              # [rsp]=json [rsp+16]=key [rsp+32]=keylen
-                movq %rdi, (%rsp)
-                movq %rsi, 16(%rsp)         # chave como KofString*
-                movl 16(%rsi), %r10d        # r10 = keylen (header +16)
-            .Ljfv_klen_d:
-                movq (%rsp), %rbx           # json kstr
-                testq %rbx, %rbx
-                jz .Ljfv_null
-                movl 16(%rbx), %r13d        # r13 = len
-                leaq 24(%rbx), %r12         # r12 = data
-                xorq %r14, %r14             # i = 0
-            .Ljfv_scan:
+                subq $16, %rsp              # [rsp]=json ptr [rsp+8]=cursor
+                movq %rdi, %rbx             # json kstr (fixo)
+                movl 16(%rbx), %r13d        # json len
+                leaq 24(%rbx), %r12         # json data (fixo)
+                movl 16(%rsi), %r15d        # key len
+                testl %r15d, %r15d
+                jz .Ljf_empty
+                movq %rsi, %r15
+                addq $24, %r15              # r15 = key data (fixo)
+                movq %r12, %r14             # scan ptr = inicio
+            .Ljf_scan:
+                # procura '"' que inicia uma chave candidata
                 cmpq %r13, %r14
-                jae .Ljfv_null
-                cmpb $34, (%r12,%r14)       # '"' inicia candidato de chave
-                je .Ljfv_keystart
-            .Ljfv_adv:
-                incq %r14
-                jmp .Ljfv_scan
-            .Ljfv_keystart:
-                # chave candidata: [r14+1, fim) ate '"'
-                leaq 1(%r14), %rax          # ks
-                movq %rax, %rcx             # k = ks
-            .Ljfv_keywalk:
-                cmpq %r13, %rcx
-                jae .Ljfv_null
-                movzbl (%r12,%rcx), %eax
-                cmpb $92, %al               # escape: pula 2
-                je .Ljfw_skip2
-                cmpb $34, %al
-                je .Ljfv_keyend
-                incq %rcx
-                jmp .Ljfv_keywalk
-            .Ljfw_skip2:
-                addq $2, %rcx
-                jmp .Ljfv_keywalk
-            .Ljfv_keyend:
-                # klen da candidata = rcx - (i+1); fast reject por tamanho
-                movq %rcx, %rdx
-                subq %r14, %rdx
-                decq %rdx                   # rdx = keylen da candidata
-                cmpq %r10, %rdx
-                jne .Ljfv_notthis
-                # byte compare: data[ks+j] vs key[j]
-                leaq (%r12,%r14), %rsi      # rsi = &data[ks]
-                xorq %r8, %r8               # j
-                movq 16(%rsp), %r9          # key KofString*
-                addq $24, %r9               # key data
-            .Ljfv_kcmp:
-                cmpq %r10, %r8
-                jae .Ljfv_ismatch
-                movzbl (%rsi,%r8), %eax
-                movzbl (%r9,%r8), %edx
+                jae .Ljf_empty
+                cmpb $34, (%r14)
+                jne .Ljf_adv
+                # compara key data com os proximos keylen bytes apos '"'
+                leaq 1(%r14), %rdi          # primeiro char apos '"'
+                xorl %ecx, %ecx             # j = 0
+            .Ljf_kc:
+                cmpl %r15d, %ecx
+                jge .Ljf_kc_done
+                cmpq %r13, %r14
+                jae .Ljf_empty
+                movzbl (%rdi,%rcx), %eax    # candidate char
+                movzbl (%r15,%rcx), %edx    # key char
                 cmpl %edx, %eax
-                jne .Ljfv_notthis
-                incq %r8
-                jmp .Ljfv_kcmp
-            .Ljfv_ismatch:
-                # exige ':' apos a aspa de fechamento (com ws)
-                leaq 1(%rcx), %rsi          # pos depois do fechamento
-            .Ljfv_ws1:
+                jne .Ljf_nomatch
+                incl %ecx
+                jmp .Ljf_kc
+            .Ljf_kc_done:
+                # todos os chars da chave casaram; verifica aspa de fechamento
+                cmpb $34, (%rdi,%rcx)
+                jne .Ljf_nomatch
+                # agora espera ':' apos a aspa de fechamento
+                leaq 1(%rdi,%rcx), %rsi     # pos apos aspa de fechamento
+            .Ljf_ws1:
                 cmpq %r13, %rsi
-                jae .Ljfv_notthis
+                jae .Ljf_empty
                 movzbl (%r12,%rsi), %eax
                 cmpb $32, %al
-                je .Ljfv_ws1b
+                je .Ljf_ws1_n
                 cmpb $9, %al
-                je .Ljfv_ws1b
+                je .Ljf_ws1_n
                 cmpb $10, %al
-                je .Ljfv_ws1b
+                je .Ljf_ws1_n
                 cmpb $13, %al
-                jne .Ljfv_colonchk
-            .Ljfv_ws1b:
+                jne .Ljf_colon
+            .Ljf_ws1_n:
                 incq %rsi
-                jmp .Ljfv_ws1
-            .Ljfv_colonchk:
+                jmp .Ljf_ws1
+            .Ljf_colon:
                 cmpb $58, (%r12,%rsi)       # ':'
-                jne .Ljfv_notthis
+                jne .Ljf_nomatch
                 incq %rsi
-            .Ljfv_ws2:
+            .Ljf_ws2:
                 cmpq %r13, %rsi
-                jae .Ljfv_notthis
+                jae .Ljf_empty
                 movzbl (%r12,%rsi), %eax
                 cmpb $32, %al
-                je .Ljfv_ws2b
+                je .Ljf_ws2_n
                 cmpb $9, %al
-                je .Ljfv_ws2b
+                je .Ljf_ws2_n
                 cmpb $10, %al
-                je .Ljfv_ws2b
+                je .Ljf_ws2_n
                 cmpb $13, %al
-                je .Ljfv_ws2b
-                jmp .Ljfv_veval
-            .Ljfv_ws2b:
+                je .Ljf_ws2_n
+                jmp .Ljf_capture
+            .Ljf_ws2_n:
                 incq %rsi
-                jmp .Ljfv_ws2
-            .Ljfv_veval:
-                # valor comeca em rsi; captura ate o fim
-                cmpq %r13, %rsi
-                jae .Ljfv_null
+                jmp .Ljf_ws2
+            .Ljf_capture:
+                # captura valor a partir de rsi
                 movzbl (%r12,%rsi), %eax
-                cmpb $34, %al               # string: respeita escapes
-                je .Ljfv_vstr
-                cmpb $123, %al              # '{'
-                je .Ljfv_vdeep
-                cmpb $91, %al               # '['
-                je .Ljfv_vdeep
-                # primitivo: ate delimitador
-                movq %rsi, %r11             # ve
-            .Ljfv_prim:
-                cmpq %r13, %r11
-                jae .Ljfv_build
-                movzbl (%r12,%r11), %eax
+                cmpb $34, %al               # string com aspas
+                je .Ljf_cap_str
+                # primitivo: ate ',' '}' ']' ou ws final
+                movq %rsi, %r8              # start do valor
+            .Ljf_prim:
+                cmpq %r13, %rsi
+                jae .Ljf_prim_end
+                movzbl (%r12,%rsi), %eax
                 cmpb $44, %al               # ','
-                je .Ljfv_build
+                je .Ljf_prim_end
                 cmpb $125, %al              # '}'
-                je .Ljfv_build
+                je .Ljf_prim_end
                 cmpb $93, %al               # ']'
-                je .Ljfv_build
-                incq %r11
-                jmp .Ljfv_prim
-            .Ljfv_vstr:
-                incq %rsi                   # abre aspas
-                movq %rsi, %r11
-            .Ljfv_vs_loop:
-                cmpq %r13, %r11
-                jae .Ljfv_null
-                movzbl (%r12,%r11), %eax
+                je .Ljf_prim_end
+                incq %rsi
+                jmp .Ljf_prim
+            .Ljf_prim_end:
+                # volta espacos no fim
+                cmpq %r8, %rsi
+                jbe .Ljf_prim_mk
+                movzbl -1(%r12,%rsi), %eax
+                cmpb $32, %al
+                je .Ljf_prim_trim
+                cmpb $9, %al
+                je .Ljf_prim_trim
+                cmpb $10, %al
+                je .Ljf_prim_trim
+                cmpb $13, %al
+                jne .Ljf_prim_mk
+            .Ljf_prim_trim:
+                decq %rsi
+                jmp .Ljf_prim_end
+            .Ljf_prim_mk:
+                movq %r8, %rdi              # start
+                movq %rsi, %rsi             # end (ja em rsi)
+                subq %rdi, %rsi             # vallen
+                call .Ljf_mkstr
+                jmp .Ljf_exit
+            .Ljf_cap_str:
+                incq %rsi                   # pula aspa de abertura
+                movq %rsi, %r8              # inicio do conteudo
+            .Ljf_str_l:
+                cmpq %r13, %rsi
+                jae .Ljf_empty
+                movzbl (%r12,%rsi), %eax
                 cmpb $92, %al               # escape
-                je .Ljfv_vs_sk2
-                cmpb $34, %al
-                je .Ljfv_vs_end
-                incq %r11
-                jmp .Ljfv_vs_loop
-            .Ljfv_vs_sk2:
-                addq $2, %r11
-                jmp .Ljfv_vs_loop
-            .Ljfv_vs_end:
-                incq %r11                   # inclui aspa final
-                jmp .Ljfv_build_r11
-            .Ljfv_vdeep:
-                movq %rsi, %r11             # q
-                xorl %edx, %edx             # depth = 0
-            .Ljvd_loop:
-                cmpq %r13, %r11
-                jae .Ljfv_null
-                movzbl (%r12,%r11), %eax
-                cmpb $34, %al               # string interna: pula
-                jne .Ljvd_nstr
-                incq %r11
-            .Ljvd_sskip:
-                cmpq %r13, %r11
-                jae .Ljfv_null
-                movzbl (%r12,%r11), %eax
-                cmpb $92, %al
-                je .Ljvd_ss2
-                cmpb $34, %al
-                je .Ljvd_sdone
-                incq %r11
-                jmp .Ljvd_sskip
-            .Ljvd_ss2:
-                addq $2, %r11
-                jmp .Ljvd_sskip
-            .Ljvd_sdone:
-                incq %r11
-                jmp .Ljvd_loop
-            .Ljvd_nstr:
-                cmpb $123, %al              # '{'
-                je .Ljvd_open
-                cmpb $91, %al               # '['
-                je .Ljvd_open
-                cmpb $125, %al              # '}'
-                je .Ljvd_close_chk
-                cmpb $93, %al               # ']'
-                je .Ljvd_close_chk
-                jmp .Ljvd_adv
-            .Ljvd_open:
-                incl %edx
-                jmp .Ljvd_adv
-            .Ljvd_close_chk:
-                testl %edx, %edx
-                jz .Ljvd_fin
-                decl %edx
-            .Ljvd_adv:
-                incq %r11
-                jmp .Ljvd_loop
-            .Ljvd_fin:
-                incq %r11
-            .Ljfv_build_r11:
-                # constroi KofString de [rsi, r11)
-                movq %rsi, %rdi
-                movq %r11, %rdx
-                subq %rdi, %rdx             # vallen
-                call .Ljfv_emit
-                jmp .Ljfv_exit
-            .Ljfv_build:
-                movq %rsi, %rdi
-                movq %r11, %rdx
-                subq %rdi, %rdx
-                call .Ljfv_emit
-                jmp .Ljfv_exit
-            .Ljfv_emit:
-                pushq %rbx
-                pushq %r12
-                pushq %r13
-                pushq %r14
-                pushq %r15
-                leaq 25(%rdx), %rdi
-                call kof_alloc
-                movq %rax, %r12
-                movl $1, 0(%r12)
-                movl $0, 4(%r12)
-                movq $0, 8(%r12)
-                movl %edx, 16(%r12)
-                movl $0, 20(%r12)
-                xorq %rcx, %rcx
-            .Ljfv_copy:
-                cmpq %rdx, %rcx
-                jge .Ljfv_copy_d
-                movzbl (%rdi,%rcx), %eax
-                movb %al, 24(%r12,%rcx)
-                incq %rcx
-                jmp .Ljfv_copy
-            .Ljfv_copy_d:
-                movb $0, 24(%r12,%rdx)
-                movq %r12, %rax
-                popq %r15
-                popq %r14
-                popq %r13
-                popq %r12
-                popq %rbx
-                ret
-            .Ljfv_notthis:
-                # rcx = aspa de fechamento da chave candidata; pula ws,
-                # ':' e o valor inteiro (strings com escape, objetos e
-                # arrays aninhados) ate a virgula/colchete do nivel 0.
-                leaq 1(%rcx), %rsi
-                xorq %r15, %r15             # profundidade
-            .Ljfv_skip_ws:
-                cmpq %r13, %rsi
-                jae .Ljfv_skip_done
-                movzbl (%r12,%rsi), %eax
-                cmpb $32, %al
-                je .Ljfv_skip_ws1
-                cmpb $9, %al
-                je .Ljfv_skip_ws1
-                cmpb $10, %al
-                je .Ljfv_skip_ws1
-                cmpb $13, %al
-                je .Ljfv_skip_ws1
-                cmpb $58, %al               # ':'
-                je .Ljfv_skip_val
-                jmp .Ljfv_skip_done
-            .Ljfv_skip_ws1:
+                je .Ljf_str_esc
+                cmpb $34, %al               # fecha aspa
+                je .Ljf_str_end
                 incq %rsi
-                jmp .Ljfv_skip_ws
-            .Ljfv_skip_val:
-                incq %rsi
-                cmpq %r13, %rsi
-                jae .Ljfv_skip_done
-                movzbl (%r12,%rsi), %eax
-                cmpb $34, %al               # string
-                je .Ljfv_skip_str
-                cmpb $123, %al              # '{'
-                je .Ljfv_skip_open
-                cmpb $91, %al               # '['
-                je .Ljfv_skip_open
-                cmpb $125, %al              # '}'
-                je .Ljfv_skip_close
-                cmpb $93, %al               # ']'
-                je .Ljfv_skip_close
-                cmpb $44, %al               # ','
-                je .Ljfv_skip_comma
-                jmp .Ljfv_skip_val
-            .Ljfv_skip_str:
-                incq %rsi
-                cmpq %r13, %rsi
-                jae .Ljfv_skip_done
-                movzbl (%r12,%rsi), %eax
-                cmpb $92, %al               # escape: pula 2
-                je .Ljfv_skip_esc
-                cmpb $34, %al
-                jne .Ljfv_skip_str
-                incq %rsi
-                jmp .Ljfv_skip_val
-            .Ljfv_skip_esc:
+                jmp .Ljf_str_l
+            .Ljf_str_esc:
                 addq $2, %rsi
-                jmp .Ljfv_skip_str
-            .Ljfv_skip_open:
-                incq %r15
-                incq %rsi
-                jmp .Ljfv_skip_val
-            .Ljfv_skip_close:
-                testq %r15, %r15
-                jz .Ljfv_skip_done          # fechou o valor
-                decq %r15
-                incq %rsi
-                jmp .Ljfv_skip_val
-            .Ljfv_skip_comma:
-                testq %r15, %r15
-                jnz .Ljfv_skip_val          # virgula interna: continua
-            .Ljfv_skip_done:
-                movq %rsi, %r14             # retoma a varredura
-                jmp .Ljfv_scan
-            .Ljfv_null:
-                # chave ausente -> KofString VAZIA (decoders escalares
-                # produzem os defaults sem crash)
+                jmp .Ljf_str_l
+            .Ljf_str_end:
+                # conteudo = [r8, rsi)
+                movq %r8, %rdi
+                movq %rsi, %rsi
+                subq %r8, %rsi              # vallen
+                call .Ljf_mkstr
+                jmp .Ljf_exit
+            .Ljf_nomatch:
+                incq %r14                   # avanca 1 e tenta de novo
+                jmp .Ljf_scan
+            .Ljf_empty:
                 movl $25, %edi
                 call kof_alloc
                 movq %rax, %r12
@@ -3680,16 +3518,44 @@ final class NativeRuntime {
                 movl $0, 20(%r12)
                 movb $0, 24(%r12)
                 movq %r12, %rax
-            .Ljfv_exit:
-                addq $48, %rsp
+                jmp .Ljf_exit
+            .Ljf_mkstr:
+                # rdi=src, rsi=len -> rax=KofString*
+                pushq %rbx
+                movq %rdi, %rbx             # src
+                movq %rsi, %rdx             # len
+                leaq 25(%rdx), %rdi
+                call kof_alloc
+                movq %rax, %rcx
+                movl $1, 0(%rcx)
+                movl $0, 4(%rcx)
+                movq $0, 8(%rcx)
+                movl %edx, 16(%rcx)
+                movl $0, 20(%rcx)
+                xorq %rdx, %rdx
+            .Ljf_mk_cpy:
+                cmpq %rdx, %rsi
+                jle .Ljf_mk_nul
+                movzbl (%rbx,%rdx), %eax
+                movb %al, 24(%rcx,%rdx)
+                incq %rdx
+                jmp .Ljf_mk_cpy
+            .Ljf_mk_nul:
+                movb $0, 24(%rcx,%rsi)
+                movq %rcx, %rax
+                popq %rbx
+                ret
+            .Ljf_exit:
+                addq $16, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
                 ret
-""");
+            """);
     }
+
 
     private static void emitLogFunctions(StringBuilder sb) {
         sb.append("""
