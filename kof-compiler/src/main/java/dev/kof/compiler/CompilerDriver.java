@@ -2366,8 +2366,7 @@ private Target target = Target.JVM;
                                 Type ft = toType(f[1]);
                                 ctorTypes.add(ft);
                                 ops.add(new KofLoadLocal(BuiltinTypes.STRING, jTmp));
-                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING,
-                                        "\"" + f[0] + "\":"));
+                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING, f[0]));
                                 ops.add(new KofCall(BuiltinTypes.STRING, "kof_json_find_value",
                                         List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                                         BuiltinTypes.STRING, KofCallKind.FUNCTION));

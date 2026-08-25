@@ -3037,110 +3037,111 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                xorl %r14d, %r14d           # src len efetiva (0 se null)
+                xorl %r15d, %r15d           # src data ptr (0 = entrada nula)
+                xorl %r14d, %r14d           # srclen
                 testq %rdi, %rdi
-                jz .Ljq_alloc
-                movl 16(%rdi), %r14d
-            .Ljq_alloc:
-                leaq 0(%r14), %rax          # bound = 6*len + 30
-                imulq $6, %rax, %rax
+                jz .Ljq_bound
+                movl 16(%rdi), %r14d        # srclen
+                leaq 24(%rdi), %r15         # src data
+            .Ljq_bound:
+                imulq $6, %r14, %rax        # pior caso: tudo unicode-escapado
                 addq $30, %rax
                 movq %rax, %rdi
-                call kof_alloc
+                call kof_alloc              # r15/r14 sobrevivem (callee-saved)
                 movq %rax, %r12             # bloco destino
                 movl $1, 0(%r12)
                 movl $0, 4(%r12)
                 movq $0, 8(%r12)
-                leaq 24(%r12), %r13         # cursor de escrita
-                testq %rdi, %rdi
+                leaq 24(%r12), %r13         # cursor
+                testq %r15, %r15
                 jnz .Ljq_have_src
-                movb $110, (%r13)           # null (sem aspas)
+                movb $110, (%r13)           # null
                 movb $117, 1(%r13)
                 movb $108, 2(%r13)
                 movb $108, 3(%r13)
                 addq $4, %r13
-                jmp .Ljq_finish
+                jmp .Ljq_close
             .Ljq_have_src:
                 movb $34, (%r13)            # abre aspas
                 incq %r13
-                xorq %r15, %r15             # i
+                xorq %rbx, %rbx             # i
             .Ljq_loop:
-                cmpq %r14, %r15
-                jge .Ljq_close
-                movzbl 24(%rdi,%r15), %eax
-                cmpb $34, %al               # '"'
+                cmpq %r14, %rbx
+                jge .Ljq_close_str
+                movzbl (%r15,%rbx), %eax
+                cmpb $34, %al               # aspa dupla
                 je .Ljq_e_q
-                cmpb $92, %al               # '\\\\'
+                cmpb $92, %al               # barra invertida
                 je .Ljq_e_bs
-                cmpb $10, %al
+                cmpb $10, %al               # LF
                 je .Ljq_e_nl
-                cmpb $13, %al
+                cmpb $13, %al               # CR
                 je .Ljq_e_cr
-                cmpb $9, %al
+                cmpb $9, %al                # TAB
                 je .Ljq_e_tb
-                cmpb $32, %al
+                cmpb $32, %al               # < 32 -> unicode escape
                 jb .Ljq_e_uni
                 movb %al, (%r13)
                 incq %r13
                 jmp .Ljq_next
             .Ljq_e_q:
-                movw $0x225C, (%r13)        # \\"
+                movw $5396, (%r13)          # backslash+aspa (0x22,0x5C)
                 addq $2, %r13
                 jmp .Ljq_next
             .Ljq_e_bs:
-                movw $0x5C5C, (%r13)        # \\\\
+                movw $23644, (%r13)         # 2x backslash (0x5C,0x5C)
                 addq $2, %r13
                 jmp .Ljq_next
             .Ljq_e_nl:
-                movw $0x6E5C, (%r13)        # \\n
+                movw $28268, (%r13)         # backslash+n (0x6E,0x5C LE -> 5C,6E)
                 addq $2, %r13
                 jmp .Ljq_next
             .Ljq_e_cr:
-                movw $0x725C, (%r13)        # \\r
+                movw $29300, (%r13)         # backslash+r
                 addq $2, %r13
                 jmp .Ljq_next
             .Ljq_e_tb:
-                movw $0x745C, (%r13)        # \\t
+                movw $29796, (%r13)         # backslash+t
                 addq $2, %r13
                 jmp .Ljq_next
             .Ljq_e_uni:
-                movb $92, (%r13)            # '\\\\'
-                movb $117, 1(%r13)          # 'u'
-                movb $48, 2(%r13)           # '0'
-                movb $48, 3(%r13)           # '0'
-                movl %eax, %edx
+                movb $92, (%r13)            # backslash
+                movb $117, 1(%r13)          # u
+                movb $48, 2(%r13)           # 0
+                movb $48, 3(%r13)           # 0
+                movzbl (%r15,%rbx), %edx
                 shrl $4, %edx
                 andl $15, %edx
                 cmpb $10, %dl
-                jb .Ljq_uni_h
+                jb .Ljq_uh1
                 addb $39, %dl
-                jmp .Ljq_uni_h2
-            .Ljq_uni_h:
+                jmp .Ljq_uh2
+            .Ljq_uh1:
                 addb $48, %dl
-            .Ljq_uni_h2:
+            .Ljq_uh2:
                 movb %dl, 4(%r13)
-                movl %eax, %edx
+                movzbl (%r15,%rbx), %edx
                 andl $15, %edx
                 cmpb $10, %dl
-                jb .Ljq_uni_l
+                jb .Ljq_ul1
                 addb $39, %dl
-                jmp .Ljq_uni_l2
-            .Ljq_uni_l:
+                jmp .Ljq_ul2
+            .Ljq_ul1:
                 addb $48, %dl
-            .Ljq_uni_l2:
+            .Ljq_ul2:
                 movb %dl, 5(%r13)
                 addq $6, %r13
                 jmp .Ljq_next
             .Ljq_next:
-                incq %r15
+                incq %rbx
                 jmp .Ljq_loop
-            .Ljq_close:
-                movb $34, (%r13)            # fecha aspas
+            .Ljq_close_str:
+                movb $34, (%r13)
                 incq %r13
-            .Ljq_finish:
+            .Ljq_close:
                 movq %r13, %rax
-                subq %r12, %rax             # total escrito
-                subq $24, %rax              # menos o header
+                subq %r12, %rax
+                subq $24, %rax
                 movl %eax, 16(%r12)
                 movb $0, 24(%r12,%rax)
                 movq %r12, %rax
@@ -3150,9 +3151,9 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
-
-""");
+            """);
     }
+
 
     private static void emitJsonFindValue(StringBuilder sb) {
         sb.append("""
