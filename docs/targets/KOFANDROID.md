@@ -87,10 +87,28 @@ MainActivity (sintetizada pelo target)
 A `MainActivity` é escrita **em Kof** (`dev/kof/android-host.kf`) e
 compilada junto com o programa pelo mesmo frontend — o usuário nunca
 escreve Activity em Java. Quem precisa de UI **nativa de verdade** usa
-interop direta: com `ExternalClasspath` no classpath,
-`class Tela extends android.view.View` com `super.onCreate(...)` e
-chamadas encadeadas (`web.getSettings().setJavaScriptEnabled(true)`)
-já compilam hoje (ver [learn/10-inheritance.md](../../learn/10-inheritance.md)).
+interop direta: com `ExternalClasspath` no classpath, tudo isto compila
+hoje (ver [learn/10-inheritance.md](../../learn/10-inheritance.md)):
+
+```kof
+import android.widget.Button
+import android.view.View
+
+class MeuListener implements OnClickListener {
+    Void onClick(View v) {
+        println("clicado")
+    }
+}
+
+// SAM conversion: lambda vira o listener direto
+var b = new Button(this)
+b.setOnClickListener((v) -> println("clicou"))
+b.setOnLongClickListener((v, n) -> println("long " + n))
+var i = Button.inflate(this)      // método estático externo
+if (i instanceof View) { ... }
+var c = i as Button               // cast externo qualificado
+b.clicks = 5                      // campo externo (leitura/escrita)
+```
 
 ## Ciclo de vida e convenções
 
@@ -163,11 +181,18 @@ alvos; o alvo que não consegue realizá-la diz isso na hora, com código.**
 | `AND001` | `spawn { ... }` | ART não tem virtual threads (Java 21) |
 | `AND002` | `kof.web` (servidor embutido) | app mobile não escuta porta; usar interop |
 | `AND003` | reflexão dinâmica sobre classes Kof | desugaring/R8 pode remover símbolos |
+| `AND004` | android.jar ausente no ExternalClasspath | host Activity não incluída (warning) |
+| `SAM001` | aridade da lambda ≠ método SAM | interface externa exige N args |
 | `SUP001` | `super.metodo()` no Native | já coberto; ANDROID reusa o caminho JVM |
 
-Bytecode: o JvmBackend emite nível moderno; o `d8` do Gradle plugin faz
-desugaring para dispositivos antigos. Se a Fase 2 precisar de nível menor,
-a flag vira parâmetro do backend — não um segundo backend.
+Faltando no compilador para interop completa: overloads de métodos Kof
+(SymbolTable colapsa por nome), `super.metodo()` dentro de lambda,
+valores enum/`Class<?>` em annotations (`ANNOT001`) e checagem de
+generics de classes externas.
+
+Bytecode: o JvmBackend emite nível moderno; o `d8` faz desugaring para
+dispositivos antigos. Se a Fase 2 precisar de nível menor, a flag vira
+parâmetro do backend — não um segundo backend.
 
 ## Integração com o trabalho em andamento
 

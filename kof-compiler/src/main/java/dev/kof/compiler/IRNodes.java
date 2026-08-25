@@ -34,6 +34,14 @@ record IRClass(String name, String superName, List<String> interfaces,
 record IRAnnotation(String name, Map<String, Object> values) {
 }
 
+/** Valor Class<?> de annotation (nome interno JVM). */
+record IRClassConstant(String internalName) {
+}
+
+/** Valor enum constante de annotation (classe interna JVM + constante). */
+record IREnumConstant(String internalName, String constant) {
+}
+
 record IRField(String name, Type type, int accessFlags, Object initialValue,
                List<IRAnnotation> annotations) {
 

@@ -145,6 +145,49 @@ final class ExternalClasspath {
         return loaded && internalName != null && classBytes.containsKey(internalName);
     }
 
+    /** A classe externa é enum? */
+    public synchronized boolean isEnum(String internalName) {
+        byte[] bytes = internalName != null ? classBytes.get(internalName) : null;
+        if (bytes == null) return false;
+        boolean[] isEnum = new boolean[1];
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public void visit(int version, int access, String name, String signature,
+                                  String superName, String[] interfaces) {
+                    isEnum[0] = (access & org.objectweb.asm.Opcodes.ACC_ENUM) != 0;
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+        } catch (Exception e) {
+            return false;
+        }
+        return isEnum[0];
+    }
+
+    /** Constante existe no enum externo? */
+    public synchronized boolean hasEnumConstant(String internalName, String constant) {
+        byte[] bytes = classBytes.get(internalName);
+        if (bytes == null) return false;
+        boolean[] found = new boolean[1];
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public org.objectweb.asm.FieldVisitor visitField(int access, String name,
+                                                                 String descriptor,
+                                                                 String signature, Object value) {
+                    if (name.equals(constant)
+                            && (access & org.objectweb.asm.Opcodes.ACC_ENUM) != 0) {
+                        found[0] = true;
+                    }
+                    return null;
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+        } catch (Exception e) {
+            return false;
+        }
+        return found[0];
+    }
+
     /** A classe externa é interface? */
     public synchronized boolean isInterface(String internalName) {
         byte[] bytes = internalName != null ? classBytes.get(internalName) : null;

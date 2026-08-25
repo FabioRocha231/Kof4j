@@ -30,6 +30,14 @@ record AnnotationNode(SourcePosition position, String name,
 record AnnotationPair(String key, Object value) {
 }
 
+/** Valor Classe.class de annotation (@JsonFormat(using = MyMapper.class)). */
+record AnnotationClassRef(String typeName) {
+}
+
+/** Valor enum constante (@Retention(RetentionPolicy.RUNTIME)). */
+record AnnotationEnumRef(String qualifiedConstant) {
+}
+
 record CompilationUnitNode(SourcePosition position, String packageName, List<String> imports,
                            List<? extends AstNode> declarations) implements AstNode {
 }

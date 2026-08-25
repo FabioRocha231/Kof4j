@@ -149,7 +149,7 @@ private Target target = Target.JVM;
             LabelId.reset();
             currentModule = new IRModule("", List.of(), List.of());
             currentUnit = unit;
-            IRModule irModule = lowerToIR(unit, diagnostics);
+            IRModule irModule = applySuperBridges(lowerToIR(unit, diagnostics));
             if (diagnostics.hasErrors()) {
                 return new CompilationResult(false, diagnostics, outputDir);
             }
@@ -460,8 +460,118 @@ private Target target = Target.JVM;
         return new MethodCallExpr(p, null, "println", List.of(), List.of(arg));
     }
 
-    private final java.util.Map<String, List<EntityFieldNode>> entitySchemas = new java.util.HashMap<>();
+    private final java.util.Map<String, List<EntityFieldNode>> entitySchemas = new java.util.LinkedHashMap<>();
     private final java.util.IdentityHashMap<LambdaExpr, String> lambdaClassNames = new java.util.IdentityHashMap<>();
+    /** Pontes super.metodo() geradas para lambdas: dono interno → método. */
+    private final Map<String, List<IRMethod>> pendingSuperBridges = new java.util.LinkedHashMap<>();
+
+    /**
+     * Garante um método-ponte na classe DONA da lambda:
+     *   kof_super$metodo(...) { super.metodo(...); }
+     * A lambda chama a ponte (invokevirtual no $outer) — o verificador JVM
+     * rejeita INVOKESPECIAL direto quando a classe corrente não é subclasse.
+     */
+    private String ensureSuperBridge(String ownerInternal, String superInternal,
+                                     String methodName, List<Type> paramTypes, Type returnType) {
+        String bridgeName = "kof_super$" + methodName;
+        List<IRMethod> bridges = pendingSuperBridges.computeIfAbsent(ownerInternal,
+                k -> new ArrayList<>());
+        for (IRMethod b : bridges) {
+            if (b.name().equals(bridgeName)) return bridgeName;
+        }
+        Type ownerT = ownerTypeFromInternal(ownerInternal);
+        Type superT = ownerTypeFromInternal(superInternal);
+        List<KofOperation> ops = new ArrayList<>();
+        List<IRLocalVariable> locals = new ArrayList<>();
+        locals.add(new IRLocalVariable(0, "this", ownerT));
+        int idx = 1;
+        for (Type pt : paramTypes) {
+            locals.add(new IRLocalVariable(idx, "arg" + idx, pt));
+            idx += isDoubleWidth(pt) ? 2 : 1;
+        }
+        ops.add(new KofLoadLocal(ownerT, 0));
+        int argIdx = 1;
+        for (Type pt : paramTypes) {
+            ops.add(new KofLoadLocal(pt, argIdx));
+            argIdx += isDoubleWidth(pt) ? 2 : 1;
+        }
+        ops.add(new KofCall(superT, methodName, paramTypes, returnType, KofCallKind.SUPER));
+        if (Type.isVoid(returnType)) ops.add(new KofReturnVoid());
+        else ops.add(new KofReturn(returnType));
+        bridges.add(new IRMethod(bridgeName, returnType, paramTypes,
+                AccessFlags.PUBLIC | AccessFlags.FINAL, List.of(),
+                List.of(new IRBasicBlock(0, ops)), locals));
+        return bridgeName;
+    }
+
+    /** Aplica as pontes pendentes às classes do módulo (após lowering). */
+    private IRModule applySuperBridges(IRModule module) {
+        if (pendingSuperBridges.isEmpty()) return module;
+        List<IRClass> classes = new ArrayList<>();
+        for (IRClass clazz : module.classes()) {
+            List<IRMethod> bridges = pendingSuperBridges.get(clazz.name());
+            if (bridges == null) {
+                classes.add(clazz);
+                continue;
+            }
+            List<IRMethod> methods = new ArrayList<>(clazz.methods());
+            methods.addAll(bridges);
+            classes.add(new IRClass(clazz.name(), clazz.superName(), clazz.interfaces(),
+                    clazz.accessFlags(), clazz.fields(), methods,
+                    clazz.innerClasses(), clazz.signature(), clazz.typeId(),
+                    clazz.annotations()));
+        }
+        pendingSuperBridges.clear();
+        return new IRModule(module.name(), classes, module.imports(), module.sourceName());
+    }
+
+    /** Dono real da lambda (classe onde o corpo foi escrito) por classe sintética. */
+    private final java.util.Map<String, String> lambdaEnclosingOwner = new java.util.LinkedHashMap<>();
+
+    private final java.util.IdentityHashMap<LambdaExpr, List<IRLocalVariable>> lambdaEffectiveCaptures =
+            new java.util.IdentityHashMap<>();
+
+    /** Lambda que usa super.metodo() precisa capturar o this externo ($outer). */
+    private final java.util.IdentityHashMap<LambdaExpr, Boolean> lambdaNeedsOuter =
+            new java.util.IdentityHashMap<>();
+
+    /** Dono do método sendo lowered agora (para capturar this de lambda). */
+    private String currentLoweringOwner;
+
+    /** Detecta uso de super.metodo() no corpo da lambda. */
+    private static boolean lambdaUsesSuper(Object node) {
+        if (node instanceof LambdaExpr le) {
+            for (StatementNode st : le.body()) {
+                if (lambdaUsesSuper(st)) return true;
+            }
+            return false;
+        }
+        if (node instanceof MethodCallExpr mc) {
+            if (mc.receiver() instanceof IdentifierExpr rid && "super".equals(rid.name())) return true;
+            if (lambdaUsesSuper(mc.receiver())) return true;
+            for (ExpressionNode arg : mc.arguments()) if (lambdaUsesSuper(arg)) return true;
+            return false;
+        }
+        if (node instanceof IdentifierExpr ie) return "super".equals(ie.name());
+        if (node instanceof FieldAccessExpr fa) return lambdaUsesSuper(fa.receiver());
+        if (node instanceof BinaryExpr be) return lambdaUsesSuper(be.left()) || lambdaUsesSuper(be.right());
+        if (node instanceof UnaryExpr ue) return lambdaUsesSuper(ue.operand());
+        if (node instanceof AssignmentExpr ae) return lambdaUsesSuper(ae.target()) || lambdaUsesSuper(ae.value());
+        if (node instanceof VarDeclStmt v) return v.initializer() != null && lambdaUsesSuper(v.initializer());
+        if (node instanceof ExpressionStmt es) return es.expression() != null && lambdaUsesSuper(es.expression());
+        if (node instanceof ReturnStmt rs) return rs.value() != null && lambdaUsesSuper(rs.value());
+        if (node instanceof IfStmt is) return lambdaUsesSuper(is.condition())
+                || lambdaUsesSuper(is.thenBranch())
+                || (is.elseBranch() != null && lambdaUsesSuper(is.elseBranch()));
+        if (node instanceof WhileStmt ws) return lambdaUsesSuper(ws.condition()) || lambdaUsesSuper(ws.body());
+        if (node instanceof ForStmt fs) return lambdaUsesSuper(fs.init()) || lambdaUsesSuper(fs.condition())
+                || lambdaUsesSuper(fs.update()) || lambdaUsesSuper(fs.body());
+        if (node instanceof BlockStmt bs) {
+            for (StatementNode st : bs.statements()) if (lambdaUsesSuper(st)) return true;
+            return false;
+        }
+        return false;
+    }
     private final java.util.List<TestInfo> discoveredTests = new java.util.ArrayList<>();
     private boolean testHarnessMode = false;
     private int lambdaCounter = 0;
@@ -476,6 +586,18 @@ private Target target = Target.JVM;
         if (existing != null) return existing;
         String name = "Lambda" + (lambdaCounter++);
         Type ownerType = new Type.ClassType("", name, List.of());
+        // super.metodo() dentro da lambda: captura o this EXTERNO como $outer
+        boolean needsOuter = lambdaUsesSuper(le) && currentLoweringOwner != null;
+        if (needsOuter) {
+            lambdaNeedsOuter.put(le, true);
+            lambdaEnclosingOwner.put(name, currentLoweringOwner);
+            Type outerType = ownerTypeFromInternal(currentLoweringOwner);
+            List<IRLocalVariable> eff = new ArrayList<>();
+            eff.add(new IRLocalVariable(0, "$outer", outerType));
+            eff.addAll(captures);
+            captures = eff;
+            lambdaEffectiveCaptures.put(le, eff);
+        }
         Type returnType = toType(typeToString(ft.returnType()));
         List<FormalParameterNode> params = le.parameters();
         List<Type> paramTypes = new ArrayList<>();
@@ -717,6 +839,20 @@ private Target target = Target.JVM;
     }
 
     private IRMethod lowerFunction(FunctionDeclarationNode func) {
+        String prevOwner = currentLoweringOwner;
+        currentLoweringOwner = mainClassInternalName();
+        try {
+            return lowerFunctionInner(func);
+        } finally {
+            currentLoweringOwner = prevOwner;
+        }
+    }
+
+    private String mainClassInternalName() {
+        return "Default/Main";
+    }
+
+    private IRMethod lowerFunctionInner(FunctionDeclarationNode func) {
         Type returnType = resolveWithTypeParams(func.returnType(), func.typeParameters());
         if (Type.isVoid(returnType) && func.body().size() == 1 && func.body().getFirst() instanceof ReturnStmt ret && ret.value() != null) {
             List<IRLocalVariable> tmpLocals = new ArrayList<>();
@@ -2135,26 +2271,31 @@ private Target target = Target.JVM;
                                     "SUP001");
                             yield localIdx;
                         }
-                        String superInternal = findSuperClass(owner);
+                        // super.metodo() só faz sentido no corpo de um método
+                        // de classe; dentro de lambda sintética usa o this
+                        // externo capturado ($outer) — sem ele, gap honesto
+                        String effectiveOwner = owner;
+                        String ownerSimple0 = owner.substring(owner.lastIndexOf('/') + 1);
+                        if (semanticAnalyzer == null || semanticAnalyzer.getClass(ownerSimple0) == null) {
+                            String enc = lambdaEnclosingOwner.get(owner);
+                            if (enc == null) {
+                                if (currentDiagnostics != null) {
+                                    SourcePosition p = mc.position();
+                                    currentDiagnostics.error(p != null ? p.file() : "",
+                                            p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                            "super." + mc.methodName()
+                                                    + "() is only valid inside class methods (SUP002)",
+                                            "SUP002");
+                                }
+                                yield localIdx;
+                            }
+                            effectiveOwner = enc;
+                        }
+                        String superInternal = findSuperClass(effectiveOwner);
                         if (superInternal == null) superInternal = "java/lang/Object";
                         // nomes declarados com pontos (android.view.View)
                         // viram nome interno JVM para resolução e emissão
                         superInternal = superInternal.replace('.', '/');
-                        // super.metodo() só faz sentido no corpo de um método
-                        // de classe; dentro de lambda sintética ou função
-                        // top-level não existe superclasse significativa
-                        String ownerSimple = owner.substring(owner.lastIndexOf('/') + 1);
-                        if (semanticAnalyzer == null || semanticAnalyzer.getClass(ownerSimple) == null) {
-                            if (currentDiagnostics != null) {
-                                SourcePosition p = mc.position();
-                                currentDiagnostics.error(p != null ? p.file() : "",
-                                        p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
-                                        "super." + mc.methodName()
-                                                + "() is only valid inside class methods (SUP002)",
-                                        "SUP002");
-                            }
-                            yield localIdx;
-                        }
                         Type superType = ownerTypeFromInternal(superInternal);
                         SymbolTable.MethodSymbol superMethod = null;
                         if (semanticAnalyzer != null) {
@@ -2203,10 +2344,24 @@ private Target target = Target.JVM;
                             for (ExpressionNode arg : mc.arguments()) paramTypes.add(inferExprType(arg, locals));
                             returnType = inferExprType(mc, locals);
                         }
-                        ops.add(new KofLoadLocal(ownerTypeFromInternal(owner), 0));
-                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), paramTypes, ops, owner, localIdx, locals);
-                        ops.add(new KofCall(superType, mc.methodName(), paramTypes, returnType, KofCallKind.SUPER));
-                        yield localIdx;
+                        // receiver: dentro de lambda sintética é o $outer e a
+                        // chamada vira uma PONTE kof_super$metodo na classe dona
+                        IRLocalVariable outerVar = findLocalVar("$outer", locals);
+                        if (outerVar != null) {
+                            ops.add(new KofLoadLocal(outerVar.type(), outerVar.index()));
+                            String bridgeName = ensureSuperBridge(effectiveOwner, superInternal,
+                                    mc.methodName(), paramTypes, returnType);
+                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), paramTypes,
+                                    ops, effectiveOwner, localIdx, locals);
+                            ops.add(new KofCall(ownerTypeFromInternal(effectiveOwner), bridgeName,
+                                    paramTypes, returnType, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        } else {
+                            ops.add(new KofLoadLocal(ownerTypeFromInternal(effectiveOwner), 0));
+                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), paramTypes, ops, owner, localIdx, locals);
+                            ops.add(new KofCall(superType, mc.methodName(), paramTypes, returnType, KofCallKind.SUPER));
+                            yield localIdx;
+                        }
                     }
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
@@ -2900,6 +3055,8 @@ private Target target = Target.JVM;
                 Type.FunctionType ft = (Type.FunctionType) inferExprType(le, locals);
                 List<IRLocalVariable> captures = collectCaptures(le, locals);
                 String lambdaClass = lambdaClass(le, ft, captures);
+                List<IRLocalVariable> effective = lambdaEffectiveCaptures.get(le);
+                if (effective != null) captures = effective;
                 if (ft.className() == null) {
                     ft = new Type.FunctionType(ft.parameterTypes(), ft.returnType(), lambdaClass);
                 }
@@ -2994,6 +3151,25 @@ private Target target = Target.JVM;
                 yield leftType;
             }
             case MethodCallExpr mc -> {
+                // super.metodo(): resolvido AQUI (o cache do analyzer é
+                // limpo a cada classe/passe — não dá para confiar nele)
+                if (mc.receiver() instanceof IdentifierExpr srid && "super".equals(srid.name())
+                        && semanticAnalyzer != null && currentLoweringOwner != null) {
+                    String simple = currentLoweringOwner.substring(currentLoweringOwner.lastIndexOf('/') + 1);
+                    SymbolTable.ClassSymbol self = semanticAnalyzer.getClass(simple);
+                    String sup = self != null && self.superClass() != null ? self.superClass() : "Object";
+                    sup = sup.replace('.', '/');
+                    SymbolTable.Symbol m2 = semanticAnalyzer.resolveInHierarchy(
+                            sup.substring(sup.lastIndexOf('/') + 1), mc.methodName());
+                    if (m2 instanceof SymbolTable.MethodSymbol ms2) yield ms2.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                // o analyzer já tipou esta expressão durante a análise:
+                // fonte secundária para os demais casos
+                if (semanticAnalyzer != null) {
+                    Type semantic = semanticAnalyzer.getExpressionType(mc);
+                    if (!(semantic instanceof Type.UnknownType)) yield semantic;
+                }
                 if (mc.receiver() == null && semanticAnalyzer != null
                         && semanticAnalyzer.getClass(mc.methodName()) != null) {
                     yield semanticAnalyzer.getClass(mc.methodName()).type();
@@ -3600,8 +3776,18 @@ private Target target = Target.JVM;
                                List<KofOperation> ops, String owner, int localIdx,
                                List<IRLocalVariable> locals) {
         List<IRLocalVariable> captures = collectCaptures(le, locals);
+        if (lambdaUsesSuper(le) && currentLoweringOwner != null) {
+            Type outerType = ownerTypeFromInternal(currentLoweringOwner);
+            List<IRLocalVariable> eff = new ArrayList<>();
+            eff.add(new IRLocalVariable(0, "$outer", outerType));
+            eff.addAll(captures);
+            captures = eff;
+        }
         String className = samAdapterNames.computeIfAbsent(le,
                 k -> "Sam" + iface.name().replace('.', '_') + "_" + (++lambdaCounter));
+        if (lambdaUsesSuper(le) && currentLoweringOwner != null) {
+            lambdaEnclosingOwner.put(className, currentLoweringOwner);
+        }
 
         List<Type> samParamTypes = new ArrayList<>();
         for (String d : sam.signature().parameterDescriptors()) {
@@ -4389,7 +4575,7 @@ private Target target = Target.JVM;
             superName = cls.superClass() != null ? toInternalName("", cls.superClass())
                     : "java/lang/Object";
         }
-        List<String> ifaces = cls.interfaces().stream().map(i -> toInternalName("", i)).toList();
+        List<String> ifaces = cls.interfaces().stream().map(this::externalOrLocalInternalName).toList();
         int access = computeAccess(cls.modifiers());
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
@@ -4418,7 +4604,7 @@ private Target target = Target.JVM;
 
     private IRClass lowerInterface(InterfaceDeclarationNode iface, String packageName, int typeId) {
         String internalName = toInternalName(packageName, iface.name());
-        List<String> ifaces = iface.interfaces().stream().map(i -> toInternalName("", i)).toList();
+        List<String> ifaces = iface.interfaces().stream().map(this::externalOrLocalInternalName).toList();
         int access = computeAccess(iface.modifiers()) | AccessFlags.ABSTRACT | AccessFlags.INTERFACE;
         List<IRMethod> methods = new ArrayList<>();
         List<IRField> fields = new ArrayList<>();
@@ -4433,7 +4619,7 @@ private Target target = Target.JVM;
     private IRClass lowerRecord(RecordDeclarationNode rec, String packageName, int typeId) {
         String internalName = toInternalName(packageName, rec.name());
         String superName = "java/lang/Record";
-        List<String> ifaces = rec.interfaces().stream().map(i -> toInternalName("", i)).toList();
+        List<String> ifaces = rec.interfaces().stream().map(this::externalOrLocalInternalName).toList();
         int access = computeAccess(rec.modifiers()) | AccessFlags.FINAL | AccessFlags.PUBLIC;
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
@@ -4501,11 +4687,66 @@ private Target target = Target.JVM;
             for (AnnotationPair pair : anno.pairs()) {
                 String key = pair.key() != null ? pair.key()
                         : (anno.pairs().size() == 1 ? "value" : null);
-                if (key != null) values.put(key, pair.value());
+                if (key != null) {
+                    Object folded = foldAnnotationValue(pair.value());
+                    if (!(folded instanceof ParseSentinel)) values.put(key, folded);
+                }
             }
             out.add(new IRAnnotation(resolveAnnotationInternalName(anno.name()), values));
         }
         return out;
+    }
+
+    /**
+     * Nome interno JVM de uma interface declarada: simples vinda de import
+     * ("import android.view.OnClickListener") qualifica; senão, classe local.
+     */
+    private String externalOrLocalInternalName(String name) {
+        Type q = qualifyViaImports(name);
+        if (q instanceof Type.ClassType qt && !qt.packageName().isEmpty()) {
+            return qt.internalName();
+        }
+        return toInternalName("", name);
+    }
+
+    /**
+     * Dobra valores de annotation: refs de Classe.class e Enum.CONST viram
+     * constantes resolvidas; enum só passa se o classpath provar a classe.
+     */
+    private Object foldAnnotationValue(Object value) {
+        if (value instanceof AnnotationClassRef ref) {
+            return new IRClassConstant(resolveAnnotationInternalName(ref.typeName()));
+        }
+        if (value instanceof AnnotationEnumRef ref) {
+            int lastDot = ref.qualifiedConstant().lastIndexOf('.');
+            if (lastDot > 0 && externalClasspath != null) {
+                String internal = resolveAnnotationInternalName(
+                        ref.qualifiedConstant().substring(0, lastDot));
+                String constant = ref.qualifiedConstant().substring(lastDot + 1);
+                if (externalClasspath.knows(internal)
+                        && externalClasspath.isEnum(internal)
+                        && externalClasspath.hasEnumConstant(internal, constant)) {
+                    return new IREnumConstant(internal, constant);
+                }
+            }
+            if (currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "enum constant '" + ref.qualifiedConstant()
+                                + "' could not be resolved from the external classpath",
+                        "ANNOT001");
+            }
+            return ParseSentinel.INSTANCE;
+        }
+        if (value instanceof List<?> items) {
+            List<Object> folded = new ArrayList<>();
+            for (Object item : items) folded.add(foldAnnotationValue(item));
+            return folded;
+        }
+        return value;
+    }
+
+    private static final class ParseSentinel {
+        static final ParseSentinel INSTANCE = new ParseSentinel();
     }
 
     /**
@@ -4533,6 +4774,16 @@ private Target target = Target.JVM;
     }
 
     private IRMethod lowerMethod(MethodDeclarationNode method, String owner, boolean isInterface, List<String> typeParams) {
+        String prevOwner = currentLoweringOwner;
+        currentLoweringOwner = owner;
+        try {
+            return lowerMethodInner(method, owner, isInterface, typeParams);
+        } finally {
+            currentLoweringOwner = prevOwner;
+        }
+    }
+
+    private IRMethod lowerMethodInner(MethodDeclarationNode method, String owner, boolean isInterface, List<String> typeParams) {
         Type returnType = resolveWithTypeParams(method.returnType(), typeParams);
         List<Type> paramTypes = method.parameters().stream()
                 .map(p -> resolveWithTypeParams(p.type(), typeParams)).toList();
@@ -4658,6 +4909,18 @@ private Target target = Target.JVM;
     }
 
     private IRMethod lowerConstructor(ConstructorDeclarationNode ctor, String owner, String superName,
+                                      List<String> typeParams, List<IRField> fields,
+                                      java.util.Map<String, ExpressionNode> fieldInits) {
+        String prevOwner = currentLoweringOwner;
+        currentLoweringOwner = owner;
+        try {
+            return lowerConstructorInner(ctor, owner, superName, typeParams, fields, fieldInits);
+        } finally {
+            currentLoweringOwner = prevOwner;
+        }
+    }
+
+    private IRMethod lowerConstructorInner(ConstructorDeclarationNode ctor, String owner, String superName,
                                       List<String> typeParams, List<IRField> fields,
                                       java.util.Map<String, ExpressionNode> fieldInits) {
         List<Type> paramTypes = ctor.parameters().stream()

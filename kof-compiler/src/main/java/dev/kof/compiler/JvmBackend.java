@@ -553,8 +553,24 @@ class JvmBackend implements Backend {
                                       String key, Object value) {
         if (value instanceof List<?> items) {
             var arr = av.visitArray(key);
-            for (Object item : items) arr.visit(null, asmValue(item));
+            for (Object item : items) {
+                if (item instanceof IRClassConstant cc) {
+                    arr.visit(null, org.objectweb.asm.Type.getType("L" + cc.internalName() + ";"));
+                } else if (item instanceof IREnumConstant ec) {
+                    arr.visitEnum(null, "L" + ec.internalName() + ";", ec.constant());
+                } else {
+                    arr.visit(null, asmValue(item));
+                }
+            }
             arr.visitEnd();
+            return;
+        }
+        if (value instanceof IRClassConstant cc) {
+            av.visit(key, org.objectweb.asm.Type.getType("L" + cc.internalName() + ";"));
+            return;
+        }
+        if (value instanceof IREnumConstant ec) {
+            av.visitEnum(key, "L" + ec.internalName() + ";", ec.constant());
             return;
         }
         av.visit(key, asmValue(value));

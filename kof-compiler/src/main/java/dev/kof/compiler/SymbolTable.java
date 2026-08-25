@@ -21,8 +21,40 @@ class SymbolTable {
     }
 
     void define(Symbol symbol) {
+        // sobrecarga de CONSTRUTORES: mesmo nome <init>, assinaturas várias
+        if (symbol instanceof ConstructorSymbol cs) {
+            Symbol existing = symbols.get("<init>");
+            java.util.LinkedHashMap<List<Type>, ConstructorSymbol> merged = new java.util.LinkedHashMap<>();
+            if (existing instanceof ConstructorSymbol one) {
+                merged.put(one.parameterTypes(), one);
+            } else if (existing instanceof ConstructorSet set) {
+                for (ConstructorSymbol c : set.constructors()) merged.put(c.parameterTypes(), c);
+            }
+            merged.put(cs.parameterTypes(), cs);
+            if (merged.size() == 1 && !(existing instanceof ConstructorSet)) {
+                symbols.put("<init>", cs);
+            } else {
+                if (!(existing instanceof ConstructorSet)) symbolOrder.add("<init>");
+                symbols.put("<init>", new ConstructorSet(new ArrayList<>(merged.values())));
+            }
+            return;
+        }
         symbols.put(symbol.name(), symbol);
         symbolOrder.add(symbol.name());
+    }
+
+    /** Construtor com exatamente {@param argumentCount} parâmetros, ou null. */
+    static ConstructorSymbol constructorFor(SymbolTable members, int argumentCount) {
+        Symbol s = members != null ? members.resolve("<init>") : null;
+        if (s instanceof ConstructorSymbol c) {
+            return c.parameterTypes().size() == argumentCount ? c : null;
+        }
+        if (s instanceof ConstructorSet set) {
+            for (ConstructorSymbol c : set.constructors()) {
+                if (c.parameterTypes().size() == argumentCount) return c;
+            }
+        }
+        return null;
     }
 
     Symbol resolve(String name) {
@@ -119,6 +151,19 @@ class SymbolTable {
 
         public DispatchKind dispatchKind() {
             return dispatchKind;
+        }
+    }
+
+    /** Conjunto de construtores sobrecarregados (mesmo nome <init>). */
+    record ConstructorSet(List<ConstructorSymbol> constructors) implements Symbol {
+        @Override
+        public String name() {
+            return "<init>";
+        }
+
+        @Override
+        public Type type() {
+            return constructors.get(constructors.size() - 1).type();
         }
     }
 

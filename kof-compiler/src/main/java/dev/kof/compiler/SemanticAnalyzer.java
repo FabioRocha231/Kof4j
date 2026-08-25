@@ -645,8 +645,9 @@ class SemanticAnalyzer {
                     // the same name (e.g. KofUi's Color).
                     SymbolTable.ClassSymbol ctorClass = knownClasses.get(mc.methodName());
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
-                    SymbolTable.Symbol ctorSym = ctorClass.members().resolve("<init>");
-                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctor) {
+                    SymbolTable.ConstructorSymbol ctor = SymbolTable.constructorFor(
+                            ctorClass.members(), mc.arguments().size());
+                    if (ctor != null) {
                         resolvedMethods.put(mc, new SymbolTable.MethodSymbol("<init>", mc.methodName(),
                                 ctor.type(), ctor.parameterTypes(), ctor.accessFlags(), SymbolTable.DispatchKind.STATIC));
                     }
@@ -1002,8 +1003,9 @@ class SemanticAnalyzer {
                 SymbolTable.ClassSymbol ctorClass = knownClasses.get(mc.methodName());
                 if (ctorClass != null) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
-                    SymbolTable.Symbol ctorSym = ctorClass.members().resolve("<init>");
-                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctor) {
+                    SymbolTable.ConstructorSymbol ctor = SymbolTable.constructorFor(
+                            ctorClass.members(), mc.arguments().size());
+                    if (ctor != null) {
                         resolvedMethods.put(mc, new SymbolTable.MethodSymbol("<init>", mc.methodName(),
                                 ctor.type(), ctor.parameterTypes(), ctor.accessFlags(), SymbolTable.DispatchKind.STATIC));
                     }
@@ -1019,9 +1021,10 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : ne.arguments()) {
                         argTypes.add(inferType(arg, scope));
                     }
-                    SymbolTable.Symbol ctorSym = cs.members().resolve("<init>");
-                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctor) {
-                        resolvedConstructors.put(ne, ctor);
+                    SymbolTable.ConstructorSymbol ctor3 =
+                            SymbolTable.constructorFor(cs.members(), ne.arguments().size());
+                    if (ctor3 != null) {
+                        resolvedConstructors.put(ne, ctor3);
                     }
                     yield new Type.ClassType(cs.packageName(), cs.name(), List.of());
                 }

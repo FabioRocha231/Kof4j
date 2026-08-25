@@ -169,7 +169,20 @@ class Parser {
             }
         }
         if (check(TokenType.IDENTIFIER)) {
-            String name = advance().value();
+            // Nome qualificado: Classe.class (valor Class) ou Enum.CONST
+            StringBuilder name = new StringBuilder(advance().value());
+            while (check(TokenType.DOT) && (checkNext(TokenType.IDENTIFIER) || isTypeKeywordAtNext())) {
+                advance();
+                name.append('.').append(advance().value());
+            }
+            if (check(TokenType.DOT) && peek().value().equals("class")) {
+                advance();
+                advance();
+                return new AnnotationClassRef(name.toString());
+            }
+            if (name.indexOf(".") >= 0) {
+                return new AnnotationEnumRef(name.toString());
+            }
             error("Annotation values must be compile-time constants ('" + name
                     + "' is not supported yet)", "ANNOT001");
             return ParseError.INSTANCE;
@@ -1519,6 +1532,15 @@ class Parser {
         return check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE,
                 TokenType.DOUBLE_TYPE, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE,
                 TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE);
+    }
+
+    private boolean isTypeKeywordAtNext() {
+        if (pos + 1 >= tokens.size()) return false;
+        return switch (tokens.get(pos + 1).type()) {
+            case INT_TYPE, LONG_TYPE, FLOAT_TYPE, DOUBLE_TYPE, BOOL_TYPE,
+                    BYTE_TYPE, SHORT_TYPE, CHAR_TYPE, STRING_TYPE -> true;
+            default -> false;
+        };
     }
 
     private SourcePosition pos() {

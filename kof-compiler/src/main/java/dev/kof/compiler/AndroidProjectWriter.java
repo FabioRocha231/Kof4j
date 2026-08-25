@@ -3,6 +3,7 @@ package dev.kof.compiler;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -41,20 +42,28 @@ final class AndroidProjectWriter {
     void write(Path outputDir, IRModule module) throws IOException {
         Files.createDirectories(outputDir);
 
+        // 0. metadados derivados DO PROGRAMA: label = título da primeira
+        //    Window("..."); permissões = @Permissions([...]) em qualquer classe
+        String appLabel = detectAppLabel(module);
+        List<String> permissions = detectPermissions(module);
+
         // 1. assets: mesma IR → KofJS (source maps habilitados para o
         //    chrome://inspect depurar o WebView)
         Path assets = outputDir.resolve("src/main/assets/kof");
         Files.createDirectories(assets);
         new JsBackend().emit(module, assets, true);
+        writePlatformBridge(assets);
+        patchIndexForPlatform(assets);
 
         // 2. libs/kof-app.jar: bytecode das classes do programa (+ helpers)
         Path libs = outputDir.resolve("libs");
         Files.createDirectories(libs);
         writeJar(outputDir, libs.resolve("kof-app.jar"));
 
-        // 3. pom.xml (cola do pipeline SDK, sem dependências) + manifesto
+        // 3. pom.xml (cola do pipeline SDK, sem dependências) + manifesto + ícone
         writePom(outputDir);
-        writeManifest(outputDir);
+        writeManifest(outputDir, appLabel, permissions);
+        writeLauncherIcon(outputDir);
 
         // 4. instruções honestas na raiz — sem mágica
         Files.writeString(outputDir.resolve("README.txt"), """
@@ -64,7 +73,7 @@ final class AndroidProjectWriter {
                 build-tools;%1$s e platforms;android-%2$s
                 (ANDROID_HOME apontando pro SDK).
 
-                    cd %3$s
+                    cd %4$s
                     mvn verify
 
                 O APK de debug fica em target/kof-app.apk — instalar:
@@ -76,7 +85,82 @@ final class AndroidProjectWriter {
                   foi compilada junto pelo próprio compilador — nada de Java.
                 - Dependências são geridas pelo Kof (ExternalClasspath);
                   o pom.xml NÃO declara dependências.
-                """.formatted(BUILD_TOOLS, API_LEVEL, APP_PACKAGE));
+                - Label do app: "%5$s" (primeira Window do programa).
+                  Permissões: declare @Permissions(["android.permission.X"])
+                  numa classe Kof.
+                """.formatted(BUILD_TOOLS, API_LEVEL, APP_PACKAGE, APP_PACKAGE, appLabel));
+    }
+
+    /** Primeiro literal String passado a kof_ui_window_new vira o label. */
+    private String detectAppLabel(IRModule module) {
+        for (IRClass clazz : module.classes()) {
+            for (IRMethod m : clazz.methods()) {
+                for (IRBasicBlock b : m.basicBlocks()) {
+                    List<KofOperation> ops = b.operations();
+                    for (int i = 1; i < ops.size(); i++) {
+                        if (ops.get(i) instanceof KofCall c
+                                && "kof_ui_window_new".equals(c.methodName())
+                                && ops.get(i - 1) instanceof KofLoadLiteral lit
+                                && lit.value() instanceof String s
+                                && !s.isBlank()) {
+                            return s;
+                        }
+                    }
+                }
+            }
+        }
+        return APP_LABEL;
+    }
+
+    /**
+     * @Permissions(["android.permission.INTERNET", ...]) em qualquer classe
+     * Kof vira <uses-permission> no manifesto — metadado declarado na
+     * intenção, consumido pelo target.
+     */
+    private List<String> detectPermissions(IRModule module) {
+        List<String> out = new java.util.ArrayList<>();
+        for (IRClass clazz : module.classes()) {
+            for (IRAnnotation anno : clazz.annotations()) {
+                if (!anno.name().endsWith("Permissions")) continue;
+                Object value = anno.values().get("value");
+                if (value instanceof List<?> items) {
+                    for (Object item : items) {
+                        String perm = String.valueOf(item);
+                        if (!out.contains(perm)) out.add(perm);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Ponte kof_platform para o WebView: println sai no logcat/console do
+     * WebView; operações de FS respondem com erro claro (não suportado no
+     * app — usar interop Android para I/O real). Carregado ANTES do módulo.
+     */
+    private void writePlatformBridge(Path assetsDir) throws IOException {
+        Files.writeString(assetsDir.resolve("kof-platform.js"), """
+                // Ponte do target android: kof_platform para o WebView.
+                // println → console (visível no logcat); FS não suportado no app.
+                globalThis.kof_platform = {
+                  print(x) { console.log(String(x)); },
+                  args() { return []; },
+                  readFileSync(p) { throw new Error("kof.io readFile não disponível no Android (use interop)"); },
+                  writeFile(p, c) { throw new Error("kof.io writeFile não disponível no Android (use interop)"); }
+                };
+                """);
+    }
+
+    /** index.html gerado pelo JsBackend: garante kof-platform.js antes do módulo. */
+    private void patchIndexForPlatform(Path assetsDir) throws IOException {
+        Path html = assetsDir.resolve("index.html");
+        if (!Files.exists(html)) return;
+        String content = Files.readString(html);
+        if (content.contains("kof-platform.js")) return;
+        content = content.replace("<script type=\"module\"",
+                "<script src=\"kof-platform.js\"></script>\n    <script type=\"module\"");
+        Files.writeString(html, content);
     }
 
     /** Empacota todos os .class sob classesDir no jar (d8 consome direto). */
@@ -176,12 +260,19 @@ final class AndroidProjectWriter {
                             <goals><goal>run</goal></goals>
                             <configuration>
                               <target name="package-apk">
+                                <mkdir dir="${project.build.directory}/apk"/>
+                                <exec executable="${kof.build-tools}/aapt2" failonerror="true">
+                                  <arg value="compile"/><arg value="--dir"/>
+                                  <arg value="src/main/res"/>
+                                  <arg value="-o"/><arg value="${project.build.directory}/apk/res.zip"/>
+                                </exec>
                                 <exec executable="${kof.build-tools}/aapt2" failonerror="true">
                                   <arg value="link"/>
                                   <arg value="-o"/><arg value="${project.build.directory}/apk/base.apk"/>
                                   <arg value="-I"/><arg value="${kof.platform.jar}"/>
                                   <arg value="--manifest"/><arg value="src/main/AndroidManifest.xml"/>
                                   <arg value="-A"/><arg value="src/main/assets"/>
+                                  <arg value="-R"/><arg value="${project.build.directory}/apk/res.zip"/>
                                 </exec>
                                 <zip destfile="${project.build.directory}/apk/base.apk" update="true">
                                   <zipfileset file="${project.build.directory}/apk/classes.dex"
@@ -238,9 +329,13 @@ final class AndroidProjectWriter {
                         .replace("</profile-placeholder>", "</project>"));
     }
 
-    private void writeManifest(Path out) throws IOException {
+    private void writeManifest(Path out, String appLabel, List<String> permissions) throws IOException {
         Path manifest = out.resolve("src/main/AndroidManifest.xml");
         Files.createDirectories(manifest.getParent());
+        StringBuilder permLines = new StringBuilder();
+        for (String perm : permissions) {
+            permLines.append("    <uses-permission android:name=\"").append(perm).append("\" />\n");
+        }
         Files.writeString(manifest, """
                 <?xml version="1.0" encoding="utf-8"?>
                 <!-- Manifesto = dados da plataforma; o CÓDIGO (host Activity)
@@ -248,8 +343,9 @@ final class AndroidProjectWriter {
                 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
                     package="%s">
 
-                    <application
+                    %s<application
                         android:label="%s"
+                        android:icon="@drawable/ic_launcher_kof"
                         android:theme="@android:style/Theme.Material.Light.NoActionBar">
                         <activity
                             android:name=".MainActivity"
@@ -263,7 +359,24 @@ final class AndroidProjectWriter {
                     </application>
 
                 </manifest>
-                """.formatted(APP_PACKAGE, APP_LABEL));
+                """.formatted(APP_PACKAGE, permLines.toString(), appLabel));
+    }
+
+    /** Ícone vetorial do Kof — sem binário PNG no projeto gerado. */
+    private void writeLauncherIcon(Path out) throws IOException {
+        Path icon = out.resolve("src/main/res/drawable/ic_launcher_kof.xml");
+        Files.createDirectories(icon.getParent());
+        Files.writeString(icon, """
+                <vector xmlns:android="http://schemas.android.com/apk/res/android"
+                    android:width="108dp"
+                    android:height="108dp"
+                    android:viewportWidth="108"
+                    android:viewportHeight="108">
+                    <path android:fillColor="#6F4E37" android:pathData="M0,0h108v108h-108z"/>
+                    <path android:fillColor="#FFF8F0"
+                          android:pathData="M36,28h11v52h-11z M52,28h13l16,26 -16,26h-13l15,-26z"/>
+                </vector>
+                """);
     }
 
 }
