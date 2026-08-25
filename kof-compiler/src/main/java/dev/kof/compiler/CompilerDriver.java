@@ -1533,6 +1533,7 @@ private Target target = Target.JVM;
                 LabelId startLabel = LabelId.create();
                 LabelId bodyLabel = LabelId.create();
                 LabelId endLabel = LabelId.create();
+                LabelId continueLabel = LabelId.create();
                 Type collType = inferExprType(fis.collection(), locals);
                 Type elemType = Type.UnknownType.UNKNOWN;
                 boolean isList = BuiltinTypes.isList(collType);
@@ -1567,10 +1568,11 @@ private Target target = Target.JVM;
                 }
                 ops.add(new KofStoreLocal(elemType, varIdx));
                 breakLabels.push(endLabel);
-                continueLabels.push(startLabel);
+                continueLabels.push(continueLabel);
                 localIdx = emitStatement(fis.body(), ops, owner, localIdx, locals, returnType);
                 breakLabels.pop();
                 continueLabels.pop();
+                ops.add(new KofLabel(continueLabel));
                 ops.add(new KofLoadLocal(Type.PrimitiveType.INT, idxIdx));
                 ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
                 ops.add(new KofBinary(KofBinaryOp.ADD, Type.PrimitiveType.INT));
@@ -1857,6 +1859,33 @@ private Target target = Target.JVM;
                             }
                         }
                     }
+                    yield localIdx;
+                }
+                // Short-circuit evaluation for || and &&:
+                // a || b → eval a; if true, jump to true_label; eval b; result = b
+                // a && b → eval a; if false, jump to false_label; eval b; result = b
+                if (("||".equals(bin.operator()) || "&&".equals(bin.operator()))
+                        && target != Target.JS) {
+                    LabelId trueLabel = LabelId.create();
+                    LabelId falseLabel = LabelId.create();
+                    LabelId endLabel = LabelId.create();
+                    localIdx = emitExpression(bin.left(), ops, owner, localIdx, locals);
+                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                    if ("||".equals(bin.operator())) {
+                        ops.add(new KofConditionalJump(KofComparison.NE, trueLabel, falseLabel));
+                    } else {
+                        ops.add(new KofConditionalJump(KofComparison.NE, falseLabel, trueLabel));
+                    }
+                    ops.add(new KofLabel(falseLabel));
+                    localIdx = emitExpression(bin.right(), ops, owner, localIdx, locals);
+                    ops.add(new KofJump(endLabel));
+                    ops.add(new KofLabel(trueLabel));
+                    if ("||".equals(bin.operator())) {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+                    } else {
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                    }
+                    ops.add(new KofLabel(endLabel));
                     yield localIdx;
                 }
                 // Left-associative chains (huge string concatenations in
@@ -3269,7 +3298,29 @@ private Target target = Target.JVM;
                                         && ms.parameterTypes().isEmpty()))) {
                             Type ownerType = ownerTypeFromInternal(owner);
                             ops.add(new KofLoadLocal(ownerType, 0));
+                            String op = ae.operator();
+                            if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
+                                    || "/=".equals(op) || "%=".equals(op)
+                                    || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
+                                ops.add(new KofLoadField(ownerType, ie.name(), fieldSym.type()));
+                            }
                             localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
+                                    || "/=".equals(op) || "%=".equals(op)
+                                    || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
+                                KofBinaryOp binOp = switch (op) {
+                                    case "+=" -> KofBinaryOp.ADD;
+                                    case "-=" -> KofBinaryOp.SUB;
+                                    case "*=" -> KofBinaryOp.MUL;
+                                    case "/=" -> KofBinaryOp.DIV;
+                                    case "%=" -> KofBinaryOp.MOD;
+                                    case "&=" -> KofBinaryOp.AND;
+                                    case "|=" -> KofBinaryOp.OR;
+                                    case "^=" -> KofBinaryOp.XOR;
+                                    default -> KofBinaryOp.ADD;
+                                };
+                                ops.add(new KofBinary(binOp, fieldSym.type()));
+                            }
                             ops.add(new KofStoreField(ownerType, ie.name(), fieldSym.type()));
                             yield localIdx;
                         }
@@ -3353,6 +3404,14 @@ private Target target = Target.JVM;
                         yield localIdx;
                     }
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    String faOp = ae.operator();
+                    if ("+=".equals(faOp) || "-=".equals(faOp) || "*=".equals(faOp)
+                            || "/=".equals(faOp) || "%=".equals(faOp)
+                            || "&=".equals(faOp) || "|=".equals(faOp) || "^=".equals(faOp)) {
+                        ops.add(new KofDup());
+                        ops.add(new KofLoadField(inferExprType(fa.receiver(), locals), fa.fieldName(),
+                                Type.UnknownType.UNKNOWN));
+                    }
                     localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(fa.receiver(), locals);
                     Type fieldType = Type.UnknownType.UNKNOWN;
@@ -3361,11 +3420,26 @@ private Target target = Target.JVM;
                         if (fs != null) fieldType = fs.type();
                         else if (!ct.packageName().isEmpty() && externalClasspath != null
                                 && externalClasspath.knows(ct.internalName())) {
-                            // campo de classe externa: descritor real do classpath
                             String desc = externalClasspath.resolveFieldType(
                                     ct.internalName(), fa.fieldName());
                             if (desc != null) fieldType = ExternalClasspath.typeFromDescriptor(desc);
                         }
+                    }
+                    if ("+=".equals(faOp) || "-=".equals(faOp) || "*=".equals(faOp)
+                            || "/=".equals(faOp) || "%=".equals(faOp)
+                            || "&=".equals(faOp) || "|=".equals(faOp) || "^=".equals(faOp)) {
+                        KofBinaryOp binOp = switch (faOp) {
+                            case "+=" -> KofBinaryOp.ADD;
+                            case "-=" -> KofBinaryOp.SUB;
+                            case "*=" -> KofBinaryOp.MUL;
+                            case "/=" -> KofBinaryOp.DIV;
+                            case "%=" -> KofBinaryOp.MOD;
+                            case "&=" -> KofBinaryOp.AND;
+                            case "|=" -> KofBinaryOp.OR;
+                            case "^=" -> KofBinaryOp.XOR;
+                            default -> KofBinaryOp.ADD;
+                        };
+                        ops.add(new KofBinary(binOp, fieldType));
                     }
                     ops.add(new KofStoreField(recvType, fa.fieldName(), fieldType));
                     yield localIdx;
@@ -3396,6 +3470,24 @@ private Target target = Target.JVM;
                 if (ae.target() instanceof IdentifierExpr ie) {
                     for (int i = locals.size() - 1; i >= 0; i--) {
                         if (locals.get(i).name().equals(ie.name())) {
+                            String op = ae.operator();
+                            if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
+                                    || "/=".equals(op) || "%=".equals(op)
+                                    || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
+                                ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
+                                KofBinaryOp binOp = switch (op) {
+                                    case "+=" -> KofBinaryOp.ADD;
+                                    case "-=" -> KofBinaryOp.SUB;
+                                    case "*=" -> KofBinaryOp.MUL;
+                                    case "/=" -> KofBinaryOp.DIV;
+                                    case "%=" -> KofBinaryOp.MOD;
+                                    case "&=" -> KofBinaryOp.AND;
+                                    case "|=" -> KofBinaryOp.OR;
+                                    case "^=" -> KofBinaryOp.XOR;
+                                    default -> KofBinaryOp.ADD;
+                                };
+                                ops.add(new KofBinary(binOp, locals.get(i).type()));
+                            }
                             emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), locals.get(i).type());
                             ops.add(new KofStoreLocal(locals.get(i).type(), locals.get(i).index()));
                             yield localIdx;

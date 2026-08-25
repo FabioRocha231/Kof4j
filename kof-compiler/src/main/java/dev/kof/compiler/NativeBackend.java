@@ -256,13 +256,22 @@ public class NativeBackend implements Backend {
         for (IRClass clazz : module.classes()) {
             currentClass = clazz;
             for (IRMethod method : clazz.methods()) {
+                if ("main".equals(method.name())) {
+                    mainClass = clazz;
+                    continue;
+                }
                 emitMethod(sb, clazz, method);
             }
-            if (clazz.methods().stream().anyMatch(m -> "main".equals(m.name()))) {
-                mainClass = clazz;
-            }
         }
-        if (mainClass != null) emitStart(sb, mainClass);
+        if (mainClass != null) {
+            currentClass = mainClass;
+            for (IRMethod method : mainClass.methods()) {
+                if ("main".equals(method.name())) {
+                    emitMethod(sb, mainClass, method);
+                }
+            }
+            emitStart(sb, mainClass);
+        }
         String mainClassName = mainClass != null ? mainClass.name() : module.classes().getFirst().name();
         Path asmFile = outputDir.resolve(mainClassName + ".s");
         Path binFile = outputDir.resolve(mainClassName);
@@ -915,9 +924,26 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.INSTANCE && "split".equals(kc.methodName())) {
             sb.append("    popq %rsi\n");
+            sb.append("    movl 16(%rsi), %ecx\n");
+            sb.append("    testl %ecx, %ecx\n");
+            sb.append("    jz .Lkof_split_empty_sep\n");
             sb.append("    movzbl 24(%rsi), %esi\n");
+            sb.append("    jmp .Lkof_split_call\n");
+            sb.append(".Lkof_split_empty_sep:\n");
+            sb.append("    xorl %esi, %esi\n");
+            sb.append(".Lkof_split_call:\n");
             sb.append("    popq %rdi\n");
             sb.append("    call kof_string_split\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_string_to_int".equals(kc.methodName())
+                || "kof_string_to_long".equals(kc.methodName())
+                || "kof_string_to_double".equals(kc.methodName())
+                || "kof_string_to_float".equals(kc.methodName())) {
+            String fn = kc.methodName();
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(fn).append("\n");
             sb.append("    pushq %rax\n");
             return;
         }
@@ -1071,8 +1097,14 @@ public class NativeBackend implements Backend {
     private void emitStart(StringBuilder sb, IRClass clazz) {
         boolean hasMain = clazz.methods().stream().anyMatch(m -> "main".equals(m.name()));
         if (!hasMain) return;
+        boolean mainHasArgs = clazz.methods().stream()
+                .filter(m -> "main".equals(m.name()))
+                .anyMatch(m -> !m.parameterTypes().isEmpty());
         sb.append("\n.globl _start\n");
         sb.append("_start:\n");
+        if (mainHasArgs) {
+            sb.append("    movq (%rsp), %rdi\n");
+        }
         sb.append("    call ").append(sanitizeName(clazz.name())).append("_main\n");
         sb.append("    movq $60, %rax\n");
         sb.append("    xorq %rdi, %rdi\n");

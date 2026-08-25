@@ -1,0 +1,18 @@
+main() {
+    var s = "42"
+    var n = s.toInt()
+    println(n)
+    
+    var parts = "a=b=c".split("=")
+    for (var p in parts) {
+        println(p)
+    }
+    
+    var out = ""
+    var i = 0
+    while (i < 3) {
+        out = out + "x"
+        i = i + 1
+    }
+    println(out)
+}

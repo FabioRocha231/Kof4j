@@ -1,0 +1,6 @@
+record Person(name: String, age: Int) {}
+
+main() {
+    var p = Person("Joao", 30)
+    println(p.name)
+}
