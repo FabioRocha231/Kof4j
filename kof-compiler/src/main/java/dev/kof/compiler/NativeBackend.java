@@ -1159,7 +1159,7 @@ public class NativeBackend implements Backend {
             runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
         }
         Files.deleteIfExists(objFile);
-        Files.deleteIfExists(asmFile);
+        if (System.getenv("KOF_KEEP_ASM") == null) Files.deleteIfExists(asmFile);
         binFile.toFile().setExecutable(true);
     }
 

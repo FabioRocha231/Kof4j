@@ -1359,6 +1359,9 @@ class SemanticAnalyzer {
         if (from instanceof Type.TypeVariable || to instanceof Type.TypeVariable) return true;
         if (from.equals(to)) return true;
         if (from instanceof Type.PrimitiveType fp && to instanceof Type.PrimitiveType tp) {
+            // double → float: o lowering emite D2F; sem isso literais
+            // decimais (1000.0) não atribuem a campos Float
+            if ("double".equals(fp.name()) && "float".equals(tp.name())) return true;
             int fw = primitiveWidth(fp);
             int tw = primitiveWidth(tp);
             return fw <= tw;
@@ -1366,6 +1369,14 @@ class SemanticAnalyzer {
         if (from instanceof Type.FunctionType && to instanceof Type.ClassType) {
             // lambda → interface funcional externa (SAM conversion): a
             // compatibilidade real (aridade/tipos) é validada na emissão
+            return true;
+        }
+        if (from instanceof Type.PrimitiveType fp
+                && "double".equals(fp.name())
+                && to instanceof Type.PrimitiveType tp
+                && "float".equals(tp.name())) {
+            // double → float: o lowering emite D2F; sem isso literais
+            // decimais (1000.0) não atribuem a campos Float
             return true;
         }
         if (to instanceof Type.ClassType) {

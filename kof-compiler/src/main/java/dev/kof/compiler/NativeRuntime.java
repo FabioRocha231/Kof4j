@@ -7872,6 +7872,43 @@ final class NativeRuntime {
             .Lstr_jwt_aud: .ascii "audience mismatch"
             .Lstr_jwt_iat: .ascii "\\"iat\\":"
             .Lstr_jwt_expk: .ascii ",\\"exp\\":"
+            .Laes_sbox:
+                .byte 0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76
+                .byte 0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0
+                .byte 0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15
+                .byte 0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75
+                .byte 0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84
+                .byte 0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf
+                .byte 0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8
+                .byte 0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2
+                .byte 0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73
+                .byte 0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb
+                .byte 0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79
+                .byte 0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08
+                .byte 0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a
+                .byte 0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e
+                .byte 0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf
+                .byte 0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
+            .Laes_sbox_inv:
+                .byte 0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb
+                .byte 0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb
+                .byte 0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc3,0x4e
+                .byte 0x08,0x2e,0xa1,0x66,0x28,0xd9,0x24,0xb2,0x76,0x5b,0xa2,0x49,0x6d,0x8b,0xd1,0x25
+                .byte 0x72,0xf8,0xf6,0x64,0x86,0x68,0x98,0x16,0xd4,0xa4,0x5c,0xcc,0x5d,0x65,0xb6,0x92
+                .byte 0x6c,0x70,0x48,0x50,0xfd,0xed,0xb9,0xda,0x5e,0x15,0x46,0x57,0xa7,0x8d,0x9d,0x84
+                .byte 0x90,0xd8,0xab,0x00,0x8c,0xbc,0xd3,0x0a,0xf7,0xe4,0x58,0x05,0xb8,0xb3,0x45,0x06
+                .byte 0xd0,0x2c,0x1e,0x8f,0xca,0x3f,0x0f,0x02,0xc1,0xaf,0xbd,0x03,0x01,0x13,0x8a,0x6b
+                .byte 0x3a,0x91,0x11,0x41,0x4f,0x67,0xdc,0xea,0x97,0xf2,0xcf,0xce,0xf0,0xb4,0xe6,0x73
+                .byte 0x96,0xac,0x74,0x22,0xe7,0xad,0x35,0x85,0xe2,0xf9,0x37,0xe8,0x1c,0x75,0xdf,0x6e
+                .byte 0x47,0xf1,0x1a,0x71,0x1d,0x29,0xc5,0x89,0x6f,0xb7,0x62,0x0e,0xaa,0x18,0xbe,0x1b
+                .byte 0xfc,0x56,0x3e,0x4b,0xc6,0xd2,0x79,0x20,0x9a,0xdb,0xc0,0xfe,0x78,0xcd,0x5a,0xf4
+                .byte 0x1f,0xdd,0xa8,0x33,0x88,0x07,0xc7,0x31,0xb1,0x12,0x10,0x59,0x27,0x80,0xec,0x5f
+                .byte 0x60,0x51,0x7f,0xa9,0x19,0xb5,0x4a,0x0d,0x2d,0xe5,0x7a,0x9f,0x93,0xc9,0x9c,0xef
+                .byte 0xa0,0xe0,0x3b,0x4d,0xae,0x2a,0xf5,0xb0,0xc8,0xeb,0xbb,0x3c,0x83,0x53,0x99,0x61
+                .byte 0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d
+            .Laes_rcon:
+                .byte 0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36,0x6c,0xd8,0xab,0x4d
+            .Lstr_aesgcm: .ascii "aesgcm$"
             .Lstr_jwt_header: .ascii "{\\"alg\\":\\"HS256\\",\\"typ\\":\\"JWT\\"}"
             .Lsec_pb_prefix: .ascii "pbkdf2$sha256$600000$"
             .Lsec_pb_mid: .ascii "pbkdf2$sha256$"
@@ -10073,6 +10110,1353 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+
+""");
+        sb.append("""
+# ── AES-256 (FIPS 197) ───────────────────────────────────────
+            # kof_aes_xtime(rdi=byte) → byte*2 em GF(2^8)
+            kof_aes_xtime:
+                movzbl %dil, %eax
+                addb %al, %al
+                jnc .Laes_xtime_done
+                xorb $0x1b, %al
+            .Laes_xtime_done:
+                ret
+
+            # kof_aes_mult(rdi=a, rsi=b) → a*b em GF(2^8)
+            kof_aes_mult:
+                pushq %rbx
+                pushq %r12
+                movzbl %dil, %ebx
+                movzbl %sil, %ecx
+                xorl %r12d, %r12d
+            .Laes_mult_loop:
+                testl %ecx, %ecx
+                jz .Laes_mult_done
+                testb $1, %cl
+                jz .Laes_mult_shift
+                xorb %bl, %r12b
+            .Laes_mult_shift:
+                testb $0x80, %bl
+                jz .Laes_mult_shift_ok
+                addb %bl, %bl
+                xorb $0x1b, %bl
+                jmp .Laes_mult_next
+            .Laes_mult_shift_ok:
+                addb %bl, %bl
+            .Laes_mult_next:
+                shrb %cl
+                jmp .Laes_mult_loop
+            .Laes_mult_done:
+                movzbl %r12b, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_aes_subword(rdi=word) → word com os 4 bytes SBOXED
+            kof_aes_subword:
+                pushq %rbx
+                subq $8, %rsp
+                movl %edi, %eax
+                movb %al, 0(%rsp)
+                shrl $8, %eax
+                movb %al, 1(%rsp)
+                shrl $8, %eax
+                movb %al, 2(%rsp)
+                shrl $8, %eax
+                movb %al, 3(%rsp)
+                leaq .Laes_sbox(%rip), %rbx
+                movzbl 0(%rsp), %eax
+                movb (%rbx,%rax), %al
+                movb %al, 0(%rsp)
+                movzbl 1(%rsp), %eax
+                movb (%rbx,%rax), %al
+                movb %al, 1(%rsp)
+                movzbl 2(%rsp), %eax
+                movb (%rbx,%rax), %al
+                movb %al, 2(%rsp)
+                movzbl 3(%rsp), %eax
+                movb (%rbx,%rax), %al
+                movb %al, 3(%rsp)
+                movzbl 0(%rsp), %eax
+                movzbl 1(%rsp), %ecx
+                shlq $8, %rcx
+                orq %rcx, %rax
+                movzbl 2(%rsp), %ecx
+                shlq $16, %rcx
+                orq %rcx, %rax
+                movzbl 3(%rsp), %ecx
+                shlq $24, %rcx
+                orq %rcx, %rax
+                addq $8, %rsp
+                popq %rbx
+                ret
+
+            # kof_aes256_expand_key(rdi=key32, rsi=expanded240)
+            kof_aes256_expand_key:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                xorq %rcx, %rcx
+            .Laes_ek_copy:
+                cmpq $32, %rcx
+                jge .Laes_ek_i
+                movb (%rbx,%rcx), %al
+                movb %al, (%r12,%rcx)
+                incq %rcx
+                jmp .Laes_ek_copy
+            .Laes_ek_i:
+                movq $8, %r14
+            .Laes_ek_i_loop:
+                cmpq $60, %r14
+                jge .Laes_ek_done
+                movl -4(%r12,%r14,4), %r13d   # temp = w[i-1]
+                movq %r14, %rax
+                andq $7, %rax
+                jnz .Laes_ek_mod4
+                movl %r13d, %edi
+                rorl $8, %edi                 # RotWord (LE: b1,b2,b3,b0)
+                call kof_aes_subword
+                movl %eax, %r13d
+                movq %r14, %rax
+                shrq $3, %rax
+                decq %rax
+                leaq .Laes_rcon(%rip), %r15
+                movzbl (%r15,%rax), %eax
+                xorb %al, %r13b
+                jmp .Laes_ek_xor
+            .Laes_ek_mod4:
+                movq %r14, %rax
+                andq $7, %rax
+                cmpq $4, %rax
+                jne .Laes_ek_xor
+                movl %r13d, %edi
+                call kof_aes_subword
+                movl %eax, %r13d
+            .Laes_ek_xor:
+                movl -32(%r12,%r14,4), %eax
+                xorl %r13d, %eax
+                movl %eax, (%r12,%r14,4)
+                incq %r14
+                jmp .Laes_ek_i_loop
+            .Laes_ek_done:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # ShiftRows via scratch: (rdi=state, rsp=scratch16)
+            kof_aes_shiftrows:
+                pushq %rbx
+                subq $16, %rsp
+                movq %rdi, %r8
+                xorq %rcx, %rcx
+            .Laes_sr_copy:
+                cmpq $16, %rcx
+                jge .Laes_sr_build
+                movb (%r8,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Laes_sr_copy
+            .Laes_sr_build:
+                movb 0(%rsp), %al
+                movb %al, (%r8)
+                movb 5(%rsp), %al
+                movb %al, 1(%r8)
+                movb 10(%rsp), %al
+                movb %al, 2(%r8)
+                movb 15(%rsp), %al
+                movb %al, 3(%r8)
+                movb 4(%rsp), %al
+                movb %al, 4(%r8)
+                movb 9(%rsp), %al
+                movb %al, 5(%r8)
+                movb 14(%rsp), %al
+                movb %al, 6(%r8)
+                movb 3(%rsp), %al
+                movb %al, 7(%r8)
+                movb 8(%rsp), %al
+                movb %al, 8(%r8)
+                movb 13(%rsp), %al
+                movb %al, 9(%r8)
+                movb 2(%rsp), %al
+                movb %al, 10(%r8)
+                movb 7(%rsp), %al
+                movb %al, 11(%r8)
+                movb 12(%rsp), %al
+                movb %al, 12(%r8)
+                movb 1(%rsp), %al
+                movb %al, 13(%r8)
+                movb 6(%rsp), %al
+                movb %al, 14(%r8)
+                movb 11(%rsp), %al
+                movb %al, 15(%r8)
+                addq $16, %rsp
+                popq %rbx
+                ret
+
+            # InvShiftRows via scratch: (rdi=state, rsp=scratch16)
+            kof_aes_invshiftrows:
+                pushq %rbx
+                subq $16, %rsp
+                movq %rdi, %r8
+                xorq %rcx, %rcx
+            .Laes_isr_copy:
+                cmpq $16, %rcx
+                jge .Laes_isr_build
+                movb (%r8,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Laes_isr_copy
+            .Laes_isr_build:
+                movb 0(%rsp), %al
+                movb %al, (%r8)
+                movb 13(%rsp), %al
+                movb %al, 1(%r8)
+                movb 10(%rsp), %al
+                movb %al, 2(%r8)
+                movb 7(%rsp), %al
+                movb %al, 3(%r8)
+                movb 4(%rsp), %al
+                movb %al, 4(%r8)
+                movb 1(%rsp), %al
+                movb %al, 5(%r8)
+                movb 14(%rsp), %al
+                movb %al, 6(%r8)
+                movb 11(%rsp), %al
+                movb %al, 7(%r8)
+                movb 8(%rsp), %al
+                movb %al, 8(%r8)
+                movb 5(%rsp), %al
+                movb %al, 9(%r8)
+                movb 2(%rsp), %al
+                movb %al, 10(%r8)
+                movb 15(%rsp), %al
+                movb %al, 11(%r8)
+                movb 12(%rsp), %al
+                movb %al, 12(%r8)
+                movb 9(%rsp), %al
+                movb %al, 13(%r8)
+                movb 6(%rsp), %al
+                movb %al, 14(%r8)
+                movb 3(%rsp), %al
+                movb %al, 15(%r8)
+                addq $16, %rsp
+                popq %rbx
+                ret
+
+            # MixColumns: (rdi=state)
+            kof_aes_mixcolumns:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %r12
+                xorq %r15, %r15
+            .Laes_mc_col:
+                cmpq $4, %r15
+                jge .Laes_mc_done
+                leaq (%r12,%r15,4), %r10
+                movzbl 0(%r10), %eax
+                movzbl 1(%r10), %ecx
+                movzbl 2(%r10), %edx
+                movzbl 3(%r10), %esi
+                movl %eax, %r8d
+                xorl %ecx, %r8d
+                xorl %edx, %r8d
+                xorl %esi, %r8d           # t
+                movzbl %al, %edi
+                xorb %cl, %dil
+                addb %dil, %dil
+                jnc .Laes_m0
+                xorb $0x1b, %dil
+            .Laes_m0:
+                xorl %r8d, %edi
+                xorb %dil, 0(%r10)
+                movzbl %cl, %edi
+                xorb %dl, %dil
+                addb %dil, %dil
+                jnc .Laes_m1
+                xorb $0x1b, %dil
+            .Laes_m1:
+                xorl %r8d, %edi
+                xorb %dil, 1(%r10)
+                movzbl %dl, %edi
+                xorb %sil, %dil
+                addb %dil, %dil
+                jnc .Laes_m2
+                xorb $0x1b, %dil
+            .Laes_m2:
+                xorl %r8d, %edi
+                xorb %dil, 2(%r10)
+                movzbl %sil, %edi
+                xorb %al, %dil
+                addb %dil, %dil
+                jnc .Laes_m3
+                xorb $0x1b, %dil
+            .Laes_m3:
+                xorl %r8d, %edi
+                xorb %dil, 3(%r10)
+                incq %r15
+                jmp .Laes_mc_col
+            .Laes_mc_done:
+                popq %r12
+                popq %rbx
+                ret
+
+            # InvMixColumns: (rdi=state) — mult(0e,·)^mult(0b,·)^mult(0d,·)^mult(09,·)
+            kof_aes_invmixcolumns:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %r12
+                xorq %r15, %r15
+            .Laes_imc_col:
+                cmpq $4, %r15
+                jge .Laes_imc_done
+                leaq (%r12,%r15,4), %r10
+                subq $16, %rsp
+                movzbl 0(%r10), %eax
+                movzbl 1(%r10), %ecx
+                movzbl 2(%r10), %edx
+                movzbl 3(%r10), %esi
+                movb %al, 0(%rsp)
+                movb %cl, 1(%rsp)
+                movb %dl, 2(%rsp)
+                movb %sil, 3(%rsp)
+                # n0 = mult(0e,a0) ^ mult(0b,a1) ^ mult(0d,a2) ^ mult(09,a3)
+                movzbl 0(%rsp), %edi
+                movl $14, %esi
+                call kof_aes_mult
+                movzbl %al, %r13d
+                movzbl 1(%rsp), %edi
+                movl $11, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 2(%rsp), %edi
+                movl $13, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 3(%rsp), %edi
+                movl $9, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movb %r13b, 0(%r10)
+                # n1 = mult(09,a0) ^ mult(0e,a1) ^ mult(0b,a2) ^ mult(0d,a3)
+                movzbl 0(%rsp), %edi
+                movl $9, %esi
+                call kof_aes_mult
+                movzbl %al, %r13d
+                movzbl 1(%rsp), %edi
+                movl $14, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 2(%rsp), %edi
+                movl $11, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 3(%rsp), %edi
+                movl $13, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movb %r13b, 1(%r10)
+                # n2 = mult(0d,a0) ^ mult(09,a1) ^ mult(0e,a2) ^ mult(0b,a3)
+                movzbl 0(%rsp), %edi
+                movl $13, %esi
+                call kof_aes_mult
+                movzbl %al, %r13d
+                movzbl 1(%rsp), %edi
+                movl $9, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 2(%rsp), %edi
+                movl $14, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 3(%rsp), %edi
+                movl $11, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movb %r13b, 2(%r10)
+                # n3 = mult(0b,a0) ^ mult(0d,a1) ^ mult(09,a2) ^ mult(0e,a3)
+                movzbl 0(%rsp), %edi
+                movl $11, %esi
+                call kof_aes_mult
+                movzbl %al, %r13d
+                movzbl 1(%rsp), %edi
+                movl $13, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 2(%rsp), %edi
+                movl $9, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movzbl 3(%rsp), %edi
+                movl $14, %esi
+                call kof_aes_mult
+                xorl %eax, %r13d
+                movb %r13b, 3(%r10)
+                addq $16, %rsp
+                incq %r15
+                jmp .Laes_imc_col
+            .Laes_imc_done:
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_aes256_encrypt_block(rdi=state16, rsi=expanded240)
+            kof_aes256_encrypt_block:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $64, %rsp
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                xorq %rcx, %rcx
+            .Laes_en_ark0:
+                cmpq $16, %rcx
+                jge .Laes_en_round
+                movzbl (%rbx,%rcx), %eax
+                xorb (%r12,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_en_ark0
+            .Laes_en_round:
+                movq $1, %r13
+            .Laes_en_round_loop:
+                cmpq $14, %r13
+                jge .Laes_en_last
+                leaq .Laes_sbox(%rip), %r14
+                xorq %rcx, %rcx
+            .Laes_en_sub:
+                cmpq $16, %rcx
+                jge .Laes_en_shift
+                movzbl (%rbx,%rcx), %eax
+                movb (%r14,%rax), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_en_sub
+            .Laes_en_shift:
+                movq %rbx, %rdi
+                call kof_aes_shiftrows
+                movq %rbx, %rdi
+                call kof_aes_mixcolumns
+                movq %r13, %rax
+                shlq $4, %rax
+                leaq (%r12,%rax), %rsi
+                xorq %rcx, %rcx
+            .Laes_en_ark:
+                cmpq $16, %rcx
+                jge .Laes_en_next
+                movzbl (%rbx,%rcx), %eax
+                xorb (%rsi,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_en_ark
+            .Laes_en_next:
+                incq %r13
+                jmp .Laes_en_round_loop
+            .Laes_en_last:
+                leaq .Laes_sbox(%rip), %r14
+                xorq %rcx, %rcx
+            .Laes_en_lsub:
+                cmpq $16, %rcx
+                jge .Laes_en_lshift
+                movzbl (%rbx,%rcx), %eax
+                movb (%r14,%rax), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_en_lsub
+            .Laes_en_lshift:
+                movq %rbx, %rdi
+                call kof_aes_shiftrows
+                leaq 224(%r12), %rsi
+                xorq %rcx, %rcx
+            .Laes_en_lark:
+                cmpq $16, %rcx
+                jge .Laes_en_done
+                movzbl (%rbx,%rcx), %eax
+                xorb (%rsi,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_en_lark
+            .Laes_en_done:
+                addq $64, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_aes256_decrypt_block(rdi=state16, rsi=expanded240)
+            kof_aes256_decrypt_block:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $64, %rsp
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                leaq 224(%r12), %rsi
+                xorq %rcx, %rcx
+            .Laes_de_ark14:
+                cmpq $16, %rcx
+                jge .Laes_de_round
+                movzbl (%rbx,%rcx), %eax
+                xorb (%rsi,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_de_ark14
+            .Laes_de_round:
+                movq $13, %r13
+            .Laes_de_round_loop:
+                cmpq $0, %r13
+                jle .Laes_de_last
+                movq %rbx, %rdi
+                call kof_aes_invshiftrows
+                leaq .Laes_sbox_inv(%rip), %r14
+                xorq %rcx, %rcx
+            .Laes_de_isub:
+                cmpq $16, %rcx
+                jge .Laes_de_ark
+                movzbl (%rbx,%rcx), %eax
+                movb (%r14,%rax), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_de_isub
+            .Laes_de_ark:
+                movq %r13, %rax
+                shlq $4, %rax
+                leaq (%r12,%rax), %rsi
+                xorq %rcx, %rcx
+            .Laes_de_arkn:
+                cmpq $16, %rcx
+                jge .Laes_de_imix
+                movzbl (%rbx,%rcx), %eax
+                xorb (%rsi,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_de_arkn
+            .Laes_de_imix:
+                movq %rbx, %rdi
+                call kof_aes_invmixcolumns
+                decq %r13
+                jmp .Laes_de_round_loop
+            .Laes_de_last:
+                movq %rbx, %rdi
+                call kof_aes_invshiftrows
+                leaq .Laes_sbox_inv(%rip), %r14
+                xorq %rcx, %rcx
+            .Laes_de_lsub:
+                cmpq $16, %rcx
+                jge .Laes_de_lark
+                movzbl (%rbx,%rcx), %eax
+                movb (%r14,%rax), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_de_lsub
+            .Laes_de_lark:
+                xorq %rcx, %rcx
+            .Laes_de_larkn:
+                cmpq $16, %rcx
+                jge .Laes_de_done
+                movzbl (%rbx,%rcx), %eax
+                xorb (%r12,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Laes_de_larkn
+            .Laes_de_done:
+                addq $64, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+# kof_sec_hex_decode(rdi=hex_kstr) → KofString* com os bytes (metade do len)
+            kof_sec_hex_decode:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                movl %r12d, %eax
+                shrl $1, %eax
+                movl %eax, %r13d
+                leaq 25(%rax), %rdi
+                call kof_alloc
+                movq %rax, %r14
+                movl $1, 0(%r14)
+                movl $0, 4(%r14)
+                movq $0, 8(%r14)
+                movl %r13d, 16(%r14)
+                movl $0, 20(%r14)
+                xorq %rcx, %rcx          # i (hex chars)
+                xorq %r15, %r15          # out bytes
+            .Lhexd_loop:
+                cmpl %r12d, %ecx
+                jge .Lhexd_done
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $97, %al            # 'a'
+                jb .Lhexd_upper
+                subb $87, %al            # a-f -> 10-15
+                jmp .Lhexd_got
+            .Lhexd_upper:
+                cmpb $65, %al
+                jb .Lhexd_digit
+                subb $55, %al            # A-F -> 10-15
+                jmp .Lhexd_got
+            .Lhexd_digit:
+                subb $48, %al
+            .Lhexd_got:
+                shll $4, %eax
+                movzbl 25(%rbx,%rcx), %edx
+                cmpb $97, %dl
+                jb .Lhexd_upper2
+                subb $87, %dl
+                jmp .Lhexd_got2
+            .Lhexd_upper2:
+                cmpb $65, %dl
+                jb .Lhexd_digit2
+                subb $55, %dl
+                jmp .Lhexd_got2
+            .Lhexd_digit2:
+                subb $48, %dl
+            .Lhexd_got2:
+                orl %edx, %eax
+                movb %al, 24(%r14,%r15)
+                incq %r15
+                addq $2, %rcx
+                jmp .Lhexd_loop
+            .Lhexd_done:
+                movb $0, 24(%r14,%r15)
+                movq %r14, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+""");
+        sb.append("""
+            # ── GCM (NIST SP 800-38D) ────────────────────────────────────
+            # kof_gcm_mul(rdi=X[16], rsi=H[16], rdx=out[16])
+            # multiplicacao em GF(2^128), polinomio x^128+x^7+x^2+x+1
+            kof_gcm_mul:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # X
+                movq %rsi, %r12          # H
+                movq %rdx, %r13          # out
+                subq $64, %rsp           # Z 0..15, V 16..31
+                xorq %rcx, %rcx
+            .Lgcm_z0:
+                cmpq $16, %rcx
+                jge .Lgcm_vcopy
+                movb $0, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lgcm_z0
+            .Lgcm_vcopy:
+                xorq %rcx, %rcx
+            .Lgcm_vcopy_l:
+                cmpq $16, %rcx
+                jge .Lgcm_bit
+                movb (%r12,%rcx), %al
+                movb %al, 16(%rsp,%rcx)
+                incq %rcx
+                jmp .Lgcm_vcopy_l
+            .Lgcm_bit:
+                xorq %r14, %r14          # bit index (0..127)
+            .Lgcm_bit_loop:
+                cmpq $128, %r14
+                jge .Lgcm_done
+                # bit (127 - r14) de X: byte = r14/8, bit = 7 - (r14%8)
+                movq %r14, %rax
+                xorq %rdx, %rdx
+                movq $8, %rcx
+                divq %rcx                 # rax = byte, rdx = bit
+                movzbl (%rbx,%rax), %ecx
+                movq %rdx, %r15
+                movb $0x80, %dl
+                movq %r15, %r8
+            .Lgcm_shl:
+                testq %r8, %r8
+                jz .Lgcm_shl_done
+                shrb %dl
+                decq %r8
+                jmp .Lgcm_shl
+            .Lgcm_shl_done:
+                testb %dl, %cl
+                jz .Lgcm_vshift
+                # Z ^= V
+                xorq %rcx, %rcx
+            .Lgcm_zxor:
+                cmpq $16, %rcx
+                jge .Lgcm_vshift
+                movb (%rsp,%rcx), %al
+                xorb 16(%rsp,%rcx), %al
+                movb %al, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lgcm_zxor
+            .Lgcm_vshift:
+                # if V & 1: V = (V >> 1) ^ 0xE1 (byte 15)
+                movb 31(%rsp), %al
+                testb $1, %al
+                jz .Lgcm_vshift_plain
+                xorq %rcx, %rcx
+            .Lgcm_vshift_x:
+                movq $15, %rcx
+            .Lgcm_vshift_x_loop:
+                cmpq $1, %rcx
+                jl .Lgcm_vshift_x0
+                movzbl 16(%rsp,%rcx), %eax
+                shrb %al
+                movb 15(%rsp,%rcx), %dl
+                testb $1, %dl
+                jz .Lgcm_vshift_x_write
+                orb $0x80, %al
+            .Lgcm_vshift_x_write:
+                movb %al, 16(%rsp,%rcx)
+                decq %rcx
+                jmp .Lgcm_vshift_x_loop
+            .Lgcm_vshift_x0:
+                movzbl 16(%rsp), %eax
+                shrb %al
+                movb %al, 16(%rsp)
+            .Lgcm_vshift_reduce:
+                movb 16(%rsp), %al
+                xorb $0xe1, %al
+                movb %al, 16(%rsp)
+                jmp .Lgcm_vshift_done
+            .Lgcm_vshift_plain:
+                movq $15, %rcx
+            .Lgcm_vshift_p:
+                cmpq $1, %rcx
+                jl .Lgcm_vshift_p0
+                movzbl 16(%rsp,%rcx), %eax
+                shrb %al
+                movb 15(%rsp,%rcx), %dl
+                testb $1, %dl
+                jz .Lgcm_vshift_p_write
+                orb $0x80, %al
+            .Lgcm_vshift_p_write:
+                movb %al, 16(%rsp,%rcx)
+                decq %rcx
+                jmp .Lgcm_vshift_p
+            .Lgcm_vshift_p0:
+                movzbl 16(%rsp), %eax
+                shrb %al
+                movb %al, 16(%rsp)
+            .Lgcm_vshift_done:
+                incq %r14
+                jmp .Lgcm_bit_loop
+            .Lgcm_done:
+                # out = Z
+                xorq %rcx, %rcx
+            .Lgcm_out:
+                cmpq $16, %rcx
+                jge .Lgcm_ret
+                movb (%rsp,%rcx), %al
+                movb %al, (%r13,%rcx)
+                incq %rcx
+                jmp .Lgcm_out
+            .Lgcm_ret:
+                addq $64, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_gcm_hash(rdi=out16, rsi=data, rdx=len, rcx=H16)
+            # GHASH: Y = 0; para cada bloco de 16: X = Y^bloco; Y = mul(X,H)
+            kof_gcm_hash:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # out
+                movq %rsi, %r12          # data
+                movq %rdx, %r13          # len
+                movq %rcx, %r14          # H
+                subq $80, %rsp           # Y 0..15, bloco 16..31
+                xorq %rcx, %rcx
+            .Lgch_y0:
+                cmpq $16, %rcx
+                jge .Lgch_blocks
+                movb $0, (%rsp,%rcx)
+                incq %rcx
+                jmp .Lgch_y0
+            .Lgch_blocks:
+                xorq %r15, %r15
+            .Lgch_blocks2:
+                cmpq %r13, %r15
+                jge .Lgch_done
+                # X = Y ^ bloco
+                xorq %rcx, %rcx
+            .Lgch_x:
+                cmpq $16, %rcx
+                jge .Lgch_mul
+                movzbl (%rsp,%rcx), %eax
+                movzbl 0(%r12,%r15), %edx
+                xorb %dl, %al
+                movb %al, 16(%rsp,%rcx)
+                incq %rcx
+                jmp .Lgch_x
+            .Lgch_mul:
+                leaq 16(%rsp), %rdi
+                movq %r14, %rsi
+                movq %rsp, %rdx
+                call kof_gcm_mul
+                addq $16, %r15
+                jmp .Lgch_blocks2
+            .Lgch_done:
+                xorq %rcx, %rcx
+            .Lgch_out:
+                cmpq $16, %rcx
+                jge .Lgch_ret
+                movb (%rsp,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Lgch_out
+            .Lgch_ret:
+                addq $80, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_gcm_finish(rdi=S16, rsi=aad_bits, rdx=ct_bits, rcx=H16)
+            # S = GHASH(S || aad_len || ct_len)
+            kof_gcm_finish:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # S
+                movq %rsi, %r12          # aad bits
+                movq %rdx, %r13          # ct bits
+                movq %rcx, %r14          # H
+                subq $64, %rsp           # bloco 0..15, Y 16..31
+                movq %r12, %rax
+                bswapq %rax
+                movq %rax, 0(%rsp)
+                movq %r13, %rax
+                bswapq %rax
+                movq %rax, 8(%rsp)
+                xorq %rcx, %rcx
+            .Lgcf_x:
+                cmpq $16, %rcx
+                jge .Lgcf_mul
+                movzbl (%rbx,%rcx), %eax
+                xorb 0(%rsp,%rcx), %al
+                movb %al, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Lgcf_x
+            .Lgcf_mul:
+                movq %rsp, %rdi
+                movq %r14, %rsi
+                leaq 16(%rsp), %rdx
+                call kof_gcm_mul
+                xorq %rcx, %rcx
+            .Lgcf_out:
+                cmpq $16, %rcx
+                jge .Lgcf_ret
+                movb 16(%rsp,%rcx), %al
+                movb %al, (%rbx,%rcx)
+                incq %rcx
+                jmp .Lgcf_out
+            .Lgcf_ret:
+                addq $64, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+""");
+        sb.append("""
+# kof_sec_aesgcm_encrypt(rdi=plaintext, rsi=keyHex) → "aesgcm$iv$ct"
+            .globl kof_sec_aesgcm_encrypt
+            .type kof_sec_aesgcm_encrypt, @function
+            kof_sec_aesgcm_encrypt:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # plaintext
+                movq %rsi, %r12          # keyHex
+                subq $1500, %rsp
+                # key bytes
+                movq %r12, %rdi
+                call kof_sec_hex_decode
+                movq %rax, %r13
+                cmpl $32, 16(%r13)
+                jne .Laesgcm_badkey
+                xorq %rcx, %rcx
+            .Laesgcm_keycp:
+                cmpq $32, %rcx
+                jge .Laesgcm_expand
+                movb 24(%r13,%rcx), %al
+                movb %al, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_keycp
+            .Laesgcm_expand:
+                leaq 0(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_expand_key
+                # H = AES(0^128) → 272
+                xorq %rcx, %rcx
+            .Laesgcm_h0:
+                cmpq $16, %rcx
+                jge .Laesgcm_h_enc
+                movb $0, 272(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_h0
+            .Laesgcm_h_enc:
+                leaq 272(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_encrypt_block
+                # iv = random 12 → 288
+                leaq 288(%rsp), %rdi
+                movq $12, %rsi
+                call kof_sec_random_bytes
+                # J0 = iv || 00000001 → 300
+                xorq %rcx, %rcx
+            .Laesgcm_j0:
+                cmpq $12, %rcx
+                jge .Laesgcm_j0done
+                movb 288(%rsp,%rcx), %al
+                movb %al, 300(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_j0
+            .Laesgcm_j0done:
+                movb $0, 312(%rsp)
+                movb $0, 313(%rsp)
+                movb $0, 314(%rsp)
+                movb $1, 315(%rsp)
+                # counter = J0
+                xorq %rcx, %rcx
+            .Laesgcm_ctr_init:
+                xorq %rcx, %rcx
+            .Laesgcm_ctr_init_l:
+                cmpq $16, %rcx
+                jge .Laesgcm_ctr_ready
+                movb 300(%rsp,%rcx), %al
+                movb %al, 316(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_ctr_init_l
+            .Laesgcm_ctr_ready:
+                xorq %r14, %r14
+            .Laesgcm_ctr_loop:
+                movl 16(%rbx), %r13d
+                cmpl %r13d, %r14d
+                jge .Laesgcm_ctr_done
+                movl 328(%rsp), %eax
+                bswapl %eax
+                incl %eax
+                bswapl %eax
+                movl %eax, 328(%rsp)
+                xorq %rcx, %rcx
+            .Laesgcm_kscopy:
+                cmpq $16, %rcx
+                jge .Laesgcm_ksenc
+                movb 316(%rsp,%rcx), %al
+                movb %al, 364(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_kscopy
+            .Laesgcm_ksenc:
+                leaq 364(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_encrypt_block
+                movl %r13d, %eax
+                subl %r14d, %eax
+                cmpl $16, %eax
+                jl .Laesgcm_partial
+                movl $16, %eax
+            .Laesgcm_partial:
+                xorq %rcx, %rcx
+            .Laesgcm_xor:
+                cmpl %eax, %ecx
+                jge .Laesgcm_ctr_next
+                movzbl 24(%rbx,%r14), %edx
+                xorb 364(%rsp,%rcx), %dl
+                movb %dl, 348(%rsp,%r14)
+                incq %rcx
+                incq %r14
+                jmp .Laesgcm_xor
+            .Laesgcm_ctr_next:
+                jmp .Laesgcm_ctr_loop
+            .Laesgcm_ctr_done:
+                # GHASH(C)
+                leaq 860(%rsp), %rdi
+                leaq 348(%rsp), %rsi
+                movslq %r13d, %rdx
+                leaq 272(%rsp), %rcx
+                call kof_gcm_hash
+                movl %r13d, %eax
+                shll $3, %eax
+                movslq %eax, %rdx
+                xorl %esi, %esi
+                leaq 272(%rsp), %rcx
+                leaq 860(%rsp), %rdi
+                call kof_gcm_finish
+                # tag = AES(J0) ^ S → 876
+                leaq 300(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_encrypt_block
+                xorq %rcx, %rcx
+            .Laesgcm_tag:
+                cmpq $16, %rcx
+                jge .Laesgcm_tagcp
+                movzbl 860(%rsp,%rcx), %eax
+                xorb 300(%rsp,%rcx), %al
+                movb %al, 876(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_tag
+            .Laesgcm_tagcp:
+                movl %r13d, %eax
+                leaq 348(%rsp,%rax), %rdi
+                leaq 876(%rsp), %rsi
+                movq $16, %rcx
+            .Laesgcm_tc:
+                testq %rcx, %rcx
+                jz .Laesgcm_enc
+                movb (%rsi), %al
+                movb %al, (%rdi)
+                incq %rsi
+                incq %rdi
+                decq %rcx
+                jmp .Laesgcm_tc
+            .Laesgcm_enc:
+                leaq 920(%rsp), %rdi
+                leaq 288(%rsp), %rsi
+                movq $12, %rdx
+                call kof_b64_encode_internal
+                movq %rax, %r14          # iv b64 len (16)
+                leaq 940(%rsp), %rdi
+                leaq 348(%rsp), %rsi
+                movl %r13d, %eax
+                addl $16, %eax
+                cltq
+                movq %rax, %rdx
+                call kof_b64_encode_internal
+                movq %rax, %r15          # ct b64 len
+                # total = 7 + 16 + 1 + ctb64
+                leaq 7(%r14,%r15), %rax
+                movl %eax, %r13d
+                leaq 25(%rax), %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r13d, 16(%rbx)
+                movl $0, 20(%rbx)
+                leaq .Lstr_aesgcm(%rip), %rsi
+                movq $7, %rcx
+                xorq %r8, %r8
+            .Laesgcm_pfx:
+                testq %rcx, %rcx
+                jz .Laesgcm_iv
+                movb (%rsi), %al
+                movb %al, 24(%rbx,%r8)
+                incq %rsi
+                incq %r8
+                decq %rcx
+                jmp .Laesgcm_pfx
+            .Laesgcm_iv:
+                xorq %rcx, %rcx
+            .Laesgcm_ivcp:
+                cmpq %r14, %rcx
+                jge .Laesgcm_dollar
+                movb 920(%rsp,%rcx), %al
+                movb %al, 24(%rbx,%r8)
+                incq %r8
+                incq %rcx
+                jmp .Laesgcm_ivcp
+            .Laesgcm_dollar:
+                movb $36, 24(%rbx,%r8)
+                incq %r8
+                xorq %rcx, %rcx
+            .Laesgcm_ctcp:
+                cmpq %r15, %rcx
+                jge .Laesgcm_nul
+                movb 940(%rsp,%rcx), %al
+                movb %al, 24(%rbx,%r8)
+                incq %r8
+                incq %rcx
+                jmp .Laesgcm_ctcp
+            .Laesgcm_nul:
+                movb $0, 24(%rbx,%r8)
+                movq %rbx, %rax
+                addq $1500, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Laesgcm_badkey:
+                leaq .Lstr_jwt_invalid(%rip), %rdi
+                movq $13, %rsi
+                call kof_jwt_fail
+
+            # kof_sec_aesgcm_decrypt(rdi=ciphertext, rsi=keyHex) → plaintext
+            .globl kof_sec_aesgcm_decrypt
+            .type kof_sec_aesgcm_decrypt, @function
+            kof_sec_aesgcm_decrypt:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx          # ciphertext (KofString)
+                movq %rsi, %r12          # keyHex
+                subq $1500, %rsp
+                # key bytes
+                movq %r12, %rdi
+                call kof_sec_hex_decode
+                movq %rax, %r13
+                cmpl $32, 16(%r13)
+                jne .Laesgcm_badkey
+                xorq %rcx, %rcx
+            .Laesgcm_dkey:
+                cmpq $32, %rcx
+                jge .Laesgcm_dexpand
+                movb 24(%r13,%rcx), %al
+                movb %al, 0(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dkey
+            .Laesgcm_dexpand:
+                leaq 0(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_expand_key
+                xorq %rcx, %rcx
+            .Laesgcm_dh0:
+                cmpq $16, %rcx
+                jge .Laesgcm_dh_enc
+                movb $0, 272(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dh0
+            .Laesgcm_dh_enc:
+                leaq 272(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_encrypt_block
+                # parse "aesgcm$iv$ct"
+                movl 16(%rbx), %eax
+                cmpl $20, %eax
+                jl .Laesgcm_badct
+                leaq 24(%rbx), %r8
+                cmpb $97, (%r8)
+                jne .Laesgcm_badct
+                cmpb $36, 6(%r8)
+                jne .Laesgcm_badct
+                # iv b64: 7..dollar2
+                leaq 7(%r8), %r9          # iv start
+                xorq %r10, %r10           # iv b64 len
+            .Laesgcm_div:
+                cmpq %rax, %r10
+                jge .Laesgcm_badct
+                cmpb $36, 0(%r9,%r10)
+                je .Laesgcm_divdone
+                incq %r10
+                jmp .Laesgcm_div
+            .Laesgcm_divdone:
+                # decode iv → 288 (r9/r10 sao clobbered pelo decode)
+                movq %r9, %r15
+                movq %r10, %r13
+                leaq 288(%rsp), %rdi
+                movq %r15, %rsi
+                movq %r13, %rdx
+                call kof_b64_decode_internal
+                cmpq $12, %rax
+                jne .Laesgcm_badct
+                # ct b64: apos o $ → 940
+                leaq 1(%r15,%r13), %rsi
+                movq %rsi, %r9
+                movl 16(%rbx), %eax
+                leaq 24(%rbx), %rcx
+                addq %rcx, %rax
+                subq %r9, %rax            # ct b64 len
+                leaq 940(%rsp), %rdi
+                movq %r9, %rsi
+                movq %rax, %rdx
+                call kof_b64_decode_internal
+                movq %rax, %r13           # ct bytes (ct + tag)
+                movl %r13d, %r14d
+                subl $16, %r14d           # ct sem a tag
+                cmpl $1, %r14d
+                jl .Laesgcm_badct
+                # J0 = iv || 1
+                xorq %rcx, %rcx
+            .Laesgcm_dj0:
+                cmpq $12, %rcx
+                jge .Laesgcm_dj0done
+                movb 288(%rsp,%rcx), %al
+                movb %al, 300(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dj0
+            .Laesgcm_dj0done:
+                movb $0, 312(%rsp)
+                movb $0, 313(%rsp)
+                movb $0, 314(%rsp)
+                movb $1, 315(%rsp)
+                # CTR decrypt (ct em 940, plain em 348)
+                xorq %rcx, %rcx
+            .Laesgcm_dctr_init:
+                xorq %rcx, %rcx
+            .Laesgcm_dctr_init_l:
+                cmpq $16, %rcx
+                jge .Laesgcm_dctr_ready
+                movb 300(%rsp,%rcx), %al
+                movb %al, 316(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dctr_init_l
+            .Laesgcm_dctr_ready:
+                xorq %r15, %r15
+            .Laesgcm_dctr_loop:
+                cmpl %r14d, %r15d
+                
+cmpl %r14d, %r15d
+                jge .Laesgcm_dctr_done
+                movl 328(%rsp), %eax
+                bswapl %eax
+                incl %eax
+                bswapl %eax
+                movl %eax, 328(%rsp)
+                xorq %rcx, %rcx
+            .Laesgcm_dkscopy:
+                cmpq $16, %rcx
+                jge .Laesgcm_dksenc
+                movb 316(%rsp,%rcx), %al
+                movb %al, 364(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dkscopy
+            .Laesgcm_dksenc:
+                leaq 364(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_encrypt_block
+                movl %r14d, %eax
+                subl %r15d, %eax
+                cmpl $16, %eax
+                jl .Laesgcm_dpartial
+                movl $16, %eax
+            .Laesgcm_dpartial:
+                xorq %rcx, %rcx
+            .Laesgcm_dxor:
+                cmpl %eax, %ecx
+                jge .Laesgcm_dctr_next
+                movzbl 940(%rsp,%r15), %edx
+                xorb 364(%rsp,%rcx), %dl
+                movb %dl, 348(%rsp,%r15)
+                incq %rcx
+                incq %r15
+                jmp .Laesgcm_dxor
+            .Laesgcm_dctr_next:
+                jmp .Laesgcm_dctr_loop
+            .Laesgcm_dctr_done:
+                # GHASH(C sem tag)
+                leaq 860(%rsp), %rdi
+                leaq 940(%rsp), %rsi
+                movslq %r14d, %rdx
+                leaq 272(%rsp), %rcx
+                call kof_gcm_hash
+                movl %r14d, %eax
+                shll $3, %eax
+                movslq %eax, %rdx
+                xorl %esi, %esi
+                leaq 272(%rsp), %rcx
+                leaq 860(%rsp), %rdi
+                call kof_gcm_finish
+                leaq 300(%rsp), %rdi
+                leaq 32(%rsp), %rsi
+                call kof_aes256_encrypt_block
+                # tag esperada = AES(J0) ^ S → 876
+                xorq %rcx, %rcx
+            .Laesgcm_dtag:
+                cmpq $16, %rcx
+                jge .Laesgcm_dtagcmp
+                movzbl 860(%rsp,%rcx), %eax
+                xorb 300(%rsp,%rcx), %al
+                movb %al, 876(%rsp,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dtag
+            .Laesgcm_dtagcmp:
+                # compare com a tag do input (940 + ct_len)
+                movl %r14d, %eax
+                leaq 940(%rsp,%rax), %rsi
+                xorq %rcx, %rcx
+                xorl %r11d, %r11d
+            .Laesgcm_dcmp:
+                cmpq $16, %rcx
+                jge .Laesgcm_dcmpdone
+                movzbl 876(%rsp,%rcx), %eax
+                movzbl (%rsi,%rcx), %edx
+                xorl %edx, %eax
+                orl %eax, %r11d
+                incq %rcx
+                jmp .Laesgcm_dcmp
+            .Laesgcm_dcmpdone:
+                testl %r11d, %r11d
+                jnz .Laesgcm_badct
+                # resultado: plaintext (348, len r14d)
+                movl %r14d, %eax
+                leaq 25(%rax), %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r14d, 16(%rbx)
+                movl $0, 20(%rbx)
+                xorq %rcx, %rcx
+            .Laesgcm_dout:
+                cmpl %r14d, %ecx
+                jge .Laesgcm_doutdone
+                movb 348(%rsp,%rcx), %al
+                movb %al, 24(%rbx,%rcx)
+                incq %rcx
+                jmp .Laesgcm_dout
+            .Laesgcm_doutdone:
+                movb $0, 24(%rbx,%r14)
+                movq %rbx, %rax
+                addq $1500, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Laesgcm_badct:
+                leaq .Lstr_jwt_invalid(%rip), %rdi
+                movq $13, %rsi
+                call kof_jwt_fail
 
             # kof_sec_constant_time_equals(rdi=a, rsi=b) → 1/0
             .globl kof_sec_constant_time_equals

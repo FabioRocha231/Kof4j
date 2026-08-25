@@ -1205,14 +1205,35 @@ private Target target = Target.JVM;
 
     private IRMethod lowerFunctionInner(FunctionDeclarationNode func) {
         Type returnType = resolveWithTypeParams(func.returnType(), func.typeParameters());
-        if (Type.isVoid(returnType) && func.body().size() == 1 && func.body().getFirst() instanceof ReturnStmt ret && ret.value() != null) {
+        if (Type.isVoid(returnType)) {
+            // inferência de retorno: percorre o corpo acumulando locais
+            // (params + var decls) até achar um ReturnStmt com valor
             List<IRLocalVariable> tmpLocals = new ArrayList<>();
             int tmpIdx = 0;
             for (FormalParameterNode p : func.parameters()) {
-                tmpLocals.add(new IRLocalVariable(tmpIdx, p.name(), resolveWithTypeParams(p.type(), func.typeParameters())));
-                tmpIdx++;
+                Type pt = resolveWithTypeParams(p.type(), func.typeParameters());
+                tmpLocals.add(new IRLocalVariable(tmpIdx, p.name(), pt));
+                tmpIdx += isDoubleWidth(pt) ? 2 : 1;
             }
-            returnType = inferExprType(ret.value(), tmpLocals);
+            for (StatementNode stmt : func.body()) {
+                if (stmt instanceof VarDeclStmt vds && vds.initializer() != null) {
+                    Type vt = vds.type() != null && !"var".equals(vds.type())
+                            ? toType(vds.type())
+                            : inferExprType(vds.initializer(), tmpLocals);
+                    tmpLocals.add(new IRLocalVariable(tmpIdx, vds.name(), vt));
+                    tmpIdx += isDoubleWidth(vt) ? 2 : 1;
+                }
+                if (stmt instanceof ReturnStmt ret && ret.value() != null) {
+                    Type inferred = inferExprType(ret.value(), tmpLocals);
+                    if (!(inferred instanceof Type.UnknownType) && !Type.isVoid(inferred)) {
+                        returnType = inferred;
+                    }
+                    break;
+                }
+                if (stmt instanceof ExpressionStmt es && es.expression() instanceof MethodCallExpr) {
+                    break; // void call termina a busca
+                }
+            }
         }
         List<Type> paramTypes = func.parameters().stream()
                 .map(p -> resolveWithTypeParams(p.type(), func.typeParameters())).toList();
@@ -1255,8 +1276,9 @@ private Target target = Target.JVM;
             localIdx = 1;
         }
         for (FormalParameterNode p : func.parameters()) {
-            locals.add(new IRLocalVariable(localIdx, p.name(), resolveWithTypeParams(p.type(), func.typeParameters())));
-            localIdx++;
+            Type paramType = resolveWithTypeParams(p.type(), func.typeParameters());
+            locals.add(new IRLocalVariable(localIdx, p.name(), paramType));
+            localIdx += isDoubleWidth(paramType) ? 2 : 1;
         }
         java.util.Set<String> savedMutated = mutatedCapturedNames;
         mutatedCapturedNames = new java.util.HashSet<>();

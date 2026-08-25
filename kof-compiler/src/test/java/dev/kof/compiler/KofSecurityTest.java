@@ -339,12 +339,30 @@ class KofSecurityTest {
     void aesGcmRejectedElsewhere(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, "main() { var ct = crypto.encryptAesGcm(\"x\", \"k\") }");
-        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out-n"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("SECN002"));
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("out-j"), Target.JS);
         assertFalse(jsResult.success());
         assertTrue(jsResult.diagnostics().getDiagnostics().toString().contains("SECN002"));
+    }
+
+    @Test
+    void aesGcmNativeRoundTrip(@TempDir Path tempDir) throws Exception {
+        Path source = tempDir.resolve("Main.kf");
+        String key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        Files.writeString(source, """
+            main() {
+                var key = "%s"
+                var ct = crypto.encryptAesGcm("mensagem secreta", key)
+                var pt = crypto.decryptAesGcm(ct, key)
+                println(pt)
+            }
+            """.formatted(key));
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out-n"), Target.NATIVE);
+        assertTrue(nativeResult.success(), () -> nativeResult.diagnostics().getDiagnostics().toString());
+        Path bin = tempDir.resolve("out-n/Default/Main");
+        Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+        String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        p.waitFor();
+        assertTrue(output.contains("mensagem secreta"), () -> "output: " + output);
     }
 
     @Test
