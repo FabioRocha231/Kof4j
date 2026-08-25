@@ -239,6 +239,13 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_observability_counter" -> "(Ljava/lang/String;)I";
             case "kof_observability_increment" -> "(Ljava/lang/String;I)I";
             case "kof_observability_gauge" -> "(Ljava/lang/String;I)V";
+            // ── kof.security G9 (rate limiting / sessions / API keys) ──
+            case "kof_sec_rate_limit" -> "(Ljava/lang/String;II)Z";
+            case "kof_sec_session_create" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_sec_session_get" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_sec_session_destroy" -> "(Ljava/lang/String;)Z";
+            case "kof_sec_api_key_generate" -> "()Ljava/lang/String;";
+            case "kof_sec_api_key_valid" -> "(Ljava/lang/String;)Z";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -332,6 +339,10 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
             case "kof_observability_gauge" -> "V";
+            // ── kof.security G9 (rate limiting / sessions / API keys) ──
+            case "kof_sec_session_create", "kof_sec_api_key_generate" -> "Ljava/lang/String;";
+            case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";
+            case "kof_sec_session_get" -> "Ljava/lang/String;";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };

@@ -3377,6 +3377,61 @@ class JsBackend implements Backend {
             export function kofObservabilityCorrelationId() {
                 return kofObservabilityRequestId();
             }
+
+            // ── kof.security G9 (rate limiting / sessions / API keys) ──
+
+            const __kofRateLimit = {};
+            const __kofSessions = {};
+            const __kofApiKeys = {};
+
+            export function kofSecRateLimit(key, limit, windowSeconds) {
+                if (key == null) key = "";
+                if (limit <= 0 || windowSeconds <= 0) return 0;
+                const now = Date.now();
+                const windowMillis = windowSeconds * 1000;
+                let entry = __kofRateLimit[key];
+                if (!entry || now - entry.windowStart >= windowMillis) {
+                    __kofRateLimit[key] = { windowStart: now, count: 1 };
+                    return 1;
+                }
+                if (entry.count < limit) {
+                    entry.count++;
+                    return 1;
+                }
+                return 0;
+            }
+
+            export function kofSecSessionCreate(data) {
+                const id = kofSecRandomHex(16);
+                __kofSessions[id] = data == null ? "" : data;
+                return id;
+            }
+
+            export function kofSecSessionGet(id) {
+                if (id == null) return null;
+                const v = __kofSessions[id];
+                return v === undefined ? null : v;
+            }
+
+            export function kofSecSessionDestroy(id) {
+                if (id == null) return 0;
+                if (__kofSessions[id] !== undefined) {
+                    delete __kofSessions[id];
+                    return 1;
+                }
+                return 0;
+            }
+
+            export function kofSecApiKeyGenerate() {
+                const key = kofSecRandomHex(32);
+                __kofApiKeys[key] = true;
+                return key;
+            }
+
+            export function kofSecApiKeyValid(key) {
+                if (key == null) return 0;
+                return __kofApiKeys[key] ? 1 : 0;
+            }
             """;
 
     private static final String IO_RUNTIME = """

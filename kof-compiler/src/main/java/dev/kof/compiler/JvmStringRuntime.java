@@ -523,6 +523,59 @@ final class JvmStringRuntime {
                     return kof_observability_request_id();
                 }
 
+                // ── kof.security G9 (rate limiting / sessions / API keys) ──
+
+                private static final java.util.concurrent.ConcurrentHashMap<String, long[]> KOF_RATE_LIMIT = new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.ConcurrentHashMap<String, String> KOF_SESSIONS = new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> KOF_API_KEYS = new java.util.concurrent.ConcurrentHashMap<>();
+
+                public static boolean kof_sec_rate_limit(String key, int limit, int windowSeconds) {
+                    if (key == null) key = "";
+                    if (limit <= 0 || windowSeconds <= 0) return false;
+                    long now = System.currentTimeMillis();
+                    long windowMillis = windowSeconds * 1000L;
+                    long[] entry = KOF_RATE_LIMIT.computeIfAbsent(key, k -> new long[]{now, 0});
+                    synchronized (entry) {
+                        if (now - entry[0] >= windowMillis) {
+                            entry[0] = now;
+                            entry[1] = 1;
+                            return true;
+                        }
+                        if (entry[1] < limit) {
+                            entry[1]++;
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+
+                public static String kof_sec_session_create(String data) {
+                    String id = kof_sec_random_hex(16);
+                    KOF_SESSIONS.put(id, data == null ? "" : data);
+                    return id;
+                }
+
+                public static String kof_sec_session_get(String id) {
+                    if (id == null) return null;
+                    return KOF_SESSIONS.get(id);
+                }
+
+                public static boolean kof_sec_session_destroy(String id) {
+                    if (id == null) return false;
+                    return KOF_SESSIONS.remove(id) != null;
+                }
+
+                public static String kof_sec_api_key_generate() {
+                    String key = kof_sec_random_hex(32);
+                    KOF_API_KEYS.put(key, Boolean.TRUE);
+                    return key;
+                }
+
+                public static boolean kof_sec_api_key_valid(String key) {
+                    if (key == null) return false;
+                    return KOF_API_KEYS.containsKey(key);
+                }
+
                 // ── kof.tetris — hidden easter egg ────────────────────
                 // `tetris.run()` starts a simplified terminal tetris.
                 // Keys: a=left d=right s=down w=rotate space=hard drop
