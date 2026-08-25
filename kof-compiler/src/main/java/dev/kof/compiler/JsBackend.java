@@ -1815,6 +1815,7 @@ class JsBackend implements Backend {
         return name.startsWith("kof_json_") || name.startsWith("kof_io_")
                 || name.startsWith("kof_ui_")
                 || name.startsWith("kof_sec_")
+                || name.startsWith("kof_validation_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
@@ -3266,6 +3267,65 @@ class JsBackend implements Backend {
                     throw new Error("audience mismatch");
                 }
                 return payloadJson;
+            }
+
+            // ── kof.validation (G4) ───────────────────────────────────
+
+            export function kofValidationRequired(value) {
+                return value != null && value.length > 0 ? 1 : 0;
+            }
+
+            export function kofValidationNotBlank(value) {
+                return value != null && value.trim().length > 0 ? 1 : 0;
+            }
+
+            export function kofValidationMinLength(value, min) {
+                return value != null && value.length >= min ? 1 : 0;
+            }
+
+            export function kofValidationMaxLength(value, max) {
+                return value != null && value.length <= max ? 1 : 0;
+            }
+
+            export function kofValidationLengthBetween(value, min, max) {
+                return value != null && value.length >= min && value.length <= max ? 1 : 0;
+            }
+
+            export function kofValidationIsEmail(value) {
+                if (value == null) return 0;
+                return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(value) ? 1 : 0;
+            }
+
+            export function kofValidationIsUrl(value) {
+                if (value == null) return 0;
+                return value.startsWith("http://") || value.startsWith("https://") ? 1 : 0;
+            }
+
+            export function kofValidationMatches(value, pattern) {
+                if (value == null || pattern == null) return 0;
+                try { return new RegExp(pattern).test(value) ? 1 : 0; } catch (e) { return 0; }
+            }
+
+            export function kofValidationIsInt(value) {
+                if (value == null) return 0;
+                return /^-?[0-9]+$/.test(value.trim()) ? 1 : 0;
+            }
+
+            export function kofValidationIsLong(value) {
+                if (value == null) return 0;
+                return /^-?[0-9]+$/.test(value.trim()) ? 1 : 0;
+            }
+
+            export function kofValidationInRange(value, min, max) {
+                return value >= min && value <= max ? 1 : 0;
+            }
+
+            export function kofValidationMin(value, min) {
+                return value >= min ? 1 : 0;
+            }
+
+            export function kofValidationMax(value, max) {
+                return value <= max ? 1 : 0;
             }
             """;
 

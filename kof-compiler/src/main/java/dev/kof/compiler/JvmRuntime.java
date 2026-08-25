@@ -29,6 +29,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_string_to_")
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
+                || methodName.startsWith("kof_validation_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
                 || methodName.startsWith("kof_mq_")
@@ -223,6 +224,14 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_sec_auth_secret", "kof_sec_auth_has_role", "kof_sec_auth_has_permission"
                     -> "(Ljava/lang/String;)Z";
             case "kof_sec_auth_authenticated" -> "()Z";
+            // ── kof.validation (G4) ─────────────────────────────────────
+            case "kof_validation_required", "kof_validation_notBlank", "kof_validation_isEmail",
+                    "kof_validation_isUrl", "kof_validation_isInt", "kof_validation_isLong" -> "(Ljava/lang/String;)Z";
+            case "kof_validation_minLength", "kof_validation_maxLength" -> "(Ljava/lang/String;I)Z";
+            case "kof_validation_lengthBetween" -> "(Ljava/lang/String;II)Z";
+            case "kof_validation_matches" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_validation_inRange" -> "(III)Z";
+            case "kof_validation_min", "kof_validation_max" -> "(II)Z";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -308,12 +317,10 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_sec_auth_has_permission" -> "I";
             // ── kof.validation (G4) ─────────────────────────────────────
             case "kof_validation_required", "kof_validation_notBlank", "kof_validation_isEmail",
-                    "kof_validation_isUrl", "kof_validation_isInt", "kof_validation_isLong" -> "(Ljava/lang/String;)Z";
-            case "kof_validation_minLength", "kof_validation_maxLength" -> "(Ljava/lang/String;I)Z";
-            case "kof_validation_lengthBetween" -> "(Ljava/lang/String;II)Z";
-            case "kof_validation_matches" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
-            case "kof_validation_inRange" -> "(III)Z";
-            case "kof_validation_min", "kof_validation_max" -> "(II)Z";
+                    "kof_validation_isUrl", "kof_validation_isInt", "kof_validation_isLong",
+                    "kof_validation_minLength", "kof_validation_maxLength", "kof_validation_lengthBetween",
+                    "kof_validation_matches", "kof_validation_inRange", "kof_validation_min",
+                    "kof_validation_max" -> "I";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };
