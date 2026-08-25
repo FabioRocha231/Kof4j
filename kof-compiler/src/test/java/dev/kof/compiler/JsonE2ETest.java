@@ -262,7 +262,7 @@ class JsonE2ETest {
     }
 
     @Test
-    void decodeArraySupportedOnJvmRejectedOnNative(@TempDir Path tempDir) throws IOException {
+    void decodeArrayWorksOnJvmAndNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
@@ -272,9 +272,32 @@ class JsonE2ETest {
             """);
         CompilationResult jvm = driver.compile(source, tempDir.resolve("jvm-out"), Target.JVM);
         assertTrue(jvm.success(), "Array decode should work on JVM");
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-cp", tempDir.resolve("jvm-out").toString(),
+                    "Default.Main");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String jvmOut = new String(p.getInputStream().readAllBytes()).trim();
+            assertEquals(0, p.waitFor(), jvmOut);
+            assertEquals("2", jvmOut);
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
+        // JSN003 fechado: o Native decodifica Int[] de verdade
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "Array decode should be rejected on Native");
-        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.code().equals("JSN003")), "Should report JSN003");
+        assertTrue(nativeResult.success(), nativeResult.diagnostics().getDiagnostics().toString());
+        Path bin = tempDir.resolve("native-out/Default/Main");
+        assertTrue(Files.exists(bin));
+        try {
+            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String nativeOut = new String(p.getInputStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, p.waitFor(), nativeOut);
+            assertEquals("2", nativeOut, "native output");
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
     }
 }

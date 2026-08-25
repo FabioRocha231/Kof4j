@@ -4330,12 +4330,18 @@ private Target target = Target.JVM;
             }
             return true;
         }
-        if (isDecode && type instanceof Type.ArrayType) {
+        if (isDecode && type instanceof Type.ArrayType at) {
+            // JSN003 fechado: int/long/bool/string[] tem decoders nativos.
+            if (!(at.componentType() instanceof Type.PrimitiveType ap
+                    && ("float".equals(ap.name()) || "double".equals(ap.name())))) {
+                return true;
+            }
+            // arrays de float/double permanecem sob o gap FP
             if (target == Target.NATIVE) {
                 if (currentDiagnostics != null) {
                     currentDiagnostics.error("", 0, 0, 0,
-                            "json.decode: arrays are not supported on the Native target yet (use List<Int> or List<String>)",
-                            "JSN003");
+                            "json.decode: Float/Double arrays are not supported on the Native target yet",
+                            "JSN001");
                 }
                 return false;
             }

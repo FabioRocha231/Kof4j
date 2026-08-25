@@ -131,15 +131,25 @@ class JsonCompleteE2ETest {
         assertTrue(r.diagnostics().getDiagnostics().toString().contains("JSN001"),
                 r.diagnostics().getDiagnostics().toString());
 
+        // arrays de Float/Double continuam sob o gap FP (JSN001)...
         Files.writeString(source, """
             main() {
-                var arr = json.decode<Int[]>("[1]")
-                println(arr.length)
+                var arr = json.decode<Double[]>("[1]")
             }
             """);
         r = driver.compile(source, tempDir.resolve("native-out2"), Target.NATIVE);
         assertFalse(r.success());
-        assertTrue(r.diagnostics().getDiagnostics().toString().contains("JSN003"),
+        assertTrue(r.diagnostics().getDiagnostics().toString().contains("JSN001"),
                 r.diagnostics().getDiagnostics().toString());
+
+        // ...mas Int[] agora decodifica de verdade no Native (JSN003 fechado)
+        Files.writeString(source, """
+            main() {
+                var arr = json.decode<Int[]>("[7]")
+                println(arr.length)
+            }
+            """);
+        r = driver.compile(source, tempDir.resolve("native-out3"), Target.NATIVE);
+        assertTrue(r.success(), r.diagnostics().getDiagnostics().toString());
     }
 }
