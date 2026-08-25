@@ -124,7 +124,22 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
                     -> "(I)Ljava/lang/String;";
             case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
-                    "kof_ui_input_remove", "kof_ui_view_remove" -> "(I)V";
+                    "kof_ui_input_remove", "kof_ui_view_remove", "kof_ui_link_remove",
+                    "kof_ui_image_remove", "kof_ui_icon_remove" -> "(I)V";
+            case "kof_ui_link_new" -> "(Ljava/lang/String;Ljava/lang/String;)I";
+            case "kof_ui_image_new" -> "(Ljava/lang/String;)I";
+            case "kof_ui_icon_new" -> "(Ljava/lang/String;)I";
+            case "kof_ui_icon_new_size" -> "(Ljava/lang/String;I)I";
+            case "kof_ui_font_new" -> "(Ljava/lang/String;I)I";
+            case "kof_ui_font_new_bold" -> "(Ljava/lang/String;IZ)I";
+            case "kof_ui_widget_set_font" -> "(II)V";
+            case "kof_ui_widget_font" -> "(I)I";
+            case "kof_ui_link_set_text", "kof_ui_link_set_url", "kof_ui_image_set_src",
+                    "kof_ui_icon_set_name" -> "(ILjava/lang/String;)V";
+            case "kof_ui_link_text", "kof_ui_link_url", "kof_ui_image_src", "kof_ui_icon_name"
+                    -> "(I)Ljava/lang/String;";
+            case "kof_ui_icon_size" -> "(I)I";
+            case "kof_ui_icon_set_size" -> "(II)V";
             case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_web_app_new" -> "()Ljava/lang/String;";
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
@@ -975,6 +990,81 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static int kof_ui_label_new(String text) {
                     return 1;
+                }
+
+                public static int kof_ui_link_new(String text, String url) {
+                    return 1;
+                }
+
+                public static void kof_ui_link_set_text(int link, String text) {
+                }
+
+                public static String kof_ui_link_text(int link) {
+                    return "";
+                }
+
+                public static void kof_ui_link_set_url(int link, String url) {
+                }
+
+                public static String kof_ui_link_url(int link) {
+                    return "";
+                }
+
+                public static void kof_ui_link_remove(int link) {
+                }
+
+                public static int kof_ui_image_new(String src) {
+                    return 1;
+                }
+
+                public static void kof_ui_image_set_src(int image, String src) {
+                }
+
+                public static String kof_ui_image_src(int image) {
+                    return "";
+                }
+
+                public static void kof_ui_image_remove(int image) {
+                }
+
+                public static int kof_ui_icon_new(String name) {
+                    return 1;
+                }
+
+                public static int kof_ui_icon_new_size(String name, int size) {
+                    return 1;
+                }
+
+                public static void kof_ui_icon_set_name(int icon, String name) {
+                }
+
+                public static String kof_ui_icon_name(int icon) {
+                    return "";
+                }
+
+                public static void kof_ui_icon_set_size(int icon, int size) {
+                }
+
+                public static int kof_ui_icon_size(int icon) {
+                    return 24;
+                }
+
+                public static void kof_ui_icon_remove(int icon) {
+                }
+
+                public static int kof_ui_font_new(String family, int size) {
+                    return 1;
+                }
+
+                public static int kof_ui_font_new_bold(String family, int size, boolean bold) {
+                    return 1;
+                }
+
+                public static void kof_ui_widget_set_font(int widget, int font) {
+                }
+
+                public static int kof_ui_widget_font(int widget) {
+                    return -1;
                 }
 
                 public static void kof_ui_label_set_text(int label, String text) {

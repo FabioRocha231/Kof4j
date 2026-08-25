@@ -28,6 +28,10 @@ final class KofUi {
     static final Type VIEW = new Type.ClassType("kof.ui", "View", List.of());
     static final Type STYLE = new Type.ClassType("kof.ui", "Style", List.of());
     static final Type WINDOW = new Type.ClassType("kof.ui", "Window", List.of());
+    static final Type LINK = new Type.ClassType("kof.ui", "Link", List.of());
+    static final Type IMAGE = new Type.ClassType("kof.ui", "Image", List.of());
+    static final Type ICON = new Type.ClassType("kof.ui", "Icon", List.of());
+    static final Type FONT = new Type.ClassType("kof.ui", "Font", List.of());
 
     static boolean isColor(Type t) { return COLOR.equals(t); }
     static boolean isTheme(Type t) { return THEME.equals(t); }
@@ -39,21 +43,37 @@ final class KofUi {
     static boolean isView(Type t) { return VIEW.equals(t); }
     static boolean isStyle(Type t) { return STYLE.equals(t); }
     static boolean isWindow(Type t) { return WINDOW.equals(t); }
+    static boolean isLink(Type t) { return LINK.equals(t); }
+    static boolean isImage(Type t) { return IMAGE.equals(t); }
+    static boolean isIcon(Type t) { return ICON.equals(t); }
+    static boolean isFont(Type t) { return FONT.equals(t); }
+    /** Widget que aceita .setFont(font)/.font */
+    static boolean acceptsFont(Type t) {
+        return isLabel(t) || isButton(t) || isInput(t) || isView(t) || isLink(t);
+    }
 
     static boolean isUiType(Type t) {
         return isColor(t) || isTheme(t) || isLabel(t) || isButton(t) || isInput(t)
-                || isColumn(t) || isRow(t) || isView(t) || isStyle(t) || isWindow(t);
+                || isColumn(t) || isRow(t) || isView(t) || isStyle(t) || isWindow(t)
+                || isLink(t) || isImage(t) || isIcon(t) || isFont(t);
     }
 
     static boolean isConstructor(String name) {
         return "Color".equals(name) || "Theme".equals(name)
                 || "Label".equals(name) || "Button".equals(name) || "Input".equals(name)
                 || "Column".equals(name) || "Row".equals(name) || "View".equals(name)
-                || "Style".equals(name) || "Window".equals(name);
+                || "Style".equals(name) || "Window".equals(name)
+                || "Link".equals(name) || "Image".equals(name)
+                || "Icon".equals(name) || "Font".equals(name);
     }
 
     static Type constructorType(String name) {
-        return "Color".equals(name) ? COLOR : Type.UnknownType.UNKNOWN;
+        if ("Color".equals(name)) return COLOR;
+        if ("Link".equals(name)) return LINK;
+        if ("Image".equals(name)) return IMAGE;
+        if ("Icon".equals(name)) return ICON;
+        if ("Font".equals(name)) return FONT;
+        return Type.UnknownType.UNKNOWN;
     }
 
     static boolean isPalette(String name) {
@@ -153,6 +173,41 @@ final class KofUi {
                 case "text" -> argCount == 0 ? new UiCall("kof_ui_theme_text", COLOR, List.of()) : null;
                 case "error" -> argCount == 0 ? new UiCall("kof_ui_theme_error", COLOR, List.of()) : null;
                 case "isDark" -> argCount == 0 ? new UiCall("kof_ui_theme_is_dark", BOOL, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isLink(receiver)) {
+            return switch (name) {
+                case "text" -> argCount == 0 ? new UiCall("kof_ui_link_text", STR, List.of()) : null;
+                case "setText" -> argCount == 1 ? new UiCall("kof_ui_link_set_text", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "url" -> argCount == 0 ? new UiCall("kof_ui_link_url", STR, List.of()) : null;
+                case "setUrl" -> argCount == 1 ? new UiCall("kof_ui_link_set_url", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_link_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isImage(receiver)) {
+            return switch (name) {
+                case "src" -> argCount == 0 ? new UiCall("kof_ui_image_src", STR, List.of()) : null;
+                case "setSrc" -> argCount == 1 ? new UiCall("kof_ui_image_set_src", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_image_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isIcon(receiver)) {
+            return switch (name) {
+                case "name" -> argCount == 0 ? new UiCall("kof_ui_icon_name", STR, List.of()) : null;
+                case "setName" -> argCount == 1 ? new UiCall("kof_ui_icon_set_name", Type.PrimitiveType.VOID, List.of(STR)) : null;
+                case "size" -> argCount == 0 ? new UiCall("kof_ui_icon_size", INT, List.of()) : null;
+                case "setSize" -> argCount == 1 ? new UiCall("kof_ui_icon_set_size", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_icon_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (acceptsFont(receiver)) {
+            return switch (name) {
+                case "font" -> argCount == 0 ? new UiCall("kof_ui_widget_font", FONT, List.of()) : null;
+                case "setFont" -> argCount == 1 ? new UiCall("kof_ui_widget_set_font", Type.PrimitiveType.VOID, List.of(INT)) : null;
                 default -> null;
             };
         }

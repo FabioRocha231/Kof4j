@@ -32,6 +32,140 @@ public class NativeBackend implements Backend {
                 .replace("<", "").replace(">", "");
     }
 
+
+    /**
+     * JSN002: coleta as tabelas de schema JSON por classe (nome+offset+
+     * tipo de cada campo, inclusive herdados via ClassLayout). Campos de
+     * tipos nao suportados (FP, List, Map) sao omitidos — o gate no
+     * CompilerDriver diagnostica essas classes antes delas chegarem aqui.
+     * Os nomes dos campos sao internados AQUI (antes de emitStringData).
+     */
+    private record JsonSchemaEntry(String nameCstr, long offset, long typeCode, String auxTable) {}
+    private record JsonSchemaTable(String tableLabel, String classCstr, long totalSize,
+                                   java.util.List<JsonSchemaEntry> entries) {}
+
+    private final java.util.List<JsonSchemaTable> jsonSchemas = new java.util.ArrayList<>();
+
+    private Long jsonFieldTypeCode(Type t) {
+        if (t instanceof Type.PrimitiveType pt) {
+            return switch (Type.canonicalPrimitiveName(pt.name())) {
+                case "int", "char", "byte", "short" -> 1L;
+                case "long" -> 2L;
+                case "bool" -> 3L;
+                default -> null; // float/double: gap FP (JSN001)
+            };
+        }
+        if (BuiltinTypes.isString(t)) return 4L;
+        if (t instanceof Type.ClassType ct) {
+            String simple = ct.name();
+            for (IRClass c : allClassesMap.values()) {
+                if (c.name().equals(simple) || c.name().endsWith("/" + simple)) return 5L;
+            }
+        }
+        return null;
+    }
+
+    private void collectJsonSchemas() {
+        jsonSchemas.clear();
+        for (IRClass clazz : allClassesMap.values()) {
+            if (clazz.fields().isEmpty()) continue;
+            ClassLayout layout = getLayout(clazz);
+            java.util.List<JsonSchemaEntry> entries = new java.util.ArrayList<>();
+            boolean any = false;
+            boolean allSupported = true;
+            for (FieldLayout f : layout.fields()) {
+                Long code = jsonFieldTypeCode(f.type());
+                if (code == null) { allSupported = false; continue; }
+                if (f.type() instanceof Type.ClassType ct) {
+                    // campo aninhado: so se a classe alvo tambem tiver tabela
+                    boolean has = false;
+                    for (IRClass c : allClassesMap.values()) {
+                        if (c.name().equals(ct.name()) || c.name().endsWith("/" + ct.name())) {
+                            has = !getLayout(c).fields().isEmpty();
+                            break;
+                        }
+                    }
+                    if (!has) { allSupported = false; continue; }
+                }
+                String nameLabel = internString(f.name());
+                entries.add(new JsonSchemaEntry(nameLabel, f.offset(), code, f.name()));
+                any = true;
+            }
+            if (!any || !allSupported) continue;
+            String tableLabel = ".Lsch_" + sanitizeName(clazz.name());
+            String classCstr = internString(clazz.name());
+            jsonSchemas.add(new JsonSchemaTable(tableLabel, classCstr,
+                    layout.totalSize(), java.util.List.copyOf(entries)));
+        }
+    }
+
+    /** Emite as tabelas de schema + registro + finder (apos emitStringData). */
+    private void emitJsonSchemaData(StringBuilder sb) {
+        if (jsonSchemas.isEmpty()) return;
+        sb.append(".section .data\n");
+        for (JsonSchemaTable t : jsonSchemas) {
+            sb.append(t.tableLabel()).append(":\n");
+            sb.append("    .quad ").append(t.totalSize()).append("\n");
+            sb.append("    .quad ").append(t.entries().size()).append("\n");
+            for (JsonSchemaEntry e : t.entries()) {
+                sb.append("    .quad ").append(e.nameCstr()).append("\n");
+                sb.append("    .quad ").append(e.offset()).append("\n");
+                sb.append("    .quad ").append(e.typeCode()).append("\n");
+                sb.append("    .quad 0\n"); // aux reservado
+            }
+        }
+        sb.append(".Lsch_registry:\n");
+        for (JsonSchemaTable t : jsonSchemas) {
+            sb.append("    .quad ").append(t.classCstr()).append("\n");
+            sb.append("    .quad ").append(t.tableLabel()).append("\n");
+        }
+        sb.append("    .quad 0\n");
+        sb.append("""
+            .section .text
+            .globl kof_json_schema_find
+            .type kof_json_schema_find, @function
+            kof_json_schema_find:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx             # nome C-string
+                leaq .Lsch_registry(%rip), %r9
+            .Lschf_loop:
+                movq (%r9), %rax            # name cstr da entrada
+                testq %rax, %rax
+                jz .Lschf_notfound
+                xorq %rcx, %rcx
+            .Lschf_cmp:
+                movzbl (%rbx,%rcx), %edx
+                movzbl (%rax,%rcx), %esi
+                cmpl %esi, %edx
+                jne .Lschf_next
+                testl %edx, %edx
+                jz .Lschf_found
+                incq %rcx
+                jmp .Lschf_cmp
+            .Lschf_next:
+                addq $16, %r9
+                jmp .Lschf_loop
+            .Lschf_found:
+                movq 8(%r9), %rax           # table ptr
+                jmp .Lschf_exit
+            .Lschf_notfound:
+                xorl %eax, %eax
+            .Lschf_exit:
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /** Tabela de schema para uma classe (ou null se ausente), pelo nome. */
+    private String schemaLabelFor(String className) {
+        for (JsonSchemaTable t : jsonSchemas) {
+            if (t.classCstr().equals(className)) return t.tableLabel();
+        }
+        return null;
+    }
+
     private String internString(String value) {
         for (String[] entry : stringLiterals) {
             if (entry[0].equals(value)) return entry[1];
@@ -78,7 +212,9 @@ public class NativeBackend implements Backend {
             getLayout(clazz);
             collectStrings(clazz);
         }
+        collectJsonSchemas();
         emitStringData(sb);
+        emitJsonSchemaData(sb);
         for (IRClass clazz : module.classes()) {
             currentClass = clazz;
             emitMethodTable(sb, clazz);

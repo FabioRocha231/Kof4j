@@ -160,10 +160,24 @@ Pontos centrais:
 - Uso:
 
 ```bash
-ANDROID_HOME=... kof build app.kf --target android --output app-android
-cd app-android && mvn verify
-adb install target/kof-app.apk
+# só o projeto Maven:
+kof build app.kf --target android --output app-android \
+    --classpath $ANDROID_HOME/platforms/android-34/android.jar
+
+# ou direto pro APK (standalone, sem Maven; precisa de build-tools 34):
+kof build app.kf --target android --output app-android --apk \
+    --classpath $ANDROID_HOME/platforms/android-34/android.jar
 ```
+
+Permissões ficam NO CÓDIGO Kof — metadado consumido pelo target:
+
+```kof
+@Permissions(["android.permission.INTERNET", "android.permission.CAMERA"])
+class MainActivity extends Activity { ... }
+```
+
+O label do app é a primeira `Window("...")` do programa. O ícone é
+vetorial (`res/drawable/ic_launcher_kof.xml`) — nenhum binário gerado.
 
 ### Fase 2 — refinamentos
 
@@ -185,10 +199,11 @@ alvos; o alvo que não consegue realizá-la diz isso na hora, com código.**
 | `SAM001` | aridade da lambda ≠ método SAM | interface externa exige N args |
 | `SUP001` | `super.metodo()` no Native | já coberto; ANDROID reusa o caminho JVM |
 
-Faltando no compilador para interop completa: overloads de métodos Kof
-(SymbolTable colapsa por nome), `super.metodo()` dentro de lambda,
-valores enum/`Class<?>` em annotations (`ANNOT001`) e checagem de
-generics de classes externas.
+Suportado no compilador: sobrecarga de **construtores** (despacho por
+aridade), `super.metodo()` **dentro de lambdas** via captura `$outer` +
+método-ponte `kof_super$*` na classe dona, valores `Classe.class` e
+enum (`@Anno(Pkg.Enum.CONST)`) resolvidos pelo classpath. Ainda faltando:
+sobrecarga de métodos comuns, checagem de generics externos.
 
 Bytecode: o JvmBackend emite nível moderno; o `d8` faz desugaring para
 dispositivos antigos. Se a Fase 2 precisar de nível menor, a flag vira

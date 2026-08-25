@@ -117,25 +117,95 @@ private Target target = Target.JVM;
     }
 
     public CompilationResult compile(Path sourceFile, Path outputDir, Target target) {
+        return compileSources(java.util.List.of(sourceFile), outputDir, target);
+    }
+
+    /**
+     * Compilação MULTI-ARQUIVO: todos os .kf do diretório formam UM módulo
+     * (convenção Go-like: diretório = pacote). Classes/funções de um arquivo
+     * são visíveis aos demais sem import — o import fica para classes
+     * EXTERNAS (JVM/Android via ExternalClasspath).
+     */
+    public CompilationResult compileSources(java.util.List<Path> sources, Path outputDir, Target target) {
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
         this.currentDiagnostics = diagnostics;
         flushClasspathWarnings();
-        this.currentSourceName = sourceFile.getFileName() != null ? sourceFile.getFileName().toString() : null;
+        this.currentSourceName = sources.get(0).getFileName() != null
+                ? sources.get(0).getFileName().toString() : null;
         this.entitySchemas.clear();
         try {
-            String source = Files.readString(sourceFile);
-            String fileName = sourceFile.getFileName().toString();
-            Lexer lexer = new Lexer(source, fileName, diagnostics);
-            List<Token> tokens = lexer.tokenize();
-            if (diagnostics.hasErrors()) {
+            java.util.List<CompilationUnitNode> parsedUnits = new ArrayList<>();
+            String sharedPackage = null;
+            for (Path src : sources) {
+                String code = Files.readString(src);
+                String fileName = src.getFileName().toString();
+                Lexer lexer = new Lexer(code, fileName, diagnostics);
+                List<Token> tokens = lexer.tokenize();
+                if (diagnostics.hasErrors()) {
+                    return new CompilationResult(false, diagnostics, outputDir);
+                }
+                Parser parser = new Parser(tokens, diagnostics, fileName);
+                CompilationUnitNode unit = parser.parse();
+                if (diagnostics.hasErrors()) {
+                    return new CompilationResult(false, diagnostics, outputDir);
+                }
+                // pacote único do módulo: ou todos ausentes, ou todos iguais
+                if (!unit.packageName().isEmpty()) {
+                    if (sharedPackage == null) {
+                        sharedPackage = unit.packageName();
+                    } else if (!sharedPackage.equals(unit.packageName())) {
+                        diagnostics.error(src.toString(), 0, 0, 0,
+                                "mixed packages in one module: '" + sharedPackage
+                                        + "' and '" + unit.packageName()
+                                        + "' (one directory = one package)",
+                                "PKG001");
+                        return new CompilationResult(false, diagnostics, outputDir);
+                    }
+                }
+                parsedUnits.add(unit);
+            }
+            List<String> mergedImports = new ArrayList<>();
+            List<AstNode> mergedDecls = new ArrayList<>();
+            int mainCount = 0;
+            for (CompilationUnitNode u : parsedUnits) {
+                for (String imp : u.imports()) {
+                    if (!mergedImports.contains(imp)) mergedImports.add(imp);
+                }
+                for (AstNode d : u.declarations()) {
+                    if (d instanceof FunctionDeclarationNode fd && "main".equals(fd.name())) mainCount++;
+                    mergedDecls.add(d);
+                }
+            }
+            if (mainCount > 1 && currentDiagnostics != null) {
+                diagnostics.error("", 0, 0, 0,
+                        "module has " + mainCount + " main() functions; expected exactly one",
+                        "PKG002");
                 return new CompilationResult(false, diagnostics, outputDir);
             }
-            Parser parser = new Parser(tokens, diagnostics, fileName);
-            CompilationUnitNode unit = parser.parse();
-            if (diagnostics.hasErrors()) {
-                return new CompilationResult(false, diagnostics, outputDir);
-            }
+            CompilationUnitNode unit = new CompilationUnitNode(
+                    parsedUnits.get(0).position(), sharedPackage == null ? "" : sharedPackage,
+                    mergedImports, mergedDecls);
+            lowerAndEmit(unit, diagnostics, outputDir, target);
+            return new CompilationResult(true, diagnostics, outputDir);
+        } catch (IOException e) {
+            diagnostics.error(sources.get(0).toString(), 0, 0, 0,
+                    "Error reading source file: " + e.getMessage(), "COMP001");
+            return new CompilationResult(false, diagnostics, outputDir);
+        } catch (Exception e) {
+            e.printStackTrace();
+            diagnostics.error(sources.get(0).toString(), 0, 0, 0,
+                    "Internal compiler error: " + e.getMessage(), "COMP002");
+            return new CompilationResult(false, diagnostics, outputDir);
+        }
+    }
+
+    private void lowerAndEmit(CompilationUnitNode unit, DiagnosticCollector diagnostics,
+                              Path outputDir, Target target) throws IOException {
+        this.target = target;
+        this.currentDiagnostics = diagnostics;
+        flushClasspathWarnings();
+        this.entitySchemas.clear();
             unit = desugarTests(unit);
             if (target == Target.ANDROID) {
                 unit = appendAndroidHostIfNeeded(unit);
@@ -144,14 +214,14 @@ private Target target = Target.JVM;
             semanticAnalyzer.setExternalTypes(externalClasspath);
             semanticAnalyzer.analyze(unit, diagnostics);
             if (diagnostics.hasErrors()) {
-                return new CompilationResult(false, diagnostics, outputDir);
+                return;
             }
             LabelId.reset();
             currentModule = new IRModule("", List.of(), List.of());
             currentUnit = unit;
             IRModule irModule = applySuperBridges(lowerToIR(unit, diagnostics));
             if (diagnostics.hasErrors()) {
-                return new CompilationResult(false, diagnostics, outputDir);
+                return;
             }
             currentModule = irModule;
             IRModule unoptimized = irModule;
@@ -171,15 +241,6 @@ private Target target = Target.JVM;
             if (target == Target.ANDROID) {
                 new AndroidProjectWriter().write(outputDir, irModule);
             }
-            return new CompilationResult(true, diagnostics, outputDir);
-        } catch (IOException e) {
-            diagnostics.error(sourceFile.toString(), 0, 0, 0, "Error reading source file: " + e.getMessage(), "COMP001");
-            return new CompilationResult(false, diagnostics, outputDir);
-        } catch (Exception e) {
-            e.printStackTrace();
-            diagnostics.error(sourceFile.toString(), 0, 0, 0, "Internal compiler error: " + e.getMessage(), "COMP002");
-            return new CompilationResult(false, diagnostics, outputDir);
-        }
     }
 
     /**
@@ -527,6 +588,12 @@ private Target target = Target.JVM;
 
     /** Dono real da lambda (classe onde o corpo foi escrito) por classe sintética. */
     private final java.util.Map<String, String> lambdaEnclosingOwner = new java.util.LinkedHashMap<>();
+    /** Variáveis externas ESCRITAS dentro de lambdas do método sendo lowered → box mutável. */
+    private java.util.Set<String> mutatedCapturedNames = new java.util.HashSet<>();
+    /** Nomes das classes BoxN sintéticas (captura mutável) — acesso via campo `value`. */
+    private final java.util.Set<String> boxClassNames = new java.util.HashSet<>();
+    private final java.util.Map<String, Type> boxValueTypes = new java.util.HashMap<>();
+    private int boxCounter = 0;
 
     private final java.util.IdentityHashMap<LambdaExpr, List<IRLocalVariable>> lambdaEffectiveCaptures =
             new java.util.IdentityHashMap<>();
@@ -626,9 +693,12 @@ private Target target = Target.JVM;
             locals.add(new IRLocalVariable(localIdx, params.get(i).name(), paramTypes.get(i)));
             localIdx += isDoubleWidth(paramTypes.get(i)) ? 2 : 1;
         }
+        java.util.Set<String> savedMutated = mutatedCapturedNames;
+        mutatedCapturedNames = new java.util.HashSet<>();
         for (StatementNode stmt : le.body()) {
             localIdx = emitStatement(stmt, ops, name, localIdx, locals, returnType);
         }
+        mutatedCapturedNames = savedMutated;
         KofOperation last = ops.isEmpty() ? null : ops.get(ops.size() - 1);
         if (last == null || !(last instanceof KofReturn || last instanceof KofReturnVoid)) {
             if (Type.isVoid(returnType)) ops.add(new KofReturnVoid());
@@ -819,6 +889,135 @@ private Target target = Target.JVM;
         // locals (lowered at their own site); do not descend.
     }
 
+    private void collectMutatedCaptures(List<StatementNode> body) {
+        for (StatementNode stmt : body) {
+            collectMutatedCapturesStmt(stmt, new java.util.HashSet<>());
+        }
+    }
+
+    private void collectMutatedCapturesStmt(StatementNode stmt, java.util.Set<String> shadowed) {
+        if (stmt instanceof ExpressionStmt es) {
+            collectMutatedCapturesExpr(es.expression(), shadowed);
+        } else if (stmt instanceof ReturnStmt rs) {
+            if (rs.value() != null) collectMutatedCapturesExpr(rs.value(), shadowed);
+        } else if (stmt instanceof BlockStmt b) {
+            java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+            for (StatementNode s : b.statements()) collectMutatedCapturesStmt(s, inner);
+        } else if (stmt instanceof IfStmt i) {
+            collectMutatedCapturesExpr(i.condition(), shadowed);
+            collectMutatedCapturesStmt(i.thenBranch(), new java.util.HashSet<>(shadowed));
+            if (i.elseBranch() != null) collectMutatedCapturesStmt(i.elseBranch(), new java.util.HashSet<>(shadowed));
+        } else if (stmt instanceof WhileStmt w) {
+            collectMutatedCapturesExpr(w.condition(), shadowed);
+            collectMutatedCapturesStmt(w.body(), new java.util.HashSet<>(shadowed));
+        } else if (stmt instanceof DoWhileStmt dw) {
+            collectMutatedCapturesStmt(dw.body(), new java.util.HashSet<>(shadowed));
+            collectMutatedCapturesExpr(dw.condition(), shadowed);
+        } else if (stmt instanceof ForStmt f) {
+            if (f.init() instanceof VarDeclStmt vds) {
+                collectMutatedCapturesStmt(vds, shadowed);
+            } else if (f.init() instanceof ExpressionStmt ies) {
+                collectMutatedCapturesExpr(ies.expression(), shadowed);
+            }
+            if (f.condition() != null) collectMutatedCapturesExpr(f.condition(), shadowed);
+            if (f.update() != null) collectMutatedCapturesExpr(f.update(), shadowed);
+            collectMutatedCapturesStmt(f.body(), new java.util.HashSet<>(shadowed));
+        } else if (stmt instanceof ForInStmt fi) {
+            collectMutatedCapturesExpr(fi.collection(), shadowed);
+            java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+            inner.add(fi.varName());
+            collectMutatedCapturesStmt(fi.body(), inner);
+        } else if (stmt instanceof VarDeclStmt vds) {
+            shadowed.add(vds.name());
+            if (vds.initializer() != null) collectMutatedCapturesExpr(vds.initializer(), shadowed);
+        } else if (stmt instanceof ThrowStmt ts) {
+            collectMutatedCapturesExpr(ts.expression(), shadowed);
+        } else if (stmt instanceof AssertStmt as) {
+            collectMutatedCapturesExpr(as.condition(), shadowed);
+        } else if (stmt instanceof SpawnStmt ss) {
+            collectMutatedCapturesExpr(ss.expression(), shadowed);
+        } else if (stmt instanceof SwitchStmt sw) {
+            collectMutatedCapturesExpr(sw.expression(), shadowed);
+            for (SwitchCase c : sw.cases()) {
+                if (c.value() != null) collectMutatedCapturesExpr(c.value(), shadowed);
+                for (StatementNode s : c.body()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+            }
+            if (sw.defaultBody() != null) {
+                for (StatementNode s : sw.defaultBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+            }
+        } else if (stmt instanceof TryStmt ts) {
+            for (StatementNode s : ts.tryBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+            for (CatchClause cc : ts.catchClauses()) {
+                java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+                inner.add(cc.exceptionName());
+                for (StatementNode s : cc.body()) collectMutatedCapturesStmt(s, inner);
+            }
+            if (ts.finallyBody() != null) {
+                for (StatementNode s : ts.finallyBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+            }
+        }
+    }
+
+    private void collectMutatedCapturesExpr(ExpressionNode expr, java.util.Set<String> shadowed) {
+        if (expr instanceof LambdaExpr le) {
+            collectMutatedCaptures(le.body());
+        } else if (expr instanceof AssignmentExpr ae) {
+            if (ae.target() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())) {
+                mutatedCapturedNames.add(ie.name());
+            }
+            collectMutatedCapturesExpr(ae.target(), shadowed);
+            collectMutatedCapturesExpr(ae.value(), shadowed);
+        } else if (expr instanceof UnaryExpr ue) {
+            if (ue.operand() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())
+                    && ("++".equals(ue.operator()) || "--".equals(ue.operator()))) {
+                mutatedCapturedNames.add(ie.name());
+            }
+            collectMutatedCapturesExpr(ue.operand(), shadowed);
+        } else if (expr instanceof BinaryExpr bin) {
+            collectMutatedCapturesExpr(bin.left(), shadowed);
+            collectMutatedCapturesExpr(bin.right(), shadowed);
+        } else if (expr instanceof MethodCallExpr mc) {
+            if (mc.receiver() != null) collectMutatedCapturesExpr(mc.receiver(), shadowed);
+            for (ExpressionNode arg : mc.arguments()) collectMutatedCapturesExpr(arg, shadowed);
+        } else if (expr instanceof FieldAccessExpr fa) {
+            collectMutatedCapturesExpr(fa.receiver(), shadowed);
+        } else if (expr instanceof ArrayAccessExpr aa) {
+            collectMutatedCapturesExpr(aa.receiver(), shadowed);
+            collectMutatedCapturesExpr(aa.index(), shadowed);
+        } else if (expr instanceof IfExpr iex) {
+            collectMutatedCapturesExpr(iex.condition(), shadowed);
+            collectMutatedCapturesExpr(iex.thenExpr(), shadowed);
+            collectMutatedCapturesExpr(iex.elseExpr(), shadowed);
+        } else if (expr instanceof NewExpr ne) {
+            for (ExpressionNode arg : ne.arguments()) collectMutatedCapturesExpr(arg, shadowed);
+        } else if (expr instanceof NewArrayExpr nae) {
+            collectMutatedCapturesExpr(nae.size(), shadowed);
+        }
+    }
+
+    private boolean isBoxType(Type type) {
+        return type instanceof Type.ClassType ct && boxClassNames.contains(ct.name());
+    }
+
+    private String createBoxClass(Type valueType) {
+        String boxName = "Box" + (boxCounter++);
+        boxClassNames.add(boxName);
+        boxValueTypes.put(boxName, valueType);
+        Type boxType = new Type.ClassType("", boxName, List.of());
+        List<IRField> fields = List.of(new IRField("value", valueType, AccessFlags.PUBLIC, null));
+        List<KofOperation> ctorOps = new ArrayList<>();
+        ctorOps.add(new KofReturnVoid());
+        List<IRLocalVariable> ctorLocals = List.of(new IRLocalVariable(0, "this", boxType));
+        IRMethod ctor = new IRMethod("<init>", Type.PrimitiveType.VOID, List.of(),
+                AccessFlags.PUBLIC, List.of(),
+                List.of(new IRBasicBlock(0, ctorOps)), ctorLocals);
+        IRClass cls = new IRClass(boxName, "java/lang/Object", List.of(),
+                AccessFlags.PUBLIC | AccessFlags.SUPER, fields,
+                List.of(ctor), List.of(), null, 300 + lambdaCounter);
+        syntheticClasses.add(cls);
+        return boxName;
+    }
+
     private Type listOfElementType(MethodCallExpr mc, List<IRLocalVariable> locals) {
         if (!mc.arguments().isEmpty()) {
             return inferExprType(mc.arguments().get(0), locals);
@@ -907,9 +1106,13 @@ private Target target = Target.JVM;
             locals.add(new IRLocalVariable(localIdx, p.name(), resolveWithTypeParams(p.type(), func.typeParameters())));
             localIdx++;
         }
+        java.util.Set<String> savedMutated = mutatedCapturedNames;
+        mutatedCapturedNames = new java.util.HashSet<>();
+        collectMutatedCaptures(func.body());
         for (StatementNode stmt : func.body()) {
             localIdx = emitStatement(stmt, body, "", localIdx, locals, returnType);
         }
+        mutatedCapturedNames = savedMutated;
         KofOperation last = body.isEmpty() ? null : body.get(body.size() - 1);
         if (last == null || !(last instanceof KofReturn || last instanceof KofReturnVoid)) {
             if (Type.isVoid(returnType)) body.add(new KofReturnVoid());
@@ -1020,6 +1223,26 @@ private Target target = Target.JVM;
             }
             case VarDeclStmt vds -> {
                 Type varType = toType(vds.type());
+                if (mutatedCapturedNames.contains(vds.name())) {
+                    Type initType = vds.initializer() == null ? Type.PrimitiveType.INT
+                            : inferExprType(vds.initializer(), locals);
+                    String boxName = createBoxClass(initType);
+                    Type boxType = new Type.ClassType("", boxName, List.of());
+                    ops.add(new KofNewObject(boxType, List.of()));
+                    ops.add(new KofDup());
+                    ops.add(new KofCall(boxType, "<init>", List.of(),
+                            Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                    ops.add(new KofDup());
+                    if (vds.initializer() != null) {
+                        localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
+                    } else {
+                        ops.add(new KofLoadLiteral(initType, 0));
+                    }
+                    ops.add(new KofStoreField(boxType, "value", initType));
+                    ops.add(new KofStoreLocal(boxType, localIdx));
+                    locals.add(new IRLocalVariable(localIdx, vds.name(), boxType));
+                    yield localIdx + 1;
+                }
                 if (vds.initializer() != null) {
                     localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
                     if ("var".equals(vds.type()) || "val".equals(vds.type())) {
@@ -1418,7 +1641,14 @@ private Target target = Target.JVM;
                 }
                 for (int i = locals.size() - 1; i >= 0; i--) {
                     if (locals.get(i).name().equals(ie.name())) {
-                        ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
+                        IRLocalVariable lv = locals.get(i);
+                        if (isBoxType(lv.type())) {
+                            ops.add(new KofLoadLocal(lv.type(), lv.index()));
+                            ops.add(new KofLoadField(lv.type(), "value",
+                                    boxValueTypes.get(((Type.ClassType) lv.type()).name())));
+                        } else {
+                            ops.add(new KofLoadLocal(lv.type(), lv.index()));
+                        }
                         yield localIdx;
                     }
                 }
@@ -1733,6 +1963,55 @@ private Target target = Target.JVM;
                             Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
+                if (mc.receiver() == null && "Link".equals(mc.methodName()) && mc.arguments().size() == 2) {
+                    for (ExpressionNode arg : mc.arguments()) {
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                    }
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_link_new", List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Image".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_image_new", List.of(BuiltinTypes.STRING),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Icon".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
+                    for (ExpressionNode arg : mc.arguments()) {
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                    }
+                    if (mc.arguments().size() == 2) {
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_icon_new_size", List.of(BuiltinTypes.STRING, Type.PrimitiveType.INT),
+                                Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    } else {
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_icon_new", List.of(BuiltinTypes.STRING),
+                                Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Font".equals(mc.methodName())
+                        && (mc.arguments().size() == 2 || mc.arguments().size() == 3)) {
+                    for (ExpressionNode arg : mc.arguments()) {
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                    }
+                    if (mc.arguments().size() == 3) {
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_font_new_bold", List.of(BuiltinTypes.STRING,
+                                        Type.PrimitiveType.INT, Type.PrimitiveType.BOOL),
+                                Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    } else {
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_font_new", List.of(BuiltinTypes.STRING, Type.PrimitiveType.INT),
+                                Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                }
                 if (mc.receiver() == null && "Button".equals(mc.methodName())
                         && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
                     for (ExpressionNode arg : mc.arguments()) {
@@ -1821,6 +2100,18 @@ private Target target = Target.JVM;
                             int tag = jsonListTag(listElementType(argType));
                             ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
                             paramTypes = List.of(argType, Type.PrimitiveType.INT);
+                        } else if (target == Target.NATIVE
+                                && argType instanceof Type.ClassType ect
+                                && !BuiltinTypes.isString(argType)) {
+                            // JSN002 fechado: walker generico + tabela de schema
+                            // gerada pelo backend (nomes/offsets de compile-time)
+                            String cn2 = ect.packageName().isEmpty()
+                                    ? ect.name() : ect.packageName() + "." + ect.name();
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, cn2));
+                            paramTypes = List.of(argType, BuiltinTypes.STRING);
+                            ops.add(new KofCall(argType, "kof_json_encode_obj", paramTypes,
+                                    BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                            yield localIdx;
                         }
                         ops.add(new KofCall(argType, jsonEncodeFunction(argType), paramTypes,
                                 BuiltinTypes.STRING, KofCallKind.FUNCTION));
@@ -1844,6 +2135,15 @@ private Target target = Target.JVM;
                             String className = ect.packageName().isEmpty()
                                     ? ect.name() : ect.packageName() + "." + ect.name();
                             ops.add(new KofLoadLiteral(BuiltinTypes.STRING, className));
+                        } else if (target == Target.NATIVE
+                                && targetType instanceof Type.ClassType dct
+                                && !BuiltinTypes.isString(targetType)) {
+                            // JSN002 fechado: decode via tabela de schema
+                            String cn3 = dct.packageName().isEmpty()
+                                    ? dct.name() : dct.packageName() + "." + dct.name();
+                            decodeFn = "kof_json_decode_obj";
+                            decodeParams = List.of(BuiltinTypes.STRING, BuiltinTypes.STRING);
+                            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, cn3));
                         }
                         ops.add(new KofCall(targetType, decodeFn, decodeParams,
                                 targetType, KofCallKind.FUNCTION));
@@ -2826,6 +3126,19 @@ private Target target = Target.JVM;
                     ops.add(new KofArrayStore(elemType));
                     yield localIdx;
                 }
+                if (ae.target() instanceof IdentifierExpr ieBox) {
+                    for (int i = locals.size() - 1; i >= 0; i--) {
+                        if (locals.get(i).name().equals(ieBox.name()) && isBoxType(locals.get(i).type())) {
+                            IRLocalVariable boxLv = locals.get(i);
+                            ops.add(new KofLoadLocal(boxLv.type(), boxLv.index()));
+                            localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            Type valType = boxValueTypes.get(((Type.ClassType) boxLv.type()).name());
+                            emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), valType);
+                            ops.add(new KofStoreField(boxLv.type(), "value", valType));
+                            yield localIdx;
+                        }
+                    }
+                }
                 localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
                 if (ae.target() instanceof IdentifierExpr ie) {
                     for (int i = locals.size() - 1; i >= 0; i--) {
@@ -3096,7 +3409,13 @@ private Target target = Target.JVM;
                     yield new Type.ArrayType(BuiltinTypes.STRING);
                 }
                 for (int i = locals.size() - 1; i >= 0; i--) {
-                    if (locals.get(i).name().equals(ie.name())) yield locals.get(i).type();
+                    if (locals.get(i).name().equals(ie.name())) {
+                        IRLocalVariable lv = locals.get(i);
+                        if (isBoxType(lv.type())) {
+                            yield boxValueTypes.get(((Type.ClassType) lv.type()).name());
+                        }
+                        yield lv.type();
+                    }
                 }
                 if (semanticAnalyzer != null) {
                     SymbolTable.Symbol sym = resolveFromSemantic(ie.name());
@@ -4172,7 +4491,8 @@ private Target target = Target.JVM;
     private int emitUiInstance(Type recvType, MethodCallExpr mc, List<KofOperation> ops,
                                String owner, int localIdx, List<IRLocalVariable> locals) {
         if (KofUi.isWindow(recvType) || KofUi.isLabel(recvType) || KofUi.isButton(recvType)
-                || KofUi.isInput(recvType) || KofUi.isView(recvType)) {
+                || KofUi.isInput(recvType) || KofUi.isView(recvType)
+                || KofUi.isLink(recvType) || KofUi.isImage(recvType) || KofUi.isIcon(recvType)) {
             KofUi.UiCall uiCall = KofUi.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
             if (uiCall != null) {
                 for (ExpressionNode arg : mc.arguments()) {
@@ -4349,14 +4669,66 @@ private Target target = Target.JVM;
         }
         if (check instanceof Type.ClassType && target == Target.NATIVE && !BuiltinTypes.isList(type)
                 && !BuiltinTypes.isString(type)) {
-            if (currentDiagnostics != null) {
-                currentDiagnostics.error("", 0, 0, 0,
-                        "json: objects are not supported on the Native target yet (JVM supports object JSON)",
-                        "JSN002");
+            // JSN002 fechado para classes cujos campos sao todos suportados
+            // pelo walker nativo (primitivos, string e objetos aninhados).
+            String cn = check instanceof Type.ClassType ct
+                    ? (ct.packageName().isEmpty() ? ct.name()
+                      : ct.packageName() + "." + ct.name())
+                    : "";
+            if (!nativeObjJsonFieldsOk(cn, new java.util.HashSet<>(), null)) {
+                return false;
             }
-            return false;
         }
         return true;
+    }
+
+    /**
+     * JSN002: valida recursivamente que toda instancia tem layout
+     * conhecido em compile-time e campos suportados pelo walker nativo.
+     * Qualquer campo fora do conjunto (List, Map, float/double) diagnostica
+     * explicitamente — nunca resultado silenciosamente errado.
+     */
+    private boolean nativeObjJsonFieldsOk(String className, java.util.Set<String> visiting,
+                                          String ownerForDiag) {
+        if (visiting.contains(className)) return true; // ciclo: aceita no nivel externo
+        visiting.add(className);
+        boolean ok = true;
+        for (AstNode d : currentUnit.declarations()) {
+            if (d instanceof RecordDeclarationNode r && r.name().equals(className)) {
+                for (RecordComponentNode f : r.components()) {
+                    if (!fieldOk(f.type(), className, visiting)) ok = false;
+                }
+            } else if (d instanceof EntityDeclarationNode e && e.name().equals(className)) {
+                for (EntityFieldNode f : e.fields()) {
+                    if (!fieldOk(f.type(), className, visiting)) ok = false;
+                }
+            } else if (d instanceof ClassDeclarationNode c && c.name().equals(className)) {
+                for (AstNode m : c.members()) {
+                    if (m instanceof FieldDeclarationNode f) {
+                        if (!fieldOk(f.type(), className, visiting)) ok = false;
+                    }
+                }
+            }
+        }
+        return ok;
+    }
+
+    private boolean fieldOk(String typeName, String className, java.util.Set<String> visiting) {
+        Type t = toType(typeName);
+        if (t instanceof Type.PrimitiveType) return true;
+        if (BuiltinTypes.isString(t)) return true;
+        if (t instanceof Type.ClassType ct && !BuiltinTypes.isList(t)) {
+            String cn = ct.packageName().isEmpty() ? ct.name() : ct.packageName() + "." + ct.name();
+            if (nativeObjJsonFieldsOk(cn, visiting, className)) return true;
+        }
+        if (currentDiagnostics != null) {
+            currentDiagnostics.error("", 0, 0, 0,
+                    "json: class " + className + " has field of type " + typeName
+                            + " not supported by the Native JSON walker yet"
+                            + " (use int, long, bool, string or nested classes)",
+                    "JSN002");
+        }
+        return false;
     }
 
     private String jsonEncodeFunction(Type type) {
@@ -4827,7 +5199,11 @@ private Target target = Target.JVM;
                 localVars.add(new IRLocalVariable(localIdx, param.name(), paramType));
                 localIdx += isDoubleWidth(paramType) ? 2 : 1;
             }
+            java.util.Set<String> savedMutated = mutatedCapturedNames;
+            mutatedCapturedNames = new java.util.HashSet<>();
+            collectMutatedCaptures(method.body());
             for (StatementNode stmt : method.body()) localIdx = emitStatement(stmt, ops, owner, localIdx, localVars, returnType);
+            mutatedCapturedNames = savedMutated;
             KofOperation lastOp = ops.isEmpty() ? null : ops.get(ops.size() - 1);
             if (lastOp == null || !(lastOp instanceof KofReturn || lastOp instanceof KofReturnVoid)) {
                 if (Type.isVoid(returnType)) ops.add(new KofReturnVoid());

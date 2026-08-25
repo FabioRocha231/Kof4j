@@ -720,6 +720,24 @@ class SemanticAnalyzer {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield KofUi.STYLE;
                 }
+                if (mc.receiver() == null && "Link".equals(mc.methodName()) && mc.arguments().size() == 2) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.LINK;
+                }
+                if (mc.receiver() == null && "Image".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.IMAGE;
+                }
+                if (mc.receiver() == null && "Icon".equals(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2)) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.ICON;
+                }
+                if (mc.receiver() == null && "Font".equals(mc.methodName())
+                        && (mc.arguments().size() == 2 || mc.arguments().size() == 3)) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield KofUi.FONT;
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) {
