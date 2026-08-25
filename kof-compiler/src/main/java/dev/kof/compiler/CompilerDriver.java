@@ -2281,8 +2281,10 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) {
                         ops.add(new KofDup());
                         localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        // VOID na construção: o backend descarta o bool e o set
+                        // duplicado continua na pilha para o próximo append
                         ops.add(new KofCall(setType, "kof_set_add",
-                                List.of(inferExprType(arg, locals)), Type.PrimitiveType.BOOL, KofCallKind.INSTANCE));
+                                List.of(inferExprType(arg, locals)), Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
                     }
                     yield localIdx;
                 }
@@ -3229,6 +3231,23 @@ private Target target = Target.JVM;
                                 keyType = ct.typeArguments().get(0);
                                 valueType = ct.typeArguments().get(1);
                             }
+                            // mapOf() nasce Map<Unknown,Unknown>: o primeiro put()
+                            // pina os tipos no local para que get()/remove() tenham
+                            // tipo concreto (comparações e unboxing corretos)
+                            if ("kof_map_put".equals(mapFn)
+                                    && keyType instanceof Type.UnknownType
+                                    && argTypes.size() == 2
+                                    && !(argTypes.get(0) instanceof Type.UnknownType)
+                                    && mc.receiver() instanceof IdentifierExpr rid) {
+                                for (int li = 0; li < locals.size(); li++) {
+                                    IRLocalVariable lv = locals.get(li);
+                                    if (lv.name().equals(rid.name())) {
+                                        locals.set(li, new IRLocalVariable(lv.index(), lv.name(),
+                                                new Type.ClassType("kof", "Map", List.of(argTypes.get(0), argTypes.get(1)))));
+                                        break;
+                                    }
+                                }
+                            }
                             Type retType = switch (mapFn) {
                                 case "kof_map_put", "kof_map_remove" -> valueType;
                                 case "kof_map_get" -> valueType;
@@ -3285,6 +3304,9 @@ private Target target = Target.JVM;
                         methodParamTypes.add(inferExprType(arg, locals));
                     }
                     SymbolTable.MethodSymbol resolvedMethod = semanticAnalyzer.getResolvedMethod(mc);
+                    if ("key".equals(mc.methodName()) && recvType instanceof Type.ClassType ctKey && "MemEntry".equals(ctKey.name())) {
+                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_memkey2.txt"), "MethodCall key recvType=" + recvType + " resolved=" + resolvedMethod + " isField=" + (semanticAnalyzer.resolveInHierarchy(ctKey.name(), "key") instanceof SymbolTable.FieldSymbol) + " methodReturn=" + (resolvedMethod!=null?resolvedMethod.returnType():null) + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                    }
                     if (resolvedMethod != null) {
                         recvType = ownerTypeFromInternal(resolvedMethod.ownerClass());
                         methodReturnType = resolvedMethod.returnType();
@@ -3940,6 +3962,9 @@ private Target target = Target.JVM;
                         accessor = resolveFieldInHierarchy(ct.name(), fa.fieldName());
                         if (accessor != null) fieldType = accessor.type();
                     }
+                    if ("key".equals(fa.fieldName()) && recvType instanceof Type.ClassType ct2 && "MemEntry".equals(ct2.name())) {
+                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_memkey.txt"), "accessor=" + accessor + " fieldType=" + fieldType + " recvType=" + recvType + " ct2=" + ct2.name() + " isField=" + (accessor instanceof SymbolTable.FieldSymbol) + " isMethod=" + (accessor instanceof SymbolTable.MethodSymbol) + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                    }
                     if (accessor instanceof SymbolTable.MethodSymbol ms && ms.parameterTypes().isEmpty()) {
                         ops.add(new KofCall(recvType, fa.fieldName(), List.of(), ms.returnType(), KofCallKind.INSTANCE));
                     } else {
@@ -4023,6 +4048,9 @@ private Target target = Target.JVM;
                 }
                 if (semanticAnalyzer != null) {
                     SymbolTable.Symbol sym = resolveFromSemantic(ie.name());
+                    if ("entries".equals(ie.name())) {
+                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_entries2.txt"), "Identifier entries sym=" + sym + " type=" + (sym!=null?sym.type():null) + " locals=" + locals + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                    }
                     if (sym != null) yield sym.type();
                     SymbolTable.ClassSymbol cls = semanticAnalyzer.getClass(ie.name());
                     if (cls != null) yield cls.type();
@@ -4479,6 +4507,9 @@ private Target target = Target.JVM;
                 }
                 if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
                     SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(ct.name(), fa.fieldName());
+                    if ("entries".equals(fa.fieldName()) && (ct.name().equals("MemoryLayer") || ct.name().equals("Config"))) {
+                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_entries.txt"), "FieldAccess entries recvType=" + recvType + " s=" + s + " fieldType=" + (s instanceof SymbolTable.FieldSymbol fs ? fs.type() : null) + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                    }
                     if (s instanceof SymbolTable.FieldSymbol fs) yield fs.type();
                     if (s instanceof SymbolTable.MethodSymbol ms && ms.parameterTypes().isEmpty()) {
                         yield ms.returnType();

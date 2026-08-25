@@ -1826,6 +1826,21 @@ class JsBackend implements Backend {
         callArgs.addAll(args);
         JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
         if (Type.isVoid(kc.returnType())) {
+            if (receiver instanceof JsIr.JsIdentifier id && id.name().startsWith("__kof_t")
+                    && !stack.isEmpty() && stack.get(stack.size() - 1) instanceof JsIr.JsSequence seq
+                    && seq.value().equals(receiver)) {
+                // construção mid-expression: anexa à sequência mantendo o valor
+                List<JsIr.JsExpression> exprs = new ArrayList<>(seq.expressions());
+                exprs.add(call);
+                stack.remove(stack.size() - 1);
+                stack.add(new JsIr.JsSequence(exprs, seq.value()));
+                return;
+            }
+            if (receiver instanceof JsIr.JsIdentifier id && id.name().startsWith("__kof_t")) {
+                // a cópia duplicada permanece na pilha para o próximo append
+                preambleExprs.add(call);
+                return;
+            }
             throw new StatementEnd(call);
         }
         stack.add(call);

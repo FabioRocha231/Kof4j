@@ -60,7 +60,10 @@ class CompilerDriverTest {
 
     @Test
     void compilesPackageAndImport(@TempDir Path tempDir) throws IOException {
-        Path source = tempDir.resolve("Main.kf");
+        // PKG004: o pacote deve corresponder ao diretório do arquivo
+        Path pkgDir = tempDir.resolve("com").resolve("example");
+        Files.createDirectories(pkgDir);
+        Path source = pkgDir.resolve("Main.kf");
         Files.writeString(source, """
             package com.example
 
@@ -70,8 +73,10 @@ class CompilerDriverTest {
                 println("Package and import work!")
             }
             """);
-        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
-        assertTrue(result.success(), "Compilation should succeed");
+        // módulo raiz = diretório que contém com/ (PKG004: pacote = diretório)
+        CompilationResult result = driver.compileSources(java.util.List.of(source),
+                tempDir.resolve("out"), Target.JVM, tempDir);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
     }
 
     @Test

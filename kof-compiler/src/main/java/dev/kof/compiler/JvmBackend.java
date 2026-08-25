@@ -822,9 +822,17 @@ class JvmBackend implements Backend {
         } else if (op instanceof KofCall kc && BuiltinTypes.isMap(kc.ownerType())) {
             Type keyType = Type.UnknownType.UNKNOWN;
             Type valueType = Type.UnknownType.UNKNOWN;
-            if (kc.ownerType() instanceof Type.ClassType ct && ct.typeArguments().size() == 2) {
+            if (kc.ownerType() instanceof Type.ClassType ct && ct.typeArguments().size() == 2
+                    && !(ct.typeArguments().get(0) instanceof Type.UnknownType)) {
                 keyType = ct.typeArguments().get(0);
                 valueType = ct.typeArguments().get(1);
+            }
+            // tipos reais dos argumentos no call-site (mapOf() nasce Unknown)
+            if (!kc.parameterTypes().isEmpty()) {
+                keyType = kc.parameterTypes().get(0);
+                if (kc.parameterTypes().size() > 1 && !BuiltinTypes.isList(kc.parameterTypes().get(1))) {
+                    valueType = kc.parameterTypes().get(1);
+                }
             }
             switch (kc.methodName()) {
                 case "kof_map_new" -> {
@@ -833,11 +841,19 @@ class JvmBackend implements Backend {
                     mv.visitMethodInsn(INVOKESPECIAL, "java/util/HashMap", "<init>", "()V", false);
                 }
                 case "kof_map_put" -> {
+                    // stack: map, key, value — box ambos antes do put(Object,Object)
+                    emitBoxIfPrimitive(mv, valueType);          // [m,k,V]
+                    if (isPrimitiveType(keyType)) {
+                        mv.visitInsn(SWAP);                     // [m,V,k]
+                        emitBoxIfPrimitive(mv, keyType);        // [m,V,K]
+                        mv.visitInsn(SWAP);                     // [m,K,V]
+                    }
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
                     // POP is handled by hasReturnValue/KofPop at statement level; do not pop here
                     // to keep expression value when used (e.g., var x = m.put(...))
                 }
                 case "kof_map_get" -> {
+                    emitBoxIfPrimitive(mv, keyType);
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
                     if (!isPrimitiveType(valueType) && !KofUi.isUiType(valueType) && !(valueType instanceof Type.UnknownType)) {
                         String internal = JvmTypeMapper.toInternalName(valueType instanceof Type.ClassType ct ? ct.packageName() : "", valueType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object");
@@ -846,6 +862,7 @@ class JvmBackend implements Backend {
                     emitUnboxIfPrimitive(mv, valueType);
                 }
                 case "kof_map_remove" -> {
+                    emitBoxIfPrimitive(mv, keyType);
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "remove", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
                     if (!isPrimitiveType(valueType) && !(valueType instanceof Type.UnknownType)) {
                         String internal = JvmTypeMapper.toInternalName(valueType instanceof Type.ClassType ct ? ct.packageName() : "", valueType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object");
@@ -853,7 +870,10 @@ class JvmBackend implements Backend {
                     }
                     emitUnboxIfPrimitive(mv, valueType);
                 }
-                case "kof_map_contains" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "containsKey", "(Ljava/lang/Object;)Z", false);
+                case "kof_map_contains" -> {
+                    emitBoxIfPrimitive(mv, keyType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "containsKey", "(Ljava/lang/Object;)Z", false);
+                }
                 case "kof_map_size" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "size", "()I", false);
                 case "kof_map_is_empty" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "isEmpty", "()Z", false);
                 case "kof_map_clear" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "clear", "()V", false);
@@ -875,16 +895,35 @@ class JvmBackend implements Backend {
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isSet(kc.ownerType())) {
             Type elemType = Type.UnknownType.UNKNOWN;
-            if (kc.ownerType() instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) elemType = ct.typeArguments().get(0);
+            if (kc.ownerType() instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()
+                    && !(ct.typeArguments().get(0) instanceof Type.UnknownType)) {
+                elemType = ct.typeArguments().get(0);
+            }
+            // tipo real do argumento no call-site (setOf() nasce Unknown)
+            if (!kc.parameterTypes().isEmpty()) {
+                elemType = kc.parameterTypes().get(0);
+            }
             switch (kc.methodName()) {
                 case "kof_set_new" -> {
                     mv.visitTypeInsn(NEW, "java/util/HashSet");
                     mv.visitInsn(DUP);
                     mv.visitMethodInsn(INVOKESPECIAL, "java/util/HashSet", "<init>", "()V", false);
                 }
-                case "kof_set_add" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "add", "(Ljava/lang/Object;)Z", false);
-                case "kof_set_contains" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "contains", "(Ljava/lang/Object;)Z", false);
-                case "kof_set_remove" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "remove", "(Ljava/lang/Object;)Z", false);
+                case "kof_set_add" -> {
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "add", "(Ljava/lang/Object;)Z", false);
+                    if (Type.isVoid(kc.returnType())) {
+                        mv.visitInsn(POP);
+                    }
+                }
+                case "kof_set_contains" -> {
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "contains", "(Ljava/lang/Object;)Z", false);
+                }
+                case "kof_set_remove" -> {
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "remove", "(Ljava/lang/Object;)Z", false);
+                }
                 case "kof_set_size" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "size", "()I", false);
                 case "kof_set_is_empty" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "isEmpty", "()Z", false);
                 case "kof_set_clear" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashSet", "clear", "()V", false);

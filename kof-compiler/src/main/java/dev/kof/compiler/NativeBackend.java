@@ -372,15 +372,28 @@ public class NativeBackend implements Backend {
                 List<String> methods = collectVirtualMethods(clazz);
                 String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(methodName);
                 for (int i = 0; i < methods.size(); i++) {
-                    if (methods.get(i).equals(mangled)) return i;
+                    if (methods.get(i).equals(mangled)) {
+                        if ("MemEntry".equals(ownerTypeName) && "key".equals(methodName)) {
+                            try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_vtable.txt"), "MemEntry key mangled found at " + i + " methods=" + methods + " clazzMethods=" + clazz.methods() + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                        }
+                        return i;
+                    }
                 }
                 for (IRMethod m : clazz.methods()) {
                     if (m.name().equals(methodName) && !"<init>".equals(m.name()) && !"<clinit>".equals(m.name())) {
                         String m2 = sanitizeName(clazz.name()) + "_" + sanitizeName(m.name());
                         for (int i = 0; i < methods.size(); i++) {
-                            if (methods.get(i).equals(m2)) return i;
+                            if (methods.get(i).equals(m2)) {
+                                if ("MemEntry".equals(ownerTypeName) && "key".equals(methodName)) {
+                                    try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_vtable.txt"), "MemEntry key via methods at " + i + " methods=" + methods + " clazzMethods=" + clazz.methods() + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                                }
+                                return i;
+                            }
                         }
                     }
+                }
+                if ("MemEntry".equals(ownerTypeName) && "key".equals(methodName)) {
+                    try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_vtable.txt"), "MemEntry key NOT FOUND methods=" + methods + " clazzMethods=" + clazz.methods() + " allClasses=" + allClassesMap.keySet() + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
                 }
                 break;
             }
@@ -427,6 +440,17 @@ public class NativeBackend implements Backend {
         currentClass = clazz;
 
         String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
+        if (clazz.name().contains("MemoryLayer") && "get".equals(method.name())) {
+            try {
+                StringBuilder sb2 = new StringBuilder();
+                sb2.append("IRMethod ").append(clazz.name()).append(".").append(method.name()).append(" locals=").append(method.localVariables()).append("\n");
+                for (IRBasicBlock block : method.basicBlocks()) {
+                    sb2.append("Block ").append(block.index()).append(":\n");
+                    for (KofOperation op : block.operations()) sb2.append("  ").append(op).append("\n");
+                }
+                java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_MemoryLayer_get_ir.txt"), sb2.toString(), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+            } catch(Exception e){}
+        }
         if ("<init>".equals(method.name())) {
             mangled += "_" + method.parameterTypes().size();
         }
@@ -503,6 +527,9 @@ public class NativeBackend implements Backend {
                 sb.append("    movq %rax, -").append((sl.index() + 1) * 8).append("(%rbp)\n");
             }
             case KofLoadField lf -> {
+                if (lf.ownerType() instanceof Type.ClassType ctLF && "MemEntry".equals(ctLF.name()) && "key".equals(lf.name())) {
+                    try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_memkey_field.txt"), "KofLoadField MemEntry.key offset=" + resolveFieldOffset(lf.ownerType(), lf.name()) + " owner=" + lf.ownerType() + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
+                }
                 sb.append("    popq %rax\n");
                 int offset = resolveFieldOffset(lf.ownerType(), lf.name());
                 sb.append("    movq ").append(offset).append("(%rax), %rax\n");
