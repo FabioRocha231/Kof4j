@@ -479,8 +479,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 12. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
     feito; falta handshake completo, query e prepared statements)
 13. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão
-    linear dos demais (ponteios absolutos, compare nos dados +24, rsi com
-    vallen no from_literal); segfault e fragmentos errados eliminados.
+    linear dos demais; segfault e fragmentos errados eliminados.
+14. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em
+    compile-time; SSE real + dtoa são trabalho futuro do backend.
 14. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
     inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time.
     Fechar exige backend SSE + formatação double→string.
