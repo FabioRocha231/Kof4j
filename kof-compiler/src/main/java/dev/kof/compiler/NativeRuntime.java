@@ -3373,11 +3373,10 @@ final class NativeRuntime {
                 movq %rdi, %rbx             # json kstr (fixo)
                 movl 16(%rbx), %r13d        # json len
                 leaq 24(%rbx), %r12         # json data (fixo)
-                movl 16(%rsi), %r15d        # key len
+                movl 16(%rsi), %r15d        # key len (fixo em r15d)
                 testl %r15d, %r15d
                 jz .Ljf_empty
-                movq %rsi, %r15
-                addq $24, %r15              # r15 = key data (fixo)
+                addq $24, %rsi              # rsi = key data (nao mexe mais)
                 movq %r12, %r14             # scan ptr = inicio
             .Ljf_scan:
                 # procura '"' que inicia uma chave candidata
@@ -3394,7 +3393,7 @@ final class NativeRuntime {
                 cmpq %r13, %r14
                 jae .Ljf_empty
                 movzbl (%rdi,%rcx), %eax    # candidate char
-                movzbl (%r15,%rcx), %edx    # key char
+                movzbl (%rsi,%rcx), %edx    # key char (rsi = key data)
                 cmpl %edx, %eax
                 jne .Ljf_nomatch
                 incl %ecx
@@ -3504,8 +3503,11 @@ final class NativeRuntime {
                 subq %r8, %rsi              # vallen
                 call .Ljf_mkstr
                 jmp .Ljf_exit
+            .Ljf_adv:
+                incq %r14
+                jmp .Ljf_scan
             .Ljf_nomatch:
-                incq %r14                   # avanca 1 e tenta de novo
+                incq %r14                   # avança 1 e tenta de novo
                 jmp .Ljf_scan
             .Ljf_empty:
                 movl $25, %edi
@@ -8479,18 +8481,23 @@ final class NativeRuntime {
             .Lb64d_end:
                 cmpq $2, %r9
                 jb .Lb64d_out
+                cmpq $3, %r9
+                je .Lb64d_three
                 movq %rcx, %rax
                 shrq $4, %rax
                 movb %al, 0(%r12)
                 incq %r12
                 incq %r15
-                cmpq $3, %r9
-                jb .Lb64d_out
+                jmp .Lb64d_out
+            .Lb64d_three:
+                movq %rcx, %rax
+                shrq $10, %rax
+                movb %al, 0(%r12)
                 movq %rcx, %rax
                 shrq $2, %rax
-                movb %al, 0(%r12)
-                incq %r12
-                incq %r15
+                movb %al, 1(%r12)
+                addq $2, %r12
+                addq $2, %r15
             .Lb64d_out:
                 movq %r15, %rax
                 popq %r15

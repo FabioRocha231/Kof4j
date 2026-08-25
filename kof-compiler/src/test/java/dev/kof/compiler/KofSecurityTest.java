@@ -39,13 +39,26 @@ class KofSecurityTest {
     }
 
     @Test
-    void passwordsNativeRejectedWithDiagnostic(@TempDir Path tempDir) throws IOException {
+    void passwordsNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, PASSWORDS_SOURCE);
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
-        assertFalse(result.success(), "passwords.hash must be rejected on Native with a clear diagnostic");
-        String text = result.diagnostics().getDiagnostics().toString();
-        assertTrue(text.contains("SECN001"), "expected SECN001 diagnostic, got: " + text);
+        assertTrue(result.success(), "passwords.hash must work on Native: "
+                + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    tempDir.resolve("out").resolve("Default").resolve("Main").toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8).trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "exit code, output: " + output);
+            assertEquals("true\nfalse\nfalse", output.replace("\r\n", "\n").trim(),
+                    "PBKDF2 native: hash/verify/needsRehash");
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
     }
 
     private static final String HASH_SOURCE = """
