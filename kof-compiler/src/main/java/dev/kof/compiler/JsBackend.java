@@ -1816,6 +1816,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_ui_")
                 || name.startsWith("kof_sec_")
                 || name.startsWith("kof_validation_")
+                || name.startsWith("kof_observability_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
@@ -3326,6 +3327,55 @@ class JsBackend implements Backend {
 
             export function kofValidationMax(value, max) {
                 return value <= max ? 1 : 0;
+            }
+
+            // ── kof.observability (G5) ──────────────────────────────
+
+            const __kofObsCounters = {};
+            const __kofObsGauges = {};
+
+            export function kofObservabilityHealth() {
+                return "UP";
+            }
+
+            export function kofObservabilityReadiness() {
+                return 1;
+            }
+
+            export function kofObservabilityLiveness() {
+                return 1;
+            }
+
+            export function kofObservabilityCounter(name) {
+                if (name == null) name = "";
+                const v = (__kofObsCounters[name] || 0) + 1;
+                __kofObsCounters[name] = v;
+                return v;
+            }
+
+            export function kofObservabilityIncrement(name, delta) {
+                if (name == null) name = "";
+                const v = (__kofObsCounters[name] || 0) + delta;
+                __kofObsCounters[name] = v;
+                return v;
+            }
+
+            export function kofObservabilityGauge(name, value) {
+                if (name == null) name = "";
+                __kofObsGauges[name] = value;
+            }
+
+            export function kofObservabilityRequestId() {
+                if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+                return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+                    const r = Math.random() * 16 | 0;
+                    const v = c === "x" ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+
+            export function kofObservabilityCorrelationId() {
+                return kofObservabilityRequestId();
             }
             """;
 

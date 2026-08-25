@@ -30,6 +30,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_ui_")
                 || methodName.startsWith("kof_sec_")
                 || methodName.startsWith("kof_validation_")
+                || methodName.startsWith("kof_observability_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
                 || methodName.startsWith("kof_mq_")
@@ -232,6 +233,12 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_validation_matches" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
             case "kof_validation_inRange" -> "(III)Z";
             case "kof_validation_min", "kof_validation_max" -> "(II)Z";
+            // ── kof.observability (G5) ────────────────────────────────
+            case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "()Ljava/lang/String;";
+            case "kof_observability_readiness", "kof_observability_liveness" -> "()Z";
+            case "kof_observability_counter" -> "(Ljava/lang/String;)I";
+            case "kof_observability_increment" -> "(Ljava/lang/String;I)I";
+            case "kof_observability_gauge" -> "(Ljava/lang/String;I)V";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -321,6 +328,10 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_validation_minLength", "kof_validation_maxLength", "kof_validation_lengthBetween",
                     "kof_validation_matches", "kof_validation_inRange", "kof_validation_min",
                     "kof_validation_max" -> "I";
+            // ── kof.observability (G5) ────────────────────────────────
+            case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "Ljava/lang/String;";
+            case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
+            case "kof_observability_gauge" -> "V";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };

@@ -609,6 +609,7 @@ class SemanticAnalyzer {
                         && !KofLog.isLogNamespace(ie.name())
                         && !KofSecurity.isSecurityNamespace(ie.name())
                         && !KofValidation.isValidationNamespace(ie.name())
+                        && !KofObservability.isObservabilityNamespace(ie.name())
                         && !KofHttp.isHttpNamespace(ie.name())
                         && !KofMq.isMqNamespace(ie.name())
                         && !KofTime.isTimeNamespace(ie.name())
@@ -641,6 +642,7 @@ class SemanticAnalyzer {
                                 && !KofLog.isLogNamespace(ie.name())
                                 && !KofSecurity.isSecurityNamespace(ie.name())
                                 && !KofValidation.isValidationNamespace(ie.name())
+                                && !KofObservability.isObservabilityNamespace(ie.name())
                                 && !knownClasses.containsKey(ie.name())) {
                             diagnostics.error("", 0, 0, 0,
                                     "undefined variable: '" + ie.name() + "'", "SEM020");
@@ -961,6 +963,13 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofValidation.ValidationCall vCall = KofValidation.staticMethod(rid.name(), mc.methodName(), argTypes);
                         if (vCall != null) yield vCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofObservability.isObservabilityNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofObservability.ObservabilityCall oCall = KofObservability.staticMethod(rid.name(), mc.methodName(), argTypes);
+                        if (oCall != null) yield oCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofTetris.isTetrisNamespace(rid.name())) {

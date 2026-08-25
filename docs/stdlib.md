@@ -59,7 +59,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.messaging` | ⏳ | planejado |
 | `kof.validation` | ✅ | `validation.required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max` — JVM/Native/JS (`KofValidationTest` 3/3) |
 | `kof.logging` | ✅ | `log.debug/info/warn/error`, níveis, off (JVM; LOG001 outros) — KofLogE2ETest (7) |
-| `kof.observability` | ⏳ | planejado |
+| `kof.observability` | ✅ | `observability.health/readiness/liveness`, `counter(name)`/`increment(name, delta)`/`gauge(name, value)`, `requestId()`/`correlationId()` — JVM/Native/JS (`KofObservabilityTest` 3/3) |
 | `kof.process` | ⏳ | planejado |
 | `kof.config` | ✅ | `config.get/env/has`, `config.str/int/long/bool(name, fallback)`; arquivo > env > profile > default (JVM; CONFIG001 outros) — KofConfigE2ETest (8) |
 
@@ -98,7 +98,7 @@ Resumo executivo (0.0.5-alpha):
 | web server (`web.app()`) | DONE (JVM) |
 | concurrency (`spawn`) | DONE (JVM) |
 | test (`assert`, `kof test`) | PARTIAL (suíte estruturada planejada) |
-| observability | PARTIAL (tooling bench/profile) |
+| observability | DONE (kof.observability: health/metrics/request IDs — JVM/Native/JS) |
 | messaging, scheduling (interval done), sessions, rate limiting, TLS | PLANNED (gaps P0-P2) |
 
 # 6. PRÓXIMAS ETAPAS
@@ -111,7 +111,7 @@ Resumo executivo (0.0.5-alpha):
 5. G1 — `kof.database` (JDBC idiomático: connect/query/transaction,
    prepared statements, pools, migrations).
 6. G4 — `kof.validation`.
-7. G5 — `kof.observability` (health, metrics, logging estruturado).
+7. ~~G5~~ — ✅ `kof.observability` (health/readiness/liveness, counter/increment/gauge, requestId/correlationId — JVM/Native/JS).
 8. G8 — `kof.time.sleep` + scheduler básico.
 9. G10 — security no Native (jwt, passwords, sha512, aesgcm).
 10. G9 — rate limiting, sessions, API keys.

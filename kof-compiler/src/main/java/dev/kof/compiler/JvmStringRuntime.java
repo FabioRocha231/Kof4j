@@ -483,6 +483,46 @@ final class JvmStringRuntime {
                     return value <= max;
                 }
 
+                // ── kof.observability (G5) ────────────────────────────
+
+                private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger> KOF_OBS_COUNTERS = new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.ConcurrentHashMap<String, Integer> KOF_OBS_GAUGES = new java.util.concurrent.ConcurrentHashMap<>();
+
+                public static String kof_observability_health() {
+                    return "UP";
+                }
+
+                public static boolean kof_observability_readiness() {
+                    return true;
+                }
+
+                public static boolean kof_observability_liveness() {
+                    return true;
+                }
+
+                public static int kof_observability_counter(String name) {
+                    if (name == null) name = "";
+                    return KOF_OBS_COUNTERS.computeIfAbsent(name, k -> new java.util.concurrent.atomic.AtomicInteger(0)).incrementAndGet();
+                }
+
+                public static int kof_observability_increment(String name, int delta) {
+                    if (name == null) name = "";
+                    return KOF_OBS_COUNTERS.computeIfAbsent(name, k -> new java.util.concurrent.atomic.AtomicInteger(0)).addAndGet(delta);
+                }
+
+                public static void kof_observability_gauge(String name, int value) {
+                    if (name == null) name = "";
+                    KOF_OBS_GAUGES.put(name, value);
+                }
+
+                public static String kof_observability_request_id() {
+                    return java.util.UUID.randomUUID().toString();
+                }
+
+                public static String kof_observability_correlation_id() {
+                    return kof_observability_request_id();
+                }
+
                 // ── kof.tetris — hidden easter egg ────────────────────
                 // `tetris.run()` starts a simplified terminal tetris.
                 // Keys: a=left d=right s=down w=rotate space=hard drop
