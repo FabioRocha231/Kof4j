@@ -225,7 +225,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | strings (concat `+`, `==`, indexOf, trim, split...) | ✅ | ✅ | ✅ |
 | arrays | ✅ | ✅ | ✅ |
 | `List<T>`, `listOf` | ✅ | ✅ | ✅ |
-| JSON encode/decode (objetos/records no JVM) | ✅ | ✅ | ✅ |
+| JSON encode/decode (objetos/records no JVM) + arrays nativos | ✅ | ✅ | ✅ |
 | JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (`now()`) | ✅ | ✅ | ✅ |
@@ -467,8 +467,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 2. `spawn` no Native: CONC001 (gap documentado)
 3. JSON de objetos/records no Native: JSN002 (gap documentado)
 4. JSON Float/Double: JSN001 (gap documentado)
-5. JSON decode de arrays (`Int[]`): JSN003 (gap documentado; `List<T>` e
-   `List<User>` já funcionam)
+5. ~~JSON decode de arrays (`Int[]`)~~ — ✅ JSN003 fechado: decoders
+   nativos para Int[]/Long[]/Bool[]/String[]; Float/Double[] segue sob
+   o JSN001 (FP sem SSE)
 6. Lambdas sem captura (planned)
 7. Resultado de tarefa (`await`/join explícito): planned
 8. `kof fmt`: planned
