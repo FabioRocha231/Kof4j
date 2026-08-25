@@ -62,7 +62,18 @@ public final class Main {
 
         CompilerDriver driver = new CompilerDriver();
         if (release) driver.setDebugInfoEnabled(false);
-        CompilationResult result = driver.compile(file, tempDir, target);
+        // módulo = diretório do arquivo de entrada (irmãos .kf incluídos)
+        java.util.List<Path> sources = new ArrayList<>();
+        sources.add(file.toAbsolutePath().normalize());
+        Path siblingDir = file.toAbsolutePath().normalize().getParent();
+        if (siblingDir != null) {
+            for (Path sib : collect(siblingDir)) {
+                Path abs = sib.toAbsolutePath().normalize();
+                if (!abs.equals(sources.get(0)) && !sources.contains(abs)) sources.add(abs);
+            }
+        }
+        Path runRoot = siblingDir != null ? siblingDir : file.toAbsolutePath().getParent();
+        CompilationResult result = driver.compileSources(sources, tempDir, target, runRoot);
         for (Diagnostic d : result.diagnostics().getDiagnostics()) System.err.println(d.format());
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
 
@@ -125,6 +136,9 @@ public final class Main {
         }
 
         String className = findMainClass(tempDir);
+        if (System.getProperty("kof.trace") != null) {
+            System.err.println("LAUNCH className=" + className + " dir=" + tempDir);
+        }
         if (className == null) {
             System.err.println("no main class found");
             cleanup(tempDir);
@@ -223,15 +237,15 @@ private static void build(String[] args) {
         }
         List<Path> files = collect(src);
         if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
-        boolean ok = true;
-        for (Path f : files) {
-            CompilationResult r = driver.compile(f, out, target);
-            for (Diagnostic d : r.diagnostics().getDiagnostics()) System.out.println(d.format());
-            if (!r.success()) ok = false;
-        }
-        if (!ok) System.exit(1);
+        files.sort(java.util.Comparator.comparing(p -> p.getFileName().toString()));
+        // convenção Go-like: TODOS os .kf do diretório formam UM módulo
+        // (raiz = diretório passado ao build; imports de pacotes resolvem daí)
+        CompilationResult module = driver.compileSources(files, out, target,
+                src.toAbsolutePath().normalize());
+        for (Diagnostic d : module.diagnostics().getDiagnostics()) System.out.println(d.format());
+        if (!module.success()) System.exit(1);
         // target android + --apk: pipeline direto (sem Maven) usando o SDK
-        if (target == Target.ANDROID && apk && ok) {
+        if (target == Target.ANDROID && apk) {
             runApkPipeline(out);
         }
     }
@@ -682,6 +696,9 @@ private static void build(String[] args) {
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
 
         String className = findMainClass(tempDir);
+        if (System.getProperty("kof.trace") != null) {
+            System.err.println("LAUNCH className=" + className + " dir=" + tempDir);
+        }
         if (className == null) {
             System.err.println("no main class found");
             cleanup(tempDir);

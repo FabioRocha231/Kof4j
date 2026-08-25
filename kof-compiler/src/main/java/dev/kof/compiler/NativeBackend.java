@@ -40,7 +40,8 @@ public class NativeBackend implements Backend {
      * CompilerDriver diagnostica essas classes antes delas chegarem aqui.
      * Os nomes dos campos sao internados AQUI (antes de emitStringData).
      */
-    private record JsonSchemaEntry(String nameCstr, long offset, long typeCode, String auxTable) {}
+    private record JsonSchemaEntry(String tokenCstr, long offset, long typeCode, String className,
+                                    String auxCstr) {}
     private record JsonSchemaTable(String tableLabel, String classCstr, long totalSize,
                                    java.util.List<JsonSchemaEntry> entries) {}
 
@@ -87,8 +88,15 @@ public class NativeBackend implements Backend {
                     }
                     if (!has) { allSupported = false; continue; }
                 }
-                String nameLabel = internString(f.name());
-                entries.add(new JsonSchemaEntry(nameLabel, f.offset(), code, f.name()));
+                // token '"nome":' serve encode (parte literal) e decode (busca)
+                String tokLabel = internString("\"" + f.name() + "\":");
+                String auxCstr = null;
+                if (code == 5L && f.type() instanceof Type.ClassType ct) {
+                    String cn = ct.packageName().isEmpty() ? ct.name()
+                            : ct.packageName() + "." + ct.name();
+                    auxCstr = internString(cn);
+                }
+                entries.add(new JsonSchemaEntry(tokLabel, f.offset(), code, f.name(), auxCstr));
                 any = true;
             }
             if (!any || !allSupported) continue;
@@ -108,10 +116,10 @@ public class NativeBackend implements Backend {
             sb.append("    .quad ").append(t.totalSize()).append("\n");
             sb.append("    .quad ").append(t.entries().size()).append("\n");
             for (JsonSchemaEntry e : t.entries()) {
-                sb.append("    .quad ").append(e.nameCstr()).append("\n");
+                sb.append("    .quad ").append(e.tokenCstr()).append("\n");
                 sb.append("    .quad ").append(e.offset()).append("\n");
                 sb.append("    .quad ").append(e.typeCode()).append("\n");
-                sb.append("    .quad 0\n"); // aux reservado
+                sb.append("    .quad ").append(e.auxCstr() == null ? 0 : e.auxCstr()).append("\n");
             }
         }
         sb.append(".Lsch_registry:\n");

@@ -46,6 +46,20 @@ class SemanticAnalyzer {
     private final Map<MethodCallExpr, SymbolTable.MethodSymbol> resolvedMethods = new IdentityHashMap<>();
     private final Map<NewExpr, SymbolTable.ConstructorSymbol> resolvedConstructors = new IdentityHashMap<>();
     private String currentClassName;
+    /** Pacote efetivo por declaração (multi-pacote num módulo), vindo do driver. */
+    private java.util.function.Function<AstNode, String> declarationPackageLookup;
+
+    void setDeclarationPackageLookup(java.util.function.Function<AstNode, String> lookup) {
+        this.declarationPackageLookup = lookup;
+    }
+
+    private String packageOf(AstNode decl) {
+        if (declarationPackageLookup != null) {
+            String pkg = declarationPackageLookup.apply(decl);
+            if (pkg != null) return pkg;
+        }
+        return currentPackage;
+    }
     private String currentFunctionName;
     private String currentPackage;
     private DiagnosticCollector diagnostics;
@@ -132,26 +146,27 @@ class SemanticAnalyzer {
                     superQualified = qt.packageName() + "." + qt.name();
                 }
             }
-            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(cls.name(), currentPackage,
+            String declPkg = packageOf(cls);
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(cls.name(), declPkg,
                     cls.superClass() != null ? superQualified : "Object",
                     cls.interfaces(), members);
             knownClasses.put(cls.name(), sym);
             currentScope.define(sym);
         } else if (decl instanceof RecordDeclarationNode rec) {
             SymbolTable members = new SymbolTable();
-            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(rec.name(), currentPackage,
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(rec.name(), packageOf(rec),
                     "Record", rec.interfaces(), members);
             knownClasses.put(rec.name(), sym);
             currentScope.define(sym);
         } else if (decl instanceof EntityDeclarationNode ent) {
             SymbolTable members = new SymbolTable();
-            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(ent.name(), currentPackage,
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(ent.name(), packageOf(ent),
                     "Record", List.of(), members);
             knownClasses.put(ent.name(), sym);
             currentScope.define(sym);
         } else if (decl instanceof InterfaceDeclarationNode iface) {
             SymbolTable members = new SymbolTable();
-            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(iface.name(), currentPackage,
+            SymbolTable.ClassSymbol sym = new SymbolTable.ClassSymbol(iface.name(), packageOf(iface),
                     "Object", iface.interfaces(), members);
             knownClasses.put(iface.name(), sym);
             interfaceNames.add(iface.name());
@@ -746,6 +761,24 @@ class SemanticAnalyzer {
                     }
                 }
                 if (mc.receiver() != null) {
+                    // Nome de CLASSE KOF (de qualquer pacote do modulo) como
+                    // receiver para metodo ESTATICO: Desconto.aplicar(c)
+                    if (mc.receiver() instanceof IdentifierExpr krid
+                            && !isLocalName(krid.name(), scope)
+                            && knownClasses.containsKey(krid.name())) {
+                        SymbolTable.Symbol km = resolveInHierarchy(krid.name(), mc.methodName());
+                        if (km instanceof SymbolTable.MethodSymbol kms
+                                && kms.parameterTypes().size() == mc.arguments().size()) {
+                            SymbolTable.ClassSymbol kt = knownClasses.get(krid.name());
+                            resolvedMethods.put(mc, new SymbolTable.MethodSymbol(
+                                    kms.name(), kt.internalName(), kms.returnType(),
+                                    kms.parameterTypes(), kms.accessFlags(),
+                                    SymbolTable.DispatchKind.STATIC));
+                            for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                            checkArgTypes(mc.methodName(), inferArgTypes(mc, scope), kms.parameterTypes());
+                            yield kms.returnType();
+                        }
+                    }
                     // Nome de CLASSE EXTERNA como receiver: Button.inflate(...)
                     // — resolve pelo classpath antes dos namespaces builtin
                     // (Button também é widget do kof.ui; o import decide)
@@ -1239,6 +1272,12 @@ class SemanticAnalyzer {
             return Type.UnknownType.UNKNOWN;
         }
         return left;
+    }
+
+    private List<Type> inferArgTypes(MethodCallExpr mc, SymbolTable scope) {
+        List<Type> argTypes = new ArrayList<>();
+        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+        return argTypes;
     }
 
     private void checkArgTypes(String methodName, List<Type> argTypes, List<Type> paramTypes) {

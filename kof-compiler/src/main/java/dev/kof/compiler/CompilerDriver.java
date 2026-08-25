@@ -127,6 +127,13 @@ private Target target = Target.JVM;
      * EXTERNAS (JVM/Android via ExternalClasspath).
      */
     public CompilationResult compileSources(java.util.List<Path> sources, Path outputDir, Target target) {
+        return compileSources(sources, outputDir, target,
+                sources.get(0).toAbsolutePath().normalize().getParent());
+    }
+
+    public CompilationResult compileSources(java.util.List<Path> sources, Path outputDir, Target target,
+                                            Path moduleRoot) {
+        this.moduleRoot = moduleRoot;
         DiagnosticCollector diagnostics = new DiagnosticCollector();
         this.target = target;
         this.currentDiagnostics = diagnostics;
@@ -136,7 +143,7 @@ private Target target = Target.JVM;
         this.entitySchemas.clear();
         try {
             java.util.List<CompilationUnitNode> parsedUnits = new ArrayList<>();
-            String sharedPackage = null;
+            Path rootAbs = moduleRoot != null ? moduleRoot.toAbsolutePath().normalize() : null;
             for (Path src : sources) {
                 String code = Files.readString(src);
                 String fileName = src.getFileName().toString();
@@ -150,43 +157,53 @@ private Target target = Target.JVM;
                 if (diagnostics.hasErrors()) {
                     return new CompilationResult(false, diagnostics, outputDir);
                 }
-                // pacote único do módulo: ou todos ausentes, ou todos iguais
-                if (!unit.packageName().isEmpty()) {
-                    if (sharedPackage == null) {
-                        sharedPackage = unit.packageName();
-                    } else if (!sharedPackage.equals(unit.packageName())) {
-                        diagnostics.error(src.toString(), 0, 0, 0,
-                                "mixed packages in one module: '" + sharedPackage
-                                        + "' and '" + unit.packageName()
-                                        + "' (one directory = one package)",
-                                "PKG001");
-                        return new CompilationResult(false, diagnostics, outputDir);
-                    }
-                }
                 parsedUnits.add(unit);
             }
+            // pacote por unidade: declarado, senão derivado do diretório
+            java.util.List<String> unitPkgs = new ArrayList<>();
+            for (int i = 0; i < parsedUnits.size(); i++) {
+                String declared = parsedUnits.get(i).packageName();
+                String derivedPkg = derivedPackageOf(sources.get(i), rootAbs);
+                if (!declared.isEmpty() && !declared.equals(derivedPkg)) {
+                    diagnostics.error(sources.get(i).toString(), 0, 0, 0,
+                            "package '" + declared
+                                    + "' não corresponde ao diretório ('" + derivedPkg
+                                    + "') — um diretório é um pacote",
+                            "PKG004");
+                    return new CompilationResult(false, diagnostics, outputDir);
+                }
+                unitPkgs.add(derivedPkg);
+            }
+            // MERGE: imports unidos, declarações de TODAS as unidades
             List<String> mergedImports = new ArrayList<>();
             List<AstNode> mergedDecls = new ArrayList<>();
             int mainCount = 0;
-            for (CompilationUnitNode u : parsedUnits) {
+            for (int i = 0; i < parsedUnits.size(); i++) {
+                CompilationUnitNode u = parsedUnits.get(i);
                 for (String imp : u.imports()) {
                     if (!mergedImports.contains(imp)) mergedImports.add(imp);
                 }
+                String pkgU = unitPkgs.get(i);
                 for (AstNode d : u.declarations()) {
+                    declarationPackages.put(d, pkgU);
                     if (d instanceof FunctionDeclarationNode fd && "main".equals(fd.name())) mainCount++;
                     mergedDecls.add(d);
                 }
             }
-            if (mainCount > 1 && currentDiagnostics != null) {
+            if (mainCount > 1) {
                 diagnostics.error("", 0, 0, 0,
                         "module has " + mainCount + " main() functions; expected exactly one",
                         "PKG002");
                 return new CompilationResult(false, diagnostics, outputDir);
             }
             CompilationUnitNode unit = new CompilationUnitNode(
-                    parsedUnits.get(0).position(), sharedPackage == null ? "" : sharedPackage,
+                    parsedUnits.get(0).position(), "",
                     mergedImports, mergedDecls);
+            unit = expandKofImports(unit);
             lowerAndEmit(unit, diagnostics, outputDir, target);
+            if (diagnostics.hasErrors()) {
+                return new CompilationResult(false, diagnostics, outputDir);
+            }
             return new CompilationResult(true, diagnostics, outputDir);
         } catch (IOException e) {
             diagnostics.error(sources.get(0).toString(), 0, 0, 0,
@@ -200,8 +217,103 @@ private Target target = Target.JVM;
         }
     }
 
+    /**
+     * Imports de PACOTES KOF (código Kof em outras pastas):
+     *   import vendas.models            → módulo inteiro do diretório
+     *   import vendas.models.Cliente    → arquivo Cliente.kf daquele pacote
+     *
+     * Resolução: relativa à RAIZ do módulo (diretório passado ao build),
+     * TRANSITIVA (imports dos imports), sem ciclos. Tipos ficam visíveis
+     * pelo nome simples — a IR é única e global ao build.
+     */
+    private CompilationUnitNode expandKofImports(CompilationUnitNode unit) {
+        java.util.Set<String> visitedDirs = new java.util.HashSet<>();
+        List<AstNode> decls = new ArrayList<>(unit.declarations());
+        List<String> imports = new ArrayList<>(unit.imports());
+        java.util.ArrayDeque<String> queue = new java.util.ArrayDeque<>(imports);
+        int rounds = 0;
+        while (!queue.isEmpty() && rounds++ < 256) {
+            String imp = queue.poll();
+            if (imp.endsWith(".*")) {
+                imp = imp.substring(0, imp.length() - 2);
+            }
+            Path pkgDir = moduleRoot != null
+                    ? moduleRoot.resolve(imp.replace('.', '/'))
+                    : Path.of(imp.replace('.', '/'));
+            if (!Files.isDirectory(pkgDir)) continue;          // import externo (android.* etc.)
+            String dirKey = pkgDir.toAbsolutePath().normalize().toString();
+            if (!visitedDirs.add(dirKey)) continue;
+            try (var stream = Files.walk(pkgDir, 1)) {
+                for (Path kf : stream.filter(p -> p.toString().endsWith(".kf"))
+                        .sorted(java.util.Comparator.comparing(p -> p.getFileName().toString()))
+                        .toList()) {
+                    String code = Files.readString(kf);
+                    String fileName = kf.getFileName().toString();
+                    DiagnosticCollector silent = new DiagnosticCollector();
+                    Parser parser = new Parser(new Lexer(code, fileName, silent).tokenize(),
+                            silent, fileName);
+                    CompilationUnitNode libUnit = parser.parse();
+                    if (silent.hasErrors()) {
+                        for (Diagnostic d : silent.getDiagnostics()) currentDiagnostics.report(d);
+                        continue;
+                    }
+                    String expectedPkg = dirKey.equals(moduleRoot.toAbsolutePath().normalize().toString())
+                            ? "" : imp;
+                    if (!libUnit.packageName().isEmpty()
+                            && !libUnit.packageName().equals(expectedPkg)
+                            && currentDiagnostics != null) {
+                        SourcePosition p0 = libUnit.position();
+                        currentDiagnostics.error(kf.toString(), 0, 0, 0,
+                                "package '" + libUnit.packageName()
+                                        + "' não corresponde ao diretório do import ('"
+                                        + expectedPkg + "')",
+                                "PKG004");
+                        continue;
+                    }
+                    for (String libImp : libUnit.imports()) {
+                        if (!imports.contains(libImp)) { imports.add(libImp); queue.add(libImp); }
+                    }
+                    for (AstNode d : libUnit.declarations()) {
+                        declarationPackages.put(d, libUnit.packageName());
+                        decls.add(d);
+                    }
+                }
+            } catch (IOException e) {
+                if (currentDiagnostics != null) {
+                    currentDiagnostics.error("", 0, 0, 0,
+                            "import '" + imp + "' could not be read: " + e.getMessage(), "PKG003");
+                }
+            }
+        }
+        // colisão de nomes entre pacotes → diagnóstico honesto
+        java.util.Map<String, String> seen = new java.util.HashMap<>();
+        for (AstNode d : decls) {
+            String n = declarationName(d);
+            if (n == null) continue;
+            String pkg = declarationPackages.getOrDefault(d, unit.packageName());
+            String prev = seen.get(n);
+            if (prev != null && !prev.equals(pkg) && currentDiagnostics != null) {
+                currentDiagnostics.error("", 0, 0, 0,
+                        "duplicate type name '" + n + "' in packages '" + prev + "' and '"
+                                + pkg + "'", "PKG005");
+            }
+            seen.putIfAbsent(n, pkg);
+        }
+        return new CompilationUnitNode(unit.position(), unit.packageName(),
+                imports, decls);
+    }
+
+    private static String declarationName(AstNode d) {
+        if (d instanceof TypeDeclarationNode t) return t.name();
+        if (d instanceof FunctionDeclarationNode f) return f.name();
+        return null;
+    }
+
     private void lowerAndEmit(CompilationUnitNode unit, DiagnosticCollector diagnostics,
                               Path outputDir, Target target) throws IOException {
+        if (System.getProperty("kof.trace") != null) {
+            System.err.println("LOWER-AND-EMIT decls=" + unit.declarations().size() + " out=" + outputDir);
+        }
         this.target = target;
         this.currentDiagnostics = diagnostics;
         flushClasspathWarnings();
@@ -212,6 +324,7 @@ private Target target = Target.JVM;
             }
             semanticAnalyzer = new SemanticAnalyzer();
             semanticAnalyzer.setExternalTypes(externalClasspath);
+            semanticAnalyzer.setDeclarationPackageLookup(d -> declarationPackages.get(d));
             semanticAnalyzer.analyze(unit, diagnostics);
             if (diagnostics.hasErrors()) {
                 return;
@@ -374,9 +487,10 @@ private Target target = Target.JVM;
         String moduleName = unit.packageName().isEmpty() ? "Default" : unit.packageName().replace('.', '/');
         int nextTypeId = 10;
         for (AstNode decl : unit.declarations()) {
-            if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, unit.packageName(), nextTypeId++));
-            else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, unit.packageName(), nextTypeId++));
-            else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, unit.packageName(), nextTypeId++));
+            String declPkg = declPackage(decl, unit.packageName());
+            if (decl instanceof ClassDeclarationNode cls) classes.add(lowerClass(cls, declPkg, nextTypeId++));
+            else if (decl instanceof InterfaceDeclarationNode iface) classes.add(lowerInterface(iface, declPkg, nextTypeId++));
+            else if (decl instanceof RecordDeclarationNode rec) classes.add(lowerRecord(rec, declPkg, nextTypeId++));
             else if (decl instanceof EntityDeclarationNode ent) {
                 entitySchemas.put(ent.name(), ent.fields());
                 List<RecordComponentNode> components = new java.util.ArrayList<>();
@@ -385,7 +499,7 @@ private Target target = Target.JVM;
                 }
                 classes.add(lowerRecord(new RecordDeclarationNode(ent.position(), ent.name(),
                         ent.modifiers(), null, List.of(), components, List.of()),
-                        unit.packageName(), nextTypeId++));
+                        declPkg, nextTypeId++));
             }
             else if (decl instanceof FunctionDeclarationNode func) {
                 topLevelFunctions.add(lowerFunction(func));
@@ -584,6 +698,27 @@ private Target target = Target.JVM;
         }
         pendingSuperBridges.clear();
         return new IRModule(module.name(), classes, module.imports(), module.sourceName());
+    }
+
+    /** Raiz do módulo: base para resolver imports de pacotes Kof (dirs). */
+    private Path moduleRoot;
+
+    /** Pacote declarado de cada declaração (multi-pacote num só módulo). */
+    private final Map<AstNode, String> declarationPackages = new java.util.LinkedHashMap<>();
+
+
+    /** Pacote derivado do DIRETÓRIO do arquivo relativo à raiz do módulo. */
+    private static String derivedPackageOf(Path src, Path rootAbs) {
+        Path abs = src.toAbsolutePath().normalize();
+        if (rootAbs == null || !abs.startsWith(rootAbs)) return "";
+        Path parent = rootAbs.relativize(abs).getParent();
+        if (parent == null || parent.toString().isEmpty()) return "";
+        return parent.toString().replace(java.io.File.separatorChar, '.');
+    }
+
+    private String declPackage(AstNode decl, String fallback) {
+        String pkg = declarationPackages.get(decl);
+        return pkg != null ? pkg : fallback;
     }
 
     /** Dono real da lambda (classe onde o corpo foi escrito) por classe sintética. */
@@ -891,107 +1026,109 @@ private Target target = Target.JVM;
 
     private void collectMutatedCaptures(List<StatementNode> body) {
         for (StatementNode stmt : body) {
-            collectMutatedCapturesStmt(stmt, new java.util.HashSet<>());
+            collectMutatedCapturesStmt(stmt, new java.util.HashSet<>(), false);
         }
     }
 
-    private void collectMutatedCapturesStmt(StatementNode stmt, java.util.Set<String> shadowed) {
+    private void collectMutatedCapturesStmt(StatementNode stmt, java.util.Set<String> shadowed, boolean inLambda) {
         if (stmt instanceof ExpressionStmt es) {
-            collectMutatedCapturesExpr(es.expression(), shadowed);
+            collectMutatedCapturesExpr(es.expression(), shadowed, inLambda);
         } else if (stmt instanceof ReturnStmt rs) {
-            if (rs.value() != null) collectMutatedCapturesExpr(rs.value(), shadowed);
+            if (rs.value() != null) collectMutatedCapturesExpr(rs.value(), shadowed, inLambda);
         } else if (stmt instanceof BlockStmt b) {
             java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
-            for (StatementNode s : b.statements()) collectMutatedCapturesStmt(s, inner);
+            for (StatementNode s : b.statements()) collectMutatedCapturesStmt(s, inner, inLambda);
         } else if (stmt instanceof IfStmt i) {
-            collectMutatedCapturesExpr(i.condition(), shadowed);
-            collectMutatedCapturesStmt(i.thenBranch(), new java.util.HashSet<>(shadowed));
-            if (i.elseBranch() != null) collectMutatedCapturesStmt(i.elseBranch(), new java.util.HashSet<>(shadowed));
+            collectMutatedCapturesExpr(i.condition(), shadowed, inLambda);
+            collectMutatedCapturesStmt(i.thenBranch(), new java.util.HashSet<>(shadowed), inLambda);
+            if (i.elseBranch() != null) collectMutatedCapturesStmt(i.elseBranch(), new java.util.HashSet<>(shadowed), inLambda);
         } else if (stmt instanceof WhileStmt w) {
-            collectMutatedCapturesExpr(w.condition(), shadowed);
-            collectMutatedCapturesStmt(w.body(), new java.util.HashSet<>(shadowed));
+            collectMutatedCapturesExpr(w.condition(), shadowed, inLambda);
+            collectMutatedCapturesStmt(w.body(), new java.util.HashSet<>(shadowed), inLambda);
         } else if (stmt instanceof DoWhileStmt dw) {
-            collectMutatedCapturesStmt(dw.body(), new java.util.HashSet<>(shadowed));
-            collectMutatedCapturesExpr(dw.condition(), shadowed);
+            collectMutatedCapturesStmt(dw.body(), new java.util.HashSet<>(shadowed), inLambda);
+            collectMutatedCapturesExpr(dw.condition(), shadowed, inLambda);
         } else if (stmt instanceof ForStmt f) {
             if (f.init() instanceof VarDeclStmt vds) {
-                collectMutatedCapturesStmt(vds, shadowed);
+                collectMutatedCapturesStmt(vds, shadowed, inLambda);
             } else if (f.init() instanceof ExpressionStmt ies) {
-                collectMutatedCapturesExpr(ies.expression(), shadowed);
+                collectMutatedCapturesExpr(ies.expression(), shadowed, inLambda);
             }
-            if (f.condition() != null) collectMutatedCapturesExpr(f.condition(), shadowed);
-            if (f.update() != null) collectMutatedCapturesExpr(f.update(), shadowed);
-            collectMutatedCapturesStmt(f.body(), new java.util.HashSet<>(shadowed));
+            if (f.condition() != null) collectMutatedCapturesExpr(f.condition(), shadowed, inLambda);
+            if (f.update() != null) collectMutatedCapturesExpr(f.update(), shadowed, inLambda);
+            collectMutatedCapturesStmt(f.body(), new java.util.HashSet<>(shadowed), inLambda);
         } else if (stmt instanceof ForInStmt fi) {
-            collectMutatedCapturesExpr(fi.collection(), shadowed);
+            collectMutatedCapturesExpr(fi.collection(), shadowed, inLambda);
             java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
             inner.add(fi.varName());
-            collectMutatedCapturesStmt(fi.body(), inner);
+            collectMutatedCapturesStmt(fi.body(), inner, inLambda);
         } else if (stmt instanceof VarDeclStmt vds) {
             shadowed.add(vds.name());
-            if (vds.initializer() != null) collectMutatedCapturesExpr(vds.initializer(), shadowed);
+            if (vds.initializer() != null) collectMutatedCapturesExpr(vds.initializer(), shadowed, inLambda);
         } else if (stmt instanceof ThrowStmt ts) {
-            collectMutatedCapturesExpr(ts.expression(), shadowed);
+            collectMutatedCapturesExpr(ts.expression(), shadowed, inLambda);
         } else if (stmt instanceof AssertStmt as) {
-            collectMutatedCapturesExpr(as.condition(), shadowed);
+            collectMutatedCapturesExpr(as.condition(), shadowed, inLambda);
         } else if (stmt instanceof SpawnStmt ss) {
-            collectMutatedCapturesExpr(ss.expression(), shadowed);
+            collectMutatedCapturesExpr(ss.expression(), shadowed, inLambda);
         } else if (stmt instanceof SwitchStmt sw) {
-            collectMutatedCapturesExpr(sw.expression(), shadowed);
+            collectMutatedCapturesExpr(sw.expression(), shadowed, inLambda);
             for (SwitchCase c : sw.cases()) {
-                if (c.value() != null) collectMutatedCapturesExpr(c.value(), shadowed);
-                for (StatementNode s : c.body()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+                if (c.value() != null) collectMutatedCapturesExpr(c.value(), shadowed, inLambda);
+                for (StatementNode s : c.body()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed), inLambda);
             }
             if (sw.defaultBody() != null) {
-                for (StatementNode s : sw.defaultBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+                for (StatementNode s : sw.defaultBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed), inLambda);
             }
         } else if (stmt instanceof TryStmt ts) {
-            for (StatementNode s : ts.tryBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+            for (StatementNode s : ts.tryBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed), inLambda);
             for (CatchClause cc : ts.catchClauses()) {
                 java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
                 inner.add(cc.exceptionName());
-                for (StatementNode s : cc.body()) collectMutatedCapturesStmt(s, inner);
+                for (StatementNode s : cc.body()) collectMutatedCapturesStmt(s, inner, inLambda);
             }
             if (ts.finallyBody() != null) {
-                for (StatementNode s : ts.finallyBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed));
+                for (StatementNode s : ts.finallyBody()) collectMutatedCapturesStmt(s, new java.util.HashSet<>(shadowed), inLambda);
             }
         }
     }
 
-    private void collectMutatedCapturesExpr(ExpressionNode expr, java.util.Set<String> shadowed) {
+    private void collectMutatedCapturesExpr(ExpressionNode expr, java.util.Set<String> shadowed, boolean inLambda) {
         if (expr instanceof LambdaExpr le) {
-            collectMutatedCaptures(le.body());
+            for (StatementNode s : le.body()) {
+                collectMutatedCapturesStmt(s, new java.util.HashSet<>(), true);
+            }
         } else if (expr instanceof AssignmentExpr ae) {
-            if (ae.target() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())) {
+            if (inLambda && ae.target() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())) {
                 mutatedCapturedNames.add(ie.name());
             }
-            collectMutatedCapturesExpr(ae.target(), shadowed);
-            collectMutatedCapturesExpr(ae.value(), shadowed);
+            collectMutatedCapturesExpr(ae.target(), shadowed, inLambda);
+            collectMutatedCapturesExpr(ae.value(), shadowed, inLambda);
         } else if (expr instanceof UnaryExpr ue) {
-            if (ue.operand() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())
+            if (inLambda && ue.operand() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())
                     && ("++".equals(ue.operator()) || "--".equals(ue.operator()))) {
                 mutatedCapturedNames.add(ie.name());
             }
-            collectMutatedCapturesExpr(ue.operand(), shadowed);
+            collectMutatedCapturesExpr(ue.operand(), shadowed, inLambda);
         } else if (expr instanceof BinaryExpr bin) {
-            collectMutatedCapturesExpr(bin.left(), shadowed);
-            collectMutatedCapturesExpr(bin.right(), shadowed);
+            collectMutatedCapturesExpr(bin.left(), shadowed, inLambda);
+            collectMutatedCapturesExpr(bin.right(), shadowed, inLambda);
         } else if (expr instanceof MethodCallExpr mc) {
-            if (mc.receiver() != null) collectMutatedCapturesExpr(mc.receiver(), shadowed);
-            for (ExpressionNode arg : mc.arguments()) collectMutatedCapturesExpr(arg, shadowed);
+            if (mc.receiver() != null) collectMutatedCapturesExpr(mc.receiver(), shadowed, inLambda);
+            for (ExpressionNode arg : mc.arguments()) collectMutatedCapturesExpr(arg, shadowed, inLambda);
         } else if (expr instanceof FieldAccessExpr fa) {
-            collectMutatedCapturesExpr(fa.receiver(), shadowed);
+            collectMutatedCapturesExpr(fa.receiver(), shadowed, inLambda);
         } else if (expr instanceof ArrayAccessExpr aa) {
-            collectMutatedCapturesExpr(aa.receiver(), shadowed);
-            collectMutatedCapturesExpr(aa.index(), shadowed);
+            collectMutatedCapturesExpr(aa.receiver(), shadowed, inLambda);
+            collectMutatedCapturesExpr(aa.index(), shadowed, inLambda);
         } else if (expr instanceof IfExpr iex) {
-            collectMutatedCapturesExpr(iex.condition(), shadowed);
-            collectMutatedCapturesExpr(iex.thenExpr(), shadowed);
-            collectMutatedCapturesExpr(iex.elseExpr(), shadowed);
+            collectMutatedCapturesExpr(iex.condition(), shadowed, inLambda);
+            collectMutatedCapturesExpr(iex.thenExpr(), shadowed, inLambda);
+            collectMutatedCapturesExpr(iex.elseExpr(), shadowed, inLambda);
         } else if (expr instanceof NewExpr ne) {
-            for (ExpressionNode arg : ne.arguments()) collectMutatedCapturesExpr(arg, shadowed);
+            for (ExpressionNode arg : ne.arguments()) collectMutatedCapturesExpr(arg, shadowed, inLambda);
         } else if (expr instanceof NewArrayExpr nae) {
-            collectMutatedCapturesExpr(nae.size(), shadowed);
+            collectMutatedCapturesExpr(nae.size(), shadowed, inLambda);
         }
     }
 
@@ -2063,6 +2200,26 @@ private Target target = Target.JVM;
                             mc.methodName(), List.of(BuiltinTypes.STRING),
                             Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                        && semanticAnalyzer != null
+                        && semanticAnalyzer.getClass(rid.name()) != null) {
+                    // Metodo ESTATICO de classe KOF de outro pacote:
+                    // Desconto.aplicar(c) -> invokestatic vendas/regras/Desconto.aplicar
+                    SymbolTable.MethodSymbol ksm = null;
+                    SymbolTable.Symbol ks = semanticAnalyzer.resolveInHierarchy(rid.name(), mc.methodName());
+                    if (ks instanceof SymbolTable.MethodSymbol ms0
+                            && ms0.parameterTypes().size() == mc.arguments().size()) {
+                        ksm = ms0;
+                    }
+                    if (ksm != null) {
+                        SymbolTable.ClassSymbol kt = semanticAnalyzer.getClass(rid.name());
+                        localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ksm.parameterTypes(),
+                                ops, owner, localIdx, locals);
+                        ops.add(new KofCall(kt.type(), mc.methodName(), ksm.parameterTypes(),
+                                ksm.returnType(), KofCallKind.STATIC));
+                        yield localIdx;
+                    }
+                    yield localIdx;
+} else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                         && qualifyViaImports(rid.name()) instanceof Type.ClassType extQ
                         && !extQ.packageName().isEmpty()
                         && externalClasspath != null
@@ -4078,6 +4235,10 @@ private Target target = Target.JVM;
                     && !BuiltinTypes.isString(formal)) {
                 emitErasureBox(ops, argType);
             }
+            if (formal instanceof Type.PrimitiveType fp && "float".equals(fp.name())
+                    && argType instanceof Type.PrimitiveType ap && "double".equals(ap.name())) {
+                ops.add(new KofUnary(KofUnaryOp.D2F, Type.PrimitiveType.DOUBLE));
+            }
         }
         return localIdx;
     }
@@ -5192,8 +5353,12 @@ private Target target = Target.JVM;
             List<KofOperation> ops = new ArrayList<>();
             List<IRLocalVariable> localVars = new ArrayList<>();
             Type ownerType = ownerTypeFromInternal(owner);
-            localVars.add(new IRLocalVariable(0, "this", ownerType));
-            int localIdx = 1;
+            // método ESTÁTICO: sem this, params começam no slot 0
+            boolean isStaticMethod = (access & AccessFlags.STATIC) != 0;
+            if (!isStaticMethod) {
+                localVars.add(new IRLocalVariable(0, "this", ownerType));
+            }
+            int localIdx = isStaticMethod ? 0 : 1;
             for (FormalParameterNode param : method.parameters()) {
                 Type paramType = resolveWithTypeParams(param.type(), typeParams);
                 localVars.add(new IRLocalVariable(localIdx, param.name(), paramType));

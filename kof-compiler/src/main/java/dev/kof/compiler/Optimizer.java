@@ -305,6 +305,7 @@ public final class Optimizer {
             case L2F -> v instanceof Long l ? KofLoadLiteral.ofFloat(l.floatValue()) : null;
             case L2D -> v instanceof Long l ? KofLoadLiteral.ofDouble(l.doubleValue()) : null;
             case F2D -> v instanceof Float f ? KofLoadLiteral.ofDouble(f.doubleValue()) : null;
+            case D2F -> v instanceof Double d ? KofLoadLiteral.ofFloat(d.floatValue()) : null;
         };
     }
 
