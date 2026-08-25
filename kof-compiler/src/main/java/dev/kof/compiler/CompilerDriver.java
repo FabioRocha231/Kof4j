@@ -2815,6 +2815,33 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofObservability.isObservabilityNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofObservability.ObservabilityCall oCall = KofObservability.staticMethod(rid.name(), mc.methodName(), argTypes);
+                    if (oCall != null) {
+                        if (!KofObservability.supportedOn(oCall.function(), target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (" + KofObservability.gapCode(oCall.function()) + ")",
+                                        KofObservability.gapCode(oCall.function()));
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("kof.observability", "Observability", List.of()),
+                                oCall.function(), oCall.parameterTypes(), oCall.returnType(),
+                                KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                             && KofTetris.isTetrisNamespace(rid.name())) {
                     KofTetris.TetrisCall tetrisCall = KofTetris.staticMethod(rid.name(), mc.methodName(),
                             mc.arguments().size());
@@ -3506,11 +3533,46 @@ private Target target = Target.JVM;
                     for (int i = locals.size() - 1; i >= 0; i--) {
                         if (locals.get(i).name().equals(ieBox.name()) && isBoxType(locals.get(i).type())) {
                             IRLocalVariable boxLv = locals.get(i);
-                            ops.add(new KofLoadLocal(boxLv.type(), boxLv.index()));
-                            localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            String op = ae.operator();
                             Type valType = boxValueTypes.get(((Type.ClassType) boxLv.type()).name());
-                            emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), valType);
-                            ops.add(new KofStoreField(boxLv.type(), "value", valType));
+                            if ("+=".equals(op) && BuiltinTypes.isString(valType)) {
+                                ops.add(new KofLoadLocal(boxLv.type(), boxLv.index()));
+                                ops.add(new KofLoadField(boxLv.type(), "value", valType));
+                                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                                ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                        List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
+                                        KofCallKind.STATIC));
+                                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                                ops.add(new KofStoreField(boxLv.type(), "value", valType));
+                            } else if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
+                                    || "/=".equals(op) || "%=".equals(op)
+                                    || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
+                                ops.add(new KofLoadLocal(boxLv.type(), boxLv.index()));
+                                ops.add(new KofLoadField(boxLv.type(), "value", valType));
+                                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                                emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), valType);
+                                KofBinaryOp binOp = switch (op) {
+                                    case "+=" -> KofBinaryOp.ADD;
+                                    case "-=" -> KofBinaryOp.SUB;
+                                    case "*=" -> KofBinaryOp.MUL;
+                                    case "/=" -> KofBinaryOp.DIV;
+                                    case "%=" -> KofBinaryOp.MOD;
+                                    case "&=" -> KofBinaryOp.AND;
+                                    case "|=" -> KofBinaryOp.OR;
+                                    case "^=" -> KofBinaryOp.XOR;
+                                    default -> KofBinaryOp.ADD;
+                                };
+                                ops.add(new KofBinary(binOp, valType));
+                                emitWideningIfNeeded(ops, valType, valType);
+                                ops.add(new KofStoreField(boxLv.type(), "value", valType));
+                            } else {
+                                ops.add(new KofLoadLocal(boxLv.type(), boxLv.index()));
+                                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                                emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), valType);
+                                ops.add(new KofStoreField(boxLv.type(), "value", valType));
+                            }
                             yield localIdx;
                         }
                     }
@@ -3520,7 +3582,19 @@ private Target target = Target.JVM;
                     for (int i = locals.size() - 1; i >= 0; i--) {
                         if (locals.get(i).name().equals(ie.name())) {
                             String op = ae.operator();
-                            if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
+                            if ("+=".equals(op) && BuiltinTypes.isString(locals.get(i).type())) {
+                                ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
+                                ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                        List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
+                                        KofCallKind.STATIC));
+                                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                                ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                        List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
+                                        KofCallKind.STATIC));
+                                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                            } else if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
                                     || "/=".equals(op) || "%=".equals(op)
                                     || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
                                 ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
@@ -4060,6 +4134,13 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                         KofValidation.ValidationCall vCall = KofValidation.staticMethod(rid.name(), mc.methodName(), argTypes);
                         if (vCall != null) yield vCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && KofObservability.isObservabilityNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                        KofObservability.ObservabilityCall oCall = KofObservability.staticMethod(rid.name(), mc.methodName(), argTypes);
+                        if (oCall != null) yield oCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (KofUi.isUiType(recvType)) {

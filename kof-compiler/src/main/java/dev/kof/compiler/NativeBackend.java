@@ -1103,7 +1103,11 @@ public class NativeBackend implements Backend {
         sb.append("\n.globl _start\n");
         sb.append("_start:\n");
         if (mainHasArgs) {
-            sb.append("    movq (%rsp), %rdi\n");
+            // N3: passa array vazio — evita segfault ao tratar argc como ponteiro
+            sb.append("    xorl %edi, %edi\n");
+            sb.append("    movl $8, %esi\n");
+            sb.append("    call kof_array_alloc\n");
+            sb.append("    movq %rax, %rdi\n");
         }
         sb.append("    call ").append(sanitizeName(clazz.name())).append("_main\n");
         sb.append("    movq $60, %rax\n");
