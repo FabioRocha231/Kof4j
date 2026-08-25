@@ -54,6 +54,8 @@ sealed interface Type {
             List<Type> args = java.util.Arrays.stream(argsStr.split(","))
                     .map(String::trim).map(Type::of).toList();
             if ("List".equals(base) || "ArrayList".equals(base)) return new ClassType("kof", "List", args);
+            if ("Map".equals(base) || "HashMap".equals(base)) return new ClassType("kof", "Map", args);
+            if ("Set".equals(base) || "HashSet".equals(base)) return new ClassType("kof", "Set", args);
             return new ClassType("", base, args);
         }
         return switch (name) {
@@ -122,6 +124,8 @@ sealed interface Type {
         if (!canonical.equals(name)) return canonical;
         if ("string".equals(name)) return "String";
         if ("list".equals(name) || "arraylist".equals(name)) return "List";
+        if ("map".equals(name) || "hashmap".equals(name)) return "Map";
+        if ("set".equals(name) || "hashset".equals(name)) return "Set";
         return name;
     }
 

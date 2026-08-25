@@ -1481,6 +1481,14 @@ class JsBackend implements Backend {
             handleListOp(ctx, stack, preambleExprs, kc, receiver, args);
             return;
         }
+        if (isMapOp(kc)) {
+            handleMapOp(ctx, stack, preambleExprs, kc, receiver, args);
+            return;
+        }
+        if (isSetOp(kc)) {
+            handleSetOp(ctx, stack, preambleExprs, kc, receiver, args);
+            return;
+        }
         if (isRuntimeOp(kc)) {
             // kof_json_* / kof_io_* / kof_now / kof_box / kof_unbox — checked
             // before string ops: json.encode("...") has a String owner.
@@ -1709,6 +1717,14 @@ class JsBackend implements Backend {
         return BuiltinTypes.isList(kc.ownerType()) && kc.methodName().startsWith("kof_list_");
     }
 
+    private boolean isMapOp(KofCall kc) {
+        return BuiltinTypes.isMap(kc.ownerType()) && kc.methodName().startsWith("kof_map_");
+    }
+
+    private boolean isSetOp(KofCall kc) {
+        return BuiltinTypes.isSet(kc.ownerType()) && kc.methodName().startsWith("kof_set_");
+    }
+
     private void handleListOp(MethodCtx ctx, List<Object> stack,
                               List<JsIr.JsExpression> preambleExprs, KofCall kc,
                               JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
@@ -1751,6 +1767,65 @@ class JsBackend implements Backend {
                 preambleExprs.add(call);
                 return;
             }
+            throw new StatementEnd(call);
+        }
+        stack.add(call);
+    }
+
+    private void handleMapOp(MethodCtx ctx, List<Object> stack,
+                              List<JsIr.JsExpression> preambleExprs, KofCall kc,
+                              JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
+        String fn = switch (kc.methodName()) {
+            case "kof_map_new" -> "kofMapNew";
+            case "kof_map_put" -> "kofMapPut";
+            case "kof_map_get" -> "kofMapGet";
+            case "kof_map_remove" -> "kofMapRemove";
+            case "kof_map_contains" -> "kofMapContains";
+            case "kof_map_size" -> "kofMapSize";
+            case "kof_map_clear" -> "kofMapClear";
+            case "kof_map_is_empty" -> "kofMapIsEmpty";
+            case "kof_map_keys" -> "kofMapKeys";
+            case "kof_map_values" -> "kofMapValues";
+            default -> throw new IllegalStateException("KofJS: unknown map op " + kc.methodName());
+        };
+        registerRuntime(fn);
+        if ("kof_map_new".equals(kc.methodName())) {
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier(fn), List.of()));
+            return;
+        }
+        List<JsIr.JsExpression> callArgs = new ArrayList<>();
+        callArgs.add(receiver);
+        callArgs.addAll(args);
+        JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
+        if (Type.isVoid(kc.returnType())) {
+            throw new StatementEnd(call);
+        }
+        stack.add(call);
+    }
+
+    private void handleSetOp(MethodCtx ctx, List<Object> stack,
+                              List<JsIr.JsExpression> preambleExprs, KofCall kc,
+                              JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
+        String fn = switch (kc.methodName()) {
+            case "kof_set_new" -> "kofSetNew";
+            case "kof_set_add" -> "kofSetAdd";
+            case "kof_set_contains" -> "kofSetContains";
+            case "kof_set_remove" -> "kofSetRemove";
+            case "kof_set_size" -> "kofSetSize";
+            case "kof_set_clear" -> "kofSetClear";
+            case "kof_set_is_empty" -> "kofSetIsEmpty";
+            default -> throw new IllegalStateException("KofJS: unknown set op " + kc.methodName());
+        };
+        registerRuntime(fn);
+        if ("kof_set_new".equals(kc.methodName())) {
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier(fn), List.of()));
+            return;
+        }
+        List<JsIr.JsExpression> callArgs = new ArrayList<>();
+        callArgs.add(receiver);
+        callArgs.addAll(args);
+        JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
+        if (Type.isVoid(kc.returnType())) {
             throw new StatementEnd(call);
         }
         stack.add(call);
@@ -2814,6 +2889,81 @@ class JsBackend implements Backend {
 
             export function kofListClear(list) {
                 list.length = 0;
+            }
+
+            export function kofMapNew() {
+                return new Map();
+            }
+
+            export function kofMapPut(map, key, value) {
+                const prev = map.get(key);
+                map.set(key, value);
+                return prev === undefined ? null : prev;
+            }
+
+            export function kofMapGet(map, key) {
+                const v = map.get(key);
+                return v === undefined ? null : v;
+            }
+
+            export function kofMapRemove(map, key) {
+                const v = map.get(key);
+                map.delete(key);
+                return v === undefined ? null : v;
+            }
+
+            export function kofMapContains(map, key) {
+                return map.has(key) ? 1 : 0;
+            }
+
+            export function kofMapSize(map) {
+                return map.size;
+            }
+
+            export function kofMapClear(map) {
+                map.clear();
+            }
+
+            export function kofMapIsEmpty(map) {
+                return map.size === 0 ? 1 : 0;
+            }
+
+            export function kofMapKeys(map) {
+                return Array.from(map.keys());
+            }
+
+            export function kofMapValues(map) {
+                return Array.from(map.values());
+            }
+
+            export function kofSetNew() {
+                return new Set();
+            }
+
+            export function kofSetAdd(set, value) {
+                const had = set.has(value);
+                set.add(value);
+                return had ? 0 : 1;
+            }
+
+            export function kofSetContains(set, value) {
+                return set.has(value) ? 1 : 0;
+            }
+
+            export function kofSetRemove(set, value) {
+                return set.delete(value) ? 1 : 0;
+            }
+
+            export function kofSetSize(set) {
+                return set.size;
+            }
+
+            export function kofSetClear(set) {
+                set.clear();
+            }
+
+            export function kofSetIsEmpty(set) {
+                return set.size === 0 ? 1 : 0;
             }
 
             export function kofNow() {

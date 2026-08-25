@@ -2244,6 +2244,48 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
+                if ("mapOf".equals(mc.methodName()) && mc.receiver() == null) {
+                    if (target == Target.NATIVE) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0,
+                                    0, "mapOf not available on Native yet (COL001)", "COL001");
+                        }
+                        yield localIdx;
+                    }
+                    Type keyType = Type.UnknownType.UNKNOWN;
+                    Type valueType = Type.UnknownType.UNKNOWN;
+                    if (!mc.arguments().isEmpty()) {
+                        // Infer from first argument if it is a Pair or two values? For now, use Unknown
+                        // mapOf() with no args creates empty Map<Unknown, Unknown>
+                    }
+                    Type mapType = new Type.ClassType("kof", "Map", List.of(keyType, valueType));
+                    ops.add(new KofCall(mapType, "kof_map_new", List.of(), mapType, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
+                    if (target == Target.NATIVE) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0,
+                                    0, "setOf not available on Native yet (COL001)", "COL001");
+                        }
+                        yield localIdx;
+                    }
+                    Type elemType = Type.UnknownType.UNKNOWN;
+                    if (!mc.arguments().isEmpty()) elemType = inferExprType(mc.arguments().get(0), locals);
+                    Type setType = new Type.ClassType("kof", "Set", List.of(elemType));
+                    ops.add(new KofCall(setType, "kof_set_new", List.of(), setType, KofCallKind.FUNCTION));
+                    for (ExpressionNode arg : mc.arguments()) {
+                        ops.add(new KofDup());
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(setType, "kof_set_add",
+                                List.of(inferExprType(arg, locals)), Type.PrimitiveType.BOOL, KofCallKind.INSTANCE));
+                    }
+                    yield localIdx;
+                }
                 if (("print".equals(mc.methodName()) || "println".equals(mc.methodName())) && mc.arguments().size() == 1) {
                     Type printedType = inferExprType(mc.arguments().get(0), locals);
                     if (!fpSupportedOnNative(printedType, mc.position())) {
@@ -3156,6 +3198,87 @@ private Target target = Target.JVM;
                             yield localIdx;
                         }
                     }
+                    if (BuiltinTypes.isMap(recvType)) {
+                        if (target == Target.NATIVE) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0, "Map not available on Native yet (COL001)", "COL001");
+                            }
+                            yield localIdx;
+                        }
+                        String mapFn = switch (mc.methodName()) {
+                            case "put" -> "kof_map_put";
+                            case "get" -> "kof_map_get";
+                            case "remove" -> "kof_map_remove";
+                            case "containsKey", "contains" -> "kof_map_contains";
+                            case "size", "length", "count" -> "kof_map_size";
+                            case "clear" -> "kof_map_clear";
+                            case "isEmpty" -> "kof_map_is_empty";
+                            case "keys" -> "kof_map_keys";
+                            case "values" -> "kof_map_values";
+                            default -> null;
+                        };
+                        if (mapFn != null) {
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                            Type keyType = Type.UnknownType.UNKNOWN;
+                            Type valueType = Type.UnknownType.UNKNOWN;
+                            if (recvType instanceof Type.ClassType ct && ct.typeArguments().size() == 2) {
+                                keyType = ct.typeArguments().get(0);
+                                valueType = ct.typeArguments().get(1);
+                            }
+                            Type retType = switch (mapFn) {
+                                case "kof_map_put", "kof_map_remove" -> valueType;
+                                case "kof_map_get" -> valueType;
+                                case "kof_map_contains", "kof_map_is_empty" -> Type.PrimitiveType.BOOL;
+                                case "kof_map_size" -> Type.PrimitiveType.INT;
+                                case "kof_map_clear" -> Type.PrimitiveType.VOID;
+                                case "kof_map_keys", "kof_map_values" -> new Type.ClassType("kof", "List", List.of(mapFn.equals("kof_map_keys") ? keyType : valueType));
+                                default -> Type.UnknownType.UNKNOWN;
+                            };
+                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            ops.add(new KofCall(recvType, mapFn, argTypes, retType, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        }
+                    }
+                    if (BuiltinTypes.isSet(recvType)) {
+                        if (target == Target.NATIVE) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0, "Set not available on Native yet (COL001)", "COL001");
+                            }
+                            yield localIdx;
+                        }
+                        String setFn = switch (mc.methodName()) {
+                            case "add" -> "kof_set_add";
+                            case "contains" -> "kof_set_contains";
+                            case "remove" -> "kof_set_remove";
+                            case "size", "length", "count" -> "kof_set_size";
+                            case "clear" -> "kof_set_clear";
+                            case "isEmpty" -> "kof_set_is_empty";
+                            default -> null;
+                        };
+                        if (setFn != null) {
+                            List<Type> argTypes = new ArrayList<>();
+                            for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                            Type elemType = Type.UnknownType.UNKNOWN;
+                            if (recvType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) elemType = ct.typeArguments().get(0);
+                            Type retType = switch (setFn) {
+                                case "kof_set_add", "kof_set_remove" -> Type.PrimitiveType.BOOL;
+                                case "kof_set_contains", "kof_set_is_empty" -> Type.PrimitiveType.BOOL;
+                                case "kof_set_size" -> Type.PrimitiveType.INT;
+                                case "kof_set_clear" -> Type.PrimitiveType.VOID;
+                                default -> Type.UnknownType.UNKNOWN;
+                            };
+                            for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            ops.add(new KofCall(recvType, setFn, argTypes, retType, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        }
+                    }
                     Type methodReturnType = Type.UnknownType.UNKNOWN;
                     List<Type> methodParamTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) {
@@ -4036,6 +4159,13 @@ private Target target = Target.JVM;
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     yield new Type.ClassType("kof", "List", List.of(listOfElementType(mc, locals)));
                 }
+                if ("mapOf".equals(mc.methodName()) && mc.receiver() == null) {
+                    yield new Type.ClassType("kof", "Map", List.of(Type.UnknownType.UNKNOWN, Type.UnknownType.UNKNOWN));
+                }
+                if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
+                    Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN : inferExprType(mc.arguments().get(0), locals);
+                    yield new Type.ClassType("kof", "Set", List.of(elemType));
+                }
                 if (mc.receiver() instanceof IdentifierExpr rid && "json".equals(rid.name())) {
                     if ("encode".equals(mc.methodName())) yield BuiltinTypes.STRING;
                     if ("decode".equals(mc.methodName()) && !mc.typeArguments().isEmpty()) {
@@ -4191,6 +4321,29 @@ private Target target = Target.JVM;
                                 || "set".equals(mn) || "clear".equals(mn)) {
                             yield Type.PrimitiveType.VOID;
                         }
+                    }
+                    if (BuiltinTypes.isMap(recvType)) {
+                        String mn = mc.methodName();
+                        Type valueType = Type.UnknownType.UNKNOWN;
+                        if (recvType instanceof Type.ClassType ct && ct.typeArguments().size() == 2) valueType = ct.typeArguments().get(1);
+                        Type keyType = Type.UnknownType.UNKNOWN;
+                        if (recvType instanceof Type.ClassType ct && ct.typeArguments().size() == 2) keyType = ct.typeArguments().get(0);
+                        if ("get".equals(mn) || "remove".equals(mn)) yield valueType;
+                        if ("put".equals(mn)) yield valueType;
+                        if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("containsKey".equals(mn) || "contains".equals(mn) || "isEmpty".equals(mn)) yield Type.PrimitiveType.BOOL;
+                        if ("clear".equals(mn)) yield Type.PrimitiveType.VOID;
+                        if ("keys".equals(mn)) yield new Type.ClassType("kof", "List", List.of(keyType));
+                        if ("values".equals(mn)) yield new Type.ClassType("kof", "List", List.of(valueType));
+                    }
+                    if (BuiltinTypes.isSet(recvType)) {
+                        String mn = mc.methodName();
+                        Type elemType = Type.UnknownType.UNKNOWN;
+                        if (recvType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) elemType = ct.typeArguments().get(0);
+                        if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("contains".equals(mn) || "isEmpty".equals(mn)) yield Type.PrimitiveType.BOOL;
+                        if ("add".equals(mn) || "remove".equals(mn)) yield Type.PrimitiveType.BOOL;
+                        if ("clear".equals(mn)) yield Type.PrimitiveType.VOID;
                     }
                     if (Type.isString(recvType)) {
                         String mn = mc.methodName();
@@ -5425,6 +5578,20 @@ private Target target = Target.JVM;
                 return switch (mc.methodName()) {
                     case "get", "remove", "size", "length", "count",
                             "contains", "isEmpty" -> true;
+                    default -> false;
+                };
+            }
+            if (mc.receiver() != null && BuiltinTypes.isMap(inferExprType(mc.receiver(), locals))) {
+                return switch (mc.methodName()) {
+                    case "get", "remove", "put", "size", "length", "count",
+                            "contains", "containsKey", "isEmpty", "keys", "values" -> true;
+                    default -> false;
+                };
+            }
+            if (mc.receiver() != null && BuiltinTypes.isSet(inferExprType(mc.receiver(), locals))) {
+                return switch (mc.methodName()) {
+                    case "contains", "isEmpty", "size", "length", "count",
+                            "add", "remove" -> true;
                     default -> false;
                 };
             }

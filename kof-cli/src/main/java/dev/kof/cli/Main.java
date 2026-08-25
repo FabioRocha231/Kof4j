@@ -333,6 +333,7 @@ private static void build(String[] args) {
         List<Path> files = new ArrayList<>();
         try (var s = Files.walk(dir)) { s.filter(p -> p.toString().endsWith(".kf")).forEach(files::add); }
         catch (IOException e) { System.err.println("error: " + e.getMessage()); }
+        files.sort(java.util.Comparator.comparing(Path::toString));
         return files;
     }
 

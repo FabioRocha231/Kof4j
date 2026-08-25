@@ -2718,13 +2718,13 @@ final class NativeRuntime {
                 je .Lkof_array_get_d
                 cmpl $2, %edx
                 je .Lkof_array_get_w
-                movzbl (%rax), %eax
+                movsbq (%rax), %rax
                 jmp .Lkof_array_get_done
             .Lkof_array_get_w:
-                movzwl (%rax), %eax
+                movswq (%rax), %rax
                 jmp .Lkof_array_get_done
             .Lkof_array_get_d:
-                movl (%rax), %eax
+                movslq (%rax), %rax
                 jmp .Lkof_array_get_done
             .Lkof_array_get_q:
                 movq (%rax), %rax

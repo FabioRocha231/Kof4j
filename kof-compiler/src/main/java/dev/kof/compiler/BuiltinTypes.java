@@ -36,4 +36,26 @@ public final class BuiltinTypes {
         }
         return false;
     }
+
+
+    public static final Type MAP = new Type.ClassType("kof", "Map", List.of());
+
+
+    public static boolean isMap(Type type) {
+        if (type instanceof Type.ClassType ct) {
+            return "kof".equals(ct.packageName()) && "Map".equals(ct.name());
+        }
+        return false;
+    }
+
+
+    public static final Type SET = new Type.ClassType("kof", "Set", List.of());
+
+
+    public static boolean isSet(Type type) {
+        if (type instanceof Type.ClassType ct) {
+            return "kof".equals(ct.packageName()) && "Set".equals(ct.name());
+        }
+        return false;
+    }
 }
