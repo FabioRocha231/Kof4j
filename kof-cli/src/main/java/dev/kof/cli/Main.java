@@ -27,6 +27,8 @@ public final class Main {
             case "lsp" -> lsp();
             case "install" -> install(args);
             case "script" -> System.exit(script(args));
+            case "init" -> System.exit(init(args));
+            case "fmt" -> System.exit(Fmt.run(args));
             case "version" -> System.out.println("kof " + KofVersion.version());
             default -> { System.err.println("unknown: " + args[0]); printUsage(); }
         }
@@ -68,7 +70,7 @@ public final class Main {
         sources.add(file.toAbsolutePath().normalize());
         Path siblingDir = file.toAbsolutePath().normalize().getParent();
         if (siblingDir != null) {
-            for (Path sib : collect(siblingDir)) {
+            for (Path sib : collectShallow(siblingDir)) {
                 Path abs = sib.toAbsolutePath().normalize();
                 if (!abs.equals(sources.get(0)) && !sources.contains(abs)) sources.add(abs);
             }
@@ -330,9 +332,21 @@ private static void build(String[] args) {
         };
     }
 
-    private static List<Path> collect(Path dir) {
+    /** Irmãos .kf do MESMO diretório (não-recursivo) — inclusão no módulo do run. */
+    private static List<Path> collectShallow(Path dir) {
         List<Path> files = new ArrayList<>();
-        try (var s = Files.walk(dir)) { s.filter(p -> p.toString().endsWith(".kf")).forEach(files::add); }
+        try (var s = Files.list(dir)) {
+            s.filter(p -> p.toString().endsWith(".kf")).forEach(files::add);
+        } catch (IOException e) { System.err.println("error: " + e.getMessage()); }
+        files.sort(java.util.Comparator.comparing(Path::toString));
+        return files;
+    }
+
+    private static List<Path> collect(Path dir) {
+        // convenção Go-like: um diretório = UM pacote → não-recursivo
+        // (subdirs como tests/ são pacotes independentes)
+        List<Path> files = new ArrayList<>();
+        try (var s = Files.list(dir)) { s.filter(p -> p.toString().endsWith(".kf")).forEach(files::add); }
         catch (IOException e) { System.err.println("error: " + e.getMessage()); }
         files.sort(java.util.Comparator.comparing(Path::toString));
         return files;
@@ -569,6 +583,41 @@ private static void build(String[] args) {
         if (failed > 0) System.exit(1);
     }
 
+
+
+    /** kof init [dir] — scaffold mínimo: hello.kf + estrutura padrão. */
+    private static int init(String[] args) {
+        String dirName = args.length > 1 ? args[1] : ".";
+        Path dir = Path.of(dirName);
+        try {
+            Files.createDirectories(dir);
+            Path src = dir.resolve("main.kf");
+            if (Files.exists(src)) {
+                System.err.println("init: " + src + " já existe");
+                return 1;
+            }
+            Files.writeString(src, """
+                    // Projeto Kof — rode com: kof run main.kf
+                    main() {
+                        println("Hello, Kof!")
+                    }
+                    """);
+            Files.createDirectories(dir.resolve("tests"));
+            Files.writeString(dir.resolve("tests/smoke.kf"), """
+                    main() {
+                        assert(1 + 1 == 2)
+                        println("smoke ok")
+                    }
+                    """);
+            Files.writeString(dir.resolve(".gitignore"), "target/\n*.log\n");
+            System.out.println("criado em " + dir.toAbsolutePath().normalize()
+                    + ":\n  main.kf\n  tests/smoke.kf\n  .gitignore\n\npróximos passos:\n  kof run " + src + "\n  kof test " + dir.resolve("tests"));
+            return 0;
+        } catch (Exception e) {
+            System.err.println("init: " + e.getMessage());
+            return 1;
+        }
+    }
 
     /**
      * kof script — execução direta de KofScript (.ks): declarações (fn/enum/

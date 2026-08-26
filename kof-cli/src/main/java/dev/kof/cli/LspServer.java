@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ final class LspServer {
     private final InputStream in;
     private final OutputStream out;
     private final CompilerDriver driver = new CompilerDriver();
+    private final Map<String, String> openText = new HashMap<>();
     private boolean running = true;
 
     LspServer(InputStream in, OutputStream out) {
@@ -78,6 +80,10 @@ final class LspServer {
                 sync.put("openClose", Boolean.TRUE);
                 capabilities.put("textDocumentSync", sync);
                 capabilities.put("positionEncoding", "utf-16");
+                Map<String, Object> completion = new LinkedHashMap<>();
+                completion.put("triggerCharacters", List.of("."));
+                capabilities.put("completionProvider", completion);
+                capabilities.put("hoverProvider", Boolean.TRUE);
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("capabilities", capabilities);
                 result.put("serverInfo", Map.of("name", "kof-lsp", "version", dev.kof.compiler.KofVersion.version()));
@@ -89,6 +95,8 @@ final class LspServer {
             case "textDocument/didOpen" -> publishDiagnostics(params);
             case "textDocument/didChange" -> publishDiagnostics(params);
             case "textDocument/didClose" -> clearDiagnostics(params);
+            case "textDocument/hover" -> hover(id, params);
+            case "textDocument/completion" -> completion(id, params);
             default -> {  }
         }
     }
@@ -122,6 +130,7 @@ final class LspServer {
                 ? (Map<String, Object>) td : Map.of();
         String uri = textDoc.get("uri") == null ? "" : textDoc.get("uri").toString();
         String text = textDoc.get("text") == null ? "" : textDoc.get("text").toString();
+        openText.put(uri, text);
         if (params.get("contentChanges") instanceof List<?> changes && !changes.isEmpty()
                 && changes.get(0) instanceof Map<?, ?> c) {
             text = String.valueOf(((Map<?, ?>) c).get("text"));
@@ -193,6 +202,115 @@ final class LspServer {
             }
         }
         return diagnostics;
+    }
+
+    /** Offset (0-based) a partir de line/character LSP. */
+    private static int offsetOf(String text, long line, long character) {
+        int l = 0, i = 0, n = text.length();
+        while (i < n && l < line) {
+            if (text.charAt(i) == '\n') l++;
+            i++;
+        }
+        return Math.min(n, i + (int) character);
+    }
+
+    private static String str(Object o) { return o == null ? "" : o.toString(); }
+
+    /** Palavra no cursor: [start,end) do identificador contendo offset. */
+    private static String wordAt(String text, int offset) {
+        int st = offset;
+        while (st > 0 && (Character.isLetterOrDigit(text.charAt(st - 1)) || text.charAt(st - 1) == '_')) st--;
+        int en = offset;
+        while (en < text.length() && (Character.isLetterOrDigit(text.charAt(en)) || text.charAt(en) == '_')) en++;
+        return en > st ? text.substring(st, en) : "";
+    }
+
+    private static final List<String[]> KEYWORDS = List.of(
+            new String[]{"var", "variável mutável"}, new String[]{"val", "valor imutável"},
+            new String[]{"spawn", "roda tarefa em virtual thread"},
+            new String[]{"await", "aguarda Handle<T> e devolve T"},
+            new String[]{"enum", "conjunto fechado de constantes"},
+            new String[]{"record", "estrutura imutável com componentes"},
+            new String[]{"class", "classe"}, new String[]{"interface", "contrato"},
+            new String[]{"switch", "seleção (exaustiva sobre enum → SEM031)"},
+            new String[]{"listOf", "cria List<T>"}, new String[]{"mapOf", "cria Map<K,V>"},
+            new String[]{"setOf", "cria Set<T>"},
+            new String[]{"println", "imprime linha no stdout"});
+
+    private static final List<String> BUILTIN_TYPES = List.of(
+            "Int", "Long", "Bool", "String", "Float", "Double");
+
+    private void hover(Object id, Map<String, Object> params) {
+        Map<String, Object> td = params.get("textDocument") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String text = openText.getOrDefault(str(td.get("uri")), "");
+        Map<String, Object> pos = params.get("position") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        long line = pos.get("line") instanceof Number n ? n.longValue() : 0;
+        long ch = pos.get("character") instanceof Number n ? n.longValue() : 0;
+        String word = wordAt(text, offsetOf(text, line, ch));
+        if (word.isEmpty()) { respond(id, null); return; }
+        String contents = hoverFor(word, text);
+        if (contents == null) { respond(id, null); return; }
+        respond(id, Map.of("contents", Map.of("kind", "markdown", "value", contents)));
+    }
+
+    private String hoverFor(String word, String text) {
+        for (String[] k : KEYWORDS) {
+            if (k[0].equals(word)) return "**" + k[0] + "** — " + k[1];
+        }
+        if (BUILTIN_TYPES.contains(word)) return "**" + word + "** — tipo primitivo Kof";
+        for (String ln : text.split("\n")) {
+            String t = ln.strip();
+            if (t.startsWith("var ") || t.startsWith("val ")) {
+                String rest = t.substring(4).strip();
+                if (rest.startsWith(word)) {
+                    int after = rest.indexOf(word) + word.length();
+                    if (after < rest.length() && ":= \t".indexOf(rest.charAt(after)) >= 0) {
+                        return "**" + word + "** — variável local\n```kf\n" + ln.strip() + "\n```";
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void completion(Object id, Map<String, Object> params) {
+        Map<String, Object> td = params.get("textDocument") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String text = openText.getOrDefault(str(td.get("uri")), "");
+        Map<String, Object> pos = params.get("position") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        long line = pos.get("line") instanceof Number n ? n.longValue() : 0;
+        long ch = pos.get("character") instanceof Number n ? n.longValue() : 0;
+        int off = offsetOf(text, line, ch);
+        boolean member = off > 0 && text.charAt(off - 1) == '.';
+        List<Object> items = new ArrayList<>();
+        java.util.function.BiConsumer<String, String> add = (label, kind) -> {
+            Map<String, Object> it = new LinkedHashMap<>();
+            it.put("label", label);
+            it.put("kind", kind);
+            it.put("detail", "Kof");
+            items.add(it);
+        };
+        if (!member) {
+            for (String[] k : KEYWORDS) add.accept(k[0], "Keyword");
+            for (String ty : BUILTIN_TYPES) add.accept(ty, "Type");
+        }
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String ln : text.split("\n")) {
+            String t = ln.strip();
+            if ((t.startsWith("var ") || t.startsWith("val ")) && t.contains("=")) {
+                String rest = t.substring(4).strip();
+                String name = rest.split("[\\s:=]")[0];
+                if (!name.isEmpty() && seen.add(name)) add.accept(name, "Variable");
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("isIncomplete", false);
+        result.put("items", items);
+        respond(id, result);
     }
 
     private void writeMessage(String json) {
