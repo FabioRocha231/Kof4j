@@ -1,6 +1,8 @@
 target/
 *.class
 *.jar
+# fixtures de teste do AndroidInterop (fake SDK de 4KB, estático)
+!kof-compiler/src/test/resources/android/*.jar
 *.log
 .idea/
 *.iml
