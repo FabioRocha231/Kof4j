@@ -1683,6 +1683,14 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
+                if (target == Target.JS) {
+                    // nunca silencioso: kof_spawn não tem rota no runtime JS
+                    if (currentDiagnostics != null) {
+                        currentDiagnostics.error("", 0, 0, 0,
+                                "spawn: not supported on the js target yet (CONC003)", "CONC003");
+                    }
+                    yield localIdx;
+                }
                 if (target == Target.ANDROID) {
                     // ART não tem virtual threads (Java 21) — a semântica de
                     // spawn não é realizável no alvo hoje
@@ -2512,7 +2520,9 @@ private Target target = Target.JVM;
                             paramTypes = List.of(argType, Type.PrimitiveType.INT);
                         } else if (target == Target.NATIVE
                                 && argType instanceof Type.ClassType ect
-                                && !BuiltinTypes.isString(argType)) {
+                                && !BuiltinTypes.isString(argType)
+                                // List/Map têm caminho builtin próprio
+                                && !BuiltinTypes.isList(argType) && !BuiltinTypes.isMap(argType)) {
                             // JSN002: compoe o JSON em compile-time a partir
                             // dos campos conhecidos (sem reflection, sem
                             // walker generico) — so primitivas testadas.
@@ -2599,7 +2609,9 @@ private Target target = Target.JVM;
                             ops.add(new KofLoadLiteral(BuiltinTypes.STRING, className));
                         } else if (target == Target.NATIVE
                                 && targetType instanceof Type.ClassType dct
-                                && !BuiltinTypes.isString(targetType)) {
+                                && !BuiltinTypes.isString(targetType)
+                                // List/Map têm caminho builtin próprio
+                                && !BuiltinTypes.isList(targetType) && !BuiltinTypes.isMap(targetType)) {
                             // JSN002: decode composto — find_value por campo +
                             // decoders escalares + construtor canonico
                             String cn3 = dct.packageName().isEmpty()

@@ -244,7 +244,8 @@ class JsonE2ETest {
     }
 
     @Test
-    void nativeObjectNotSupported(@TempDir Path tempDir) throws IOException {
+    void nativeObjectEncodeJs002(@TempDir Path tempDir) throws IOException {
+        // JSN002 implementado: encode de objeto no Native compõe JSON em compile-time
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             class User {
@@ -256,9 +257,8 @@ class JsonE2ETest {
             }
             """);
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
-        assertFalse(result.success(), "Native object encode should be rejected");
-        assertTrue(result.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.code().equals("JSN002")), "Should report JSN002");
+        assertTrue(result.success(), "Native object encode (JSN002) should compile: "
+                + result.diagnostics().getDiagnostics());
     }
 
     @Test
