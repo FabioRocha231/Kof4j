@@ -799,6 +799,8 @@ class JvmBackend implements Backend {
                     // Restrito — o descritor default é Object para muitas funções
                     // que na verdade retornam primitivo cru.
                     emitUnboxIfPrimitive(mv, kc.returnType());
+                } else if ("kof_list_reduce".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
+                    emitUnboxIfPrimitive(mv, kc.returnType());
                 }
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isString(kc.ownerType())

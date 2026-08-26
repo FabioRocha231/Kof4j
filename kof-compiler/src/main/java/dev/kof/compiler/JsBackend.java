@@ -1911,6 +1911,8 @@ class JsBackend implements Backend {
                 || name.equals("kof_poll") || name.equals("kof_done")
                 || name.equals("kof_cancel") || name.equals("kof_cancelled")
                 || name.equals("kof_select_any")
+                || name.equals("kof_list_map") || name.equals("kof_list_filter")
+                || name.equals("kof_list_reduce")
                 || name.startsWith("kof_observability_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
@@ -2984,6 +2986,18 @@ class JsBackend implements Backend {
 
             export function kofSetIsEmpty(set) {
                 return set.size === 0 ? 1 : 0;
+            }
+
+            export function kofListMap(list, fn) {
+                return list.map(x => (typeof fn.invoke === 'function' ? fn.invoke(x) : fn(x)));
+            }
+
+            export function kofListFilter(list, fn) {
+                return list.filter(x => !!(typeof fn.invoke === 'function' ? fn.invoke(x) : fn(x)));
+            }
+
+            export function kofListReduce(list, initial, fn) {
+                return list.reduce((acc, x) => (typeof fn.invoke === 'function' ? fn.invoke(acc, x) : fn(acc, x)), initial);
             }
 
             export function kofSpawnResult(value) {

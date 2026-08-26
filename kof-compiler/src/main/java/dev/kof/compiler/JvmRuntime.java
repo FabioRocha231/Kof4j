@@ -35,6 +35,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_poll") || methodName.equals("kof_done")
                 || methodName.equals("kof_cancel") || methodName.equals("kof_cancelled")
                 || methodName.equals("kof_select_any")
+                || methodName.equals("kof_list_map") || methodName.equals("kof_list_filter") || methodName.equals("kof_list_reduce")
                 || methodName.startsWith("kof_observability_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
@@ -253,6 +254,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_api_key_generate" -> "()Ljava/lang/String;";
             case "kof_sec_api_key_valid" -> "(Ljava/lang/String;)Z";
             case "kof_enum_value_of" -> "(Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_list_map", "kof_list_filter" -> "(Ljava/util/ArrayList;Ljava/lang/Object;)Ljava/util/ArrayList;";
+            case "kof_list_reduce" -> "(Ljava/util/ArrayList;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;";
             case "kof_spawn_result", "kof_await" -> "(Ljava/lang/Object;)Ljava/lang/Object;";
             case "kof_poll" -> "(Ljava/lang/Object;)Ljava/lang/Object;";
             case "kof_done", "kof_cancel" -> "(Ljava/lang/Object;)Z";
@@ -351,6 +354,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
             case "kof_observability_gauge" -> "V";
+            case "kof_list_map", "kof_list_filter" -> "Ljava/util/ArrayList;";
+            case "kof_list_reduce" -> "Ljava/lang/Object;";
             // ── kof.security G9 (rate limiting / sessions / API keys) ──
             case "kof_sec_session_create", "kof_sec_api_key_generate" -> "Ljava/lang/String;";
             case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";

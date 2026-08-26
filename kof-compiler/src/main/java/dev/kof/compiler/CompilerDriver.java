@@ -3468,6 +3468,56 @@ private Target target = Target.JVM;
                         ops.add(new KofCall(invokeOwner, "invoke", argTypes, ft.returnType(), KofCallKind.INSTANCE));
                         yield localIdx;
                     }
+                    if (BuiltinTypes.isList(recvType)
+                            && ("map".equals(mc.methodName()) || "filter".equals(mc.methodName())
+                                || "reduce".equals(mc.methodName()))) {
+                        if (target == Target.NATIVE) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0, 0,
+                                        mc.methodName() + " em List não está disponível no Native ainda"
+                                                + " (COL001)",
+                                        "COL001");
+                            }
+                            yield localIdx;
+                        }
+                        String hoFn = "kof_list_" + mc.methodName();
+                        // receiver já empilhado acima (3396) — não duplicar
+                        Type lambdaT = Type.UnknownType.UNKNOWN;
+                        // reduce: init antes; lambda por último
+                        for (ExpressionNode arg : mc.arguments()) {
+                            if (!(arg instanceof LambdaExpr)) {
+                                Type argT = inferExprType(arg, locals);
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                                if (isPrimitiveType(argT) && target == Target.JVM) {
+                                    Type boxed = boxedTypeFor(argT);
+                                    ops.add(new KofCall(boxed, "kof_box", List.of(argT), boxed, KofCallKind.FUNCTION));
+                                }
+                            }
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            if (arg instanceof LambdaExpr lam) {
+                                lambdaT = inferExprType(lam, locals);
+                                localIdx = emitExpression(lam, ops, owner, localIdx, locals);
+                            }
+                        }
+                        List<Type> callParams = new ArrayList<>();
+                        callParams.add(new Type.ClassType("java.util", "ArrayList", List.of()));
+                        if ("reduce".equals(mc.methodName())) callParams.add(new Type.ClassType("java.lang", "Object", List.of()));
+                        callParams.add(new Type.ClassType("java.lang", "Object", List.of()));
+                        Type ret;
+                        if ("filter".equals(mc.methodName())) ret = recvType;
+                        else if ("map".equals(mc.methodName())) {
+                            Type elem = (lambdaT instanceof Type.FunctionType ft && !(ft.returnType() instanceof Type.UnknownType)) ? ft.returnType() : Type.UnknownType.UNKNOWN;
+                            ret = new Type.ClassType("kof", "List", List.of(elem));
+                        } else {
+                            ret = (lambdaT instanceof Type.FunctionType ft) ? ft.returnType() : Type.UnknownType.UNKNOWN;
+                        }
+                        ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()), hoFn, callParams, ret,
+                                KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     if (BuiltinTypes.isList(recvType)) {
                         String listFn = switch (mc.methodName()) {
                             case "add", "push", "append" -> "kof_list_add";
@@ -4746,6 +4796,26 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                     }
                     if (BuiltinTypes.isList(recvType)) {
                         String mn = mc.methodName();
+                        if (("map".equals(mn) || "filter".equals(mn) || "reduce".equals(mn))
+                                && mc.arguments().stream().anyMatch(a -> a instanceof LambdaExpr)) {
+                            Type lambdaT = null;
+                            for (ExpressionNode arg : mc.arguments()) {
+                                if (arg instanceof LambdaExpr lam) {
+                                    lambdaT = inferExprType(lam, locals);
+                                    break;
+                                }
+                            }
+                            if (lambdaT instanceof Type.FunctionType ft
+                                    && !(ft.returnType() instanceof Type.UnknownType)) {
+                                if ("map".equals(mn)) {
+                                    yield new Type.ClassType("kof", "List",
+                                            List.of(ft.returnType()));
+                                }
+                                if ("filter".equals(mn)) yield recvType;
+                                if ("reduce".equals(mn)) yield ft.returnType();
+                            }
+                            yield Type.UnknownType.UNKNOWN;
+                        }
                         if ("get".equals(mn) || "remove".equals(mn)) yield listElementType(recvType);
                         if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn)) yield Type.PrimitiveType.INT;
                         if ("contains".equals(mn) || "isEmpty".equals(mn)) yield Type.PrimitiveType.BOOL;

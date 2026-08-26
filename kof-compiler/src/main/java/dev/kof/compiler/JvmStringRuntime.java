@@ -576,6 +576,44 @@ final class JvmStringRuntime {
                     return KOF_API_KEYS.containsKey(key);
                 }
 
+                // ── higher-order em List (P1-residual) ─────────────────
+                // Lambdas sintéticas expõem invoke(...) tipado; reflection
+                // genérica localiza pelo arity com boxing automático.
+
+                private static Object kof_ho_invoke(Object lambda, Object[] args) throws Exception {
+                    for (var m : lambda.getClass().getMethods()) {
+                        if (!m.getName().equals("invoke")) continue;
+                        if (m.getParameterCount() != args.length) continue;
+                        if (m.isSynthetic()) continue;
+                        try { return m.invoke(lambda, args); } catch (IllegalArgumentException ignored) {}
+                    }
+                    throw new IllegalStateException("lambda invoke não encontrado (" + args.length + " args)");
+                }
+
+                public static java.util.ArrayList<Object> kof_list_map(
+                        java.util.ArrayList<?> list, Object lambda) throws Exception {
+                    var out = new java.util.ArrayList<Object>();
+                    for (Object o : list) out.add(kof_ho_invoke(lambda, new Object[]{o}));
+                    return out;
+                }
+
+                public static java.util.ArrayList<Object> kof_list_filter(
+                        java.util.ArrayList<?> list, Object lambda) throws Exception {
+                    var out = new java.util.ArrayList<Object>();
+                    for (Object o : list) {
+                        Object keep = kof_ho_invoke(lambda, new Object[]{o});
+                        if (Boolean.TRUE.equals(keep) || Integer.valueOf(1).equals(keep)) out.add(o);
+                    }
+                    return out;
+                }
+
+                public static Object kof_list_reduce(
+                        java.util.ArrayList<?> list, Object initial, Object lambda) throws Exception {
+                    Object acc = initial;
+                    for (Object o : list) acc = kof_ho_invoke(lambda, new Object[]{acc, o});
+                    return acc;
+                }
+
                 // ── kof.enum (P1) ──────────────────────────────────────
 
                 public static String kof_enum_value_of(java.util.List<?> values, String name) {
