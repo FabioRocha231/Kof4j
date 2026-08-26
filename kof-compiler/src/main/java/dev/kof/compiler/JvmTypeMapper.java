@@ -44,6 +44,10 @@ final class JvmTypeMapper {
         if ("kof".equals(c.packageName()) && "List".equals(c.name())) {
             return "Ljava/util/ArrayList;";
         }
+        // enum: o valor em runtime é o nome (String)
+        if (c.packageName().isEmpty() && BuiltinTypes.isEnumName(c.name())) {
+            return "Ljava/lang/String;";
+        }
         return "L" + internalName + ";";
     }
 
@@ -65,6 +69,7 @@ final class JvmTypeMapper {
         if (simpleName.contains("/")) return simpleName;
         if (simpleName.contains(".")) return simpleName.replace('.', '/');
         if ("kof".equals(packageName) && "List".equals(simpleName)) return "java/util/ArrayList";
+        if (packageName.isEmpty() && BuiltinTypes.isEnumName(simpleName)) return "java/lang/String";
         if (packageName.isEmpty()) return simpleName;
         return packageName.replace('.', '/') + "/" + simpleName;
     }

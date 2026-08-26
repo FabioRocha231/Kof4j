@@ -332,6 +332,10 @@ private Target target = Target.JVM;
         this.currentDiagnostics = diagnostics;
         flushClasspathWarnings();
         this.entitySchemas.clear();
+        BuiltinTypes.resetEnums();
+        for (AstNode d : unit.declarations()) {
+            if (d instanceof EnumDeclarationNode en) BuiltinTypes.registerEnum(en.name());
+        }
             unit = desugarTests(unit);
             if (target == Target.ANDROID) {
                 unit = appendAndroidHostIfNeeded(unit);
@@ -1194,6 +1198,28 @@ private Target target = Target.JVM;
         return !enumConstantsOf(ct.name()).isEmpty();
     }
 
+    /** Nome da constante de enum representada por um rótulo de case. */
+    private String enumConstantOfExpr(ExpressionNode e) {
+        if (e instanceof FieldAccessExpr fa && fa.receiver() instanceof IdentifierExpr rid
+                && isEnumName(rid.name())) {
+            return enumConstantsOf(rid.name()).contains(fa.fieldName()) ? fa.fieldName() : null;
+        }
+        if (e instanceof LiteralExpr l && l.kind() == ConcreteLiteralKind.STRING) {
+            return l.value();
+        }
+        if (e instanceof IdentifierExpr ie) {
+            // não-qualificado: procura em todos os enums declarados
+            if (currentUnit != null) {
+                for (AstNode d : currentUnit.declarations()) {
+                    if (d instanceof EnumDeclarationNode en && en.constants().contains(ie.name())) {
+                        return ie.name();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     private boolean isEnumName(String name) {
         return currentUnit != null && currentUnit.declarations().stream()
                 .anyMatch(d -> d instanceof EnumDeclarationNode en && en.name().equals(name));
@@ -1796,6 +1822,31 @@ private Target target = Target.JVM;
                 LabelId endLabel = LabelId.create();
                 LabelId defaultLabel = LabelId.create();
                 Type switchType = inferExprType(ss.expression(), locals);
+                // ── exaustividade: switch sobre enum precisa cobrir todas as
+                // constantes ou ter default (nunca cair silenciosamente)
+                boolean enumSwitch = false;
+                java.util.List<String> missing = java.util.List.of();
+                if (switchType instanceof Type.ClassType sct && sct.packageName().isEmpty()
+                        && !enumConstantsOf(sct.name()).isEmpty()) {
+                    enumSwitch = true;
+                    java.util.Set<String> covered = new java.util.HashSet<>();
+                    for (SwitchCase sc : ss.cases()) {
+                        String cn = enumConstantOfExpr(sc.value());
+                        if (cn != null) covered.add(cn);
+                    }
+                    missing = enumConstantsOf(sct.name()).stream()
+                            .filter(c -> !covered.contains(c)).toList();
+                    if (!missing.isEmpty() && ss.defaultBody().isEmpty()
+                            && currentDiagnostics != null) {
+                        currentDiagnostics.error(ss.position() != null ? ss.position().file() : "",
+                                ss.position() != null ? ss.position().line() : 0,
+                                ss.position() != null ? ss.position().column() : 0, 0,
+                                "switch sobre '" + sct.name() + "' não cobre: "
+                                        + String.join(", ", missing)
+                                        + " (adicione default ou os casos faltantes)",
+                                "SEM031");
+                    }
+                }
                 int switchTmp = localIdx++;
                 localIdx = emitExpression(ss.expression(), ops, owner, localIdx, locals);
                 ops.add(new KofStoreLocal(switchType, switchTmp));
@@ -1811,10 +1862,20 @@ private Target target = Target.JVM;
                     SwitchCase sc = ss.cases().get(i);
                     ops.add(new KofLoadLocal(switchType, switchTmp));
                     localIdx = emitExpression(sc.value(), ops, owner, localIdx, locals);
-                    ops.add(new KofBinary(KofBinaryOp.SUB, switchType));
-                    ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
-                    ops.add(new KofConditionalJump(KofComparison.EQ, bodyLabels.get(i),
-                            i + 1 < ss.cases().size() ? testLabels.get(i + 1) : defaultLabel));
+                    if (enumSwitch) {
+                        // comparação por conteúdo (o valor do enum é o nome)
+                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_equals",
+                                List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                        ops.add(new KofConditionalJump(KofComparison.NE, bodyLabels.get(i),
+                                i + 1 < ss.cases().size() ? testLabels.get(i + 1) : defaultLabel));
+                    } else {
+                        ops.add(new KofBinary(KofBinaryOp.SUB, switchType));
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                        ops.add(new KofConditionalJump(KofComparison.EQ, bodyLabels.get(i),
+                                i + 1 < ss.cases().size() ? testLabels.get(i + 1) : defaultLabel));
+                    }
                 }
                 for (int i = 0; i < ss.cases().size(); i++) {
                     SwitchCase sc = ss.cases().get(i);
@@ -1862,6 +1923,18 @@ private Target target = Target.JVM;
                         ops.add(new KofNewArray(BuiltinTypes.STRING));
                     }
                     yield localIdx;
+                }
+                // constante de enum não-qualificada → literal String tipado
+                if (currentUnit != null && findLocalVar(ie.name(), locals) == null
+                        && (semanticAnalyzer == null || !semanticAnalyzer.allClasses().containsKey(ie.name()))) {
+                    for (AstNode d0 : currentUnit.declarations()) {
+                        if (d0 instanceof EnumDeclarationNode en0
+                                && en0.constants().contains(ie.name())) {
+                            ops.add(new KofLoadLiteral(new Type.ClassType("", en0.name(), List.of()),
+                                    ie.name()));
+                            yield localIdx;
+                        }
+                    }
                 }
                 for (int i = locals.size() - 1; i >= 0; i--) {
                     if (locals.get(i).name().equals(ie.name())) {

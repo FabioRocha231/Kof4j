@@ -679,6 +679,16 @@ class SemanticAnalyzer {
                 if ("args".equals(ie.name()) && "main".equals(currentFunctionName)) {
                     yield new Type.ArrayType(BuiltinTypes.STRING);
                 }
+                // constante de enum não-qualificada (rótulos de case, etc.):
+                // Red → Color quando algum enum declara Red
+                if (currentUnit != null && !knownClasses.containsKey(ie.name())) {
+                    for (AstNode d0 : currentUnit.declarations()) {
+                        if (d0 instanceof EnumDeclarationNode en0
+                                && en0.constants().contains(ie.name())) {
+                            yield new Type.ClassType("", en0.name(), List.of());
+                        }
+                    }
+                }
                 if (currentClassName != null && !currentClassName.isEmpty()) {
                     SymbolTable.Symbol fieldSym = resolveInHierarchy(currentClassName, ie.name());
                     if (fieldSym != null) {
