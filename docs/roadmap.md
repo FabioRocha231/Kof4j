@@ -215,6 +215,15 @@ CONC001 e JS é CONC003 — ambos explícitos em compile-time.
 Critério de "100%": os três targets executando os mesmos programas
 concorrentes com golden diff vazio (mesmo padrão da métrica 1 do plano).
 
+### Linguagem — fila residual (P1/P2)
+
+| Item | Status | Plano |
+|------|--------|-------|
+| pattern matching | ⏳ planned — **não use ainda** | switch com tipos e destructuring sobre records/enums; substitui cadeias de instanceof |
+| null safety | ⏳ planned | `Type?` explícito com checagem em compile-time; **sem Option no core** (decisão registrada) |
+| higher-order em coleções | ⏳ planned | `map/filter/reduce` em List com lambdas existentes (capturas já suportadas) |
+| módulos multi-arquivo | 🟡 parcial | resolução de símbolos entre arquivos do mesmo diretório já existe (PKG004); falta semântica unificada de visibilidade/import
+
 ---
 
 ## 4. Segurança Nativa

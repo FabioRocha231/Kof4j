@@ -26,6 +26,7 @@ public final class Main {
             case "info" -> info(args);
             case "lsp" -> lsp();
             case "install" -> install(args);
+            case "script" -> System.exit(script(args));
             case "version" -> System.out.println("kof " + KofVersion.version());
             default -> { System.err.println("unknown: " + args[0]); printUsage(); }
         }
@@ -378,6 +379,7 @@ private static void build(String[] args) {
         System.out.println("  run <file.kf> [--target jvm|native|js|android] [--release] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
+        System.out.println("  script <file.ks>             execução direta de KofScript (decls top-level + main sintético)");
         System.out.println("  test <file.kf|dir> [--target jvm|native]   run programs, PASS/FAIL by exit code");
         System.out.println("  bench [paths...] [--target jvm|native|js|android] [--iterations N] [--warmup N] [--baseline <file>]");
         System.out.println("                          [--update-baseline <file>] [--threshold <ratio>] [--json] [--quick]");
@@ -565,6 +567,95 @@ private static void build(String[] args) {
         }
         System.out.println(passed + " passed, " + failed + " failed");
         if (failed > 0) System.exit(1);
+    }
+
+
+    /**
+     * kof script — execução direta de KofScript (.ks): declarações (fn/enum/
+     * class) viram top-level e todo o resto cai num main() sintético único —
+     * variáveis persistem entre linhas do MESMO arquivo. Um programa por
+     * arquivo, compilado para JVM e executado.
+     */
+    private static int script(String[] args) {
+        if (args.length < 2) {
+            System.err.println("usage: kof script <file.ks>");
+            return 1;
+        }
+        Path src = Path.of(args[1]);
+        if (!Files.exists(src)) { System.err.println("not found: " + src); return 1; }
+        try {
+            List<String> lines = Files.readAllLines(src);
+            StringBuilder decls = new StringBuilder();
+            StringBuilder stmts = new StringBuilder();
+            StringBuilder cur = new StringBuilder();
+            boolean curIsDecl = false;
+            for (String raw : lines) {
+                String t = raw.strip();
+                if (t.isEmpty() || t.startsWith("//")) continue;
+                cur.append(raw).append('\n');
+                boolean declStart = t.startsWith("fn ") || t.startsWith("enum ")
+                        || t.startsWith("class ") || t.startsWith("record ")
+                        || DECL_TYPE.matcher(t).find();
+                if (cur.length() == raw.length() + 1) curIsDecl = declStart;
+                if (balance(cur.toString()) > 0) continue;
+                String block = cur.toString().strip();
+                if (curIsDecl) decls.append(block).append('\n');
+                else stmts.append(block).append('\n');
+                cur.setLength(0);
+            }
+            if (!cur.isEmpty()) { // bloco não fechado
+                if (curIsDecl) decls.append(cur); else stmts.append(cur);
+            }
+            if (stmts.isEmpty() && decls.isEmpty()) return 0;
+
+            Path tmp = Files.createTempDirectory("kof-script-");
+            StringBuilder program = new StringBuilder();
+            program.append(decls);
+            program.append("main() {\n").append(stmts).append("\n}\n");
+            Path kf = tmp.resolve("Script.kf");
+            Files.writeString(kf, program.toString());
+            CompilerDriver driver = new CompilerDriver();
+            CompilationResult result = driver.compile(kf, tmp.resolve("out"), Target.JVM);
+            if (!result.success()) {
+                for (Diagnostic d : result.diagnostics().getDiagnostics()) {
+                    if (d.severity() == dev.kof.compiler.Diagnostic.Severity.ERROR) {
+                        System.out.println(d.format());
+                    }
+                }
+                cleanup(tmp);
+                return 1;
+            }
+            ProcessBuilder pb = new ProcessBuilder(javaExecutable(), "-cp",
+                    tmp.resolve("out").toString(), findMainClass(tmp.resolve("out")));
+            pb.redirectErrorStream(true);
+            Process proc = pb.start();
+            String out = new String(proc.getInputStream().readAllBytes());
+            int ec = proc.waitFor();
+            if (!out.isBlank()) System.out.print(out);
+            cleanup(tmp);
+            return ec == 0 ? 0 : 1;
+        } catch (Exception e) {
+            System.err.println("kof script: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /** fn/enum/class/record ou retorno tipado ("Int nome(", "String nome("...) */
+    private static final java.util.regex.Pattern DECL_TYPE =
+            java.util.regex.Pattern.compile("^(Int|Long|Bool|String|Float|Double|List<[^>]+>|Map<[^>]+>)\\s+\\w+\\s*\\(");
+
+    /** Saldo de { } para agrupar blocos multilinha no KofScript. */
+    private static int balance(String text) {
+        int depth = 0;
+        boolean inStr = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inStr) { if (c == '"') inStr = false; continue; }
+            if (c == '"') inStr = true;
+            else if (c == '{') depth++;
+            else if (c == '}') depth--;
+        }
+        return Math.max(depth, 0);
     }
 
     private static void check(String[] args) {

@@ -25,23 +25,27 @@ class KofAwaitTest {
     }
 
     @Test
-    void awaitJsGap(@TempDir Path tmp) throws Exception {
-        // MVP: handle de spawn é JVM-only (virtual threads); JS reporta CONC003
-        Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
-        Files.writeString(file, """
+    void awaitJs(@TempDir Path tmp) throws Exception {
+        // JS single-threaded: execução sequencial inline, handle memoiza o valor.
+        // Paralelismo real é JVM-only — semântica de VALOR idêntica nos testes.
+        runJs(tmp, """
                 String calc() {
                     return "js-ok"
                 }
 
-                main() {
-                    val r = spawn calc()
-                    println(await r)
+                Int soma(a: Int, b: Int) {
+                    return a + b
                 }
-                """);
-        CompilationResult result = driver.compile(file, tmp.resolve("out"), Target.JS);
-        assertFalse(result.success(), "JS spawn-expr/await deve reportar CONC003");
-        assertTrue(result.diagnostics().getDiagnostics().stream().anyMatch(d -> "CONC003".equals(d.code())),
-                "Esperado CONC003: " + result.diagnostics().getDiagnostics());
+
+                main() {
+                    val r1 = spawn calc()
+                    println(await r1)
+                    val r2 = spawn soma(2, 3)
+                    println((await r2) == 5)
+                    spawn { println("fire") }
+                    println("done")
+                }
+                """, "js-ok\ntrue\nfire\ndone");
     }
 
     @Test

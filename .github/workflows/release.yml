@@ -1,7 +1,7 @@
 name: Release
 
 # Every push to main is a release candidate: tests must pass, the version is
-# bumped to the next Alpha, platform packages are built and published as a
+# bumped to the next Beta, platform packages are built and published as a
 # GitHub Release with changelog and checksums.
 #
 # main never points to a state that does not compile.
@@ -48,7 +48,7 @@ jobs:
           BASE="${CURRENT%%-*}"          # 0.0.4
           PATCH="${BASE##*.}"            # 4
           NEXT_PATCH=$((PATCH + 1))
-          NEXT="${BASE%.*}.${NEXT_PATCH}-alpha"   # 0.0.5-alpha
+          NEXT="${BASE%.*}.${NEXT_PATCH}-beta"    # 0.1.2-beta
           echo "current=$CURRENT next=$NEXT"
           scripts/bump-version.sh "$NEXT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"

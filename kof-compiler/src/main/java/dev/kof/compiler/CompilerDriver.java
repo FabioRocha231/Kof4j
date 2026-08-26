@@ -1713,6 +1713,18 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case SpawnStmt ss -> {
+                if (target == Target.JS) {
+                    // JS é single-threaded: fire-and-forget degenera em execução
+                    // imediata do corpo (ordem de output preservada)
+                    LambdaExpr jsLe = ss.expression() instanceof LambdaExpr l0 ? l0
+                            : new LambdaExpr(ss.position(), List.of(),
+                                    List.of(new ExpressionStmt(ss.position(), ss.expression())));
+                    for (StatementNode st : jsLe.body()) {
+                        localIdx = emitStatement(st, ops, owner, localIdx, locals,
+                                Type.PrimitiveType.VOID);
+                    }
+                    yield localIdx;
+                }
                 if (target == Target.NATIVE) {
                     if (currentDiagnostics != null) {
                         currentDiagnostics.error("", 0, 0, 0,
@@ -2367,6 +2379,18 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
+                    if (target == Target.JS) {
+                        // sequencial: o corpo roda agora; o handle só memoiza
+                        ExpressionNode jsBody = mc.arguments().get(0);
+                        Type jsT = inferExprType(jsBody, locals);
+                        localIdx = emitExpression(jsBody, ops, owner, localIdx, locals);
+                        ops.add(new KofCall(
+                                new Type.ClassType("kof.concurrent", "Handle", List.of(jsT)),
+                                "kof_spawn_result", List.of(jsT),
+                                new Type.ClassType("kof.concurrent", "Handle", List.of(jsT)),
+                                KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     if (target != Target.JVM) {
                         if (currentDiagnostics != null) {
                             String code = target == Target.NATIVE ? "CONC001"
@@ -2398,10 +2422,9 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
-                    if (target != Target.JVM) {
+                    if (target == Target.NATIVE || target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target == Target.NATIVE ? "CONC001"
-                                    : target == Target.ANDROID ? "AND001" : "CONC003";
+                            String code = target == Target.NATIVE ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,

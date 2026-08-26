@@ -1907,6 +1907,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_sec_")
                 || name.startsWith("kof_validation_")
                 || name.startsWith("kof_enum_")
+                || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.startsWith("kof_observability_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
@@ -2980,6 +2981,18 @@ class JsBackend implements Backend {
 
             export function kofSetIsEmpty(set) {
                 return set.size === 0 ? 1 : 0;
+            }
+
+            export function kofSpawnResult(value) {
+                // JS single-threaded: o corpo já rodou inline; o handle memoiza
+                return { get: function () { return value; } };
+            }
+
+            export function kofAwait(handle) {
+                if (handle != null && typeof handle.get === "function") {
+                    return handle.get();
+                }
+                return handle;
             }
 
             export function kofEnumValueOf(values, name) {
