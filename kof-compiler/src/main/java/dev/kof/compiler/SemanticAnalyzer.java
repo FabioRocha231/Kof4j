@@ -1200,6 +1200,26 @@ class SemanticAnalyzer {
                     Type t = inferType(mc.arguments().get(0), scope);
                     yield new Type.ClassType("kof.concurrent", "Handle", List.of(t));
                 }
+                if (mc.receiver() == null && "cancel".equals(mc.methodName())
+                        && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield Type.PrimitiveType.BOOL;
+                }
+                if (mc.receiver() == null && "cancelled".equals(mc.methodName())
+                        && mc.arguments().isEmpty()) {
+                    yield Type.PrimitiveType.BOOL;
+                }
+                if (mc.receiver() == null && "selectAny".equals(mc.methodName())
+                        && !mc.arguments().isEmpty()) {
+                    Type t0 = Type.UnknownType.UNKNOWN;
+                    for (ExpressionNode arg : mc.arguments()) t0 = inferType(arg, scope);
+                    if (t0 instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
                 if (mc.receiver() == null && ("poll".equals(mc.methodName())
                         || "done".equals(mc.methodName()))) {
                     Type t0 = inferType(mc.arguments().get(0), scope);

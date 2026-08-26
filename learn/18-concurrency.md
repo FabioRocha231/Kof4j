@@ -94,6 +94,43 @@ main() {
 }
 ```
 
+## Cancelamento cooperativo
+
+```kf
+Int trabalho() {
+    var i = 0
+    while (i < 10000 && !cancelled()) {
+        time.sleep(1)
+        i++
+    }
+    return i
+}
+
+main() {
+    val r = spawn trabalho()
+    time.sleep(30)
+    assert(cancel(r))       // marca a tarefa
+    await r                 // a tarefa sai do loop cedo
+}
+```
+
+- `cancel(r)` marca o handle; **a tarefa decide quando sair** consultando
+  `cancelled()` dentro do próprio corpo.
+- `cancelled()` fora de uma tarefa devolve `false`.
+- No JS é no-op marcado (`cancel` devolve `0`, `cancelled` devolve `false`) —
+  execução é sequencial.
+
+## selectAny — primeiro que chegar
+
+```kf
+val a = spawn lenta()      // 300ms
+val b = spawn rapida()     // imediata
+println(selectAny(a, b))   // valor da rapida
+```
+
+Bloqueia até **qualquer** handle completar e devolve o valor dele. No JS
+(sequencial) devolve o primeiro argumento.
+
 ## Semântica
 
 - Cada `spawn` roda numa **virtual thread** (JDK 21+) — barato para milhares de tarefas.

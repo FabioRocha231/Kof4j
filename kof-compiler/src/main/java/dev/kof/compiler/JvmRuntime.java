@@ -33,6 +33,8 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_enum_")
                 || methodName.equals("kof_spawn_result") || methodName.equals("kof_await")
                 || methodName.equals("kof_poll") || methodName.equals("kof_done")
+                || methodName.equals("kof_cancel") || methodName.equals("kof_cancelled")
+                || methodName.equals("kof_select_any")
                 || methodName.startsWith("kof_observability_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
@@ -253,7 +255,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_enum_value_of" -> "(Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_spawn_result", "kof_await" -> "(Ljava/lang/Object;)Ljava/lang/Object;";
             case "kof_poll" -> "(Ljava/lang/Object;)Ljava/lang/Object;";
-            case "kof_done" -> "(Ljava/lang/Object;)Z";
+            case "kof_done", "kof_cancel" -> "(Ljava/lang/Object;)Z";
+            case "kof_cancelled" -> "()Z";
+            case "kof_select_any" -> "(Ljava/util/List;)Ljava/lang/Object;";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -352,7 +356,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";
             case "kof_sec_session_get", "kof_enum_value_of" -> "Ljava/lang/String;";
             case "kof_spawn_result", "kof_await", "kof_poll" -> "Ljava/lang/Object;";
-            case "kof_done" -> "I";
+            case "kof_done", "kof_cancel", "kof_cancelled" -> "I";
+            case "kof_select_any" -> "Ljava/lang/Object;";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };
@@ -1314,21 +1319,58 @@ static boolean hasRuntimeFn(String methodName) {
                     }, "kof-wait-tasks"));
                 }
 
+                private static final ThreadLocal<Object> KOF_CURRENT_HANDLE = new ThreadLocal<>();
+                private static final java.util.Set<Object> KOF_CANCELLED =
+                        java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
                 public static Object kof_spawn_result(Object task) {
                     java.util.concurrent.CompletableFuture<Object> future =
                             new java.util.concurrent.CompletableFuture<>();
                     KOF_ACTIVE_TASKS.incrementAndGet();
                     Thread.startVirtualThread(() -> {
+                        KOF_CURRENT_HANDLE.set(future);
                         try {
                             future.complete(task.getClass().getMethod("invoke").invoke(task));
                         } catch (Throwable e) {
                             Throwable cause = e.getCause() != null ? e.getCause() : e;
                             future.completeExceptionally(cause);
                         } finally {
+                            KOF_CURRENT_HANDLE.remove();
                             KOF_ACTIVE_TASKS.decrementAndGet();
                         }
                     });
                     return future;
+                }
+
+                /** cancel(handle) -> true (marca; a tarefa vê via cancelled()). */
+                public static boolean kof_cancel(Object handle) {
+                    if (handle == null) return false;
+                    KOF_CANCELLED.add(handle);
+                    return true;
+                }
+
+                /** cancelled() -> a tarefa ATUAL foi marcada como cancelada? */
+                public static boolean kof_cancelled() {
+                    Object h = KOF_CURRENT_HANDLE.get();
+                    return h != null && KOF_CANCELLED.contains(h);
+                }
+
+                /** selectAny(handles) -> valor do primeiro handle pronto. */
+                public static Object kof_select_any(java.util.List<?> handles) throws Exception {
+                    if (handles == null || handles.isEmpty()) {
+                        throw new IllegalArgumentException("selectAny: nenhuma tarefa");
+                    }
+                    java.util.concurrent.CompletableFuture<?>[] arr =
+                            handles.stream()
+                                .map(h -> {
+                                    if (!(h instanceof java.util.concurrent.CompletableFuture<?> cf)) {
+                                        throw new IllegalStateException(
+                                                "selectAny: argumento não é Handle");
+                                    }
+                                    return cf;
+                                })
+                               .toArray(java.util.concurrent.CompletableFuture[]::new);
+                    return java.util.concurrent.CompletableFuture.anyOf(arr).get();
                 }
 
                 public static Object kof_await(Object handle) throws Exception {

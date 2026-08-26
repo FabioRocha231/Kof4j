@@ -1909,6 +1909,8 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_enum_")
                 || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.equals("kof_poll") || name.equals("kof_done")
+                || name.equals("kof_cancel") || name.equals("kof_cancelled")
+                || name.equals("kof_select_any")
                 || name.startsWith("kof_observability_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
@@ -2997,6 +2999,25 @@ class JsBackend implements Backend {
 
             export function kofDone(handle) {
                 return handle != null ? 1 : 0;
+            }
+
+            export function kofCancel(handle) {
+                // sequencial: sem tarefa rodando para cancelar — no-op marcado
+                if (handle != null) handle.cancelled = true;
+                return 1;
+            }
+
+            export function kofCancelled() {
+                return 0;
+            }
+
+            export function kofSelectAny(handles) {
+                // sequencial: o primeiro já está pronto
+                if (handles != null && handles.length > 0) {
+                    const h = handles[0];
+                    return (h != null && typeof h.get === "function") ? h.get() : h;
+                }
+                return null;
             }
 
             export function kofAwait(handle) {

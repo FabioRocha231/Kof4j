@@ -2391,6 +2391,59 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
+                if (mc.receiver() == null && ("cancel".equals(mc.methodName())
+                        || "cancelled".equals(mc.methodName()) || "selectAny".equals(mc.methodName()))
+                        && findLocalVar(mc.methodName(), locals) == null) {
+                    boolean argsOk = "cancelled".equals(mc.methodName())
+                            ? mc.arguments().isEmpty() : !mc.arguments().isEmpty();
+                    if (!argsOk) yield localIdx;
+                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                        if (currentDiagnostics != null) {
+                            String code = target == Target.NATIVE ? "CONC001" : "AND001";
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    mc.methodName() + ": not supported on the " + target
+                                            + " target yet (" + code + ")", code);
+                        }
+                        yield localIdx;
+                    }
+                    if ("selectAny".equals(mc.methodName())) {
+                        Type firstH = inferExprType(mc.arguments().get(0), locals);
+                        Type elemT = new Type.ClassType("kof.concurrent", "Handle",
+                                firstH instanceof Type.ClassType fh
+                                        && !fh.typeArguments().isEmpty()
+                                        ? List.of(fh.typeArguments().get(0)) : List.of());
+                        Type listT = new Type.ClassType("kof", "List", List.of(elemT));
+                        ops.add(new KofCall(listT, "kof_list_new", List.of(), listT,
+                                KofCallKind.FUNCTION));
+                        for (ExpressionNode arg : mc.arguments()) {
+                            ops.add(new KofDup());
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            ops.add(new KofCall(listT, "kof_list_add", List.of(elemT),
+                                    Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                        }
+                        Type resT = inferExprType(mc, locals);
+                        ops.add(new KofCall(
+                                new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                "kof_select_any", List.of(listT), resT, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    String fn = "kof_" + mc.methodName();
+                    Type ret = Type.PrimitiveType.BOOL;
+                    if ("cancelled".equals(mc.methodName())) {
+                        ops.add(new KofCall(
+                                new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                fn, List.of(), ret, KofCallKind.FUNCTION));
+                    } else {
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        Type h = inferExprType(mc.arguments().get(0), locals);
+                        ops.add(new KofCall(
+                                new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                fn, List.of(h), ret, KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                }
                 if (mc.receiver() == null && ("poll".equals(mc.methodName()) || "done".equals(mc.methodName()))
                         && mc.arguments().size() == 1
                         && findLocalVar(mc.methodName(), locals) == null) {
@@ -4484,7 +4537,28 @@ private Target target = Target.JVM;
                     Type t = inferExprType(mc.arguments().get(0), locals);
                     yield new Type.ClassType("kof.concurrent", "Handle", List.of(t));
                 }
-                                if (mc.receiver() == null && "poll".equals(mc.methodName())
+                                if (mc.receiver() == null && "cancel".equals(mc.methodName())
+                        && mc.arguments().size() == 1
+                        && findLocalVar("cancel", locals) == null) {
+                    yield Type.PrimitiveType.BOOL;
+                }
+                if (mc.receiver() == null && "cancelled".equals(mc.methodName())
+                        && mc.arguments().isEmpty()
+                        && findLocalVar("cancelled", locals) == null) {
+                    yield Type.PrimitiveType.BOOL;
+                }
+                if (mc.receiver() == null && "selectAny".equals(mc.methodName())
+                        && !mc.arguments().isEmpty()
+                        && findLocalVar("selectAny", locals) == null) {
+                    Type first = inferExprType(mc.arguments().get(0), locals);
+                    if (first instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && "poll".equals(mc.methodName())
                         && mc.arguments().size() == 1 && findLocalVar("poll", locals) == null) {
                     Type h = inferExprType(mc.arguments().get(0), locals);
                     if (h instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) {
