@@ -55,6 +55,7 @@ final class NativeRuntime {
         emitArraySet(sb);
         emitMemstats(sb);
         emitIoTimeFunctions(sb);
+        emitKofTimeFunctions(sb);
         emitLogFunctions(sb);
         emitConfigFunctions(sb);
         emitIoFileFunctions(sb);
@@ -909,6 +910,123 @@ final class NativeRuntime {
             .type kof_list_clear, @function
             kof_list_clear:
                 movl $0, 16(%rdi)
+                ret
+
+            .globl kof_list_map
+            .type kof_list_map, @function
+            kof_list_map:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12
+                movq %rsi, %r13
+                call kof_list_new
+                movq %rax, %r14
+                xorl %r15d, %r15d
+            .Lkof_list_map_loop:
+                movl 16(%r12), %eax
+                cmpl %eax, %r15d
+                jge .Lkof_list_map_done
+                movq 24(%r12), %rax
+                movslq %r15d, %rcx
+                movq (%rax,%rcx,8), %rsi
+                movq %r13, %rdi
+                movq 8(%rdi), %rax
+                movq (%rax), %rax
+                call *%rax
+                movq %rax, %rsi
+                movq %r14, %rdi
+                call kof_list_add
+                incl %r15d
+                jmp .Lkof_list_map_loop
+            .Lkof_list_map_done:
+                movq %r14, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_list_filter
+            .type kof_list_filter, @function
+            kof_list_filter:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12
+                movq %rsi, %r13
+                call kof_list_new
+                movq %rax, %r14
+                xorl %r15d, %r15d
+            .Lkof_list_filter_loop:
+                movl 16(%r12), %eax
+                cmpl %eax, %r15d
+                jge .Lkof_list_filter_done
+                movq 24(%r12), %rax
+                movslq %r15d, %rcx
+                movq (%rax,%rcx,8), %rsi
+                movq %r13, %rdi
+                movq 8(%rdi), %rax
+                movq (%rax), %rax
+                call *%rax
+                testq %rax, %rax
+                jz .Lkof_list_filter_skip
+                movq 24(%r12), %rax
+                movslq %r15d, %rcx
+                movq (%rax,%rcx,8), %rsi
+                movq %r14, %rdi
+                call kof_list_add
+            .Lkof_list_filter_skip:
+                incl %r15d
+                jmp .Lkof_list_filter_loop
+            .Lkof_list_filter_done:
+                movq %r14, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_list_reduce
+            .type kof_list_reduce, @function
+            kof_list_reduce:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %r12
+                movq %rsi, %r13
+                movq %rdx, %r14
+                xorl %r15d, %r15d
+            .Lkof_list_reduce_loop:
+                movl 16(%r12), %eax
+                cmpl %eax, %r15d
+                jge .Lkof_list_reduce_done
+                movq 24(%r12), %rax
+                movslq %r15d, %rcx
+                movq (%rax,%rcx,8), %rdx
+                movq %r13, %rsi
+                movq %r14, %rdi
+                movq 8(%rdi), %rax
+                movq (%rax), %rax
+                call *%rax
+                movq %rax, %r13
+                incl %r15d
+                jmp .Lkof_list_reduce_loop
+            .Lkof_list_reduce_done:
+                movq %r13, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
                 ret
             """);
     }
@@ -4891,6 +5009,42 @@ final class NativeRuntime {
                 ret
             .Lkof_write_file_fail:
                 movq $-1, %rax
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    private static void emitKofTimeFunctions(StringBuilder sb) {
+        sb.append("""
+            .globl kof_time_now
+            .type kof_time_now, @function
+            kof_time_now:
+                jmp kof_now
+
+            .globl kof_time_sleep
+            .type kof_time_sleep, @function
+            kof_time_sleep:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movl %edi, %ebx
+                movl %ebx, %eax
+                xorl %edx, %edx
+                movl $1000, %ecx
+                divl %ecx
+                movl %eax, %r12d
+                movl %edx, %r13d
+                imull $1000000, %r13d
+                subq $16, %rsp
+                movq %r12, (%rsp)
+                movq %r13, 8(%rsp)
+                movq %rsp, %rdi
+                xorq %rsi, %rsi
+                movq $35, %rax
+                syscall
+                addq $16, %rsp
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret

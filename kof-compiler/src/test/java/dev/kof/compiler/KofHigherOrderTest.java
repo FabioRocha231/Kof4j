@@ -71,18 +71,15 @@ class KofHigherOrderTest {
 
     @Test
     void mapNativeGap(@TempDir Path tmp) throws Exception {
-        Path f = tmp.resolve("M.kf");
-        Files.writeString(f, """
+        runNative(tmp, """
                 main() {
-                    var nums = listOf(1, 2)
-                    var d = nums.map((x: Int) -> x * 2)
-                    println(d.get(0))
+                    var nums = listOf(1, 2, 3, 4)
+                    var doubled = nums.map((x: Int) -> x * 2)
+                    println(doubled.get(1))
+                    println(nums.filter((x: Int) -> x > 2).size())
+                    println(nums.reduce(0, (acc: Int, x: Int) -> acc + x))
                 }
-                """);
-        CompilationResult r = driver.compile(f, tmp.resolve("out"), Target.NATIVE);
-        assertFalse(r.success(), "Native map deve gapar COL001");
-        assertTrue(r.diagnostics().getDiagnostics().stream().anyMatch(d -> "COL001".equals(d.code())),
-                "Esperado COL001: " + r.diagnostics().getDiagnostics());
+                """, "4\n2\n10");
     }
 
     // ── helpers ──
@@ -119,6 +116,26 @@ class KofHigherOrderTest {
             assertEquals(0, ec, "JS exit code, output: " + output);
             assertEquals(expected, output, "JS output");
             return output;
+        }
+    }
+
+    private String runNative(Path tempDir, String source, String expected) throws java.io.IOException {
+        Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
+        Files.writeString(file, source);
+        Path outDir = tempDir.resolve("out-" + System.nanoTime());
+        CompilationResult result = driver.compile(file, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native compile failed: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default/Main");
+        try {
+            Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit code, output: " + output);
+            assertEquals(expected, output, "Native output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new java.io.IOException("interrupted", e);
         }
     }
 

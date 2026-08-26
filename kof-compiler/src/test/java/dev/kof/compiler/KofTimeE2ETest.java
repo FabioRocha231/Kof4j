@@ -79,20 +79,66 @@ class KofTimeE2ETest {
     }
 
     @Test
-    void nativeAndJsReportTime001(@TempDir Path tempDir) throws IOException {
+    void nativeAndJsSupportNowAndSleep(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
+                    var t0 = time.now()
                     time.sleep(10)
+                    var t1 = time.now()
+                    println(t1 >= t0)
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "Native should reject time.sleep");
+        assertTrue(nativeResult.success(), "Native should support time.now/sleep: " + nativeResult.diagnostics().getDiagnostics());
+        Path nativeBin = tempDir.resolve("native").resolve("Default/Main");
+        Process pn = new ProcessBuilder(nativeBin.toString()).redirectErrorStream(true).start();
+        try {
+            String out = new String(pn.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+            int ec = pn.waitFor();
+            assertEquals(0, ec, "Native exit code, output: " + out);
+            assertEquals("true", out, "Native output");
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
+        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
+        assertTrue(jsResult.success(), "JS should support time.now/sleep: " + jsResult.diagnostics().getDiagnostics());
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            Path jsEntry = findJsEntry(tempDir.resolve("js"));
+            int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
+                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+            String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "JS exit code, output: " + out);
+            assertEquals("true", out, "JS output");
+        }
+    }
+
+    @Test
+    void nativeAndJsReportTime001ForInterval(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                main() {
+                    var job = time.interval(100, () -> {})
+                }
+                """);
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native2"), Target.NATIVE);
+        assertFalse(nativeResult.success(), "Native should reject time.interval");
         assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
                 .anyMatch(d -> d.message().contains("TIME001")), "" + nativeResult.diagnostics().getDiagnostics());
-        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
-        assertFalse(jsResult.success(), "JS should reject time.sleep");
+        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js2"), Target.JS);
+        assertFalse(jsResult.success(), "JS should reject time.interval");
         assertTrue(jsResult.diagnostics().getDiagnostics().stream()
                 .anyMatch(d -> d.message().contains("TIME001")), "" + jsResult.diagnostics().getDiagnostics());
+    }
+
+    private static Path findJsEntry(Path dir) throws IOException {
+        try (var s = Files.walk(dir)) {
+            var opt = s.filter(p -> p.getFileName().toString().equals("Default.mjs")).findFirst();
+            if (opt.isPresent()) return opt.get();
+        }
+        try (var s = Files.walk(dir)) {
+            return s.filter(p -> p.toString().endsWith(".mjs"))
+                    .findFirst().orElseThrow(() -> new IOException("no .mjs in " + dir));
+        }
     }
 }

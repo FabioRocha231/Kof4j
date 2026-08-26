@@ -226,14 +226,15 @@ Bool positivo(Int x) = x > 0         // expression body
 | `spawn` (concorrência, join implícito) | ✅ | CONC001 | — |
 | strings (concat `+`, `==`, indexOf, trim, split...) | ✅ | ✅ | ✅ |
 | arrays | ✅ | ✅ | ✅ |
-| `List<T>`, `listOf` | ✅ | ✅ | ✅ |
+| `List<T>`, `listOf`, `map/filter/reduce` | ✅ | ✅ | ✅ |
 | `Box<T>` generics com `T` primitivo/Boxed (ex.: `Box<Int>`) | ✅ | ✅ | ✅ | 25/08 fix `substituteTypeVariable` |
 | JSON encode/decode (objetos/records no JVM) + arrays nativos | ✅ | ✅ | ✅ |
 | JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
-| kof.time (`now()`) | ✅ | ✅ | ✅ |
+| kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
-| kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | CONF001 |
+| kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
+| kof.mq (publish/subscribe/queue) | ✅ | MQ001 | ✅ |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
 | kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite; MySQL WIP) | DB001 |

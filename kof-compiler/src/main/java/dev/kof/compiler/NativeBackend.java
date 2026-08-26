@@ -724,26 +724,26 @@ public class NativeBackend implements Backend {
     }
 
     private void emitBinary(StringBuilder sb, KofBinary kb) {
-        sb.append("    popq %rbx\n");
+        sb.append("    popq %rcx\n");
         sb.append("    popq %rax\n");
         switch (kb.op()) {
-            case ADD -> sb.append("    addq %rbx, %rax\n");
-            case SUB -> sb.append("    subq %rbx, %rax\n");
-            case MUL -> sb.append("    imulq %rbx, %rax\n");
-            case DIV -> sb.append("    cqo\n    idivq %rbx\n");
-            case MOD -> sb.append("    cqo\n    idivq %rbx\n    movq %rdx, %rax\n");
-            case EQ -> sb.append("    cmpq %rbx, %rax\n    sete %al\n    movzbl %al, %eax\n");
-            case NE -> sb.append("    cmpq %rbx, %rax\n    setne %al\n    movzbl %al, %eax\n");
-            case LT -> sb.append("    cmpq %rbx, %rax\n    setl %al\n    movzbl %al, %eax\n");
-            case LE -> sb.append("    cmpq %rbx, %rax\n    setle %al\n    movzbl %al, %eax\n");
-            case GT -> sb.append("    cmpq %rbx, %rax\n    setg %al\n    movzbl %al, %eax\n");
-            case GE -> sb.append("    cmpq %rbx, %rax\n    setge %al\n    movzbl %al, %eax\n");
-            case AND -> sb.append("    andq %rbx, %rax\n");
-            case OR -> sb.append("    orq %rbx, %rax\n");
-            case XOR -> sb.append("    xorq %rbx, %rax\n");
-            case SHL -> sb.append("    movq %rbx, %rcx\n    shlq %cl, %rax\n");
-            case SHR -> sb.append("    movq %rbx, %rcx\n    sarq %cl, %rax\n");
-            case USHR -> sb.append("    movq %rbx, %rcx\n    shrq %cl, %rax\n");
+            case ADD -> sb.append("    addq %rcx, %rax\n");
+            case SUB -> sb.append("    subq %rcx, %rax\n");
+            case MUL -> sb.append("    imulq %rcx, %rax\n");
+            case DIV -> sb.append("    cqo\n    idivq %rcx\n");
+            case MOD -> sb.append("    cqo\n    idivq %rcx\n    movq %rdx, %rax\n");
+            case EQ -> sb.append("    cmpq %rcx, %rax\n    sete %al\n    movzbl %al, %eax\n");
+            case NE -> sb.append("    cmpq %rcx, %rax\n    setne %al\n    movzbl %al, %eax\n");
+            case LT -> sb.append("    cmpq %rcx, %rax\n    setl %al\n    movzbl %al, %eax\n");
+            case LE -> sb.append("    cmpq %rcx, %rax\n    setle %al\n    movzbl %al, %eax\n");
+            case GT -> sb.append("    cmpq %rcx, %rax\n    setg %al\n    movzbl %al, %eax\n");
+            case GE -> sb.append("    cmpq %rcx, %rax\n    setge %al\n    movzbl %al, %eax\n");
+            case AND -> sb.append("    andq %rcx, %rax\n");
+            case OR -> sb.append("    orq %rcx, %rax\n");
+            case XOR -> sb.append("    xorq %rcx, %rax\n");
+            case SHL -> sb.append("    shlq %cl, %rax\n");
+            case SHR -> sb.append("    sarq %cl, %rax\n");
+            case USHR -> sb.append("    shrq %cl, %rax\n");
         }
         sb.append("    pushq %rax\n");
     }
@@ -763,7 +763,7 @@ public class NativeBackend implements Backend {
 
     private void emitConditionalJump(StringBuilder sb, KofConditionalJump kc) {
         sb.append("    popq %rax\n");
-        sb.append("    popq %rbx\n");
+        sb.append("    popq %rcx\n");
         String cond = switch (kc.comparison()) {
             case EQ -> "je";
             case NE -> "jne";
@@ -772,7 +772,7 @@ public class NativeBackend implements Backend {
             case GT -> "jg";
             case GE -> "jge";
         };
-        sb.append("    cmpq %rax, %rbx\n");
+        sb.append("    cmpq %rax, %rcx\n");
         sb.append("    ").append(cond).append(" ").append(resolveLabel(kc.trueLabel())).append("\n");
         sb.append("    jmp ").append(resolveLabel(kc.falseLabel())).append("\n");
     }

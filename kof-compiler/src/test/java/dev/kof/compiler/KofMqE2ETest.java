@@ -84,20 +84,42 @@ class KofMqE2ETest {
     }
 
     @Test
-    void nativeAndJsReportMq001(@TempDir Path tempDir) throws IOException {
+    void jsSupportsMqAndNativeStillGaps(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
-                    mq.publish("topic", "msg")
+                    mq.subscribe("topic", (msg) -> {
+                        println("got:" + msg)
+                    })
+                    mq.publish("topic", "hello")
                 }
                 """);
+        // JS should now succeed
+        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
+        assertTrue(jsResult.success(), "JS should support mq.publish: " + jsResult.diagnostics().getDiagnostics());
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            Path jsEntry = findJsEntry(tempDir.resolve("js"));
+            int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
+                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+            String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "JS exit code, output: " + out);
+            assertEquals("got:hello", out, "JS output");
+        }
+        // Native still gaps
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native"), Target.NATIVE);
         assertFalse(nativeResult.success(), "Native should reject mq.publish");
         assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
                 .anyMatch(d -> d.message().contains("MQ001")), "" + nativeResult.diagnostics().getDiagnostics());
-        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
-        assertFalse(jsResult.success(), "JS should reject mq.publish");
-        assertTrue(jsResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("MQ001")), "" + jsResult.diagnostics().getDiagnostics());
+    }
+
+    private static Path findJsEntry(Path dir) throws IOException {
+        try (var s = Files.walk(dir)) {
+            var opt = s.filter(p -> p.getFileName().toString().equals("Default.mjs")).findFirst();
+            if (opt.isPresent()) return opt.get();
+        }
+        try (var s = Files.walk(dir)) {
+            return s.filter(p -> p.toString().endsWith(".mjs"))
+                    .findFirst().orElseThrow(() -> new IOException("no .mjs in " + dir));
+        }
     }
 }

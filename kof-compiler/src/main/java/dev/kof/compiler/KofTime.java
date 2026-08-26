@@ -44,9 +44,16 @@ final class KofTime {
 
     record TimeCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.time: JVM only — Native/JS reportam TIME001. */
+    /** kof.time: now/sleep em todos targets; interval/cancel apenas JVM (TIME001). */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM;
+        return true;
+    }
+
+    static boolean supportedOn(String method, Target target) {
+        if ("interval".equals(method) || "cancel".equals(method)) {
+            return target == Target.JVM;
+        }
+        return true;
     }
 
     static String gapCode() {

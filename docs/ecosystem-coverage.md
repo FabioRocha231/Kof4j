@@ -48,18 +48,18 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 
 | Módulo | Invocações Kof | Arquivo de origem | Tests |
 |--------|----------------|-------------------|-------|
-| `kof.core`/`kof.collections` | `println/print`, `String` (concat, length, indexOf, split...), `List<T>`, `listOf` | JvmRuntime/NativeRuntime/JsBackend | JvmE2ETest, NativeE2ETest, KofJsE2ETest |
+| `kof.core`/`kof.collections` | `println/print`, `String` (concat, length, indexOf, split...), `List<T>`, `listOf`, `map/filter/reduce` | JvmRuntime/NativeRuntime/JsBackend | KofHigherOrderTest (5) + JvmE2ETest, NativeE2ETest, KofJsE2ETest |
 | `kof.io` | `File/Path/Directory` (+métodos), `readFile/writeFile/readLine` | KofIo.java | IoE2ETest (15) |
-| `kof.time` | `now()`, `sleep`, `interval`/`cancel` (scheduler) | KofTime.java | KofTimeE2ETest (4) |
+| `kof.time` | `now()`, `sleep` (JVM/Native/JS), `interval`/`cancel` (JVM) | KofTime.java | KofTimeE2ETest (5) |
 | `kof.json` | `json.encode/decode<T>` | JvmRuntime/NativeRuntime/JsBackend | JsonE2ETest (14) |
 | `kof.security` | `passwords.*`, `crypto.*`, `jwt.*`, `secrets.*`, `security.*`, `auth.*` | KofSecurity.java | KofSecurityTest (22) |
 | `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8) |
 | `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) | KofHttp.java | KofHttpE2ETest (3) |
-| `kof.mq` | `mq.publish/subscribe/unsubscribe`, `queue/push/pop/size` (em memória) | KofMq.java | KofMqE2ETest (4) |
+| `kof.mq` | `mq.publish/subscribe/unsubscribe`, `queue/push/pop/size` (JVM + JS; Native MQ001) | KofMq.java | KofMqE2ETest (4) |
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
 | `kof.test` | `assert(cond[, msg])`, `test "nome" { }` (runner sintetizado), `kof test` | CompilerDriver/CLI | AssertE2ETest (5), StructuredTestE2ETest (11) |
 | `kof.ui` | `Color/Theme/Palette`, `Window/Label/Button/Input`, `Column/Row/View/Style`, eventos por lambda com capturas, webview nativo | KofUi.java, JsBackend (runtime), kof-webview.c | UiE2ETest (14), WindowE2ETest (3) |
-| `kof.config` | `config.get/env/has`, `config.str/int/long/bool(name, fallback)` — arquivo + profiles + env, precedência | KofConfig.java | KofConfigE2ETest (8) |
+| `kof.config` | `config.get/env/has`, `config.str/int/long/bool(name, fallback)` — JVM/Native (arquivo+profiles+env) + JS (env) | KofConfig.java | KofConfigE2ETest (8) |
 | `kof.log` | `log.debug/info/warn/error`, níveis (default INFO), `off`, warn→stderr | KofLog.java | KofLogE2ETest (7), NativeLogE2ETest (17) |
 | `kof.cli` | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` | kof-cli | Bench, KofDebug E2E |
 
@@ -136,7 +136,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | dependency injection | `NA` (sem container; resolução direta) | — | — | — | — | philosophy.md |
 | events | `PLANNED` (event bus) | — | — | — | — | roadmap.md |
 | validation | ✅ `kof.validation` (required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max) — JVM/Native/JS | y | y | y | KofValidationTest | stdlib.md |
-| scheduling | ✅ `kof.time.sleep/interval/cancel` (JVM); TIME001 no Native/JS | y | – | – | KofTimeE2ETest | stdlib.md |
+| scheduling | ✅ `kof.time` now/sleep (JVM/Native/JS) + interval/cancel (JVM) | y | y (now/sleep) | y (now/sleep) | KofTimeE2ETest | stdlib.md |
 | caching | `PLANNED` | — | — | — | — | roadmap.md |
 | transactions | ✅ `transaction {}` (JVM; commit/rollback real) | y | – DB001 | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
 | resource management | `PARTIAL` (try/finally real) | y | y | — | ExceptionsE2ETest | language-state.md |
@@ -187,7 +187,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| event bus / pub-sub | ✅ `kof.mq` (publish/subscribe/unsubscribe + queue/push/pop) — JVM; MQ001 no Native/JS | KofMq | KofMqE2ETest (4) | — | — | concurrency |
+| event bus / pub-sub | ✅ `kof.mq` (publish/subscribe/unsubscribe + queue/push/pop) — JVM + JS; MQ001 no Native | y | – | y | KofMqE2ETest (4) | concurrency |
 | queues (`kof.concurrent.Queue`) | `PLANNED` | — | — | — | — | concurrency |
 | Kafka / AMQP / Pulsar | `PLANNED` (adapters externos) | — | — | — | — | roadmap.md |
 | retry / dead-letter / backpressure | `PLANNED` | — | — | — | — | — |
@@ -270,8 +270,8 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 |-----------|-----|-----|--------|----|-------|------|
 | environment variables | `DONE` (`secrets.get`, `KOF_*`, `config.env`) | y | y | y | KofSecurityTest, KofConfigE2ETest | security.md |
 | command-line arguments | `DONE` (`main(args)`) | y | y (vazio) | y (vazio) | UiE2ETest | language-state.md |
-| config files / profiles / precedence | `DONE` (JVM): arquivo explícito > env > profile > default | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | stdlib.md |
-| typed configuration | `DONE` (`config.str/int/long/bool`) | y | – | – | KofConfigE2ETest | — |
+| config files / profiles / precedence | `DONE` (JVM/Native: arquivo explícito > env > profile > default; JS: env) | y | y | y | KofConfigE2ETest | stdlib.md |
+| typed configuration | `DONE` (`config.str/int/long/bool`) | y | y | y | KofConfigE2ETest | — |
 | hot reload | `PLANNED`/`NA` | — | — | — | — | — |
 
 ## 3.11 Testing

@@ -1907,6 +1907,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_sec_")
                 || name.startsWith("kof_validation_")
                 || name.startsWith("kof_enum_")
+                || name.startsWith("kof_config_")
                 || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.equals("kof_poll") || name.equals("kof_done")
                 || name.equals("kof_cancel") || name.equals("kof_cancelled")
@@ -1914,6 +1915,8 @@ class JsBackend implements Backend {
                 || name.equals("kof_list_map") || name.equals("kof_list_filter")
                 || name.equals("kof_list_reduce")
                 || name.startsWith("kof_observability_")
+                || name.startsWith("kof_time_")
+                || name.startsWith("kof_mq_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
@@ -3052,6 +3055,128 @@ class JsBackend implements Backend {
 
             export function kofNow() {
                 return Date.now();
+            }
+
+            export function kofTimeNow() {
+                return Date.now();
+            }
+
+            export function kofTimeSleep(ms) {
+                const start = Date.now();
+                while (Date.now() - start < ms) {}
+            }
+
+            export function kofTimeInterval(ms, fn) {
+                const id = setInterval(() => {
+                    if (typeof fn.invoke === 'function') fn.invoke();
+                    else if (typeof fn === 'function') fn();
+                }, ms);
+                return String(id);
+            }
+
+            export function kofTimeCancel(id) {
+                clearInterval(Number(id));
+            }
+
+            export function kofConfigGet(key) {
+                return kofConfigLookup(key);
+            }
+
+            export function kofConfigEnv(key) {
+                return kofConfigLookup(key);
+            }
+
+            export function kofConfigHas(key) {
+                return kofConfigLookup(key) != null ? 1 : 0;
+            }
+
+            export function kofConfigStr(key, def) {
+                const v = kofConfigLookup(key);
+                return v != null ? v : def;
+            }
+
+            export function kofConfigInt(key, def) {
+                const v = kofConfigLookup(key);
+                if (v == null) return def | 0;
+                const n = parseInt(v, 10);
+                return isNaN(n) ? def | 0 : n | 0;
+            }
+
+            export function kofConfigLong(key, def) {
+                const v = kofConfigLookup(key);
+                if (v == null) return def;
+                const n = parseInt(v, 10);
+                return isNaN(n) ? def : n;
+            }
+
+            export function kofConfigBool(key, def) {
+                const v = kofConfigLookup(key);
+                if (v == null) return def ? 1 : 0;
+                const s = String(v).toLowerCase();
+                if (s === 'true' || s === '1' || s === 'yes') return 1;
+                if (s === 'false' || s === '0' || s === 'no') return 0;
+                return def ? 1 : 0;
+            }
+
+            function kofConfigLookup(key) {
+                try {
+                    if (typeof process !== 'undefined' && process.env) {
+                        if (key in process.env) return process.env[key];
+                        const kofKey = 'KOF_' + key.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+                        if (kofKey in process.env) return process.env[kofKey];
+                        const flat = key.replace(/\\./g, '_').toUpperCase();
+                        if (flat in process.env) return process.env[flat];
+                    }
+                } catch (e) {}
+                try {
+                    if (typeof globalThis !== 'undefined' && globalThis.__kofConfig && key in globalThis.__kofConfig) {
+                        return globalThis.__kofConfig[key];
+                    }
+                } catch (e) {}
+                return null;
+            }
+
+            export const kofMqSubs = new Map();
+            export const kofMqQueues = new Map();
+            export let kofMqSeq = 0;
+            export function kofMqPublish(topic, msg) {
+                const subs = kofMqSubs.get(topic);
+                if (subs) {
+                    for (const fn of [...subs]) {
+                        try {
+                            if (typeof fn.invoke === 'function') fn.invoke(msg);
+                            else if (typeof fn === 'function') fn(msg);
+                        } catch (e) {}
+                    }
+                }
+            }
+            export function kofMqSubscribe(topic, fn) {
+                if (!kofMqSubs.has(topic)) kofMqSubs.set(topic, []);
+                kofMqSubs.get(topic).push(fn);
+            }
+            export function kofMqUnsubscribe(topic, fn) {
+                const subs = kofMqSubs.get(topic);
+                if (!subs) return;
+                const idx = subs.indexOf(fn);
+                if (idx >= 0) subs.splice(idx, 1);
+            }
+            export function kofMqQueue() {
+                const id = 'q-' + (++kofMqSeq);
+                kofMqQueues.set(id, []);
+                return id;
+            }
+            export function kofMqPush(queue, msg) {
+                const q = kofMqQueues.get(queue);
+                if (q) q.push(msg);
+            }
+            export function kofMqPop(queue) {
+                const q = kofMqQueues.get(queue);
+                if (!q || q.length === 0) return null;
+                return q.shift();
+            }
+            export function kofMqQueueSize(queue) {
+                const q = kofMqQueues.get(queue);
+                return q ? q.length : 0;
             }
 
             // ── kof.security (docs/security.md §5) ────────────────────

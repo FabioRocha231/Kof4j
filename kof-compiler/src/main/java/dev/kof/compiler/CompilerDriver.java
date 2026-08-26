@@ -3060,7 +3060,7 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofTime.TimeCall timeCall = KofTime.staticCall(mc.methodName(), argTypes);
                     if (timeCall != null) {
-                        if (!KofTime.supportedOn(target)) {
+                        if (!KofTime.supportedOn(mc.methodName(), target)) {
                             if (currentDiagnostics != null) {
                                 currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                         mc.position() != null ? mc.position().line() : 0,
@@ -3471,17 +3471,6 @@ private Target target = Target.JVM;
                     if (BuiltinTypes.isList(recvType)
                             && ("map".equals(mc.methodName()) || "filter".equals(mc.methodName())
                                 || "reduce".equals(mc.methodName()))) {
-                        if (target == Target.NATIVE) {
-                            if (currentDiagnostics != null) {
-                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                        mc.position() != null ? mc.position().line() : 0,
-                                        mc.position() != null ? mc.position().column() : 0, 0,
-                                        mc.methodName() + " em List não está disponível no Native ainda"
-                                                + " (COL001)",
-                                        "COL001");
-                            }
-                            yield localIdx;
-                        }
                         String hoFn = "kof_list_" + mc.methodName();
                         // receiver já empilhado acima (3396) — não duplicar
                         Type lambdaT = Type.UnknownType.UNKNOWN;

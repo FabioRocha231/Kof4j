@@ -50,9 +50,9 @@ final class KofMq {
 
     record MqCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.mq: JVM only — Native/JS reportam MQ001. */
+    /** kof.mq: JVM + JS; Native reporta MQ001. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM;
+        return target == Target.JVM || target == Target.JS;
     }
 
     static String gapCode() {

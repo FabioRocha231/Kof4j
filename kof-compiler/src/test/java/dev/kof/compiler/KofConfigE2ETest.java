@@ -150,11 +150,12 @@ class KofConfigE2ETest {
     }
 
     @Test
-    void nativeRunsConfigAndJsReportsConf001(@TempDir Path tempDir) throws IOException {
+    void nativeAndJsRunConfig(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Config.kf");
         Files.writeString(source, """
                 main() {
                     println(config.int("server.port", 8080))
+                    println(config.str("app.name", "fallback"))
                 }
                 """);
         // Native: config implementado em asm (kof_config_lookup) — roda de verdade
@@ -174,10 +175,27 @@ class KofConfigE2ETest {
         } catch (InterruptedException e) {
             throw new IOException("Interrupted while running native binary", e);
         }
-        // JS: ainda reporta CONF001
+        // JS: config via process.env
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
-        assertFalse(jsResult.success());
-        assertTrue(jsResult.diagnostics().getDiagnostics().toString().contains("CONF001"),
-                jsResult.diagnostics().getDiagnostics().toString());
+        assertTrue(jsResult.success(), "JS should support config: " + jsResult.diagnostics().getDiagnostics());
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            Path jsEntry = findJsEntry(tempDir.resolve("js-out"));
+            int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
+                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+            String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "JS exit code, output: " + out);
+            assertTrue(out.contains("8080"), "JS output: " + out);
+        }
+    }
+
+    private static Path findJsEntry(Path dir) throws IOException {
+        try (var s = Files.walk(dir)) {
+            var opt = s.filter(p -> p.getFileName().toString().equals("Default.mjs")).findFirst();
+            if (opt.isPresent()) return opt.get();
+        }
+        try (var s = Files.walk(dir)) {
+            return s.filter(p -> p.toString().endsWith(".mjs"))
+                    .findFirst().orElseThrow(() -> new IOException("no .mjs in " + dir));
+        }
     }
 }
