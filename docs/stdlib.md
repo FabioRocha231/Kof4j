@@ -43,7 +43,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | Módulo | Estado | Notas |
 |--------|--------|-------|
 | `kof.core` | ✅ | println, strings, arrays, aritmética; **P1**: `enum Name { A, B }` + `values()/valueOf()/name()` + `==` por conteúdo — 3 targets (`KofEnumTest`) |
-| `kof.collections` | ✅ | `List<T>`, `listOf`; **P1**: `Map<K,V>` (`mapOf`, put/get/remove/contains/size/keys/values/clear/isEmpty — JVM/JS, Native COL001), `Set<T>` (`setOf`, add/contains/remove/size/clear/isEmpty — JVM/JS, Native COL001) |
+| `kof.collections` | ✅ | `List<T>`, `listOf`; **P1**: `Map<K,V>` (mapOf + put/get/remove/contains/size/keys/values/clear/isEmpty) e `Set<T>` (setOf + add/contains/remove/size/clear/isEmpty) — **3 targets** (Native: asm próprio sobre layout List; Set usa tag de tipo p/ equals) |
 | `kof.io` | ✅ | `File/Path/Directory`, readFile/writeFile — JVM/Native/JS |
 | `kof.time` | ✅ | `now()` |
 | `kof.json` | ✅ | encode/decode; objetos só JVM (JSN002), Float/Double gap (JSN001) |

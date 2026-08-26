@@ -2384,15 +2384,7 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if ("mapOf".equals(mc.methodName()) && mc.receiver() == null) {
-                    if (target == Target.NATIVE) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0,
-                                    0, "mapOf not available on Native yet (COL001)", "COL001");
-                        }
-                        yield localIdx;
-                    }
+
                     Type keyType = Type.UnknownType.UNKNOWN;
                     Type valueType = Type.UnknownType.UNKNOWN;
                     if (!mc.arguments().isEmpty()) {
@@ -2404,15 +2396,6 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
-                    if (target == Target.NATIVE) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0,
-                                    0, "setOf not available on Native yet (COL001)", "COL001");
-                        }
-                        yield localIdx;
-                    }
                     Type elemType = Type.UnknownType.UNKNOWN;
                     if (!mc.arguments().isEmpty()) elemType = inferExprType(mc.arguments().get(0), locals);
                     Type setType = new Type.ClassType("kof", "Set", List.of(elemType));
@@ -3348,15 +3331,7 @@ private Target target = Target.JVM;
                         }
                     }
                     if (BuiltinTypes.isMap(recvType)) {
-                        if (target == Target.NATIVE) {
-                            if (currentDiagnostics != null) {
-                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                        mc.position() != null ? mc.position().line() : 0,
-                                        mc.position() != null ? mc.position().column() : 0,
-                                        0, "Map not available on Native yet (COL001)", "COL001");
-                            }
-                            yield localIdx;
-                        }
+
                         String mapFn = switch (mc.methodName()) {
                             case "put" -> "kof_map_put";
                             case "get" -> "kof_map_get";
@@ -3410,19 +3385,12 @@ private Target target = Target.JVM;
                         }
                     }
                     if (BuiltinTypes.isSet(recvType)) {
-                        if (target == Target.NATIVE) {
-                            if (currentDiagnostics != null) {
-                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                        mc.position() != null ? mc.position().line() : 0,
-                                        mc.position() != null ? mc.position().column() : 0,
-                                        0, "Set not available on Native yet (COL001)", "COL001");
-                            }
-                            yield localIdx;
-                        }
+
                         String setFn = switch (mc.methodName()) {
                             case "add" -> "kof_set_add";
                             case "contains" -> "kof_set_contains";
                             case "remove" -> "kof_set_remove";
+                            // add/contains/remove recebem tag de tipo (1=string)
                             case "size", "length", "count" -> "kof_set_size";
                             case "clear" -> "kof_set_clear";
                             case "isEmpty" -> "kof_set_is_empty";
@@ -3441,6 +3409,15 @@ private Target target = Target.JVM;
                                 default -> Type.UnknownType.UNKNOWN;
                             };
                             for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            if (target == Target.NATIVE
+                                    && ("kof_set_add".equals(setFn) || "kof_set_contains".equals(setFn)
+                                        || "kof_set_remove".equals(setFn))) {
+                                // tag de tipo só no Native (HashSet usa equals no JVM)
+                                int tag = BuiltinTypes.isString(elemType) ? 1 : 0;
+                                ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
+                                argTypes = new ArrayList<>(argTypes);
+                                argTypes.add(Type.PrimitiveType.INT);
+                            }
                             ops.add(new KofCall(recvType, setFn, argTypes, retType, KofCallKind.INSTANCE));
                             yield localIdx;
                         }

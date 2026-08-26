@@ -852,6 +852,11 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
+            .globl kof_list_contains_tag
+            .type kof_list_contains_tag, @function
+            kof_list_contains_tag:
+                jmp kof_list_contains
+
             .globl kof_list_is_empty
             .type kof_list_is_empty, @function
             kof_list_is_empty:
@@ -12169,7 +12174,424 @@ cmpl %r14d, %r15d
                 popq %rbx
                 ret
 
-# ── kof.security G9 (rate limiting / sessions / API keys) ───────
+            .section .text
+
+            """);
+        sb.append("""
+            .section .text
+
+            # ── kof.collections: Map<String,V> nativo (P1) ──────────────
+            # Layout Map (64B): [0]=magic 100, [16]=count, [20]=cap,
+            #   [24]=ptr keys (array KofString*), [32]=ptr vals (array ptr)
+
+            # interno: kof_map_find(rdi=map, rsi=key) -> idx|-1
+            kof_map_find:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx             # map
+                movq %rsi, %r12             # key
+                xorq %r13, %r13             # i = 0
+            .Lkmf_loop:
+                cmpl 16(%rbx), %r13d
+                jge .Lkmf_miss
+                movq 24(%rbx), %rax         # array de chaves
+                movq (%rax,%r13,8), %rdi    # candidato
+                testq %rdi, %rdi
+                jz .Lkmf_next
+                movq %rdi, %r14
+                movq %r12, %rsi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .Lkmf_hit
+            .Lkmf_next:
+                incq %r13
+                jmp .Lkmf_loop
+            .Lkmf_hit:
+                movq %r13, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkmf_miss:
+                movq $-1, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_map_new
+            .type kof_map_new, @function
+            kof_map_new:
+                pushq %rbx
+                movq $64, %rdi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $100, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl $0, 16(%rbx)
+                movl $16, 20(%rbx)
+                movq $128, %rdi
+                call kof_alloc
+                movq %rax, 24(%rbx)
+                movq $128, %rdi
+                call kof_alloc
+                movq %rax, 32(%rbx)
+                movq %rbx, %rax
+                popq %rbx
+                ret
+
+            # kof_map_put(rdi=map, rsi=key, rdx=val) -> valor anterior | 0
+            .globl kof_map_put
+            .type kof_map_put, @function
+            kof_map_put:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq %rdx, %r13
+                movq %rbx, %rdi
+                movq %r12, %rsi
+                call kof_map_find
+                cmpq $-1, %rax
+                je .Lkmp_insert
+                movslq %eax, %rcx
+                movq 32(%rbx), %rdx
+                movq (%rdx,%rcx,8), %r14    # anterior
+                movq %r13, (%rdx,%rcx,8)
+                movq %r14, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkmp_insert:
+                movl 16(%rbx), %eax
+                cmpl 20(%rbx), %eax
+                jl .Lkmp_space
+                # crescimento 2x: aloca novo e copia oldCap*8 bytes
+                movl 20(%rbx), %ecx
+                shll $3, %ecx               # oldCap*8
+                movl %ecx, %r14d
+                addl %ecx, %ecx
+                movl %ecx, 20(%rbx)         # cap *= 2
+                movslq %ecx, %rcx
+                movq 24(%rbx), %rdi
+                movq %rcx, %rsi
+                call kof_copy_alloc
+                movq %rax, 24(%rbx)
+                movq 32(%rbx), %rdi
+                movl %r14d, %esi            # copia só oldCap*8 (sem overread)
+                movslq %esi, %rsi
+                call kof_copy_alloc
+                movq %rax, 32(%rbx)
+            .Lkmp_space:
+                movl 16(%rbx), %eax
+                movslq %eax, %rcx
+                movq 24(%rbx), %rdx
+                movq %r12, (%rdx,%rcx,8)
+                movq 32(%rbx), %rdx
+                movq %r13, (%rdx,%rcx,8)
+                addl $1, 16(%rbx)
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # auxiliar: kof_copy_alloc(rdi=src, rsi=nbytes) -> novo bloco com cópia
+            kof_copy_alloc:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq %r12, %rdi
+                call kof_alloc
+                movq %rax, %r13
+                xorq %r14, %r14
+            .Lkca_loop:
+                cmpq %r12, %r14
+                jge .Lkca_done
+                movzbl (%rbx,%r14), %eax
+                movb %al, (%r13,%r14)
+                incq %r14
+                jmp .Lkca_loop
+            .Lkca_done:
+                movq %r13, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_map_get(rdi=map, rsi=key) -> val | 0
+            .globl kof_map_get
+            .type kof_map_get, @function
+            kof_map_get:
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_map_find
+                cmpq $-1, %rax
+                je .LKMG_miss
+                movq 32(%rbx), %rdx
+                movslq %eax, %rcx
+                movq (%rdx,%rcx,8), %rax
+                popq %rbx
+                ret
+            .LKMG_miss:
+                xorl %eax, %eax
+                popq %rbx
+                ret
+
+            # kof_map_remove(rdi=map, rsi=key) -> val removido | 0
+            .globl kof_map_remove
+            .type kof_map_remove, @function
+            kof_map_remove:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx             # map
+                movq %rsi, %r12             # key
+                call kof_map_find
+                cmpq $-1, %rax
+                je .LKMR_miss
+                movslq %eax, %r13           # idx
+                movq 24(%rbx), %r14         # keys
+                movq 32(%rbx), %r15         # vals
+                movq (%r15,%r13,8), %r12    # valor removido
+                movl 16(%rbx), %ecx
+                decl %ecx                   # count-1
+            .LKMR_shift:
+                cmpl %ecx, %r13d
+                jge .LKMR_last
+                movq 8(%r14,%r13,8), %rax
+                movq %rax, (%r14,%r13,8)
+                movq 8(%r15,%r13,8), %rax
+                movq %rax, (%r15,%r13,8)
+                incq %r13
+                jmp .LKMR_shift
+            .LKMR_last:
+                decl 16(%rbx)
+                movq %r12, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .LKMR_miss:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_map_contains(rdi=map, rsi=key) -> 1/0
+            .globl kof_map_contains
+            .type kof_map_contains, @function
+            kof_map_contains:
+                call kof_map_find
+                cmpq $-1, %rax
+                setne %al
+                movzbl %al, %eax
+                ret
+
+            .globl kof_map_size
+            .type kof_map_size, @function
+            kof_map_size:
+                movl 16(%rdi), %eax
+                ret
+
+            .globl kof_map_is_empty
+            .type kof_map_is_empty, @function
+            kof_map_is_empty:
+                cmpl $0, 16(%rdi)
+                sete %al
+                movzbl %al, %eax
+                ret
+
+            .globl kof_map_clear
+            .type kof_map_clear, @function
+            kof_map_clear:
+                movl $0, 16(%rdi)
+                ret
+
+            .globl kof_map_keys
+            .type kof_map_keys, @function
+            kof_map_keys:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx             # map
+                movq 24(%rbx), %r14         # array de chaves
+                call kof_list_new
+                movq %rax, %r12             # lista resultado
+                xorq %r13, %r13
+            .LKMK_loop:
+                cmpl 16(%rbx), %r13d
+                jge .LKMK_done
+                movq (%r14,%r13,8), %rsi
+                movq %r12, %rdi
+                call kof_list_add
+                incq %r13
+                jmp .LKMK_loop
+            .LKMK_done:
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_map_values
+            .type kof_map_values, @function
+            kof_map_values:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx             # map
+                movq 32(%rbx), %r14         # array de valores
+                call kof_list_new
+                movq %rax, %r12
+                xorq %r13, %r13
+            .LKMV_loop:
+                cmpl 16(%rbx), %r13d
+                jge .LKMV_done
+                movq (%r14,%r13,8), %rsi
+                movq %r12, %rdi
+                call kof_list_add
+                incq %r13
+                jmp .LKMV_loop
+            .LKMV_done:
+                movq %r12, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # ── kof.collections: Set<T> nativo (P1) ─────────────────────
+            # Set = List com checagem de contido no add (busca linear)
+            # kof_set_new -> usa kof_list_new
+            .globl kof_set_new
+            .type kof_set_new, @function
+            kof_set_new:
+                jmp kof_list_new
+
+            # kof_set_add(rdi=set, rsi=elem, edx=tag 1=string) -> 1 inseriu | 0 existia
+            .globl kof_set_add
+            .type kof_set_add, @function
+            kof_set_add:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl %edx, %r13d
+                call kof_list_contains_tag
+                testl %eax, %eax
+                jnz .LKSA_dup
+                movq %rbx, %rdi
+                movq %r12, %rsi
+                call kof_list_add
+                movl $1, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .LKSA_dup:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_set_contains(rdi=set, rsi=elem, edx=tag) -> 1/0
+            .globl kof_set_contains
+            .type kof_set_contains, @function
+            kof_set_contains:
+                jmp kof_list_contains
+
+            # kof_set_remove(rdi=set, rsi=elem, edx=tag) -> 1/0
+            .globl kof_set_remove
+            .type kof_set_remove, @function
+            kof_set_remove:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx             # set
+                movq %rsi, %r12             # elem alvo
+                movl %edx, %r13d            # tag
+                xorq %r14, %r14             # i = 0
+            .LKSR_scan:
+                cmpl 16(%rbx), %r14d
+                jge .LKSR_no
+                movq 24(%rbx), %rax
+                movq (%rax,%r14,8), %rax    # candidato
+                cmpl $1, %r13d
+                je .LKSR_str
+                cmpq %r12, %rax
+                je .LKSR_found
+                jmp .LKSR_next
+            .LKSR_str:
+                testq %rax, %rax
+                jz .LKSR_next
+                movq %rax, %rdi
+                movq %r12, %rsi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .LKSR_found
+            .LKSR_next:
+                incq %r14
+                jmp .LKSR_scan
+            .LKSR_found:
+                movq %rbx, %rdi
+                movq %r13, %rsi
+                call kof_list_remove        # remove por índice
+                movl $1, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .LKSR_no:
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_set_size
+            .type kof_set_size, @function
+            kof_set_size:
+                jmp kof_list_size
+
+            .globl kof_set_is_empty
+            .type kof_set_is_empty, @function
+            kof_set_is_empty:
+                jmp kof_list_is_empty
+
+            .globl kof_set_clear
+            .type kof_set_clear, @function
+            kof_set_clear:
+                jmp kof_list_clear
+
+                        # ── kof.security G9 (rate limiting / sessions / API keys) ───────
             # kof_sec_rate_limit(rdi=key String*, rsi=limit int, rdx=window int) -> Bool
             # Simple fixed-window without time (Native best-effort): per-key counter, denies when count >= limit
             .globl kof_sec_rate_limit

@@ -466,7 +466,19 @@ public class NativeBackend implements Backend {
 
         int maxSlot = method.localVariables().stream()
                 .mapToInt(IRLocalVariable::index).max().orElse(0);
-        int frameSize = Math.max((maxSlot + 1) * 8, 16);
+        // Scan for CONSTRUCTOR calls with stack args to reserve frame space
+        int maxCtorStackArgs = 0;
+        for (IRBasicBlock bb : method.basicBlocks()) {
+            for (KofOperation op : bb.operations()) {
+                if (op instanceof KofCall kc && kc.kind() == KofCallKind.CONSTRUCTOR
+                        && "<init>".equals(kc.methodName())) {
+                    int sa = Math.max(0, kc.parameterTypes().size() - 5);
+                    maxCtorStackArgs = Math.max(maxCtorStackArgs, sa);
+                }
+            }
+        }
+        int extraFrame = maxCtorStackArgs > 0 ? 256 + maxCtorStackArgs * 8 : 0;
+        int frameSize = Math.max((maxSlot + 1) * 8, 16) + extraFrame;
         frameSize = (frameSize + 15) & ~15;
         if (frameSize > 0) {
             sb.append("    subq $").append(frameSize).append(", %rsp\n");
@@ -1005,14 +1017,32 @@ public class NativeBackend implements Backend {
             int argCount = kc.parameterTypes().size();
             String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
             int stackArgs = Math.max(0, argCount - 5);
-            for (int i = argCount - 1; i >= 0; i--) {
-                if (i < 5) {
+            if (stackArgs > 0) {
+                // Save stack args to local frame (high offsets to avoid collision)
+                for (int s = stackArgs - 1; s >= 0; s--) {
+                    int off = 256 + s * 8;
+                    sb.append("    popq %rax\n");
+                    sb.append("    movq %rax, -").append(off).append("(%rbp)\n");
+                }
+                // Pop 5 register args
+                for (int i = 4; i >= 0; i--) {
                     sb.append("    popq ").append(intRegs[i + 1]).append("\n");
                 }
-                // Args at index >= 5 stay on the stack for ABI stack-passing
+                // Pop this
+                sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
+                // Push stack args back
+                for (int s = 0; s < stackArgs; s++) {
+                    int off = 256 + s * 8;
+                    sb.append("    pushq -").append(off).append("(%rbp)\n");
+                }
+            } else {
+                for (int i = argCount - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
             }
-            sb.append("    popq %rax\n");
-            sb.append("    movq %rax, %rdi\n");
             String ctorLabel = resolveCalleeName(kc);
             sb.append("    call ").append(ctorLabel).append("\n");
             if (stackArgs > 0) {
@@ -1021,6 +1051,25 @@ public class NativeBackend implements Backend {
             return;
         }
 
+        if (kc.kind() == KofCallKind.INSTANCE
+                && (BuiltinTypes.isMap(kc.ownerType()) || BuiltinTypes.isSet(kc.ownerType()))) {
+            String collFn = (kc.methodName().startsWith("kof_map_") || kc.methodName().startsWith("kof_set_"))
+                    ? kc.methodName() : null;
+            if (collFn != null) {
+                int argCount = kc.parameterTypes().size();
+                String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                for (int i = argCount - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
+                sb.append("    call ").append(collFn).append("\n");
+                if (!Type.isVoid(kc.returnType())) {
+                    sb.append("    pushq %rax\n");
+                }
+                return;
+            }
+        }
         if (kc.kind() == KofCallKind.INSTANCE && BuiltinTypes.isList(kc.ownerType())) {
             String listFn = kc.methodName().startsWith("kof_list_") ? kc.methodName() : null;
             if (listFn != null) {
@@ -1043,19 +1092,29 @@ public class NativeBackend implements Backend {
             if (vtableIdx >= 0) {
                 int argCount = kc.parameterTypes().size();
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
-                for (int i = argCount - 1; i >= 0; i--) {
-                    if (i < 5) {
-                        sb.append("    popq ").append(intRegs[i + 1]).append("\n");
-                    } else {
-                        sb.append("    addq $8, %rsp\n");
+                int stackArgs = Math.max(0, argCount - 5);
+                if (stackArgs > 0) {
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        sb.append("    popq %r10\n");
                     }
+                }
+                for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
                 }
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
+                if (stackArgs > 0) {
+                    for (int s = 0; s < stackArgs; s++) {
+                        sb.append("    pushq %r10\n");
+                    }
+                }
                 sb.append("    movq 8(%rax), %rbx\n");
                 sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
                 sb.append("    movq (%rbx), %rbx\n");
                 sb.append("    call *%rbx\n");
+                if (stackArgs > 0) {
+                    sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+                }
                 if (!Type.isVoid(kc.returnType())) {
                     sb.append("    pushq %rax\n");
                 }
@@ -1067,19 +1126,29 @@ public class NativeBackend implements Backend {
             if (vtableIdx >= 0) {
                 int argCount = kc.parameterTypes().size();
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
-                for (int i = argCount - 1; i >= 0; i--) {
-                    if (i < 5) {
-                        sb.append("    popq ").append(intRegs[i + 1]).append("\n");
-                    } else {
-                        sb.append("    addq $8, %rsp\n");
+                int stackArgs = Math.max(0, argCount - 5);
+                if (stackArgs > 0) {
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        sb.append("    popq %r10\n");
                     }
+                }
+                for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
                 }
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
+                if (stackArgs > 0) {
+                    for (int s = 0; s < stackArgs; s++) {
+                        sb.append("    pushq %r10\n");
+                    }
+                }
                 sb.append("    movq 8(%rax), %rbx\n");
                 sb.append("    addq $").append(vtableIdx * 8).append(", %rbx\n");
                 sb.append("    movq (%rbx), %rbx\n");
                 sb.append("    call *%rbx\n");
+                if (stackArgs > 0) {
+                    sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+                }
                 if (!Type.isVoid(kc.returnType())) {
                     sb.append("    pushq %rax\n");
                 }
@@ -1089,11 +1158,13 @@ public class NativeBackend implements Backend {
 
         int argCount = kc.parameterTypes().size();
         String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
-        for (int i = argCount - 1; i >= 0; i--) {
-            if (i < 6) {
+        int stackArgs = Math.max(0, argCount - 6);
+        if (stackArgs > 0) {
+            sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+        }
+        for (int i = 5; i >= 0; i--) {
+            if (i < argCount) {
                 sb.append("    popq ").append(intRegs[i]).append("\n");
-            } else {
-                sb.append("    addq $8, %rsp\n");
             }
         }
         String callee = resolveCalleeName(kc);
@@ -1104,6 +1175,12 @@ public class NativeBackend implements Backend {
     }
 
     private String resolveCalleeName(KofCall kc) {
+        // builtins de coleção são símbolos globais do runtime — nunca
+        // mangle com o dono (Map_kof_map_put etc.)
+        String mn = kc.methodName();
+        if (mn.startsWith("kof_map_") || mn.startsWith("kof_set_")) {
+            return mn;
+        }
         if (kc.kind() == KofCallKind.FUNCTION) {
             return functionMangleMap.getOrDefault(kc.methodName(), sanitizeName(kc.methodName()));
         }

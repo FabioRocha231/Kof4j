@@ -61,19 +61,46 @@ class KofMapSetTest {
     }
 
     @Test
-    void mapSetNativeGap(@TempDir Path tmp) throws Exception {
-        Path source = tmp.resolve("App.kf");
-        Files.writeString(source, """
-                main() {
-                    var m = mapOf()
-                    m.put("a", 1)
-                }
-                """);
-        Path outDir = tmp.resolve("out");
-        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
-        assertFalse(result.success(), "Native Map should report COL001");
-        assertTrue(result.diagnostics().getDiagnostics().stream().anyMatch(d -> d.code().equals("COL001")),
-                "Should have COL001, got: " + result.diagnostics().getDiagnostics());
+    void mapSetNative(@TempDir Path tmp) throws Exception {
+        runNative(tmp, """
+            main() {
+                var m = mapOf()
+                m.put("a", 1)
+                m.put("b", 2)
+                assert(m.get("a") == 1)
+                assert(m.contains("b"))
+                assert(m.size() == 2)
+                assert(m.remove("a") == 1)
+                m.clear()
+                assert(m.isEmpty())
+
+                var s = setOf(1, 2, 3)
+                assert(s.size() == 3)
+                assert(s.contains(2))
+                assert(s.remove(1))
+                println("ok-native")
+            }
+            """, "ok-native");
+    }
+
+    private String runNative(Path tempDir, String source, String expected) throws java.io.IOException {
+        Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
+        Files.writeString(file, source);
+        Path outDir = tempDir.resolve("out-" + System.nanoTime());
+        CompilationResult result = driver.compile(file, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native compile failed: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default/Main");
+        try {
+            Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit code, output: " + output);
+            if (expected != null) assertEquals(expected, output, "Native output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new java.io.IOException("interrupted", e);
+        }
     }
 
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {

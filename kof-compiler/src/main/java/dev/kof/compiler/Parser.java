@@ -583,7 +583,7 @@ class Parser {
             return new ConstructorDeclarationNode(ctor.position(), ctor.modifiers(), ctor.name(),
                     ctor.parameters(), ctor.thrownExceptions(), ctor.body(), annos);
         }
-        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.LPAREN)) {
+        if ((check(TokenType.IDENTIFIER) || check(TokenType.AWAIT) || check(TokenType.SPAWN)) && checkNext(TokenType.LPAREN)) {
             String name = advance().value();
             expect(TokenType.LPAREN, "Expected '('", "PARSE011");
             List<FormalParameterNode> params = new ArrayList<>();
@@ -1139,7 +1139,7 @@ class Parser {
             } else if (check(TokenType.DOT)) {
                 advance();
                 String field;
-                if (check(TokenType.IDENTIFIER)) {
+                if (check(TokenType.IDENTIFIER) || check(TokenType.AWAIT) || check(TokenType.SPAWN)) {
                     field = advance().value();
                 } else if (isTypeKeywordField()) {
                     // type keywords are valid method names after a dot
