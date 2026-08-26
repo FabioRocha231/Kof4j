@@ -1387,6 +1387,97 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - official TextMate grammar and editor/LSP documentation
 
+## [0.1.1-alpha] - 2026-08-26
+
+### Features
+
+  - add fake SDK jar for AndroidInterop testing
+  - release version 0.1.0
+  - switch exaustivo sobre enum — SEM031 + comparação por conteúdo
+  - Map/Set nativo em asm — fecha COL001
+  - add support for spawn and await expressions with error handling
+  - enum P1 — declaração, values/valueOf/name, == por conteúdo (3 targets)
+  - implement TLS/HTTPS G12 — web.listenSecure + kof.http HTTPS
+  - complete G9 Native + docs/test — rate limiting/sessions/API keys
+  - implement rate limiting, session management, and API key handling
+  - implement kof.observability G5 — health/metrics/request IDs on JVM/Native/JS
+  - implement kof.validation functions and integrate with compiler
+  - AES-GCM nativo em asm — fecha SECN002 (G10 completo)
+  - JWT HS256 nativo em asm — fecha SECN004 (G10)
+  - PBKDF2 + SHA-512 nativos em asm — fecha SECN001/SECN003 (G10 parcial)
+  - add in-memory messaging system with publish/subscribe and queues
+  - extend KofUnaryOp with D2F and update backends
+  - add support for Link, Image, Icon, and Font UI components
+  - add CI workflow for Android target with APK assembly
+  - decode de arrays no Native — fecha o gap JSN003
+  - Implement constructor overloading and add JvmConfigRuntime and JvmStringRuntime
+  - kof.config no target Native — fecha o gap CONF001
+  - kof.http client + kof.mq (messageria em memória) — G2/G3 fechados
+  - enhance Android target support with embedded host Activity and external classpath resolution
+  - add Android target support with project generation and configuration
+  - add KofAndroid target with initial design and objectives
+  - implement qualified type resolution and enhance inheritance support
+  - kof.log no target Native — fecha o gap LOG001
+  - kof.orm validado em bancos reais — MariaDB 11 e PostgreSQL 16 + fixes do WIP das annotations
+  - add support for native target execution in Main class
+  - update CLI documentation and add structured test example
+  - kof.orm — count com filtro e deleteAll completam o CRUD
+  - kof.orm completo — operadores no where, saveAll (batch) e page (paginação)
+  - add test declaration support and compile-time test harness
+  - implement string to numeric conversions and enhance MongoDB method handling
+  - add MongoDB and SQLite support to kof.orm with new runtime methods
+  - orm.where (query por campo) + orm.migrate (migrations versionadas)
+  - kof.orm — o ORM da própria linguagem (entity + orm.*)
+
+### Bugfixes
+
+  - unbox pós-kof_await restrito ao await — UI voltou a verificar
+  - enhance spawn expression handling for primitive return types
+  - List/Map fora do ramo JSN002 (ld List_vtable) + spawn stmt JS CONC003
+  - lambda não-void single-expr vira return + gaps CONC003 p/ spawn-expr/await no JS
+  - add debug logging for MemoryLayer entries field type resolution
+  - Map/Set boxing e construção — corrige VerifyError JVM e stack underflow JS
+  - fwd-ref multi-file, Int[] negativos nativo, Frame.merge Map
+  - SEM025 não reportar Object methods (hashCode/equals/toString) — corrige JvmE2ETest.execRecordValueMethods
+  - N3 args vazio + N9 box String += com concat
+  - exclude String/Int/Long/Bool from SEM025 — avoid false-positive for JDK methods (contains/split)
+  - dedupe kof.validation block — single copy, fix Native ld duplicate symbols
+  - enhance JSON value retrieval in emitJsonFindValue function
+  - add string conversion functions and update NativeRuntime with new assembly generation
+  - alinha serve/check/test com o modelo de módulo multi-arquivo
+  - simplify JSON string handling in NativeRuntime and CompilerDriver
+  - kof_sec_secret_get nativo reescrito — bug #13 resolvido
+  - db.close quebrado pelo WIP do isLocalVarName + surefire -Xshare:off
+  - update AndroidInteropE2ETest to use a temporary SDK JAR for external classpath
+  - update Android project instructions to reflect Maven usage
+  - update comments for clarity in NativeRuntime and modify AndroidProjectWriter to use Maven
+  - FLT001 — operações de ponto flutuante viram diagnóstico em compile-time
+  - feedback do kof-calculator-lab — calculator interativo destravado + bugs reais
+  - remove debug logging for MongoDB method accessibility
+  - enhance integer arithmetic checks and improve MongoDB query handling
+  - feedback real do kof-calculator-lab (OBS-004 a OBS-010)
+
+### Documentation
+
+  - stdlib — await/join de spawn (P1), CONC003 no JS
+  - stdlib P1 — Map/Set (JVM/JS, COL001 Native) e enum (3 targets)
+  - sync 0.1.0-beta 25/08 — generics Box<T> + SEM025 Object fix + test counts
+  - bugs #13/#14 resolvidos, plano P0 atualizado
+  - JSN003 encerrado na documentacao
+  - bug #13 (secret_get nativo) encerrado
+  - CONFIG001 nativo concluido (8/8 testes E2E)
+  - estado do CONFIG001 nativo (WIP ~90%) e contagem de testes
+  - bugs 13-14 na lista (secret_get nativo segfault; FP sem SSE no Native) + progresso do plano
+  - kof.log nativo na documentação (LOG001 só no JS)
+  - kof.orm completo na documentação (saveAll, page, operadores no where, deleteAll, count filtrado, MariaDB/PostgreSQL)
+  - package.sh no Windows — Git Bash + descoberta do Python (OBS-005/006)
+  - kof.orm na tabela de features (status.md + README)
+
+### Tests
+
+  - update passwordsNative test to validate successful hash on Native target
+  - prova de Turing-completude — Ackermann + loop de 1M nos 3 targets
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
