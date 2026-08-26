@@ -31,7 +31,7 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` stmt / `val r = spawn f()` / `await r` (Handle<T> + unbox) | ✅ | CONC001 | CONC003 | `KofAwaitTest` 4/4 |
+| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` (Handle<T>, unbox, exceção limpa) | ✅ | CONC001 | ✅ sequencial | `KofAwaitTest` 7/7 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |

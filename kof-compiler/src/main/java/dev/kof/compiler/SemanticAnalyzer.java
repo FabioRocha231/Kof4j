@@ -1200,6 +1200,17 @@ class SemanticAnalyzer {
                     Type t = inferType(mc.arguments().get(0), scope);
                     yield new Type.ClassType("kof.concurrent", "Handle", List.of(t));
                 }
+                if (mc.receiver() == null && ("poll".equals(mc.methodName())
+                        || "done".equals(mc.methodName()))) {
+                    Type t0 = inferType(mc.arguments().get(0), scope);
+                    if ("done".equals(mc.methodName())) yield Type.PrimitiveType.BOOL;
+                    if (t0 instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                     Type t = inferType(mc.arguments().get(0), scope);
                     if (t instanceof Type.ClassType ct

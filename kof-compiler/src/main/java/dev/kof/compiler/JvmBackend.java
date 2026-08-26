@@ -47,6 +47,17 @@ class JvmBackend implements Backend {
         return new Type.ClassType("", internalName, List.of());
     }
 
+    /** Valor default do primitivo (0/false/0.0) na pilha, com width correto. */
+    private void emitDefaultValue(MethodVisitor mv, Type type) {
+        String n = type instanceof Type.PrimitiveType pt ? pt.name() : "";
+        switch (Type.canonicalPrimitiveName(n)) {
+            case "long" -> { mv.visitInsn(LCONST_0); }
+            case "float" -> { mv.visitInsn(FCONST_0); }
+            case "double" -> { mv.visitInsn(DCONST_0); }
+            default -> mv.visitInsn(ICONST_0);
+        }
+    }
+
     private String unboxMethodName(Type boxed) {
         if (boxed instanceof Type.ClassType ct) {
             return switch (ct.name()) {
@@ -768,10 +779,25 @@ class JvmBackend implements Backend {
                         // handle de spawn é opaco em runtime (CompletableFuture) — sem cast
                         && !"kof.concurrent".equals(ct.packageName())) {
                     mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+                } else if ("kof_poll".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
+                    // poll pode devolver null (não pronto): unbox com guard
+                    String boxed = boxedClassNameFor(kc.returnType());
+                    org.objectweb.asm.Label notNull = new org.objectweb.asm.Label();
+                    org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+                    mv.visitInsn(DUP);
+                    mv.visitJumpInsn(IFNONNULL, notNull);
+                    mv.visitInsn(POP);
+                    emitDefaultValue(mv, kc.returnType());
+                    mv.visitJumpInsn(GOTO, end);
+                    mv.visitLabel(notNull);
+                    mv.visitTypeInsn(CHECKCAST, boxed);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, boxed, unboxMethodName(kc.returnType()),
+                            "()" + JvmTypeMapper.toDescriptor(kc.returnType()), false);
+                    mv.visitLabel(end);
                 } else if ("kof_await".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
-                    // kof_await com resultado primitivo: reflexão devolve boxed.
-                    // Restrito ao await — o descritor default é Object para muitas
-                    // funções que na verdade retornam primitivo cru.
+                    // await com resultado primitivo: reflexão devolve boxed.
+                    // Restrito — o descritor default é Object para muitas funções
+                    // que na verdade retornam primitivo cru.
                     emitUnboxIfPrimitive(mv, kc.returnType());
                 }
             }

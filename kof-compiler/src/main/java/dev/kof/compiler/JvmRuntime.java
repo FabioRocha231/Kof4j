@@ -32,6 +32,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_validation_")
                 || methodName.startsWith("kof_enum_")
                 || methodName.equals("kof_spawn_result") || methodName.equals("kof_await")
+                || methodName.equals("kof_poll") || methodName.equals("kof_done")
                 || methodName.startsWith("kof_observability_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
@@ -251,6 +252,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_api_key_valid" -> "(Ljava/lang/String;)Z";
             case "kof_enum_value_of" -> "(Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_spawn_result", "kof_await" -> "(Ljava/lang/Object;)Ljava/lang/Object;";
+            case "kof_poll" -> "(Ljava/lang/Object;)Ljava/lang/Object;";
+            case "kof_done" -> "(Ljava/lang/Object;)Z";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -348,7 +351,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_session_create", "kof_sec_api_key_generate" -> "Ljava/lang/String;";
             case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";
             case "kof_sec_session_get", "kof_enum_value_of" -> "Ljava/lang/String;";
-            case "kof_spawn_result", "kof_await" -> "Ljava/lang/Object;";
+            case "kof_spawn_result", "kof_await", "kof_poll" -> "Ljava/lang/Object;";
+            case "kof_done" -> "I";
             case "kof_tetris_run" -> "V";
             default -> "Ljava/lang/Object;";
         };
@@ -1329,9 +1333,34 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static Object kof_await(Object handle) throws Exception {
                     if (handle instanceof java.util.concurrent.Future<?> f) {
-                        return f.get();
+                        try {
+                            return f.get();
+                        } catch (java.util.concurrent.ExecutionException e) {
+                            // re-lança a causa original: try/catch do Kof vê a
+                            // exceção da tarefa, não o wrapper
+                            Throwable cause = e.getCause() != null ? e.getCause() : e;
+                            if (cause instanceof RuntimeException re) throw re;
+                            if (cause instanceof Error err) throw err;
+                            throw new RuntimeException(cause);
+                        }
                     }
                     throw new IllegalStateException("await: handle inválido");
+                }
+
+                /** poll(rdi=handle) -> valor pronto | 0 (null) — não bloqueia. */
+                public static Object kof_poll(Object handle) {
+                    if (handle instanceof java.util.concurrent.CompletableFuture<?> cf) {
+                        return cf.getNow(null);
+                    }
+                    if (handle instanceof java.util.concurrent.Future<?> f && f.isDone()) {
+                        try { return f.get(); } catch (Exception e) { return null; }
+                    }
+                    return null;
+                }
+
+                /** kof_done(handle) -> true se a tarefa terminou. */
+                public static boolean kof_done(Object handle) {
+                    return handle instanceof java.util.concurrent.Future<?> f && f.isDone();
                 }
 
                 public static void kof_spawn(Object task) {

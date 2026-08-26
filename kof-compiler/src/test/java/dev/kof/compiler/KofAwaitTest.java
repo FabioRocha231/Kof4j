@@ -127,4 +127,59 @@ class KofAwaitTest {
                     .findFirst().orElseThrow(() -> new java.io.IOException("no .mjs in " + dir));
         }
     }
+
+    @Test
+    void awaitExceptionPropagatesClean(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+                Int quebra() {
+                    throw "boom-interno"
+                }
+
+                main() {
+                    val r = spawn quebra()
+                    try {
+                        await r
+                        println("não deveria chegar")
+                    } catch (String e) {
+                        println("peguei: " + e)
+                    }
+                }
+                """, "peguei: boom-interno");
+    }
+
+    @Test
+    void pollDoneJvm(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+                Int trabalho() { return 7 }
+
+                main() {
+                    val r = spawn trabalho()
+                    // poll em primitivo não-pronto devolve o default (0):
+                    // use done() para esperar sem bloquear
+                    var loops = 0
+                    while (!done(r) && loops < 1000) {
+                        time.sleep(1)
+                        loops++
+                    }
+                    assert(done(r))
+                    assert(poll(r) == 7)
+                    println("ok-poll")
+                }
+                """, "ok-poll");
+    }
+
+    @Test
+    void pollDoneJs(@TempDir Path tmp) throws Exception {
+        runJs(tmp, """
+                Int trabalho() { return 7 }
+
+                main() {
+                    val r = spawn trabalho()
+                    println(poll(r))
+                    println(done(r))
+                    println("done")
+                }
+                """, "7\ntrue\ndone");
+    }
+
 }

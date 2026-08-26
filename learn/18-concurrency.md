@@ -60,6 +60,40 @@ main() {
 }
 ```
 
+## poll / done — sem bloquear
+
+```kf
+val r = spawn trabalho()
+if (done(r)) {
+    println("pronto: " + poll(r))
+}
+```
+
+- `poll(r)` devolve o valor se pronto; **default do tipo** (0/false) para
+  primitivos não-prontos, `null` para referências. Use `done()` para
+  distinguir "não pronto" de um valor default.
+- `done(r)` → `Bool`.
+- JS: execução é sequencial, então `poll` sempre tem o valor e `done` é
+  `true`. Native reporta CONC001.
+
+## Exceções atravessam await
+
+A exceção lançada dentro da tarefa chega **com a mensagem original** no
+ponto do await — o runtime desembrulha o wrapper:
+
+```kf
+Int quebra() { throw "boom" }
+
+main() {
+    val r = spawn quebra()
+    try {
+        await r
+    } catch (String e) {
+        println(e)   // "boom"
+    }
+}
+```
+
 ## Semântica
 
 - Cada `spawn` roda numa **virtual thread** (JDK 21+) — barato para milhares de tarefas.

@@ -2115,6 +2115,19 @@ private Target target = Target.JVM;
                                 BuiltinTypes.STRING, KofCallKind.FUNCTION));
                         accType = BuiltinTypes.STRING;
                     } else if (("==".equals(be.operator()) || "!=".equals(be.operator()))
+                            && ((be.right() instanceof LiteralExpr rl
+                                    && rl.kind() == ConcreteLiteralKind.NULL
+                                    && isPrimitiveType(accType))
+                                || (be.left() instanceof LiteralExpr ll
+                                    && ll.kind() == ConcreteLiteralKind.NULL
+                                    && isPrimitiveType(rightType)))) {
+                        // primitivo nunca é null: == → false, != → true
+                        // (o lado não-nulo já está na pilha — descarta)
+                        ops.add(new KofPop());
+                        boolean eq = "==".equals(be.operator());
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.BOOL, eq ? 0 : 1));
+                        accType = Type.PrimitiveType.BOOL;
+                    } else if (("==".equals(be.operator()) || "!=".equals(be.operator()))
                             && (Type.isString(accType) || Type.isString(rightType)
                                 || isEnumType(accType) || isEnumType(rightType))) {
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
@@ -2376,6 +2389,35 @@ private Target target = Target.JVM;
                         ops.add(new KofCall(listType, "kof_list_add",
                                 List.of(inferExprType(arg, locals)), Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
                     }
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && ("poll".equals(mc.methodName()) || "done".equals(mc.methodName()))
+                        && mc.arguments().size() == 1
+                        && findLocalVar(mc.methodName(), locals) == null) {
+                    // sem threads no alvo não há Handle real: gap honesto
+                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                        if (currentDiagnostics != null) {
+                            String code = target == Target.NATIVE ? "CONC001" : "AND001";
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    mc.methodName() + ": not supported on the " + target
+                                            + " target yet (" + code + ")", code);
+                        }
+                        yield localIdx;
+                    }
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    Type hE = inferExprType(mc.arguments().get(0), locals);
+                    Type rE = Type.UnknownType.UNKNOWN;
+                    if (hE instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()
+                            && "poll".equals(mc.methodName())) {
+                        rE = ct.typeArguments().get(0);
+                    }
+                    Type ret = "poll".equals(mc.methodName()) ? rE : Type.PrimitiveType.BOOL;
+                    ops.add(new KofCall(
+                            new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_" + mc.methodName(),
+                            List.of(hE), ret, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
@@ -4442,7 +4484,19 @@ private Target target = Target.JVM;
                     Type t = inferExprType(mc.arguments().get(0), locals);
                     yield new Type.ClassType("kof.concurrent", "Handle", List.of(t));
                 }
-                if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                                if (mc.receiver() == null && "poll".equals(mc.methodName())
+                        && mc.arguments().size() == 1 && findLocalVar("poll", locals) == null) {
+                    Type h = inferExprType(mc.arguments().get(0), locals);
+                    if (h instanceof Type.ClassType ct && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && "done".equals(mc.methodName())
+                        && mc.arguments().size() == 1 && findLocalVar("done", locals) == null) {
+                    yield Type.PrimitiveType.BOOL;
+                }
+if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                     Type t = inferExprType(mc.arguments().get(0), locals);
                     if (t instanceof Type.ClassType ct
                             && "kof.concurrent".equals(ct.packageName())
@@ -5818,6 +5872,10 @@ private Target target = Target.JVM;
             if (Type.isString(left) || Type.isString(right)) return false;
             // enum == enum compara conteúdo (string) — nunca identidade
             if (isEnumType(left) || isEnumType(right)) return false;
+            // primitivo vs null → constante (caminho da cadeia binária)
+            boolean leftNull = bin.left() instanceof LiteralExpr ll2 && ll2.kind() == ConcreteLiteralKind.NULL;
+            boolean rightNull = bin.right() instanceof LiteralExpr rl2 && rl2.kind() == ConcreteLiteralKind.NULL;
+            if ((leftNull && isPrimitiveType(right)) || (rightNull && isPrimitiveType(left))) return false;
         }
         return true;
     }
