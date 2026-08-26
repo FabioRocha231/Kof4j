@@ -768,8 +768,10 @@ class JvmBackend implements Backend {
                         // handle de spawn é opaco em runtime (CompletableFuture) — sem cast
                         && !"kof.concurrent".equals(ct.packageName())) {
                     mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
-                } else if (isPrimitiveType(kc.returnType())) {
-                    // kof_await com resultado primitivo: reflexão devolve boxed
+                } else if ("kof_await".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
+                    // kof_await com resultado primitivo: reflexão devolve boxed.
+                    // Restrito ao await — o descritor default é Object para muitas
+                    // funções que na verdade retornam primitivo cru.
                     emitUnboxIfPrimitive(mv, kc.returnType());
                 }
             }
