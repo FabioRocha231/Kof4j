@@ -763,11 +763,15 @@ class JvmBackend implements Backend {
             usesJson = true;
             mv.visitMethodInsn(INVOKESTATIC, "dev/kof/runtime/KofRuntime", kc.methodName(),
                     JvmRuntime.callDescriptor(kc.methodName()), false);
-            if ("Ljava/lang/Object;".equals(JvmRuntime.callReturnDescriptor(kc.methodName()))
-                    && kc.returnType() instanceof Type.ClassType ct && !BuiltinTypes.isString(kc.returnType())
-                    // handle de spawn é opaco em runtime (CompletableFuture) — sem cast
-                    && !"kof.concurrent".equals(ct.packageName())) {
-                mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+            if ("Ljava/lang/Object;".equals(JvmRuntime.callReturnDescriptor(kc.methodName()))) {
+                if (kc.returnType() instanceof Type.ClassType ct && !BuiltinTypes.isString(kc.returnType())
+                        // handle de spawn é opaco em runtime (CompletableFuture) — sem cast
+                        && !"kof.concurrent".equals(ct.packageName())) {
+                    mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+                } else if (isPrimitiveType(kc.returnType())) {
+                    // kof_await com resultado primitivo: reflexão devolve boxed
+                    emitUnboxIfPrimitive(mv, kc.returnType());
+                }
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isString(kc.ownerType())
                 && ("kof_string_concat".equals(kc.methodName()) || "kof_string_equals".equals(kc.methodName()))) {

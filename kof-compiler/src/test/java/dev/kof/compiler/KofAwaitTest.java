@@ -62,19 +62,19 @@ class KofAwaitTest {
     }
 
     @Test
-    void awaitPrimitiveGapJvm(@TempDir Path tmp) throws Exception {
-        Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
-        Files.writeString(file, """
+    void awaitPrimitiveJvm(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
                 Int n() { return 42 }
+                Bool flag() { return true }
+
                 main() {
-                    val r = spawn n()
-                    println("x")
+                    val r1 = spawn n()
+                    val r3 = spawn flag()
+                    assert((await r1) == 42)
+                    assert(await r3)
+                    println(await r1)
                 }
-                """);
-        CompilationResult result = driver.compile(file, tmp.resolve("out"), Target.JVM);
-        assertFalse(result.success(), "spawn com retorno primitivo deve reportar CONC002 (MVP)");
-        assertTrue(result.diagnostics().getDiagnostics().stream().anyMatch(d -> "CONC002".equals(d.code())),
-                "Esperado CONC002: " + result.diagnostics().getDiagnostics());
+                """, "42");
     }
 
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {

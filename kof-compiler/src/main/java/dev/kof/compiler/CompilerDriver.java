@@ -1450,6 +1450,17 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(vds.initializer(), ops, owner, localIdx, locals);
                     if ("var".equals(vds.type()) || "val".equals(vds.type())) {
                         varType = inferExprType(vds.initializer(), locals);
+                        // spawn-expr: pina Handle<T> com T do corpo (a inferência
+                        // genérica pode ter perdido o typeArgument)
+                        if (vds.initializer() instanceof MethodCallExpr sm
+                                && "__kof_spawn_expr".equals(sm.methodName())
+                                && varType instanceof Type.ClassType hct
+                                && "kof.concurrent".equals(hct.packageName())
+                                && (hct.typeArguments().isEmpty()
+                                    || hct.typeArguments().get(0) instanceof Type.UnknownType)) {
+                            varType = new Type.ClassType("kof.concurrent", "Handle",
+                                    List.of(inferExprType(sm.arguments().get(0), locals)));
+                        }
                     } else {
                         emitWideningIfNeeded(ops, inferExprType(vds.initializer(), locals), varType);
                     }
@@ -2297,18 +2308,6 @@ private Target target = Target.JVM;
                     }
                     ExpressionNode body = mc.arguments().get(0);
                     Type resultT = inferExprType(body, locals);
-                    if (isPrimitiveType(resultT)) {
-                        // MVP: resultado de spawn-expr precisa ser referência
-                        // (unbox pós-await não é emitido no runtime path)
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "spawn com resultado primitivo não suportado; capture numa variável ou use referência (CONC002)",
-                                    "CONC002");
-                        }
-                        yield localIdx;
-                    }
                     Type handleT = new Type.ClassType("kof.concurrent", "Handle", List.of(resultT));
                     LambdaExpr le = body instanceof LambdaExpr l0 ? l0
                             : new LambdaExpr(body.position() != null ? body.position() : mc.position(),
