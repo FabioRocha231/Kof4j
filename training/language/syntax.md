@@ -38,6 +38,14 @@ class User {
 record Point(Int x, Int y)
 ```
 
+### Enum
+
+```kf
+enum Name { A, B, C }
+```
+
+Constants only (v0.1.0). See Types for the embedded API and SEM030/SEM031.
+
 ### Interface
 ```kof
 interface Speaker {
@@ -50,6 +58,17 @@ interface Speaker {
 var x = 10
 Type name = value
 ```
+
+
+### Spawn / Await
+
+```kf
+spawn expr();            // fire-and-forget (virtual thread, JVM)
+val r = spawn expr();    // Handle<T> typed handle
+val v = await r;         // blocks; T (primitives unboxed)
+```
+
+Gaps: Native CONC001 · JS CONC003 · Android AND001 (compile-time).
 
 ## Statements
 

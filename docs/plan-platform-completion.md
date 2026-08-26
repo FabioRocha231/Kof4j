@@ -1,7 +1,7 @@
 # Plano de Ação — Kof como Plataforma Completa de Desenvolvimento
 
 **Data:** 25 de agosto de 2026
-**Base:** estado real 0.1.0-beta (590 testes, 3 backends, kof.web/db/orm/security/ui + validation/observability/http/mq + generics `Box<T>` fix + SEM025 fix)
+**Base:** estado real 0.1.0 (590 testes, 3 backends, kof.web/db/orm/security/ui + validation/observability/http/mq + generics `Box<T>` fix + SEM025 fix)
 **Filosofia:** [docs/philosophy.md](philosophy.md) · Auditoria: [docs/ecosystem-coverage.md](ecosystem-coverage.md) · Visão: [docs/roadmap.md](roadmap.md)
 
 ---
@@ -54,10 +54,10 @@ Tudo o resto depende disso. Pequeno, alto valor.
 
 | Item | O quê | Aceite |
 |------|-------|--------|
-| ✅ G7 *(feito 0.0.14 → 0.1.0-beta)* | `jwt.*` com entrada explícita em `supportedOn` — Native reporta SECN004 em compile-time; `supportedOn` revisado função a função | zero erros de link silenciosos no security/web |
-| ✅ G6 *(feito 0.0.14 → 0.1.0-beta)* | `kof.test` estruturado: `test "nome" { }`, runner sintetizado em compile-time (desugar → `kof_test_N`), PASS/FAIL por nome nos 3 targets, `--target js` no CLI, `process.exit(code)` nos 3 targets | `StructuredTestE2ETest` 11/11; golden/integração verdes |
+| ✅ G7 *(feito 0.0.14 → 0.1.0)* | `jwt.*` com entrada explícita em `supportedOn` — Native reporta SECN004 em compile-time; `supportedOn` revisado função a função | zero erros de link silenciosos no security/web |
+| ✅ G6 *(feito 0.0.14 → 0.1.0)* | `kof.test` estruturado: `test "nome" { }`, runner sintetizado em compile-time (desugar → `kof_test_N`), PASS/FAIL por nome nos 3 targets, `--target js` no CLI, `process.exit(code)` nos 3 targets | `StructuredTestE2ETest` 11/11; golden/integração verdes |
 | ✅ JSON Native *(25/08)* | JSN003 fechado (arrays `Int/Long/Bool/String[]`); JSN001/JSN002 seguem com FLT001/JSN002 | parity JSON total JVM×Native parcial |
-| ✅ Config/Log Native *(LOG001 ✅ 0.0.14; CONFIG001 ✅ 0.1.0-beta)* | `kof.log`/`kof.config` Native completo (asm) | LOG001 ✅; CONFIG001 ✅ |
+| ✅ Config/Log Native *(LOG001 ✅ 0.0.14; CONFIG001 ✅ 0.1.0)* | `kof.log`/`kof.config` Native completo (asm) | LOG001 ✅; CONFIG001 ✅ |
 | Processo doc | checklist DoD-doc no PR template; `status.md` regenerado por release | docs nunca mais defasam 9 versões |
 
 ## P1 — Linguagem: coleções e expressividade *(fundação das APIs)*

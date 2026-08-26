@@ -1,10 +1,10 @@
 # Backend Parity — Kof JVM × Native × KofJS
 
 **Última atualização:** 25 de agosto de 2026
-**Versão:** 0.1.0-beta
+**Versão:** 0.1.0
 
 > Deltas desde 0.0.5: `kof.db` SQLite **nativo** + MySQL WIP; `kof.orm`/MongoDB JVM-only (ORM001); `kof.security` Native completo (PBKDF2/SHA512/JWT/AES-GCM asm, G10), G9 rateLimit/session/apiKey 3 targets, `kof.config`/`kof.log` asm Native, TLS `listenSecure` JVM, `kof.validation`/`kof.observability`/`kof.http`/`kof.mq` 3 targets, generics `Box<T>` fix 25/08, `SEM025` Object fix.
-> Tabela reflete 0.1.0-beta (25/08) — DoD em `docs/plan-platform-completion.md`.
+> Tabela reflete 0.1.0 (25/08) — DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -31,12 +31,15 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` | ✅ | CONC001 | — | gap documentado |
+| `spawn` stmt / `val r = spawn f()` / `await r` (Handle<T> + unbox) | ✅ | CONC001 | CONC003 | `KofAwaitTest` 4/4 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |
+| `Map<K,V>` + `mapOf` (put/get/remove/contains/size/keys/values/clear/isEmpty) | ✅ HashMap | ✅ asm próprio | ✅ JS Map | `KofMapSetTest` |
+| `Set<T>` + `setOf` (add/contains/remove/size/clear/isEmpty) | ✅ HashSet | ✅ asm sobre List | ✅ JS Set | tag de tipo no Native |
+| `enum` + values/valueOf/name + switch exaustivo (`SEM031`) | ✅ | ✅ | ✅ | enum→String nos descritores; `KofEnumSwitchTest` |
 | JSON encode/decode (primitivos, List) | ✅ | ✅ | ✅ | arrays `JSN003` fechado |
-| JSON objetos/records | ✅ | JSN002 | ✅ | gap no Native documentado |
+| JSON objetos/records (JSN002) | ✅ | ✅ | ✅ | composição em compile-time no Native |
 | kof.io (File, Path, Directory) | ✅ | ✅ | ✅ | |
 | kof.time (`now()`, `sleep`, `interval`) | ✅ | ✅ | ✅ | `interval` JVM; TIME001 Native/JS |
 | `readLine`, `readFile`, `writeFile` | ✅ | ✅ | ✅ | |
@@ -54,12 +57,15 @@
 
 | Gap | Diagnostic | Status |
 |-----|-----------|--------|
-| `spawn` no Native | `CONC001` | planned |
+| spawn/await no Native | `CONC001` | planned (virtual threads é JVM-only) |
+| spawn/await no JS | `CONC003` | planned (modelo event-loop) |
+| web TLS no Native/JS | `WEB002` | planned |
+| kof.http no Native/JS | `HTTP002` | planned |
 | JSON Float/Double | `JSN001` | planned |
-| JSON objetos/records no Native | `JSN002` | planned (JVM/JS ok) |
-| decode de arrays | `JSN003` | planned |
-| captura em lambdas | — | planned |
-| resultado de tarefa (`await`) | — | planned |
+
+Fechados em 0.1.0: Map/Set nativo (era COL001), await com unboxing,
+JSN002 (objetos no Native), captura em lambdas (BoxN), resultado de
+tarefa (`await`).
 
 ## Princípio
 

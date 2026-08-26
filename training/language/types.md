@@ -43,6 +43,20 @@ interface Speaker {
 }
 ```
 
+### Enums
+
+```kf
+enum Color { Red, Green, Blue }
+```
+
+- Runtime representation: the constant name itself (String-backed).
+- `==` compares by content; constant name printed directly.
+- `Color.values() -> List<String>`; `Color.valueOf("Red") -> Color?`;
+  `c.name() -> String`.
+- Unknown constant → compile error SEM030.
+- Exhaustive switch required (all constants or default) → SEM031.
+- Mapped to `java/lang/String` in JVM descriptors on all targets.
+
 ## Type Inference
 
 ```kof

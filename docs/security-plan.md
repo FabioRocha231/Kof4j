@@ -1,7 +1,7 @@
 # KOF SECURITY — ARQUITETURA + PLANO DE IMPLEMENTAÇÃO
 
 > Entrega 1 da fundação `kof.security`.
-> Estado baseado em auditoria real do repositório (25/ago/2026, 0.1.0-beta — generics `Box<T>` + SEM025 fix).
+> Estado baseado em auditoria real do repositório (25/ago/2026, 0.1.0 — generics `Box<T>` + SEM025 fix).
 > Obrigações do módulo: **não copiar Spring**, **security by default**,
 > **zero ceremony**, **multi-target honesto** (JVM/Native/JS) e **nunca
 > divergência silenciosa** (gap → diagnóstico em compile-time SECN00x).

@@ -4,7 +4,7 @@
 > plataforma moderna (checklist derivado do ecossistema Spring, usado como
 > **matriz de capacidades**, não como especificação de API).
 >
-> **Data:** 25 de agosto de 2026 · **Versão:** 0.1.0-beta
+> **Data:** 25 de agosto de 2026 · **Versão:** 0.1.0
 > **Método:** auditoria do repositório (código + testes + docs) — ver §2.
 > **Resultado:** nenhuma implementação nova foi feita neste documento —
 > apenas inventário, matriz, gaps, prioridade e estratégia.

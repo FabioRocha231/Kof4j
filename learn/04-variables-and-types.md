@@ -72,6 +72,46 @@ Int[] numeros = {1, 2, 3}
 String[] nomes = {"Ana", "Bob"}
 ```
 
+### Enums
+
+```kf
+enum Color { Red, Green, Blue }
+```
+
+Um enum declara um conjunto fechado de constantes. O valor em runtime é o
+próprio nome — comparação é por conteúdo (`==` funciona como esperado) e
+`println(Color.Red)` imprime `Red`.
+
+API embutida:
+
+| Chamada | Retorna | Descrição |
+|---------|---------|-----------|
+| `Color.values()` | `List<String>` | todas as constantes, na ordem declarada |
+| `Color.valueOf("Red")` | `Color?` | constante pelo nome; `null` se inválida |
+| `c.name()` | `String` | o nome da constante |
+
+Constante inexistente é erro de compilação:
+
+```kf
+Color.Nope   // SEM030: enum 'Color' não tem constante 'Nope'
+```
+
+**Switch exaustivo**: um switch sobre enum precisa cobrir **todas** as
+constantes ou ter `default` — senão vira erro `SEM031` listando os casos
+faltantes:
+
+```kf
+fn nome(Color c) -> String {
+    var r = ""
+    switch (c) {
+        case Color.Red:   { r = "vermelho" }
+        case Green:       { r = "verde" }      // não-qualificado também vale
+        case Color.Blue:  { r = "azul" }
+    }
+    return r
+}   // sem os três casos e sem default → SEM031
+```
+
 ## Conversões
 
 ### Widening (automática)

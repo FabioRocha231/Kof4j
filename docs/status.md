@@ -1,7 +1,7 @@
 # Status do Projeto Kof
 
 **Última atualização:** 25 de agosto de 2026
-**Versão:** 0.1.0-beta
+**Versão:** 0.1.0
 
 ---
 
@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → ~580 testes (verificar numero exato no CI)
+mvn test             → 626 testes (626 passando, 1 skip condicional)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())

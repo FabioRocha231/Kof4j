@@ -1,7 +1,7 @@
 # Estado Atual do Projeto Kof
 
 **Última atualização:** 25 de agosto de 2026
-**Versão:** 0.1.0-beta
+**Versão:** 0.1.0
 
 ---
 
@@ -17,7 +17,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Pipeline 0.0.5 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
 
-**Plataforma 0.0.7-0.1.0-beta (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol WIP), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
+**Plataforma 0.0.7-0.1.0 (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol WIP), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
 
 ---
 
@@ -317,7 +317,7 @@ handles no-ops.
 
 ### Plataforma (gaps da auditoria — docs/ecosystem-coverage.md §4)
 - HTTP client (G2), validation (G4), health/metrics (G5), suíte estruturada
-  de testes (G6), scheduling (G8) — todos ✅ em 0.1.0-beta (25/08).
+  de testes (G6), scheduling (G8) — todos ✅ em 0.1.0 (25/08).
 - Rate limiting/sessions/API keys (G9), TLS/HTTPS (G12), kof.security Native (G10) — ✅ 25/08.
 - ~~Database/SQL (G1)~~ — ✅ nível 0 do kof.db/kof.orm implementado.
 - `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001 (paridade JVM/Native asm; JS CONF001/LOG001).

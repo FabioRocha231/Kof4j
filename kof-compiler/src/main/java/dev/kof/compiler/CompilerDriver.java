@@ -3500,9 +3500,6 @@ private Target target = Target.JVM;
                         methodParamTypes.add(inferExprType(arg, locals));
                     }
                     SymbolTable.MethodSymbol resolvedMethod = semanticAnalyzer.getResolvedMethod(mc);
-                    if ("key".equals(mc.methodName()) && recvType instanceof Type.ClassType ctKey && "MemEntry".equals(ctKey.name())) {
-                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_memkey2.txt"), "MethodCall key recvType=" + recvType + " resolved=" + resolvedMethod + " isField=" + (semanticAnalyzer.resolveInHierarchy(ctKey.name(), "key") instanceof SymbolTable.FieldSymbol) + " methodReturn=" + (resolvedMethod!=null?resolvedMethod.returnType():null) + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
-                    }
                     if (resolvedMethod != null) {
                         recvType = ownerTypeFromInternal(resolvedMethod.ownerClass());
                         methodReturnType = resolvedMethod.returnType();
@@ -4179,9 +4176,6 @@ private Target target = Target.JVM;
                         accessor = resolveFieldInHierarchy(ct.name(), fa.fieldName());
                         if (accessor != null) fieldType = accessor.type();
                     }
-                    if ("key".equals(fa.fieldName()) && recvType instanceof Type.ClassType ct2 && "MemEntry".equals(ct2.name())) {
-                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_memkey.txt"), "accessor=" + accessor + " fieldType=" + fieldType + " recvType=" + recvType + " ct2=" + ct2.name() + " isField=" + (accessor instanceof SymbolTable.FieldSymbol) + " isMethod=" + (accessor instanceof SymbolTable.MethodSymbol) + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
-                    }
                     if (accessor instanceof SymbolTable.MethodSymbol ms && ms.parameterTypes().isEmpty()) {
                         ops.add(new KofCall(recvType, fa.fieldName(), List.of(), ms.returnType(), KofCallKind.INSTANCE));
                     } else {
@@ -4775,9 +4769,6 @@ private Target target = Target.JVM;
                 }
                 if (recvType instanceof Type.ClassType ct && semanticAnalyzer != null) {
                     SymbolTable.Symbol s = semanticAnalyzer.resolveInHierarchy(ct.name(), fa.fieldName());
-                    if ("entries".equals(fa.fieldName()) && (ct.name().equals("MemoryLayer") || ct.name().equals("Config"))) {
-                        try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_entries.txt"), "FieldAccess entries recvType=" + recvType + " s=" + s + " fieldType=" + (s instanceof SymbolTable.FieldSymbol fs ? fs.type() : null) + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
-                    }
                     if (s instanceof SymbolTable.FieldSymbol fs) yield fs.type();
                     if (s instanceof SymbolTable.MethodSymbol ms && ms.parameterTypes().isEmpty()) {
                         yield ms.returnType();

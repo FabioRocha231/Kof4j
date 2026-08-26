@@ -1,9 +1,11 @@
 # 12 — Collections
 
-> **Status: implementado**
+> **Status: implementado (JVM / Native / JS)**
 >
-> `List<T>` é a coleção nativa de Kof; o tipo do elemento é preservado pela
-> pipeline inteira (inferência, for-in, `get`, resolução de métodos).
+> `List<T>`, `Map<K,V>` e `Set<T>` são coleções nativas de Kof. O tipo dos
+> elementos é preservado pela pipeline inteira (inferência, for-in, `get`,
+> resolução de métodos). No Native, Map e Set rodam em assembly próprio
+> sobre o mesmo layout de alocação do List.
 
 ## List — a forma idiomática
 
@@ -38,30 +40,83 @@ cada elemento é vinculado ao record, em JVM e KofJS.
 
 ```kf
 var l = listOf(1, 2, 3, 4)
-println(l.size)
-println(l.contains(3))
-println(l.isEmpty())
-var removido = l.remove(1)
-l.set(0, 100)
-l.clear()
+
+l.size()          // 4
+l.get(0)          // 1
+l.contains(3)     // true
+l.isEmpty()       // false
+l.remove(0)       // remove por índice, devolve o elemento
+l.set(0, 9)       // substitui in-place
+l.clear()         // esvazia
 ```
 
-## Iterando
+## Map — pares chave/valor
+
+`Map<K,V>` guarda pares com chave única. A API espelha a intenção, não o
+mecanismo — sem `HashMap` exposto na superfície:
 
 ```kf
-for (String nome : nomes) {
-    print(nome);
-}
+var idades = mapOf()
+idades.put("Ana", 26)
+idades.put("Bob", 31)
+
+idades.get("Ana")         // 26
+idades.containsKey("Bob") // true
+idades.size()             // 2
+
+idades.put("Ana", 27)     // sobrescreve; devolve o valor anterior
+idades.remove("Bob")      // devolve o valor removido
+
+idades.keys()             // List<String> das chaves
+idades.values()           // List<Int> dos valores
+idades.clear()
+idades.isEmpty()
 ```
 
-## Collections imutáveis (planejado)
+O tipo do valor é pinado no primeiro `put` — depois disso `get`, `remove`
+e comparações têm tipagem concreta:
 
 ```kf
-var lista = [1, 2, 3];           // List.of(1, 2, 3)
-var mapa = {"a": 1, "b": 2};    // Map.of("a", 1, "b", 2)
-var conjunto = #{1, 2, 3};      // Set.of(1, 2, 3)
+var estoque = mapOf()
+estoque.put("parafuso", 500)
+assert(estoque.get("parafuso") == 500)   // comparação numérica direta
 ```
+
+## Set — valores únicos
+
+`Set<T>` rejeita duplicatas: `add` devolve `true` só quando o elemento é
+novo.
+
+```kf
+var vistos = setOf(1, 2, 2, 3)
+vistos.size()          // 3 — o segundo 2 foi ignorado
+
+vistos.contains(2)     // true
+vistos.add(2)          // false (já existe)
+vistos.remove(1)       // true
+vistos.clear()
+vistos.isEmpty()       // true
+```
+
+Strings funcionam igual:
+
+```kf
+var tags = setOf("kof", "lang")
+tags.add("kof")        // false
+println(tags.size())   // 1
+```
+
+## Paridade entre targets
+
+| Operação | JVM | Native | JS |
+|----------|-----|--------|----|
+| List completa | ✅ | ✅ asm | ✅ |
+| Map (todas as operações) | ✅ HashMap | ✅ asm próprio | ✅ JS Map |
+| Set (todas as operações) | ✅ HashSet | ✅ asm sobre List | ✅ JS Set |
+
+Igualdade em Map/Set usa `equals` no JVM, comparação nativa (com tag de
+tipo para strings) no Native e `===`/`Map`/`Set` no JS.
 
 ## Próximo passo
 
-[Nullability →](13-nullability.md)
+**[13 — Nullability](13-nullability.md)**

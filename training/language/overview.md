@@ -38,16 +38,32 @@ Kof IR (backend-agnostic)
 └─────────┴──────────┘
 ```
 
-## Current Features (0.0.5-alpha)
+## Current Features (0.1.0)
 
 | Feature | Status |
 |---------|--------|
 | Classes, records, interfaces, inheritance, virtual dispatch | ✅ |
 | Constructors (`constructor(...)`, default auto) | ✅ |
 | Functions (all declaration forms, no `fun`) | ✅ |
-| Lambdas `(x: Int) -> expr` (no captures) | ✅ |
+| Enums (`enum Color { Red }` + values/valueOf/name + exhaustive switch SEM031) | ✅ 3 targets |
+| Lambdas com captura (mutável via box) | ✅ |
 | If-expressions `var x = if (c) a else b` | ✅ |
 | `List<T>` + `listOf` + `for (var x in coll)` | ✅ |
+| `Map<K,V>` + `mapOf` (put/get/remove/contains/size/keys/values/clear/isEmpty) | ✅ 3 targets |
+| `Set<T>` + `setOf` (add/contains/remove/size/clear/isEmpty) | ✅ 3 targets |
+| Concorrência: `spawn stmt` / `val r = spawn f()` / `await r` (virtual threads) | ✅ JVM; CONC001/003 nos outros |
+| Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ |
+| Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ |
+| Exceptions `throw "msg"` / try/catch/finally (JVM + Native) | ✅ |
+| Generics (erasure) | ✅ |
+| JSON `json.encode` / `json.decode<T>` | ✅ (objetos: JVM + Native JSN002) |
+| kof.io: `readFile`, `writeFile`, `readLine`, `File/Path/Directory` | ✅ |
+| kof.time: `now()` | ✅ |
+| switch, instanceof, `as` | ✅ |
+| Web server (`web.app()` rotas/middleware/TLS `listenSecure`) | ✅ JVM |
+| kof.validation (13 predicados) | ✅ 3 targets |
+| kof.security (passwords/crypto/jwt/secrets/auth + rateLimit/sessions/apiKeys) | ✅ 3 targets (web auth JVM) |
+| kof.observability (health/readiness/liveness/counter/increment/gauge/requestId) | ✅ 3 targets |
 | Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ |
 | Exceptions `throw "msg"` / try/catch/finally (JVM + Native) | ✅ |

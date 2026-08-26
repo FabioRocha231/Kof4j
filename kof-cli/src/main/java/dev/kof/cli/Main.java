@@ -477,30 +477,16 @@ private static void build(String[] args) {
         CompilerDriver driver = new CompilerDriver();
         int passed = 0;
         int failed = 0;
-        // módulo: agrupa irmãos .kf do mesmo diretório (cross-file refs ok)
-        java.util.Map<Path, List<Path>> byDir = new java.util.LinkedHashMap<>();
+        // per-file (docs/ecosystem-coverage.md §3.11): cada .kf é um programa
+        // independente com seu próprio main() — NUNCA agrupar irmãos num
+        // módulo só (PKG002: 2 main()). Cross-file é domínio de kof build.
         for (Path f : files) {
-            Path dirKey = f.toAbsolutePath().normalize().getParent();
-            if (dirKey == null) dirKey = Path.of(".");
-            byDir.computeIfAbsent(dirKey, k -> new ArrayList<>()).add(f);
-        }
-        for (var moduleEntry : byDir.entrySet()) {
-            List<Path> moduleFiles = moduleEntry.getValue();
-            Path f = moduleFiles.get(0);
             Path tmp;
             try { tmp = Files.createTempDirectory("kof-test-"); }
             catch (IOException e) { System.err.println("failed to create temp dir: " + e.getMessage()); System.exit(1); return; }
             // modo harness: `test "nome" { }` vira função + runner sintetizado;
             // arquivos sem testes compilam idênticos ao modo normal
-            CompilationResult result;
-            if (moduleFiles.size() > 1) {
-                result = driver.compileForTestsSources(moduleFiles.stream()
-                                .map(p -> p.toAbsolutePath().normalize())
-                                .collect(java.util.stream.Collectors.toList()),
-                        tmp, target, moduleEntry.getKey());
-            } else {
-                result = driver.compileForTests(f, tmp, target);
-            }
+            CompilationResult result = driver.compileForTests(f, tmp, target);
             boolean ok = result.success();
             StringBuilder output = new StringBuilder();
             if (ok) {

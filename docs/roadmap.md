@@ -188,12 +188,32 @@ api "/users" {
 }
 ```
 
-Estado atual: 🟡 parcial — HTTP/rotas (`kof.web`), JSON, configuração
-(`kof.config`), logging (`kof.log`), segurança (`kof.security`) e
-concorrência (`spawn`) implementados. Faltam: WebSocket/SSE, HTTP client,
-RPC, eventos/filas/pub-sub, cache, métricas/tracing, health checks,
-validation e scheduling. Ver `docs/plan-spring-independence.md` (Fases
-5-14).
+Estado atual: 🟡 parcial — HTTP/rotas (`kof.web` + TLS `listenSecure`),
+JSON, configuração (`kof.config`), logging (`kof.log`), segurança
+(`kof.security` + G9 web security) e concorrência (`spawn stmt`,
+`spawn expr` com `Handle<T>` tipado + `await` com unboxing) implementados.
+Faltam: WebSocket/SSE, HTTP client no Native/JS (HTTP002), RPC,
+eventos/filas/pub-sub fora do JVM, cache, tracing, scheduling/cron.
+Ver `docs/plan-spring-independence.md` (Fases 5-14).
+
+### Concorrência — fila residual (0.1.x)
+
+Estado 0.1.0: concorrência real **só no JVM** (~40% da visão). Native é
+CONC001 e JS é CONC003 — ambos explícitos em compile-time.
+
+| Item | Descrição | Prioridade |
+|------|-----------|------------|
+| Unwrap de `ExecutionException` | `kof_await` re-lança a causa original em vez do wrapper — mensagens limpas em try/catch | alta |
+| `await` com timeout | `await r, timeoutMs` → `null`/exceção no estouro; hoje bloqueia para sempre | alta |
+| Cancelamento | `cancel(r)` cooperativo via flag no handle | média |
+| Espera múltipla | `select(h1, h2, ...)` → primeiro handle pronto (estilo Go) | média |
+| Port Native | worker threads + scheduler + fila de tarefas em asm (o pedaço mais caro — depende de futex/clone syscall) | P2 |
+| Port JS | spawn sobre Promises/event-loop; await nativo via microtask | P2 |
+| Scheduler/cron | `every(30s) { }`, `at("0 3 * * *") { }` sobre virtual threads (G8-residual) | P2 |
+| Canais tipados | `channel<Int>()` com send/receive bloqueantes entre tasks | P3 |
+
+Critério de "100%": os três targets executando os mesmos programas
+concorrentes com golden diff vazio (mesmo padrão da métrica 1 do plano).
 
 ---
 

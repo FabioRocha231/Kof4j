@@ -114,9 +114,6 @@ class SemanticAnalyzer {
         for (AstNode member : cls.members()) {
             if (member instanceof FieldDeclarationNode field) {
                 Type fieldType = resolveType(field.type(), classScope);
-                if ("MemoryLayer".equals(cls.name()) && "entries".equals(field.name())) {
-                    try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/dbg_MemoryLayer_entries.txt"), "fieldType=" + fieldType + " fieldTypeStr=" + field.type() + " classScope=" + classScope + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch(Exception e){}
-                }
                 int flags = field.modifiers().contains("static") ? AccessFlags.STATIC : 0;
                 SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(field.name(), fieldType, flags, cls.name());
                 classSym.members().define(fs);

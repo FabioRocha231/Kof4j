@@ -1,13 +1,22 @@
 # Estado Atual da Linguagem Kof
 
 **Data:** 25 de agosto de 2026
-**Versão:** 0.1.0-beta
+**Versão:** 0.1.0
 **Testes:** 590 JUnit (581 declarados) passando (+1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35; inclui JSON, exceptions, web, db/orm, UI, security G9 e generics `Box<T>` fix em 25/08)
-**Status:** Compilador funcional com backends JVM, Native e KofJS; web server, distribuição e tooling oficiais (0.1.0-beta; generics `Box<T>` + `SEM025` fix 25/08)
+**Status:** Compilador funcional com backends JVM, Native e KofJS; web server, distribuição e tooling oficiais (0.1.0; generics `Box<T>` + `SEM025` fix 25/08)
 
 ---
 
-## Novidades 0.0.5 → 0.1.0-beta (25/08)
+## Novidades 0.0.5 → 0.1.0 (25/08)
+
+### 0.1.0 final (P1 — linguagem)
+
+- **Enums** com switch exaustivo (`SEM031`), `values/valueOf/name`,
+  comparação por conteúdo e mapeamento String nos descritores
+- **Map<K,V> / Set<T>** completos nos 3 targets (Native em asm próprio)
+- **spawn/await** com handle tipado `Handle<T>` e unboxing de primitivos;
+  gaps CONC001/CONC003/AND001 explícitos; lambda não-void de expressão
+  única vira return (fix de VerifyError)
 
 - **Interop Android/JVM**: `super.metodo()` com INVOKESPECIAL (owner é a
   superclasse direta; assinaturas externas resolvidas via classpath
@@ -335,4 +344,4 @@ Fields:
 - KofJS (target `js` — GraalJS embutido), TLS `web.listenSecure` (JVM)
 - Language Server (`kof lsp` — frontend real do compilador)
 - `kof check`, `kof info`, `kof install`, `kof bench`/`profile`/`inspect`/`debug`
-- Distribuição oficial com JDK embutido, versionamento e releases automáticas (0.1.0-beta)
+- Distribuição oficial com JDK embutido, versionamento e releases automáticas (0.1.0)

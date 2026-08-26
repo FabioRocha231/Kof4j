@@ -7,6 +7,57 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## [0.1.0] - 2026-08-25
+
+Primeira release estável da plataforma base — P0 (ecossistema) e P1
+(linguagem) fechados.
+
+### Features
+
+#### P0 — ecossistema
+- **G5 `kof.observability`**: `health/readiness/liveness`,
+  `counter/increment/gauge`, `requestId/correlationId` — JVM/Native/JS
+  (`KofObservabilityTest` 3/3; asm com contadores em .bss no Native)
+- **G9 web security**: `security.rateLimit(key, limit, window)`,
+  `sessionCreate/sessionGet/sessionDestroy`, `apiKeyGenerate/apiKeyValid`
+  — JVM/Native/JS (`KofSecurityG9Test` 3/3)
+- **G12 TLS/HTTPS**: `web.listenSecure(port)` (SSLServerSocket + keytool,
+  SAN localhost) + `kof.http` HTTPS (`KofWebTlsTest` 5/5); Native/JS
+  reportam WEB002
+
+#### P1 — linguagem
+- **Enums**: declaração `enum Color { Red }`; `values()/valueOf()/name()`;
+  `==` por conteúdo; constante inválida → SEM030; **switch exaustivo**
+  com SEM031 listando casos faltantes; mapeado a String nos descritores
+  JVM (`KofEnumTest` + `KofEnumSwitchTest`)
+- **Map<K,V> / Set<T>**: `mapOf/setOf` + API completa — JVM (HashMap/
+  HashSet), Native (**asm próprio**, keys+vals com crescimento 2x, tag de
+  tipo p/ equals) e JS (Map/Set nativos) (`KofMapSetTest` 3/3)
+- **spawn/await**: `val r = spawn f()` devolve `Handle<T>` tipado;
+  `await r` bloqueia em virtual thread com unboxing de primitivos;
+  gaps CONC001 (Native) / CONC003 (JS) / AND001 explícitos
+  (`KofAwaitTest` 4/4)
+- **kof.validation** (G4): 13 predicados nos 3 targets (`SEM` VAL001)
+
+### Fixes
+
+- decode<List<Int>> no Native caía no ramo JSN002 → link quebrado
+  (`List_vtable`) — List/Map excluídos do ramo de objeto composto
+- spawn statement no JS falhava em runtime silenciosamente → CONC003
+- lambda não-void de expressão única emitia POP antes do areturn
+  (VerifyError em todo spawn/await com retorno)
+- unbox pós-await restrito ao await (descritor default Object
+  englobava kof_ui_* → VerifyError mascarado de "JavaFX" pelo launcher)
+- `kof test` volta a ser per-file (PKG002 com 2 main() no mesmo diretório)
+- boxing de Map.put/get/remove/contains e Set.* via parameterTypes do
+  call-site (mapOf nasce Unknown; pinning no primeiro put)
+
+### Docs
+- docs/observability.md novo; ecosystem-coverage G5/G9/G12 DONE;
+  security.md atualizada; learn/12-collections reescrito (Map/Set);
+  learn/18-concurrency reescrito (spawn/await); enum em learn/04 e
+  training/language/{types,syntax}; overview do corpus para 0.1.0
+
 ## [0.1.0-beta] - 2026-08-25
 
 ### Features
