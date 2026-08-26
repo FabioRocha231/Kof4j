@@ -1478,6 +1478,13 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
   - update passwordsNative test to validate successful hash on Native target
   - prova de Turing-completude — Ackermann + loop de 1M nos 3 targets
 
+## [0.1.2-beta] - 2026-08-26
+
+### Features
+
+  - LSP hover/completion · kof init/fmt/script · collect não-recursivo
+  - spawn/await no JS (fecha CONC003) + kof script; versão 0.1.1-beta
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
