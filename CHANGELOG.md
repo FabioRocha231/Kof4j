@@ -1514,6 +1514,16 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - move DATABASE_VISION e KOF_VS_SPRING de future para docs; future fica só com planejados + kof-native risc/arm
 
+## [0.1.5-beta] - 2026-08-27
+
+### Features
+
+  - automatic GC on alloc + kof_gc_collect coalesce
+
+### Bugfixes
+
+  - lib/kof.jar inside tar.gz + always upload artifacts
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
