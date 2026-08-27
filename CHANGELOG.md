@@ -1539,6 +1539,13 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - bump version to 0.1.5-beta [skip ci]
 
+## [0.1.7-beta] - 2026-08-27
+
+### Bugfixes
+
+  - duplicate if-no-files-found + pipefail head
+  - windows pipefail + lib/kof.jar check + jar upload
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
