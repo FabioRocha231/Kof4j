@@ -1524,6 +1524,21 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - lib/kof.jar inside tar.gz + always upload artifacts
 
+## [0.1.6-beta] - 2026-08-27
+
+### Features
+
+  - automatic GC on alloc + kof_gc_collect coalesce
+
+### Bugfixes
+
+  - windows SIGPIPE 141 head pipefail
+  - lib/kof.jar inside tar.gz + always upload artifacts
+
+### Build
+
+  - bump version to 0.1.5-beta [skip ci]
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
