@@ -1491,6 +1491,29 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - poll/done + exceção limpa no await — itens 'alta' da fila
 
+## [0.1.4-beta] - 2026-08-27
+
+### Features
+
+  - enhance native target support for RISC-V and ARM architectures
+  - add native C subset compiler
+  - JIT in-memory + top-level let + kof test isolado + LSP .ks (3 gaps restantes)
+  - CLI kof script --target + repl + classpath jar + diagnostics
+  - MVP KofScript direct execution (Fase 6)
+  - switch case String s + instanceof + checkcast em JVM/Native/JS
+  - cache in-process, WebSocket/SSE, scheduler every/at + pattern matching record destructuring + nullability String? + kof.time/config/mq para Native/JS
+  - kof.time now/sleep, kof.config/mq for JS, fix native rbx clobber
+  - implement higher-order functions for List — map, filter, reduce
+  - cancel cooperativo + selectAny — itens 'média' da fila
+
+### Bugfixes
+
+  - imports file-specific + native free-list GC + docs 27/08
+
+### Documentation
+
+  - move DATABASE_VISION e KOF_VS_SPRING de future para docs; future fica só com planejados + kof-native risc/arm
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
