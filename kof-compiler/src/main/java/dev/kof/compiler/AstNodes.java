@@ -211,6 +211,12 @@ sealed interface ExpressionNode extends AstNode {
 record IdentifierExpr(SourcePosition position, String name) implements ExpressionNode {
 }
 
+record PatternExpr(SourcePosition position, String typeName, String varName, java.util.List<String> fieldVars) implements ExpressionNode {
+    public PatternExpr(SourcePosition position, String typeName, String varName) {
+        this(position, typeName, varName, java.util.List.of());
+    }
+}
+
 sealed interface LiteralKind {
 }
 

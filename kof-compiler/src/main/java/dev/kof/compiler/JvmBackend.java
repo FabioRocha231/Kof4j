@@ -107,6 +107,7 @@ class JvmBackend implements Backend {
     }
 
     private boolean isPrimitiveType(Type type) {
+        if (type instanceof Type.NullableType nt) return isPrimitiveType(nt.inner());
         return type instanceof Type.PrimitiveType pt && !"void".equals(pt.name());
     }
 
@@ -126,6 +127,7 @@ class JvmBackend implements Backend {
     }
 
     private boolean isPrimitiveOf(Type type, String name) {
+        if (type instanceof Type.NullableType nt) return isPrimitiveOf(nt.inner(), name);
         return type instanceof Type.PrimitiveType pt && (pt.name().equals(name) || pt.name().equals(capitalize(name)));
     }
 
@@ -154,8 +156,12 @@ class JvmBackend implements Backend {
         emit(module, outputDir, true);
     }
 
+    private IRModule currentModule;
+    private IRClass currentClass;
+
     @Override
     public void emit(IRModule module, Path outputDir, boolean debugInfo) throws IOException {
+        this.currentModule = module;
         this.sourceName = module.sourceName();
         this.debugInfoEnabled = debugInfo;
         for (IRClass clazz : module.classes()) {
@@ -171,6 +177,7 @@ class JvmBackend implements Backend {
     private String sourceName;
 
     private void emitClass(IRClass clazz, Path outputDir) throws IOException {
+        this.currentClass = clazz;
         Path classFile = outputDir.resolve(clazz.name() + ".class");
         Files.createDirectories(classFile.getParent());
 
@@ -612,7 +619,28 @@ class JvmBackend implements Backend {
                 if (KofProcess.isResult(lf.ownerType())) {
                     owner = "dev/kof/runtime/KofRuntime$ProcessResult";
                 }
-                mv.visitFieldInsn(GETFIELD, owner, lf.name(), JvmTypeMapper.toDescriptor(lf.fieldType()));
+                boolean isRecord = false;
+                boolean isSelfRecordAccess = false;
+                if (lf.ownerType() instanceof Type.ClassType ct) {
+                    String internal = JvmTypeMapper.toInternalName(ct.packageName(), ct.name());
+                    if (currentModule != null) {
+                        for (IRClass c : currentModule.classes()) {
+                            if (c.name().equals(internal) && "java/lang/Record".equals(c.superName())) {
+                                isRecord = true;
+                                // If we are inside the record's own accessor, use GETFIELD directly to avoid recursion
+                                if (currentClass != null && currentClass.name().equals(internal)) {
+                                    isSelfRecordAccess = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (isRecord && !isSelfRecordAccess) {
+                    mv.visitMethodInsn(INVOKEVIRTUAL, owner, lf.name(), "()" + JvmTypeMapper.toDescriptor(lf.fieldType()), false);
+                } else {
+                    mv.visitFieldInsn(GETFIELD, owner, lf.name(), JvmTypeMapper.toDescriptor(lf.fieldType()));
+                }
             }
         } else if (op instanceof KofStoreField sf) {
             String owner = JvmTypeMapper.toInternalName(
@@ -1205,6 +1233,7 @@ class JvmBackend implements Backend {
     }
 
     private int loadVarOpcode(Type type) {
+        if (type instanceof Type.NullableType nt) return loadVarOpcode(nt.inner());
         if (KofUi.isUiType(type)) return ILOAD;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
@@ -1219,6 +1248,7 @@ class JvmBackend implements Backend {
     }
 
     private int storeVarOpcode(Type type) {
+        if (type instanceof Type.NullableType nt) return storeVarOpcode(nt.inner());
         if (KofUi.isUiType(type)) return ISTORE;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
@@ -1233,6 +1263,7 @@ class JvmBackend implements Backend {
     }
 
     private boolean isDoubleWidth(Type type) {
+        if (type instanceof Type.NullableType nt) return isDoubleWidth(nt.inner());
         if (type instanceof Type.PrimitiveType pt) {
             return "long".equals(pt.name()) || "Long".equals(pt.name()) ||
                    "double".equals(pt.name()) || "Double".equals(pt.name());

@@ -23,6 +23,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_io_")
                 || methodName.startsWith("kof_web_")
                 || methodName.startsWith("kof_config_")
+                || methodName.startsWith("kof_cache_")
                 || methodName.startsWith("kof_log_")
                 || methodName.startsWith("kof_db_")
                 || methodName.startsWith("kof_orm_")
@@ -159,6 +160,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_param", "kof_web_query", "kof_web_header"
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
+            case "kof_web_status" -> "(ILjava/lang/String;)Ljava/lang/String;";
+            case "kof_web_header_set" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_config_get", "kof_config_env" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_http_get", "kof_http_delete", "kof_http_options" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_http_get_headers", "kof_http_delete_headers", "kof_http_options_headers"
@@ -182,6 +185,12 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_config_has" -> "(Ljava/lang/String;)I";
             case "kof_config_int", "kof_config_bool" -> "(Ljava/lang/String;I)I";
             case "kof_config_long" -> "(Ljava/lang/String;J)J";
+            case "kof_cache_get" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_cache_set" -> "(Ljava/lang/String;Ljava/lang/String;)V";
+            case "kof_cache_set_ttl" -> "(Ljava/lang/String;Ljava/lang/String;I)V";
+            case "kof_cache_ttl" -> "(Ljava/lang/String;)I";
+            case "kof_cache_delete" -> "(Ljava/lang/String;)V";
+            case "kof_cache_clear" -> "()V";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
                     -> "(Ljava/lang/String;)V";
             case "kof_db_connect" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -299,8 +308,12 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_file_size" -> "J";
             case "kof_io_dir_list" -> "Ljava/util/ArrayList;";
             case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
-                    "kof_web_body", "kof_web_method", "kof_web_path" -> "Ljava/lang/String;";
+                    "kof_web_body", "kof_web_method", "kof_web_path",
+                    "kof_web_status", "kof_web_header_set" -> "Ljava/lang/String;";
             case "kof_config_get", "kof_config_env", "kof_config_str" -> "Ljava/lang/String;";
+            case "kof_cache_get" -> "Ljava/lang/String;";
+            case "kof_cache_set", "kof_cache_set_ttl", "kof_cache_delete", "kof_cache_clear" -> "V";
+            case "kof_cache_ttl" -> "I";
             case "kof_http_get", "kof_http_get_headers", "kof_http_delete", "kof_http_delete_headers",
                     "kof_http_options", "kof_http_options_headers", "kof_http_post", "kof_http_post_headers",
                     "kof_http_put", "kof_http_put_headers", "kof_http_patch", "kof_http_patch_headers"
@@ -623,6 +636,7 @@ static boolean hasRuntimeFn(String methodName) {
 
 """
                 + JvmConfigRuntime.source()
+                + JvmCacheRuntime.source()
                 + JvmOrmRuntime.source()
                 + JvmTimeRuntime.source()
                 + JvmStringRuntime.source();

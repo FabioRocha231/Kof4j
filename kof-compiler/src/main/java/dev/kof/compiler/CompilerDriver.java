@@ -1863,6 +1863,93 @@ private Target target = Target.JVM;
                 localIdx = emitExpression(ss.expression(), ops, owner, localIdx, locals);
                 ops.add(new KofStoreLocal(switchType, switchTmp));
                 locals.add(new IRLocalVariable(switchTmp, "#switch", switchType));
+                boolean hasPattern = ss.cases().stream().anyMatch(sc -> sc.value() instanceof PatternExpr);
+                if (hasPattern) {
+                    // Pattern switch lowered as if-else chain (no switch subject needed beyond #switch)
+                    List<LabelId> bodyLabels = new ArrayList<>();
+                    List<LabelId> nextTestLabels = new ArrayList<>();
+                    for (int i = 0; i < ss.cases().size(); i++) {
+                        bodyLabels.add(LabelId.create());
+                        nextTestLabels.add(LabelId.create());
+                    }
+                    LabelId endLabelPat = LabelId.create();
+                    LabelId defaultLabelPat = ss.defaultBody().isEmpty() ? endLabelPat : LabelId.create();
+                    for (int i = 0; i < ss.cases().size(); i++) {
+                        if (i > 0) ops.add(new KofLabel(nextTestLabels.get(i)));
+                        SwitchCase sc = ss.cases().get(i);
+                        LabelId nextTest = i + 1 < ss.cases().size() ? nextTestLabels.get(i + 1) : defaultLabelPat;
+                        if (sc.value() instanceof PatternExpr pe) {
+                            Type patType = toType(pe.typeName());
+                            if (patType instanceof Type.UnknownType) patType = BuiltinTypes.STRING;
+                            ops.add(new KofLoadLocal(switchType, switchTmp));
+                            ops.add(new KofInstanceOf(patType));
+                            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                            ops.add(new KofConditionalJump(KofComparison.EQ, nextTest, bodyLabels.get(i)));
+                        } else {
+                            ops.add(new KofLoadLocal(switchType, switchTmp));
+                            localIdx = emitExpression(sc.value(), ops, owner, localIdx, locals);
+                            ops.add(new KofBinary(KofBinaryOp.EQ, switchType));
+                            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                            ops.add(new KofConditionalJump(KofComparison.EQ, nextTest, bodyLabels.get(i)));
+                        }
+                    }
+                    ops.add(new KofLabel(defaultLabelPat));
+                    if (!ss.defaultBody().isEmpty()) {
+                        localIdx = emitStatement(new BlockStmt(ss.defaultBody().get(0).position(), ss.defaultBody()), ops, owner, localIdx, locals, returnType);
+                    }
+                    ops.add(new KofJump(endLabelPat));
+                    for (int i = 0; i < ss.cases().size(); i++) {
+                        SwitchCase sc = ss.cases().get(i);
+                        ops.add(new KofLabel(bodyLabels.get(i)));
+                        if (sc.value() instanceof PatternExpr pe) {
+                            Type patType = toType(pe.typeName());
+                            if (patType instanceof Type.UnknownType) patType = BuiltinTypes.STRING;
+                            ops.add(new KofLoadLocal(switchType, switchTmp));
+                            ops.add(new KofCheckCast(patType));
+                            if (pe.varName() != null) {
+                                int varIdx = localIdx++;
+                                locals.add(new IRLocalVariable(varIdx, pe.varName(), patType));
+                                ops.add(new KofStoreLocal(patType, varIdx));
+                            } else if (!pe.fieldVars().isEmpty()) {
+                                int castTmp = localIdx++;
+                                locals.add(new IRLocalVariable(castTmp, "#patCast", patType));
+                                ops.add(new KofStoreLocal(patType, castTmp));
+                                java.util.List<String> fieldNames = pe.fieldVars();
+                                for (int fi = 0; fi < fieldNames.size(); fi++) {
+                                    String fieldVar = fieldNames.get(fi);
+                                    Type fieldType = Type.UnknownType.UNKNOWN;
+                                    for (AstNode d : currentUnit.declarations()) {
+                                        if (d instanceof RecordDeclarationNode rec && rec.name().equals(pe.typeName())) {
+                                            if (fi < rec.components().size()) {
+                                                fieldType = toType(rec.components().get(fi).type());
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    if (fieldType instanceof Type.UnknownType) fieldType = BuiltinTypes.STRING;
+                                    ops.add(new KofLoadLocal(patType, castTmp));
+                                    Type fieldOwner = patType;
+                                    String fieldName = null;
+                                    for (AstNode d : currentUnit.declarations()) {
+                                        if (d instanceof RecordDeclarationNode rec && rec.name().equals(pe.typeName())) {
+                                            if (fi < rec.components().size()) fieldName = rec.components().get(fi).name();
+                                            break;
+                                        }
+                                    }
+                                    if (fieldName == null) fieldName = fieldVar;
+                                    ops.add(new KofLoadField(fieldOwner, fieldName, fieldType));
+                                    int varIdx = localIdx++;
+                                    locals.add(new IRLocalVariable(varIdx, fieldVar, fieldType));
+                                    ops.add(new KofStoreLocal(fieldType, varIdx));
+                                }
+                            }
+                        }
+                        localIdx = emitStatement(new BlockStmt(sc.position(), sc.body()), ops, owner, localIdx, locals, returnType);
+                        ops.add(new KofJump(endLabelPat));
+                    }
+                    ops.add(new KofLabel(endLabelPat));
+                    yield localIdx;
+                }
                 List<LabelId> testLabels = new ArrayList<>();
                 List<LabelId> bodyLabels = new ArrayList<>();
                 for (int i = 0; i < ss.cases().size(); i++) {
@@ -3130,6 +3217,32 @@ private Target target = Target.JVM;
                         }
                         ops.add(new KofCall(KofConfig.CONFIG, cfgCall.function(), cfgCall.parameterTypes(),
                                 cfgCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofCache.isCacheNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofCache.CacheCall cacheCall = KofCache.staticCall(mc.methodName(), argTypes);
+                    if (cacheCall != null) {
+                        if (!KofCache.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (CACHE001)",
+                                        "CACHE001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofCache.CACHE, cacheCall.function(), cacheCall.parameterTypes(),
+                                cacheCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)

@@ -40,6 +40,7 @@ class JsBackend implements Backend {
     private final List<String> runtimeImports = new ArrayList<>();
     private final List<String> ioRuntimeImports = new ArrayList<>();
     private final Set<String> decodeHelpers = new HashSet<>();
+    private final Set<String> recordClassNames = new HashSet<>();
     private Map<String, Set<String>> classMethodNames = Map.of();
     private Map<String, Map<Integer, String>> fnArityNames = Map.of();
 
@@ -96,6 +97,16 @@ class JsBackend implements Backend {
             }
         }
         this.classMethodNames = methodNames;
+        recordClassNames.clear();
+        for (IRClass clazz : module.classes()) {
+            if ("java/lang/Record".equals(clazz.superName())) {
+                recordClassNames.add(clazz.name());
+                recordClassNames.add(clazz.name().replace('/', '.'));
+                // also add simple name
+                String simple = clazz.name().substring(clazz.name().lastIndexOf('/') + 1);
+                recordClassNames.add(simple);
+            }
+        }
         // Default-parameter wrappers share the canonical name; JS has no
         // overloading, so wrappers are mangled by dropped-arity and calls
         // are routed by (name, arity).
@@ -921,6 +932,26 @@ class JsBackend implements Backend {
     // ── Switch statement ────────────────────────────────────────────
 
     private JsIr.JsStatement parseSwitchStatement(MethodCtx ctx, int[] pos) {
+        // Detect pattern switch (contains KofInstanceOf) -> lower as if-else chain
+        boolean hasPattern = false;
+        for (int i = pos[0]; i < ctx.ops.size(); i++) {
+            KofOperation op = ctx.ops.get(i);
+            if (op instanceof KofInstanceOf) { hasPattern = true; break; }
+            if (op instanceof KofLabel) {
+                // next switch test starts with KofLoadLocal #switch, but if we see a body label, stop
+                // scan ahead for KofLoadLocal #switch to decide
+                if (i + 1 < ctx.ops.size() && ctx.ops.get(i + 1) instanceof KofLoadLocal ll
+                        && "#switch".equals(ctx.rawLocalNames.get(ll.index()))) {
+                    continue;
+                }
+                // if we encounter a body label without preceding KofInstanceOf, not pattern
+                // continue scanning
+            }
+            if (op instanceof KofLabel && hasPattern) break;
+        }
+        if (hasPattern) {
+            return parsePatternSwitch(ctx, pos);
+        }
         // [load #switch, <caseValue>, SUB, load 0, CJump(EQ, body, next)] *
         // followed by: [Label(body0), stmts, Jump(end)] * [Label(default), stmts, Label(end)]
         List<JsIr.JsExpression> caseValues = new ArrayList<>();
@@ -1008,6 +1039,129 @@ class JsBackend implements Backend {
         }
         JsIr.JsExpression subject = new JsIr.JsIdentifier(subjectName);
         return new JsIr.JsSwitch(subject, fullCases, defaultCase);
+    }
+
+    private JsIr.JsStatement parsePatternSwitch(MethodCtx ctx, int[] pos) {
+        // Pattern switch is lowered as: load #switch, instanceof Type, load 0, CJump(NE, body, next)
+        // body: Label(body), load #switch, checkcast Type, store var, ... , Jump(end)
+        String subjectName = null;
+        if (!(ctx.ops.get(pos[0]) instanceof KofLoadLocal ll
+                && "#switch".equals(ctx.rawLocalNames.get(ll.index())))) {
+            throw new IllegalStateException("KofJS: pattern switch subject not found");
+        }
+        // Collect all pattern cases
+        List<JsIr.JsExpression> conditions = new ArrayList<>();
+        List<LabelId> bodyLabels = new ArrayList<>();
+        List<List<JsIr.JsStatement>> bodies = new ArrayList<>();
+        LabelId defaultLabel = null;
+        LabelId endLabel = null;
+        // First, collect conditions and body labels without consuming bodies
+        int savedPos = pos[0];
+        // We need to parse the test section to get conditions
+        // Use a temporary pos to scan
+        int[] scanPos = {pos[0]};
+        String scanSubject = null;
+        while (scanPos[0] < ctx.ops.size() && ctx.ops.get(scanPos[0]) instanceof KofLoadLocal l2
+                && "#switch".equals(ctx.rawLocalNames.get(l2.index()))) {
+            scanPos[0]++;
+            if (scanSubject == null) scanSubject = localName(ctx, l2.index());
+            if (scanPos[0] >= ctx.ops.size() || !(ctx.ops.get(scanPos[0]) instanceof KofInstanceOf)) break;
+            // consume instanceof
+            List<Object> stack = new ArrayList<>();
+            stack.add(new JsIr.JsIdentifier(scanSubject));
+            consumeExpressionOp(ctx, scanPos, stack, new ArrayList<>());
+            JsIr.JsExpression cond = pop(stack);
+            conditions.add(cond);
+            // expect load 0 and CJump EQ nextTest, body (if instanceof ==0 goto next)
+            if (scanPos[0] >= ctx.ops.size() || !(ctx.ops.get(scanPos[0]) instanceof KofLoadLiteral zero
+                    && zero.value() instanceof Integer i && i == 0)) break;
+            scanPos[0]++;
+            if (scanPos[0] >= ctx.ops.size() || !(ctx.ops.get(scanPos[0]) instanceof KofConditionalJump cj
+                    && cj.comparison() == KofComparison.EQ)) break;
+            bodyLabels.add(cj.falseLabel());
+            defaultLabel = cj.trueLabel();
+            endLabel = cj.falseLabel();
+            // For pattern, the falseLabel is the body, trueLabel is nextTest
+            // But we need to track nextTest for the next iteration
+            // The next test's label is the trueLabel of this CJump
+            // So we should set defaultLabel to the last trueLabel if no more cases
+            // For now, keep as above, but the next iteration's KofLoadLocal will be after this CJump's trueLabel
+            // The trueLabel is the next test, so we need to handle it
+            // In the scan, the next KofLoadLocal will be after the trueLabel, so we need to skip the trueLabel
+            // The trueLabel is the next test, so we should not treat it as body
+            scanPos[0]++;
+            // check if next is another load #switch
+            if (scanPos[0] < ctx.ops.size() && ctx.ops.get(scanPos[0]) instanceof KofLabel
+                    && scanPos[0] + 1 < ctx.ops.size()
+                    && ctx.ops.get(scanPos[0] + 1) instanceof KofLoadLocal next
+                    && "#switch".equals(ctx.rawLocalNames.get(next.index()))) {
+                scanPos[0]++; // skip the label that is the next test's label? Actually the next test starts with KofLoadLocal, not label
+                // The next test's label is the falseLabel, which we already have, but the next iteration will start with KofLoadLocal
+                // So we don't need to skip anything, just continue
+                // The KofLabel for next test is the falseLabel, which is also the next test's label
+                // In CompilerDriver, the next test's label is the previous falseLabel, which is emitted as KofLabel before next KofLoadLocal
+                // So we need to consume that label if it matches
+                if (ctx.ops.get(scanPos[0]) instanceof KofLabel lbl && lbl.label().equals(defaultLabel)) {
+                    // This label is the next test's label, keep it for next iteration
+                    // Don't consume, let next iteration handle it
+                }
+                continue;
+            }
+            break;
+        }
+        // Now actually consume the ops and build the if chain
+        // Reset pos to savedPos and build the if chain by parsing bodies
+        // For simplicity, build a nested JsIf chain from the end
+        // First, parse all bodies
+        // We need to advance pos to after the test section
+        // The test section ends at the first body label
+        // Find the first body label
+        if (bodyLabels.isEmpty()) {
+            throw new IllegalStateException("KofJS: pattern switch no bodies");
+        }
+        // Advance pos to the first body label
+        while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofLabel cl
+                && cl.label().equals(bodyLabels.get(0)))) {
+            pos[0]++;
+        }
+        for (int i = 0; i < bodyLabels.size(); i++) {
+            LabelId bodyLabel = bodyLabels.get(i);
+            if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofLabel kl)
+                    || !kl.label().equals(bodyLabel)) {
+                throw new IllegalStateException("KofJS: pattern switch body label missing");
+            }
+            pos[0]++;
+            List<JsIr.JsStatement> body = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
+            // The body will include the checkcast and store for the pattern var, which is already handled
+            // Next op should be Jump(end)
+            if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofJump j
+                    && j.target().equals(endLabel)) {
+                pos[0]++;
+            }
+            bodies.add(body);
+        }
+        List<JsIr.JsStatement> defaultCase = List.of();
+        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel dl
+                && dl.label().equals(defaultLabel)) {
+            pos[0]++;
+            defaultCase = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
+        }
+        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel
+                && ctx.ops.get(pos[0]).equals(new KofLabel(endLabel))) {
+            pos[0]++;
+        } else if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel) {
+            // end label
+            pos[0]++;
+        }
+        // Build nested if-else from the end
+        JsIr.JsStatement result = defaultCase.isEmpty() ? null : new JsIr.JsBlock(defaultCase);
+        for (int i = conditions.size() - 1; i >= 0; i--) {
+            JsIr.JsExpression cond = conditions.get(i);
+            List<JsIr.JsStatement> thenBranch = bodies.get(i);
+            List<JsIr.JsStatement> elseBranch = result == null ? List.of() : List.of(result);
+            result = new JsIr.JsIf(cond, thenBranch, elseBranch);
+        }
+        return result != null ? result : new JsIr.JsBlock(List.of());
     }
 
     // ── Expression statements ───────────────────────────────────────
@@ -1273,7 +1427,16 @@ class JsBackend implements Backend {
             stack.add(new JsIr.JsAssignExpr(localName(ctx, sl.index()), value));
         } else if (op instanceof KofLoadField lf) {
             JsIr.JsExpression receiver = pop(stack);
-            stack.add(new JsIr.JsMember(receiver, ctx.recordClass ? "_" + sanitizeName(lf.name()) : sanitizeName(lf.name())));
+            boolean isRecordField = false;
+            if (lf.ownerType() instanceof Type.ClassType ct) {
+                String ownerInternal = JvmTypeMapper.toInternalName(ct.packageName(), ct.name());
+                String ownerSimple = ct.name();
+                if (recordClassNames.contains(ownerInternal) || recordClassNames.contains(ct.name())
+                        || recordClassNames.contains(ownerSimple) || ctx.recordClass) {
+                    isRecordField = true;
+                }
+            }
+            stack.add(new JsIr.JsMember(receiver, isRecordField ? "_" + sanitizeName(lf.name()) : sanitizeName(lf.name())));
         } else if (op instanceof KofGetStatic gs) {
             if ("java.lang".equals(classPackage(gs.ownerType())) && "System".equals(className(gs.ownerType()))
                     && "out".equals(gs.name())) {
@@ -1357,9 +1520,30 @@ class JsBackend implements Backend {
             // the type checker at compile time.
         } else if (op instanceof KofInstanceOf io) {
             JsIr.JsExpression operand = pop(stack);
-            stack.add(new JsIr.JsConditional(
-                    new JsIr.JsInstanceOf(operand, jsClassName(ownerInternalName(io.type()))),
-                    new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
+            if (BuiltinTypes.isString(io.type())) {
+                stack.add(new JsIr.JsConditional(
+                        new JsIr.JsBinary(new JsIr.JsUnary("typeof", operand), "===", new JsIr.JsString("string")),
+                        new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
+            } else if (io.type() instanceof Type.PrimitiveType pt) {
+                String cn = Type.canonicalPrimitiveName(pt.name());
+                if ("int".equals(cn) || "long".equals(cn) || "float".equals(cn) || "double".equals(cn) || "byte".equals(cn) || "short".equals(cn) || "char".equals(cn)) {
+                    stack.add(new JsIr.JsConditional(
+                            new JsIr.JsBinary(new JsIr.JsUnary("typeof", operand), "===", new JsIr.JsString("number")),
+                            new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
+                } else if ("bool".equals(cn) || "boolean".equals(cn)) {
+                    stack.add(new JsIr.JsConditional(
+                            new JsIr.JsBinary(new JsIr.JsUnary("typeof", operand), "===", new JsIr.JsString("boolean")),
+                            new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
+                } else {
+                    stack.add(new JsIr.JsConditional(
+                            new JsIr.JsInstanceOf(operand, jsClassName(ownerInternalName(io.type()))),
+                            new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
+                }
+            } else {
+                stack.add(new JsIr.JsConditional(
+                        new JsIr.JsInstanceOf(operand, jsClassName(ownerInternalName(io.type()))),
+                        new JsIr.JsNumber("1"), new JsIr.JsNumber("0")));
+            }
         } else if (op instanceof KofConditionalJump cj) {
             // if-expression: (cond ? then : else)
             JsIr.JsExpression right = pop(stack);
@@ -1908,6 +2092,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_validation_")
                 || name.startsWith("kof_enum_")
                 || name.startsWith("kof_config_")
+                || name.startsWith("kof_cache_")
                 || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.equals("kof_poll") || name.equals("kof_done")
                 || name.equals("kof_cancel") || name.equals("kof_cancelled")
@@ -3177,6 +3362,49 @@ class JsBackend implements Backend {
             export function kofMqQueueSize(queue) {
                 const q = kofMqQueues.get(queue);
                 return q ? q.length : 0;
+            }
+
+            export const kofCacheData = new Map();
+            export const kofCacheExpiry = new Map();
+            export function kofCacheGet(key) {
+                const exp = kofCacheExpiry.get(key);
+                if (exp != null && exp !== 0 && Date.now() > exp) {
+                    kofCacheData.delete(key);
+                    kofCacheExpiry.delete(key);
+                    return null;
+                }
+                return kofCacheData.get(key) ?? null;
+            }
+            export function kofCacheSet(key, value) {
+                kofCacheData.set(key, value);
+                kofCacheExpiry.delete(key);
+            }
+            export function kofCacheSetTtl(key, value, ttl) {
+                kofCacheData.set(key, value);
+                if (ttl > 0) {
+                    kofCacheExpiry.set(key, Date.now() + ttl * 1000);
+                } else {
+                    kofCacheExpiry.delete(key);
+                }
+            }
+            export function kofCacheTtl(key) {
+                const exp = kofCacheExpiry.get(key);
+                if (exp == null || exp === 0) return -1;
+                const remaining = exp - Date.now();
+                if (remaining <= 0) {
+                    kofCacheData.delete(key);
+                    kofCacheExpiry.delete(key);
+                    return -1;
+                }
+                return Math.floor(remaining / 1000);
+            }
+            export function kofCacheDelete(key) {
+                kofCacheData.delete(key);
+                kofCacheExpiry.delete(key);
+            }
+            export function kofCacheClear() {
+                kofCacheData.clear();
+                kofCacheExpiry.clear();
             }
 
             // ── kof.security (docs/security.md §5) ────────────────────

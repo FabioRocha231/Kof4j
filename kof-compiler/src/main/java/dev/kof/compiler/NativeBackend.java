@@ -602,7 +602,9 @@ public class NativeBackend implements Backend {
             case KofCheckCast cc -> { }
             case KofInstanceOf io -> {
                 int targetTypeId = 0;
-                if (io.type() instanceof Type.ClassType ct) {
+                if (BuiltinTypes.isString(io.type())) {
+                    targetTypeId = NativeRuntime.KOF_STRING_TYPE_ID;
+                } else if (io.type() instanceof Type.ClassType ct) {
                     for (IRClass clazz : allClassesMap.values()) {
                         if (clazz.name().equals(ct.name()) || clazz.name().endsWith("/" + ct.name())
                                 || ct.name().endsWith("/" + clazz.name()) || ct.name().equals(sanitizeName(clazz.name()))) {

@@ -593,10 +593,26 @@ class SemanticAnalyzer {
             case BreakStmt ignored -> {}
             case ContinueStmt ignored -> {}
             case IfStmt ifStmt -> {
-                inferType(ifStmt.condition(), scope);
+                Type condType = inferType(ifStmt.condition(), scope);
+                // Nullability narrowing: if (x != null) { x: T } where x: T?
                 SymbolTable ifScope = scope.enterScope();
+                if (ifStmt.condition() instanceof BinaryExpr be && "!=".equals(be.operator())
+                        && be.left() instanceof IdentifierExpr ie
+                        && be.right() instanceof LiteralExpr le && le.kind() == ConcreteLiteralKind.NULL) {
+                    SymbolTable.Symbol sym = scope.resolve(ie.name());
+                    if (sym != null && sym.type() instanceof Type.NullableType nt) {
+                        ifScope.define(new SymbolTable.LocalVariableSymbol(ie.name(), nt.inner(), 0));
+                    }
+                } else if (ifStmt.condition() instanceof BinaryExpr be2 && "!=".equals(be2.operator())
+                        && be2.right() instanceof IdentifierExpr ie2
+                        && be2.left() instanceof LiteralExpr le2 && le2.kind() == ConcreteLiteralKind.NULL) {
+                    SymbolTable.Symbol sym2 = scope.resolve(ie2.name());
+                    if (sym2 != null && sym2.type() instanceof Type.NullableType nt2) {
+                        ifScope.define(new SymbolTable.LocalVariableSymbol(ie2.name(), nt2.inner(), 0));
+                    }
+                }
                 analyzeStatement(ifStmt.thenBranch(), ifScope, returnType);
-                if (ifStmt.elseBranch() != null) analyzeStatement(ifStmt.elseBranch(), ifScope, returnType);
+                if (ifStmt.elseBranch() != null) analyzeStatement(ifStmt.elseBranch(), scope, returnType);
             }
             case WhileStmt ws -> {
                 inferType(ws.condition(), scope);
@@ -631,9 +647,61 @@ class SemanticAnalyzer {
                 inferType(ss.expression(), scope);
                 SymbolTable switchScope = scope.enterScope();
                 for (SwitchCase sc : ss.cases()) {
-                    inferType(sc.value(), scope);
-                    SymbolTable caseScope = switchScope.enterScope();
-                    analyzeBody(sc.body(), caseScope, returnType);
+                    if (sc.value() instanceof PatternExpr pe) {
+                        Type patType = resolveType(pe.typeName(), scope);
+                        if (patType == null) patType = Type.UnknownType.UNKNOWN;
+                        SymbolTable caseScope = switchScope.enterScope();
+                        if (pe.varName() != null) {
+                            caseScope.define(new SymbolTable.LocalVariableSymbol(pe.varName(), patType, 0));
+                        }
+                        if (!pe.fieldVars().isEmpty()) {
+                            String simple = patType instanceof Type.ClassType ct ? ct.name() : pe.typeName();
+                            SymbolTable.ClassSymbol cls = getClass(simple);
+                            if (cls == null) {
+                                // Try via scope resolve
+                                Type t2 = resolveType(pe.typeName(), scope);
+                                if (t2 instanceof Type.ClassType ct2) cls = getClass(ct2.name());
+                            }
+                            java.util.List<String> fieldNames = pe.fieldVars();
+                            for (int i = 0; i < fieldNames.size(); i++) {
+                                String fv = fieldNames.get(i);
+                                Type fieldType = Type.UnknownType.UNKNOWN;
+                                if (cls != null) {
+                                    // Try to find field by index or name
+                                    var members = cls.members();
+                                    // For records, fields are in order; try to get by index
+                                    java.util.List<SymbolTable.Symbol> fields = new java.util.ArrayList<>();
+                                    for (var e : members.localSymbols().values()) {
+                                        if (e instanceof SymbolTable.FieldSymbol) fields.add(e);
+                                    }
+                                    // If fieldVars size matches record field count, use positional
+                                    if (fields.size() == fieldNames.size() && i < fields.size()) {
+                                        fieldType = fields.get(i).type();
+                                    } else {
+                                        SymbolTable.Symbol sym = members.resolve(fv);
+                                        if (sym != null) fieldType = sym.type();
+                                        else {
+                                            // Try by field name from record declaration
+                                            for (AstNode d : currentUnit.declarations()) {
+                                                if (d instanceof RecordDeclarationNode rec && rec.name().equals(simple)) {
+                                                    if (i < rec.components().size()) {
+                                                        fieldType = resolveType(rec.components().get(i).type(), scope);
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                caseScope.define(new SymbolTable.LocalVariableSymbol(fv, fieldType, 0));
+                            }
+                        }
+                        analyzeBody(sc.body(), caseScope, returnType);
+                    } else {
+                        inferType(sc.value(), scope);
+                        SymbolTable caseScope = switchScope.enterScope();
+                        analyzeBody(sc.body(), caseScope, returnType);
+                    }
                 }
                 if (!ss.defaultBody().isEmpty()) {
                     SymbolTable defaultScope = switchScope.enterScope();
@@ -669,6 +737,10 @@ class SemanticAnalyzer {
 
     private Type inferTypeInternal(ExpressionNode expr, SymbolTable scope) {
         return switch (expr) {
+            case PatternExpr pe -> {
+                Type t = resolveType(pe.typeName(), scope);
+                yield t != null ? t : Type.UnknownType.UNKNOWN;
+            }
             case LiteralExpr lit -> inferLiteralType(lit);
             case IdentifierExpr ie -> {
                 SymbolTable.Symbol sym = scope.resolve(ie.name());
@@ -697,6 +769,7 @@ class SemanticAnalyzer {
                         && !"json".equals(ie.name()) && !"process".equals(ie.name())
                         && !KofWeb.isWebNamespace(ie.name())
                         && !KofConfig.isConfigNamespace(ie.name())
+                        && !KofCache.isCacheNamespace(ie.name())
                         && !KofDb.isDbNamespace(ie.name())
                         && !KofOrm.isOrmNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
@@ -730,12 +803,16 @@ class SemanticAnalyzer {
                                 && !"json".equals(ie.name()) && !"process".equals(ie.name())
                                 && !KofWeb.isWebNamespace(ie.name())
                                 && !KofConfig.isConfigNamespace(ie.name())
+                                && !KofCache.isCacheNamespace(ie.name())
                                 && !KofDb.isDbNamespace(ie.name())
                                 && !KofOrm.isOrmNamespace(ie.name())
                                 && !KofLog.isLogNamespace(ie.name())
                                 && !KofSecurity.isSecurityNamespace(ie.name())
                                 && !KofValidation.isValidationNamespace(ie.name())
                                 && !KofObservability.isObservabilityNamespace(ie.name())
+                                && !KofHttp.isHttpNamespace(ie.name())
+                                && !KofMq.isMqNamespace(ie.name())
+                                && !KofTime.isTimeNamespace(ie.name())
                                 && !knownClasses.containsKey(ie.name())) {
                             diagnostics.error("", 0, 0, 0,
                                     "undefined variable: '" + ie.name() + "'", "SEM020");
@@ -1031,6 +1108,13 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofConfig.ConfigCall cfgCall = KofConfig.staticCall(mc.methodName(), argTypes);
                         if (cfgCall != null) yield cfgCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofCache.isCacheNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofCache.CacheCall cacheCall = KofCache.staticCall(mc.methodName(), argTypes);
+                        if (cacheCall != null) yield cacheCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofHttp.isHttpNamespace(rid.name())) {
@@ -1539,6 +1623,14 @@ class SemanticAnalyzer {
         if (from == null || to == null) return true;
         if (Type.isUnknown(from) || Type.isUnknown(to)) return true;
         if (from instanceof Type.TypeVariable || to instanceof Type.TypeVariable) return true;
+        if (from instanceof Type.NullableType fn) {
+            if (to instanceof Type.NullableType tn) return isAssignable(fn.inner(), tn.inner());
+            return false;
+        }
+        if (to instanceof Type.NullableType tn) {
+            if (from instanceof Type.NullableType) return isAssignable(((Type.NullableType)from).inner(), tn.inner());
+            return isAssignable(from, tn.inner());
+        }
         if (from.equals(to)) return true;
         if (from instanceof Type.PrimitiveType fp && to instanceof Type.PrimitiveType tp) {
             // double → float: o lowering emite D2F; sem isso literais

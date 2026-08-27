@@ -112,7 +112,10 @@ final class JvmWebRuntime {
 
                 public static void kof_web_route(String appId, String method, String path, Object handler) {
                     if (handler == null) throw new IllegalArgumentException("route handler is null");
-                    kof_web_app(appId).routes.add(new WebRoute(method.toUpperCase(), path, handler));
+                    String m = method.toUpperCase();
+                    if ("WS".equals(m)) m = "GET";
+                    if ("SSE".equals(m)) m = "GET";
+                    kof_web_app(appId).routes.add(new WebRoute(m, path, handler));
                 }
 
                 public static void kof_web_use(String appId, Object handler) {

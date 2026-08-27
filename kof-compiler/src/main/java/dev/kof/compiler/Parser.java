@@ -988,7 +988,54 @@ class Parser {
             if (check(TokenType.CASE)) {
                 SourcePosition cp = pos();
                 advance();
-                ExpressionNode value = parseExpression();
+                ExpressionNode value;
+                // pattern matching: case Type var :  or  case Type(var1, var2) :
+                if (check(TokenType.IDENTIFIER) && pos + 2 < tokens.size()
+                        && tokens.get(pos + 1).type() == TokenType.IDENTIFIER
+                        && tokens.get(pos + 2).type() == TokenType.COLON) {
+                    String typeName = advance().value();
+                    String varName = advance().value();
+                    value = new PatternExpr(cp, typeName, varName, java.util.List.of());
+                } else if (check(TokenType.IDENTIFIER) && pos + 1 < tokens.size()
+                        && tokens.get(pos + 1).type() == TokenType.LPAREN) {
+                    // Try destructuring: case Type(var1, var2) :
+                    String typeName = tokens.get(pos).value();
+                    int depth = 0;
+                    int rparenPos = -1;
+                    for (int k = pos + 1; k < tokens.size() && k < pos + 20; k++) {
+                        TokenType tt = tokens.get(k).type();
+                        if (tt == TokenType.LPAREN) depth++;
+                        else if (tt == TokenType.RPAREN) {
+                            depth--;
+                            if (depth == 0) { rparenPos = k; break; }
+                        }
+                    }
+                    if (rparenPos != -1 && rparenPos + 1 < tokens.size()
+                            && tokens.get(rparenPos + 1).type() == TokenType.COLON) {
+                        java.util.List<String> fieldVars = new java.util.ArrayList<>();
+                        for (int q = pos + 2; q < rparenPos; q++) {
+                            if (tokens.get(q).type() == TokenType.IDENTIFIER) {
+                                String v = tokens.get(q).value();
+                                if (("var".equals(v) || "val".equals(v)) && q + 1 < rparenPos
+                                        && tokens.get(q + 1).type() == TokenType.IDENTIFIER) {
+                                    fieldVars.add(tokens.get(q + 1).value());
+                                    q++;
+                                } else {
+                                    fieldVars.add(v);
+                                }
+                            }
+                        }
+                        advance(); // Type
+                        advance(); // LPAREN
+                        while (!check(TokenType.RPAREN) && !atEnd()) advance();
+                        if (check(TokenType.RPAREN)) advance();
+                        value = new PatternExpr(cp, typeName, null, java.util.List.copyOf(fieldVars));
+                    } else {
+                        value = parseExpression();
+                    }
+                } else {
+                    value = parseExpression();
+                }
                 expect(TokenType.COLON, "Expected ':'", "PARSE073");
                 List<StatementNode> caseBody = new ArrayList<>();
                 while (!check(TokenType.CASE) && !check(TokenType.DEFAULT) && !check(TokenType.RBRACE) && !atEnd()) {
@@ -1509,6 +1556,12 @@ class Parser {
             expect(TokenType.RBRACKET, "Expected ']'", "PARSE045");
             type.append("[]");
         }
+        while (check(TokenType.QUESTION)) {
+            System.err.println("DEBUG parseTypeRef ? at "+peek().value()+" pos "+pos);
+            advance();
+            type.append("?");
+        }
+        System.err.println("DEBUG parseTypeRef final "+type);
         return type.toString();
     }
 

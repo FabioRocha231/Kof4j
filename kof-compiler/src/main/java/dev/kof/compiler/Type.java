@@ -42,7 +42,14 @@ sealed interface Type {
         static final UnknownType UNKNOWN = new UnknownType();
     }
 
+    record NullableType(Type inner) implements Type {
+    }
+
     static Type of(String name) {
+        if (name.endsWith("?")) {
+            Type inner = of(name.substring(0, name.length() - 1));
+            return new NullableType(inner);
+        }
         if (name.endsWith("[]")) {
             Type component = of(name.substring(0, name.length() - 2));
             return new ArrayType(component);

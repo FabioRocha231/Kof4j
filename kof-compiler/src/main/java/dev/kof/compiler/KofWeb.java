@@ -32,7 +32,7 @@ final class KofWeb {
 
     /** HTTP methods that can be routed with {@code app.<method>(path, handler)}. */
     private static final List<String> ROUTE_METHODS =
-            List.of("get", "post", "put", "delete", "patch", "options");
+            List.of("get", "post", "put", "delete", "patch", "options", "ws", "sse");
 
     static boolean isAppType(Type t) {
         return APP.equals(t);
@@ -102,6 +102,12 @@ final class KofWeb {
                     : null;
             case "body", "method", "path" -> argCount == 0
                     ? new WebCall("kof_web_" + name, STR, List.of())
+                    : null;
+            case "status" -> argCount == 2
+                    ? new WebCall("kof_web_status", STR, List.of(INT, STR))
+                    : null;
+            case "headerSet", "setHeader" -> argCount == 2
+                    ? new WebCall("kof_web_header_set", STR, List.of(STR, STR))
                     : null;
             default -> null;
         };

@@ -1,7 +1,7 @@
 # Status do Projeto Kof
 
-**Última atualização:** 25 de agosto de 2026
-**Versão:** 0.1.0
+**Última atualização:** 26 de agosto de 2026
+**Versão:** 0.1.2-beta
 
 ---
 
@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 626 testes (626 passando, 1 skip condicional)
+mvn test             → 639 testes (639 passando, 1 skip condicional)
 kof build            → PASS (--target jvm|native|js) [--release]
 kof run              → PASS (jvm|native|js) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -18,7 +18,7 @@ kof test             → PASS (suíte estruturada `test "nome" { }` nos 3 target
 kof bench            → PASS (harness: compile, run, validate, métricas, baseline)
 kof debug            → PASS (DAP MVP no target JVM)
 kof info             → PASS
-kof lsp              → PASS (diagnostics reais do frontend)
+kof lsp              → PASS (hover/completion + diagnostics reais)
 kof install          → PASS
 tests/run-golden.sh  → 16/16 (8 casos × jvm+native)
 tests/run-integration.sh → 9/9 (CLI + serve + kof test)
@@ -468,7 +468,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ## Bugs Restantes (reais)
 
 1. GC no Native (memória devolvida ao SO no exit)
-2. `spawn` no Native: CONC001 (gap documentado)
+2. `spawn` no Native: CONC001 (gap documentado) — `spawn`/`await` OK em JVM/JS
 3. JSON de objetos/records no Native: JSN002 (gap documentado)
 4. JSON Float/Double: JSN001 (gap documentado)
 5. ~~JSON decode de arrays (`Int[]`)~~ — ✅ JSN003 fechado: decoders
@@ -477,37 +477,55 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 6. ~~Lambdas sem captura~~ — ✅ captura implementada (mutable via box `BoxN`; `Lambda0`/`Box0`)
 7. ~~Generics `Box<T>` com println nativo~~ — ✅ 25/08 `Box<Int>`/`T` substituído + `kof_int_to_string`
 8. ~~`SEM025` falso-positivo em `hashCode/equals/toString`~~ — ✅ `isObjectMethod` em 25/08
-9. Resultado de tarefa (`await`/join explícito): planned
-10. `kof fmt`: planned
-11. Map/Set, Option/null safety, pattern matching: planned (P1 — outro agente em progresso)
-12. Web: status codes/headers customizados por handler (planned)
-13. Web: target `js` reporta WEB001; target `native` sem servidor web
-14. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
-    feito; falta handshake completo, query e prepared statements)
-15. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão
+9. `await`/join: ✅ JVM/JS; Native CONC001
+10. `kof fmt`: planned (P5)
+11. ~~Map/Set~~ — ✅ `List.map/filter/reduce` + `Map/Set` JVM/Native/JS (26/08)
+12. Pattern matching: 🚧 `switch (x) { case String s: ... }` em `Parser/Semantic/CompilerDriver` + `Native rbx→rcx` + `JS typeof`; `record` destructuring pendente
+13. Null safety `String?`: planned (P1)
+14. Módulos multi-arquivo: planned (P1) — `kof build <dir>` já compila, falta semântica unificada
+15. Web: status codes/headers customizados por handler (planned, P2)
+16. Web: target `js` reporta WEB001; target `native` sem servidor web (P2)
+17. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
+    feito; falta handshake completo, query e prepared statements) (P3)
+18. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão
     linear dos demais; segfault e fragmentos errados eliminados.
-16. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em
+19. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em
     compile-time; SSE real + dtoa são trabalho futuro do backend.
-17. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
+20. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
     inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time.
     Fechar exige backend SSE + formatação double→string.
 
 ---
 
-## Próximos Passos
+## Próximos Passos (ordem P1→P5)
 
-- ~~Database + transactions~~ — ✅ kof.db nível 0 (JDBC JVM + SQLite nativo);
-  falta query DSL tipada (nível 3 da DATABASE_VISION) e MySQL nativo completo
-- Validation + scheduling + events nativos — Fase 8
-- DI nativa + lifecycle (`application { onStart/onShutdown }`) — Fase 9
-- Aplicação web completa em Kof sem Spring (teste obrigatório) — Fase 12
-- Spring Starter (`kof spring starter`) — Fase 13
-- Structured logging (JSON), correlation ID; métricas/health/tracing — Fase 4
-- Resultado observável de tarefas (`await`), filas (`kof.concurrent.Queue`)
-- Scheduler nativo para `spawn`
-- `kof fmt`, hover/completion no LSP
-- Roadmap: `docs/roadmap.md`; plano de execução: `docs/plan-spring-independence.md`;
-  **plano de plataforma completa: `docs/plan-platform-completion.md`**
+**P1 — Linguagem (em progresso):**
+1. ✅ `Map/Set` + `enum` + `await` + `List.map/filter/reduce` (JVM/Native/JS)
+2. 🚧 `Pattern matching` — `switch (x) { case String s: ... }` + `instanceof`/`checkcast` nos 3 backends (record destructuring pendente)
+3. `Nullability` `String?`/`Int?` + `?`-check em compile-time
+4. `Módulos multi-arquivo` — `kof build <dir>` com resolução unificada
+
+**P2 — Web completa (próxima listinha):**
+5. Resposta rica `status(201, body)`/`header("X","y")` no handler
+6. `cache.get/set/ttl` in-process (depende de Map)
+7. `WebSocket` `app.ws("/chat") { }` + `SSE`
+8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM done, Native/JS gap)
+9. `kof.http` client já ✅, falta `HTTP/2`/`retry`/`timeout`/`circuit breaker`
+
+**P3 — Data produção:**
+10. Query DSL tipada `User.query { where age > 18 }`
+11. Connection pooling + `kof.db`/`kof.orm` fora do JVM (JS via WASM, Native ORM sobre SQLite)
+12. MySQL/MariaDB nativo completo (handshake+query+prepared)
+
+**P4 — Observabilidade:**
+13. Métricas `histogram` + endpoint `/metrics` (Prometheus)
+14. Health `app.health("/health")` + tracing/OpenTelemetry
+
+**P5 — DX:**
+15. `kof fmt` (parser real) + `kof init` + `REPL`
+16. LSP hover/completion/rename + Debugger Native DWARF/JS source maps + VS Code extension
+
+Roadmap: `docs/roadmap.md`; execução: `docs/plan-platform-completion.md`
 
 ---
 
