@@ -518,6 +518,11 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_alloc_mmap:
+                # try GC before mmap if free-list was empty
+                call kof_gc_collect
+                movq kof_free_head(%rip), %r13
+                testq %r13, %r13
+                jne .Lkof_alloc_search
                 movq $0, %rdi
                 movq %r12, %rsi
                 movq $0x22, %rdx
