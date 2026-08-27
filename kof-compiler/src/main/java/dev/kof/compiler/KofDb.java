@@ -45,7 +45,7 @@ final class KofDb {
      *  driver) — SQLite primeiro (libsqlite3.so.0), depois mysql/oracle.
      *  JS reporta DB001. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM || target == Target.NATIVE;
+        return target == Target.JVM || target.isNative();
     }
 
     static String gapCode() {

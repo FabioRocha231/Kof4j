@@ -326,6 +326,8 @@ private static void build(String[] args) {
         return switch (value) {
             case "jvm" -> Target.JVM;
             case "native" -> Target.NATIVE;
+            case "native.risc", "native.riscv64", "native.riscv" -> Target.NATIVE_RISCV64;
+            case "native.arm", "native.aarch64", "native.aarch" -> Target.NATIVE_AARCH64;
             case "js" -> Target.JS;
             case "android" -> Target.ANDROID;
             default -> {

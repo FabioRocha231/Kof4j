@@ -44,7 +44,7 @@ final class KofLog {
 
     /** kof.log: JVM + Native (asm próprio); JS reporta LOG001. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM || target == Target.NATIVE;
+        return target == Target.JVM || target.isNative();
     }
 
     static String gapCode() {

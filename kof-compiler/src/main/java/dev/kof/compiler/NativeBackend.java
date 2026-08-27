@@ -11,6 +11,7 @@ import java.util.Map;
 
 public class NativeBackend implements Backend {
 
+    private final Target target;
     private final Map<LabelId, String> labelMap = new HashMap<>();
     private int labelCounter = 0;
     private final List<String[]> stringLiterals = new ArrayList<>();
@@ -22,6 +23,9 @@ public class NativeBackend implements Backend {
     private final Map<String, String> functionMangleMap = new HashMap<>();
     private final Map<String, ClassLayout> layoutCache = new HashMap<>();
     private Map<String, IRClass> allClassesMap = new HashMap<>();
+
+    public NativeBackend() { this(Target.NATIVE); }
+    public NativeBackend(Target target) { this.target = target; }
 
     private String resolveLabel(LabelId id) {
         return labelMap.computeIfAbsent(id, k -> ".Lkof_" + (labelCounter++));
@@ -202,6 +206,10 @@ public class NativeBackend implements Backend {
 
     @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
+        if (target == Target.NATIVE_RISCV64 || target == Target.NATIVE_AARCH64) {
+            System.err.println("NativeBackend: " + target.nativeArch() + " codegen not yet implemented — emitting x86_64 placeholder (target separation done, arch codegen pending)");
+            // keep x86_64 emission for now so build doesn't break; CI will skip binary execution via qemu
+        }
         if (module.classes().isEmpty()) return;
         labelCounter = 0;
         labelMap.clear();

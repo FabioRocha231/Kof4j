@@ -421,7 +421,9 @@ private Target target = Target.JVM;
     private Backend selectBackend(Target target) {
         return switch (target) {
             case JVM -> backendWithClasspath(new JvmBackend());
-            case NATIVE -> new NativeBackend();
+            case NATIVE -> new NativeBackend(Target.NATIVE);
+            case NATIVE_RISCV64 -> new NativeBackend(Target.NATIVE_RISCV64);
+            case NATIVE_AARCH64 -> new NativeBackend(Target.NATIVE_AARCH64);
             case JS -> new JsBackend();
             // Android: ART executa bytecode dex'd — a emissão é a mesma do
             // backend JVM; o alvo vive nas validações AND* e no empacotamento
@@ -1725,7 +1727,7 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
-                if (target == Target.NATIVE) {
+                if (target.isNative()) {
                     if (currentDiagnostics != null) {
                         currentDiagnostics.error("", 0, 0, 0,
                                 "spawn: not supported on the Native target yet (JVM supports it)", "CONC001");
@@ -2484,9 +2486,9 @@ private Target target = Target.JVM;
                     boolean argsOk = "cancelled".equals(mc.methodName())
                             ? mc.arguments().isEmpty() : !mc.arguments().isEmpty();
                     if (!argsOk) yield localIdx;
-                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                    if (target.isNative() || target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target == Target.NATIVE ? "CONC001" : "AND001";
+                            String code = target.isNative() ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
@@ -2535,9 +2537,9 @@ private Target target = Target.JVM;
                         && mc.arguments().size() == 1
                         && findLocalVar(mc.methodName(), locals) == null) {
                     // sem threads no alvo não há Handle real: gap honesto
-                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                    if (target.isNative() || target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target == Target.NATIVE ? "CONC001" : "AND001";
+                            String code = target.isNative() ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
@@ -2575,7 +2577,7 @@ private Target target = Target.JVM;
                     }
                     if (target != Target.JVM) {
                         if (currentDiagnostics != null) {
-                            String code = target == Target.NATIVE ? "CONC001"
+                            String code = target.isNative() ? "CONC001"
                                     : target == Target.ANDROID ? "AND001" : "CONC003";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
@@ -2604,9 +2606,9 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
-                    if (target == Target.NATIVE || target == Target.ANDROID) {
+                    if (target.isNative() || target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target == Target.NATIVE ? "CONC001" : "AND001";
+                            String code = target.isNative() ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
@@ -2698,7 +2700,7 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type argType = inferExprType(mc.arguments().get(0), locals);
                     if (isPrimitiveType(argType)) {
-                        if (target == Target.NATIVE) {
+                        if (target.isNative()) {
                             ops.add(new KofCall(
                                     BuiltinTypes.STRING,
                                     "valueOf", List.of(argType),
@@ -2778,7 +2780,7 @@ private Target target = Target.JVM;
                             int tag = jsonListTag(listElementType(argType));
                             ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, tag));
                             paramTypes = List.of(argType, Type.PrimitiveType.INT);
-                        } else if (target == Target.NATIVE
+                        } else if (target.isNative()
                                 && argType instanceof Type.ClassType ect
                                 && !BuiltinTypes.isString(argType)
                                 // List/Map têm caminho builtin próprio
@@ -2867,7 +2869,7 @@ private Target target = Target.JVM;
                             String className = ect.packageName().isEmpty()
                                     ? ect.name() : ect.packageName() + "." + ect.name();
                             ops.add(new KofLoadLiteral(BuiltinTypes.STRING, className));
-                        } else if (target == Target.NATIVE
+                        } else if (target.isNative()
                                 && targetType instanceof Type.ClassType dct
                                 && !BuiltinTypes.isString(targetType)
                                 // List/Map têm caminho builtin próprio
@@ -3078,7 +3080,7 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
                     if (procCall != null) {
-                        if (target == Target.NATIVE) {
+                        if (target.isNative()) {
                             if (currentDiagnostics != null) {
                                 currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                         mc.position() != null ? mc.position().line() : 0,
@@ -3405,7 +3407,7 @@ private Target target = Target.JVM;
                         // super.method(args): non-virtual call to the
                         // superclass implementation — lowered to
                         // INVOKESPECIAL on the direct superclass (JVM).
-                        if (target == Target.NATIVE && currentDiagnostics != null) {
+                        if (target.isNative() && currentDiagnostics != null) {
                             SourcePosition p = mc.position();
                             currentDiagnostics.error(p != null ? p.file() : "",
                                     p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
@@ -3751,7 +3753,7 @@ private Target target = Target.JVM;
                                 default -> Type.UnknownType.UNKNOWN;
                             };
                             for (ExpressionNode arg : mc.arguments()) localIdx = emitExpression(arg, ops, owner, localIdx, locals);
-                            if (target == Target.NATIVE
+                            if (target.isNative()
                                     && ("kof_set_add".equals(setFn) || "kof_set_contains".equals(setFn)
                                         || "kof_set_remove".equals(setFn))) {
                                 // tag de tipo só no Native (HashSet usa equals no JVM)
@@ -5905,7 +5907,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     private boolean jsonSupported(Type type, boolean isDecode) {
         Type check = BuiltinTypes.isList(type) ? listElementType(type) : type;
         if (check instanceof Type.PrimitiveType pt && ("float".equals(pt.name()) || "double".equals(pt.name()))) {
-            if (target == Target.NATIVE) {
+            if (target.isNative()) {
                 if (currentDiagnostics != null) {
                     currentDiagnostics.error("", 0, 0, 0,
                             "json: Float/Double is not supported on the Native target yet (use int, long, bool or String)",
@@ -5922,7 +5924,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                 return true;
             }
             // arrays de float/double permanecem sob o gap FP
-            if (target == Target.NATIVE) {
+            if (target.isNative()) {
                 if (currentDiagnostics != null) {
                     currentDiagnostics.error("", 0, 0, 0,
                             "json.decode: Float/Double arrays are not supported on the Native target yet",
@@ -5932,7 +5934,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
             }
             return true;
         }
-        if (check instanceof Type.ClassType && target == Target.NATIVE && !BuiltinTypes.isList(type)
+        if (check instanceof Type.ClassType && target.isNative() && !BuiltinTypes.isList(type)
                 && !BuiltinTypes.isString(type)) {
             // JSN002 fechado para classes cujos campos sao todos suportados
             // pelo walker nativo (primitivos, string e objetos aninhados).
