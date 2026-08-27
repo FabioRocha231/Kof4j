@@ -17,6 +17,7 @@
         <module>kof-cli</module>
         <module>kof-runtime</module>
         <module>kof-script</module>
+        <module>kof-c-compiler</module>
     </modules>
 
     <properties>

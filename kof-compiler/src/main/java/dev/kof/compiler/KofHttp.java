@@ -46,9 +46,9 @@ final class KofHttp {
 
     record HttpCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.http: JVM only — Native/JS reportam HTTP002. */
+    /** kof.http: JVM + JS (JS via Java HttpClient interop / fetch), Native reporta HTTP002. */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM;
+        return target == Target.JVM || target == Target.JS;
     }
 
     static String gapCode() {

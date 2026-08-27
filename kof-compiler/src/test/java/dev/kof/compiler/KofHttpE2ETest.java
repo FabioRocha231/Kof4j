@@ -157,8 +157,33 @@ class KofHttpE2ETest {
         assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
                 .anyMatch(d -> d.message().contains("HTTP002")), "" + nativeResult.diagnostics().getDiagnostics());
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
-        assertFalse(jsResult.success(), "JS should reject http.get");
-        assertTrue(jsResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("HTTP002")), "" + jsResult.diagnostics().getDiagnostics());
+        assertTrue(jsResult.success(), "JS should now support http.get via fetch/Java HttpClient: " + jsResult.diagnostics().getDiagnostics());
+    }
+
+    @Test
+    void jsHttpGet(@TempDir Path tempDir) throws IOException {
+        int port = startServer(tempDir);
+        Path source = tempDir.resolve("JsClient.kf");
+        Files.writeString(source, """
+                main() {
+                    println(http.get("http://127.0.0.1:%d/hello"))
+                }
+                """.formatted(port));
+        Path outDir = tempDir.resolve("js-out");
+        CompilationResult result = driver.compile(source, outDir, Target.JS);
+        assertTrue(result.success(), "" + result.diagnostics().getDiagnostics());
+        String entry = outDir.resolve("Default.mjs").toString();
+        if (!Files.exists(Path.of(entry))) {
+            try (var s = Files.walk(outDir)) {
+                entry = s.filter(p -> p.toString().endsWith(".mjs")).findFirst().map(Path::toString).orElse(null);
+            }
+        }
+        assertNotNull(entry, "JS entry not found");
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        java.io.ByteArrayOutputStream beos = new java.io.ByteArrayOutputStream();
+        int ec = dev.kof.runtime.KofJsRunner.run(Path.of(entry), baos, System.in, beos, false, new String[0]);
+        assertEquals(0, ec, "JS exit code should be 0, stderr: " + beos.toString());
+        String out = baos.toString().replace("\r\n", "\n").trim();
+        assertEquals("Hello from Kof", out);
     }
 }

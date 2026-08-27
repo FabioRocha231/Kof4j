@@ -725,7 +725,170 @@ public class NativeBackend implements Backend {
         sb.append("    pushq %rax\n");
     }
 
+    private static boolean isFloatType(Type t) {
+        return t instanceof Type.PrimitiveType pt && "float".equals(Type.canonicalPrimitiveName(pt.name()));
+    }
+    private static boolean isDoubleType(Type t) {
+        return t instanceof Type.PrimitiveType pt && "double".equals(Type.canonicalPrimitiveName(pt.name()));
+    }
+
     private void emitBinary(StringBuilder sb, KofBinary kb) {
+        Type opTy = kb.operandType();
+        if (isFloatType(opTy)) {
+            sb.append("    popq %rcx\n");
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    movd %ecx, %xmm1\n");
+            switch (kb.op()) {
+                case ADD -> sb.append("    addss %xmm1, %xmm0\n");
+                case SUB -> sb.append("    subss %xmm1, %xmm0\n");
+                case MUL -> sb.append("    mulss %xmm1, %xmm0\n");
+                case DIV -> sb.append("    divss %xmm1, %xmm0\n");
+                case EQ -> {
+                    sb.append("    ucomiss %xmm1, %xmm0\n");
+                    sb.append("    sete %al\n");
+                    sb.append("    setnp %dl\n");
+                    sb.append("    andb %dl, %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case NE -> {
+                    sb.append("    ucomiss %xmm1, %xmm0\n");
+                    sb.append("    setne %al\n");
+                    sb.append("    setp %dl\n");
+                    sb.append("    orb %dl, %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case LT -> {
+                    sb.append("    ucomiss %xmm1, %xmm0\n");
+                    sb.append("    setb %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case LE -> {
+                    sb.append("    ucomiss %xmm1, %xmm0\n");
+                    sb.append("    setbe %al\n");
+                    sb.append("    setp %dl\n");
+                    // NaN => unordered => CF=1 PF=1 => be would be true, clear it
+                    sb.append("    testb %dl, %dl\n");
+                    sb.append("    jnz 1f\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("    jmp 2f\n");
+                    sb.append("1: xorl %eax, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("2:\n");
+                    return;
+                }
+                case GT -> {
+                    sb.append("    ucomiss %xmm1, %xmm0\n");
+                    sb.append("    seta %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case GE -> {
+                    sb.append("    ucomiss %xmm1, %xmm0\n");
+                    sb.append("    setae %al\n");
+                    sb.append("    setp %dl\n");
+                    sb.append("    testb %dl, %dl\n");
+                    sb.append("    jnz 1f\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("    jmp 2f\n");
+                    sb.append("1: xorl %eax, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("2:\n");
+                    return;
+                }
+                default -> { sb.append("    movd %xmm0, %eax\n"); sb.append("    pushq %rax\n"); return; }
+            }
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    movl %eax, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (isDoubleType(opTy)) {
+            sb.append("    popq %rcx\n");
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    movq %rcx, %xmm1\n");
+            sb.append("    movq %xmm0, %xmm0\n");
+            switch (kb.op()) {
+                case ADD -> sb.append("    addsd %xmm1, %xmm0\n");
+                case SUB -> sb.append("    subsd %xmm1, %xmm0\n");
+                case MUL -> sb.append("    mulsd %xmm1, %xmm0\n");
+                case DIV -> sb.append("    divsd %xmm1, %xmm0\n");
+                case EQ -> {
+                    sb.append("    ucomisd %xmm1, %xmm0\n");
+                    sb.append("    sete %al\n");
+                    sb.append("    setnp %dl\n");
+                    sb.append("    andb %dl, %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case NE -> {
+                    sb.append("    ucomisd %xmm1, %xmm0\n");
+                    sb.append("    setne %al\n");
+                    sb.append("    setp %dl\n");
+                    sb.append("    orb %dl, %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case LT -> {
+                    sb.append("    ucomisd %xmm1, %xmm0\n");
+                    sb.append("    setb %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case LE -> {
+                    sb.append("    ucomisd %xmm1, %xmm0\n");
+                    sb.append("    setbe %al\n");
+                    sb.append("    setp %dl\n");
+                    sb.append("    testb %dl, %dl\n");
+                    sb.append("    jnz 1f\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("    jmp 2f\n");
+                    sb.append("1: xorl %eax, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("2:\n");
+                    return;
+                }
+                case GT -> {
+                    sb.append("    ucomisd %xmm1, %xmm0\n");
+                    sb.append("    seta %al\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    return;
+                }
+                case GE -> {
+                    sb.append("    ucomisd %xmm1, %xmm0\n");
+                    sb.append("    setae %al\n");
+                    sb.append("    setp %dl\n");
+                    sb.append("    testb %dl, %dl\n");
+                    sb.append("    jnz 1f\n");
+                    sb.append("    movzbl %al, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("    jmp 2f\n");
+                    sb.append("1: xorl %eax, %eax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("2:\n");
+                    return;
+                }
+                default -> { sb.append("    movq %xmm0, %rax\n"); sb.append("    pushq %rax\n"); return; }
+            }
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         sb.append("    popq %rcx\n");
         sb.append("    popq %rax\n");
         switch (kb.op()) {
@@ -751,6 +914,77 @@ public class NativeBackend implements Backend {
     }
 
     private void emitUnary(StringBuilder sb, KofUnary ku) {
+        if (ku.operandType() != null && isFloatType(ku.operandType()) && ku.op() == KofUnaryOp.NEG) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    movl $0x80000000, %ecx\n");
+            sb.append("    movd %ecx, %xmm1\n");
+            sb.append("    xorps %xmm1, %xmm0\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.operandType() != null && isDoubleType(ku.operandType()) && ku.op() == KofUnaryOp.NEG) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    movabs $0x8000000000000000, %rcx\n");
+            sb.append("    movq %rcx, %xmm1\n");
+            sb.append("    xorpd %xmm1, %xmm0\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // primitive conversions
+        if (ku.op() == KofUnaryOp.I2F) {
+            sb.append("    popq %rax\n");
+            sb.append("    cvtsi2ss %eax, %xmm0\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.I2D) {
+            sb.append("    popq %rax\n");
+            sb.append("    cvtsi2sd %eax, %xmm0\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.L2F) {
+            sb.append("    popq %rax\n");
+            sb.append("    cvtsi2ss %rax, %xmm0\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.L2D) {
+            sb.append("    popq %rax\n");
+            sb.append("    cvtsi2sd %rax, %xmm0\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.F2D) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    cvtss2sd %xmm0, %xmm0\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.D2F) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    cvtsd2ss %xmm0, %xmm0\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.I2L) {
+            sb.append("    popq %rax\n");
+            sb.append("    movslq %eax, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         sb.append("    popq %rax\n");
         if (ku.op() == KofUnaryOp.NEG) {
             sb.append("    negq %rax\n");
@@ -764,6 +998,66 @@ public class NativeBackend implements Backend {
     }
 
     private void emitConditionalJump(StringBuilder sb, KofConditionalJump kc) {
+        Type opTy = kc.operandType();
+        if (opTy != null && isFloatType(opTy)) {
+            sb.append("    popq %rax\n");
+            sb.append("    popq %rcx\n");
+            sb.append("    movd %ecx, %xmm0\n");
+            sb.append("    movd %eax, %xmm1\n");
+            sb.append("    ucomiss %xmm1, %xmm0\n");
+            String jmp;
+            switch (kc.comparison()) {
+                case EQ -> jmp = "je";
+                case NE -> jmp = "jne";
+                case LT -> jmp = "jb";
+                case LE -> jmp = "jbe";
+                case GT -> jmp = "ja";
+                case GE -> jmp = "jae";
+                default -> jmp = "je";
+            }
+            // NaN handling: ordered compares must be false when unordered (PF=1)
+            boolean needsOrderedCheck = kc.comparison() == KofComparison.LE
+                    || kc.comparison() == KofComparison.GE
+                    || kc.comparison() == KofComparison.EQ;
+            if (needsOrderedCheck) {
+                // if unordered (PF=1) skip the true branch
+                sb.append("    jp ").append(resolveLabel(kc.falseLabel())).append("\n");
+            } else if (kc.comparison() == KofComparison.NE) {
+                sb.append("    jp ").append(resolveLabel(kc.trueLabel())).append("\n");
+                // still need fallback: if NaN, we already jumped to true
+            }
+            sb.append("    ").append(jmp).append(" ").append(resolveLabel(kc.trueLabel())).append("\n");
+            sb.append("    jmp ").append(resolveLabel(kc.falseLabel())).append("\n");
+            return;
+        }
+        if (opTy != null && isDoubleType(opTy)) {
+            sb.append("    popq %rax\n");
+            sb.append("    popq %rcx\n");
+            sb.append("    movq %rcx, %xmm0\n");
+            sb.append("    movq %rax, %xmm1\n");
+            sb.append("    ucomisd %xmm1, %xmm0\n");
+            String jmp;
+            switch (kc.comparison()) {
+                case EQ -> jmp = "je";
+                case NE -> jmp = "jne";
+                case LT -> jmp = "jb";
+                case LE -> jmp = "jbe";
+                case GT -> jmp = "ja";
+                case GE -> jmp = "jae";
+                default -> jmp = "je";
+            }
+            boolean needsOrderedCheck = kc.comparison() == KofComparison.LE
+                    || kc.comparison() == KofComparison.GE
+                    || kc.comparison() == KofComparison.EQ;
+            if (needsOrderedCheck) {
+                sb.append("    jp ").append(resolveLabel(kc.falseLabel())).append("\n");
+            } else if (kc.comparison() == KofComparison.NE) {
+                sb.append("    jp ").append(resolveLabel(kc.trueLabel())).append("\n");
+            }
+            sb.append("    ").append(jmp).append(" ").append(resolveLabel(kc.trueLabel())).append("\n");
+            sb.append("    jmp ").append(resolveLabel(kc.falseLabel())).append("\n");
+            return;
+        }
         sb.append("    popq %rax\n");
         sb.append("    popq %rcx\n");
         String cond = switch (kc.comparison()) {
@@ -793,6 +1087,20 @@ public class NativeBackend implements Backend {
                 sb.append("    pushq $0\n");
                 sb.append("    leaq .Lnewline(%rip), %rdi\n");
                 sb.append("    call kof_print\n");
+            } else if (argType instanceof Type.PrimitiveType pt && isFloatType(pt)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    movd %edi, %xmm0\n");
+                sb.append("    call kof_print_float\n");
+                sb.append("    pushq $0\n");
+                sb.append("    leaq .Lnewline(%rip), %rdi\n");
+                sb.append("    call kof_print\n");
+            } else if (argType instanceof Type.PrimitiveType pt && isDoubleType(pt)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    movq %rdi, %xmm0\n");
+                sb.append("    call kof_print_double\n");
+                sb.append("    pushq $0\n");
+                sb.append("    leaq .Lnewline(%rip), %rdi\n");
+                sb.append("    call kof_print\n");
             } else if (BuiltinTypes.isString(argType)) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_println_string\n");
@@ -809,6 +1117,16 @@ public class NativeBackend implements Backend {
             if (BuiltinTypes.isString(argType)) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_print_string\n");
+                sb.append("    pushq $0\n");
+            } else if (argType instanceof Type.PrimitiveType pt && isFloatType(pt)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    movd %edi, %xmm0\n");
+                sb.append("    call kof_print_float\n");
+                sb.append("    pushq $0\n");
+            } else if (argType instanceof Type.PrimitiveType pt && isDoubleType(pt)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    movq %rdi, %xmm0\n");
+                sb.append("    call kof_print_double\n");
                 sb.append("    pushq $0\n");
             } else {
                 sb.append("    popq %rdi\n");
@@ -989,6 +1307,16 @@ public class NativeBackend implements Backend {
             } else if (argType instanceof Type.PrimitiveType pt && "bool".equals(pt.name())) {
                 sb.append("    popq %rdi\n");
                 sb.append("    call kof_bool_to_string\n");
+                sb.append("    pushq %rax\n");
+            } else if (argType instanceof Type.PrimitiveType pt && isFloatType(pt)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    movd %edi, %xmm0\n");
+                sb.append("    call kof_float_to_string\n");
+                sb.append("    pushq %rax\n");
+            } else if (argType instanceof Type.PrimitiveType pt && isDoubleType(pt)) {
+                sb.append("    popq %rdi\n");
+                sb.append("    movq %rdi, %xmm0\n");
+                sb.append("    call kof_double_to_string\n");
                 sb.append("    pushq %rax\n");
             }
             return;
@@ -1234,11 +1562,12 @@ public class NativeBackend implements Backend {
             System.err.println("NativeBackend: as failed: " + e.getMessage());
             throw e;
         }
-        if (usesDb) {
-            // kof.db nativo: o ELF ganha linker dinâmico e linka a client
-            // lib direto — sem JDBC driver, sem headers (padrão kof-webview).
-            String os = System.getProperty("os.name", "").toLowerCase();
-            if (os.contains("linux")) {
+        // Native always needs dynamic linker + libc now (printf for float, db optionally)
+        // to keep single codegen path; plain integer programs still work via ld+ld.so.
+        boolean needsDynamic = true;
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (needsDynamic && os.contains("linux")) {
+            if (usesDb) {
                 String[] extra = usesMysql
                         ? new String[]{"-l:libsqlite3.so.0", "-l:libmariadb.so.3"}
                         : new String[]{"-l:libsqlite3.so.0"};
@@ -1253,10 +1582,27 @@ public class NativeBackend implements Backend {
                 System.arraycopy(extra, 0, cmd, 7, extra.length);
                 runCommand(cmd, "ld");
             } else {
-                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString(),
+                        "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "-lc"}, "ld");
             }
         } else {
-            runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+            if (usesDb) {
+                String os2 = System.getProperty("os.name", "").toLowerCase();
+                if (os2.contains("linux")) {
+                    String[] extra = usesMysql
+                            ? new String[]{"-l:libsqlite3.so.0", "-l:libmariadb.so.3"}
+                            : new String[]{"-l:libsqlite3.so.0"};
+                    String[] cmd = new String[7 + extra.length];
+                    cmd[0] = "ld"; cmd[1] = "-o"; cmd[2] = binFile.toString(); cmd[3] = objFile.toString();
+                    cmd[4] = "-dynamic-linker"; cmd[5] = "/lib64/ld-linux-x86-64.so.2"; cmd[6] = "-lc";
+                    System.arraycopy(extra, 0, cmd, 7, extra.length);
+                    runCommand(cmd, "ld");
+                } else {
+                    runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+                }
+            } else {
+                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString()}, "ld");
+            }
         }
         Files.deleteIfExists(objFile);
         if (System.getenv("KOF_KEEP_ASM") == null) Files.deleteIfExists(asmFile);

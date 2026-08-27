@@ -5887,21 +5887,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
      * silenciosamente errado. JSON já tem o próprio código (JSN001).
      */
     private boolean fpSupportedOnNative(Type type, SourcePosition pos) {
-        if (target != Target.NATIVE || type == null) return true;
-        if (!(type instanceof Type.PrimitiveType pt)) return true;
-        String name = pt.name();
-        if ("float".equals(name) || "double".equals(name)) {
-            if (currentDiagnostics != null) {
-                currentDiagnostics.error(pos != null ? pos.file() : "",
-                        pos != null ? pos.line() : 0,
-                        pos != null ? pos.column() : 0,
-                        0,
-                        "floating-point arithmetic/printing is not supported on the Native target yet"
-                                + " (use Int/Long for now)",
-                        "FLT001");
-            }
-            return false;
-        }
+        // Native float/double now supported via XMM (was FLT001) — KofJS always was
         return true;
     }
 

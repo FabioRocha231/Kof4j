@@ -24,6 +24,11 @@
             <artifactId>kof-script</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>dev.kof</groupId>
+            <artifactId>kof-c-compiler</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

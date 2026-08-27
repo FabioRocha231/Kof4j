@@ -13,6 +13,10 @@ final class NativeRuntime {
         emitPrint(sb);
         emitPrintln(sb);
         emitPrintInt(sb);
+        emitPrintFloat(sb);
+        emitPrintDouble(sb);
+        emitFloatToString(sb);
+        emitDoubleToString(sb);
         emitIntToString(sb);
         emitLongToString(sb);
         emitBoolToString(sb);
@@ -353,8 +357,114 @@ final class NativeRuntime {
     }
 
 
+    private static void emitPrintFloat(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lfmt_float: .asciz "%g"
+            .Lfmt_double: .asciz "%g"
+            .section .text
+            .globl kof_print_float
+            .type kof_print_float, @function
+            kof_print_float:
+                pushq %rbp
+                movq %rsp, %rbp
+                subq $32, %rsp
+                cvtss2sd %xmm0, %xmm0
+                leaq .Lfmt_float(%rip), %rdi
+                movl $1, %eax
+                call printf
+                leave
+                ret
+            .globl kof_print_double
+            .type kof_print_double, @function
+            kof_print_double:
+                pushq %rbp
+                movq %rsp, %rbp
+                subq $32, %rsp
+                leaq .Lfmt_double(%rip), %rdi
+                movl $1, %eax
+                call printf
+                leave
+                ret
+            """);
+    }
+
+    private static void emitPrintDouble(StringBuilder sb) {
+        // emitted together with emitPrintFloat (keep for symmetry)
+    }
+
+    private static void emitFloatToString(StringBuilder sb) {
+        sb.append("""
+            .globl kof_float_to_string
+            .type kof_float_to_string, @function
+            kof_float_to_string:
+                pushq %rbp
+                movq %rsp, %rbp
+                pushq %rbx
+                subq $88, %rsp
+                cvtss2sd %xmm0, %xmm0
+                leaq -64(%rbp), %rbx
+                movq %rbx, %rdi
+                movq $64, %rsi
+                leaq .Lfmt_float(%rip), %rdx
+                movl $1, %eax
+                call snprintf
+                movq %rbx, %rdi
+                xorq %rdx, %rdx
+            .Lkof_flt_str_len:
+                cmpb $0, (%rdi,%rdx)
+                je .Lkof_flt_str_gotlen
+                incq %rdx
+                jmp .Lkof_flt_str_len
+            .Lkof_flt_str_gotlen:
+                movl %edx, %esi
+                movq %rbx, %rdi
+                call kof_string_from_literal
+                addq $88, %rsp
+                popq %rbx
+                popq %rbp
+                ret
+            """);
+    }
+
+    private static void emitDoubleToString(StringBuilder sb) {
+        sb.append("""
+            .globl kof_double_to_string
+            .type kof_double_to_string, @function
+            kof_double_to_string:
+                pushq %rbp
+                movq %rsp, %rbp
+                pushq %rbx
+                subq $88, %rsp
+                leaq -64(%rbp), %rbx
+                movq %rbx, %rdi
+                movq $64, %rsi
+                leaq .Lfmt_double(%rip), %rdx
+                movl $1, %eax
+                call snprintf
+                movq %rbx, %rdi
+                xorq %rdx, %rdx
+            .Lkof_dbl_str_len:
+                cmpb $0, (%rdi,%rdx)
+                je .Lkof_dbl_str_gotlen
+                incq %rdx
+                jmp .Lkof_dbl_str_len
+            .Lkof_dbl_str_gotlen:
+                movl %edx, %esi
+                movq %rbx, %rdi
+                call kof_string_from_literal
+                addq $88, %rsp
+                popq %rbx
+                popq %rbp
+                ret
+            """);
+    }
+
     private static void emitAlloc(StringBuilder sb) {
         sb.append("""
+            .section .bss
+            .balign 8
+            kof_free_head: .quad 0
             .section .data
             .Lstr_alloc_fail: .asciz "Runtime error: out of memory"
             .section .text
@@ -363,11 +473,50 @@ final class NativeRuntime {
             kof_alloc:
                 pushq %rbx
                 pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
                 movq %rdi, %rbx
                 addq $15, %rbx
                 andq $~15, %rbx
                 addq $16, %rbx
                 movq %rbx, %r12
+                # -- free-list first-fit search --
+                movq kof_free_head(%rip), %r13
+                xorq %r14, %r14
+            .Lkof_alloc_search:
+                testq %r13, %r13
+                je .Lkof_alloc_mmap
+                movq (%r13), %r15
+                cmpq %r12, %r15
+                jb .Lkof_alloc_next
+                # found: unlink r13 (prev in r14)
+                cmpq $0, %r14
+                je .Lkof_alloc_found_head
+                movq 8(%r13), %r15
+                movq %r15, 8(%r14)
+                jmp .Lkof_alloc_found
+            .Lkof_alloc_found_head:
+                movq 8(%r13), %rax
+                movq %rax, kof_free_head(%rip)
+                jmp .Lkof_alloc_found
+            .Lkof_alloc_next:
+                movq %r13, %r14
+                movq 8(%r13), %r13
+                jmp .Lkof_alloc_search
+            .Lkof_alloc_found:
+                movq %r13, %rax
+                # size already at (%rax)
+                addq $16, %rax
+                incq .Lkof_alloc_count(%rip)
+                addq %r12, .Lkof_alloc_bytes(%rip)
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_alloc_mmap:
                 movq $0, %rdi
                 movq %r12, %rsi
                 movq $0x22, %rdx
@@ -382,6 +531,9 @@ final class NativeRuntime {
                 addq $16, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
+                popq %r15
+                popq %r14
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -401,8 +553,10 @@ final class NativeRuntime {
                 jz .Lkof_free_done
                 movq -16(%rdi), %rsi
                 leaq -16(%rdi), %rdi
-                movq $11, %rax
-                syscall
+                # push onto free-list instead of munmap (fast reuse, no syscall)
+                movq kof_free_head(%rip), %rax
+                movq %rax, 8(%rdi)
+                movq %rdi, kof_free_head(%rip)
                 incq .Lkof_free_count(%rip)
                 addq %rsi, .Lkof_free_bytes(%rip)
             .Lkof_free_done:

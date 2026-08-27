@@ -10,16 +10,14 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * FLT001 — ponto flutuante no target Native é gap diagnosticado, nunca
- * resultado silenciosamente errado: os bits vivem na pilha como inteiros
- * (SSE real é trabalho futuro do backend). JVM compila e executa normal.
+ * Native float/double agora é XMM (FLT001 removido) — parity JVM/JS/Native.
  */
 class FloatingPointGapE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();
 
     @Test
-    void fpArithmeticRejectedOnNative(@TempDir Path tempDir) throws IOException {
+    void fpArithmeticWorksOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
@@ -28,15 +26,21 @@ class FloatingPointGapE2ETest {
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out-n"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "FP arithmetic must fail on Native");
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("FLT001"),
-                () -> "" + nativeResult.diagnostics().getDiagnostics());
+        assertTrue(nativeResult.success(), () -> "" + nativeResult.diagnostics().getDiagnostics());
+        // also verify runtime output via binary execution
+        Path bin = tempDir.resolve("out-n/Default/Main");
+        if (Files.exists(bin)) {
+            Process p = new ProcessBuilder(bin.toString()).start();
+            String out = new String(p.getInputStream().readAllBytes());
+            try { p.waitFor(); } catch (InterruptedException e) { throw new IOException(e); }
+            assertTrue(out.contains("5"), "native output should contain 5: " + out);
+        }
         CompilationResult jvmResult = driver.compile(source, tempDir.resolve("out-v"), Target.JVM);
         assertTrue(jvmResult.success(), "Same code must compile on JVM");
     }
 
     @Test
-    void fpComparisonRejectedOnNative(@TempDir Path tempDir) throws IOException {
+    void fpComparisonWorksOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
@@ -46,12 +50,18 @@ class FloatingPointGapE2ETest {
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("FLT001"));
+        assertTrue(nativeResult.success(), () -> "" + nativeResult.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("out/Default/Main");
+        if (Files.exists(bin)) {
+            Process p = new ProcessBuilder(bin.toString()).start();
+            String out = new String(p.getInputStream().readAllBytes());
+            try { p.waitFor(); } catch (InterruptedException e) { throw new IOException(e); }
+            assertTrue(out.contains("maior"), "expected maior: " + out);
+        }
     }
 
     @Test
-    void fpPrintingRejectedOnNative(@TempDir Path tempDir) throws IOException {
+    void fpPrintingWorksOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
@@ -60,12 +70,11 @@ class FloatingPointGapE2ETest {
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("FLT001"));
+        assertTrue(nativeResult.success(), () -> "" + nativeResult.diagnostics().getDiagnostics());
     }
 
     @Test
-    void fpStringConcatRejectedOnNative(@TempDir Path tempDir) throws IOException {
+    void fpStringConcatWorksOnNative(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
@@ -74,9 +83,14 @@ class FloatingPointGapE2ETest {
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
-        assertFalse(nativeResult.success());
-        assertTrue(nativeResult.diagnostics().getDiagnostics().toString().contains("FLT001"),
-                () -> "" + nativeResult.diagnostics().getDiagnostics());
+        assertTrue(nativeResult.success(), () -> "" + nativeResult.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("out/Default/Main");
+        if (Files.exists(bin)) {
+            Process p = new ProcessBuilder(bin.toString()).start();
+            String out = new String(p.getInputStream().readAllBytes());
+            try { p.waitFor(); } catch (InterruptedException e) { throw new IOException(e); }
+            assertTrue(out.contains("valor:"), "expected valor: in " + out);
+        }
     }
 
     @Test

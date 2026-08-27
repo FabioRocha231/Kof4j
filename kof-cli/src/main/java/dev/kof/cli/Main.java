@@ -5,8 +5,10 @@ import dev.kof.compiler.*;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URLClassLoader;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardWatchEventKinds;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +31,7 @@ public final class Main {
             case "script" -> System.exit(script(args));
             case "repl" -> System.exit(repl(args));
             case "init" -> System.exit(init(args));
+            case "c" -> c(args);
             case "fmt" -> System.exit(Fmt.run(args));
             case "version" -> System.out.println("kof " + KofVersion.version());
             default -> { System.err.println("unknown: " + args[0]); printUsage(); }
@@ -784,6 +787,50 @@ private static void build(String[] args) {
     /** fn/enum/class/record ou retorno tipado ("Int nome(", "String nome("...) */
     private static final java.util.regex.Pattern DECL_TYPE =
             java.util.regex.Pattern.compile("^(Int|Long|Bool|String|Float|Double|List<[^>]+>|Map<[^>]+>)\\s+\\w+\\s*\\(");
+
+    private static void c(String[] args) {
+        if (args.length < 2 || "--help".equals(args[1]) || "-h".equals(args[1])) {
+            System.out.println("usage: kof c <file.c> [--output <bin>] [--run]");
+            System.out.println("  Compiles C subset to native ELF64 via KofCcompiler (no JVM)");
+            return;
+        }
+        Path src = Path.of(args[1]);
+        if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
+        Path outDir = null;
+        boolean run = false;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].equals("--output") && i + 1 < args.length) { outDir = Path.of(args[++i]); }
+            else if (args[i].startsWith("--output=")) { outDir = Path.of(args[i].substring("--output=".length())); }
+            else if (args[i].equals("--run")) { run = true; }
+        }
+        try {
+            if (outDir == null) outDir = Files.createTempDirectory("kof-c-");
+            else Files.createDirectories(outDir);
+            var res = dev.kof.c.KofCCompiler.compile(src, outDir);
+            if (!res.success()) { System.err.println(res.diagnostics()); System.exit(1); return; }
+            System.out.println("KofC built " + res.binary());
+            if (run) {
+                ProcessBuilder pb = new ProcessBuilder(res.binary().toString());
+                pb.inheritIO();
+                Process p = pb.start();
+                int ec = p.waitFor();
+                System.exit(ec);
+            } else if (outDir.toString().contains("kof-c-")) {
+                // temp dir: run immediately for feedback
+                ProcessBuilder pb = new ProcessBuilder(res.binary().toString());
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                String out = new String(p.getInputStream().readAllBytes());
+                int ec = p.waitFor();
+                if (!out.isBlank()) System.out.print(out);
+                if (ec != 0) System.err.println("exit code: " + ec);
+            }
+        } catch (Exception e) {
+            System.err.println("kof c: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
 
     /** Saldo de { } para agrupar blocos multilinha no KofScript. */
     private static int balance(String text) {

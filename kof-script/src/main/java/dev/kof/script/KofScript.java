@@ -40,14 +40,15 @@ public final class KofScript {
 
     public static RunResult eval(String code, Target target) throws IOException {
         String pre = preprocess(code);
-        String key = target + ":" + pre.hashCode() + ":" + pre.length();
+        // top-level let/const as globals (KofScriptGlobals) — fast path for eval single snippet
+        String wrappedForEval = pre.contains("main()") ? pre : wrapKsWithGlobals(pre);
+        String key = target + ":" + wrappedForEval.hashCode() + ":" + wrappedForEval.length();
         RunResult cached = evalCache.get(key);
         if (cached != null) return cached;
         Path tmp = Files.createTempDirectory("kofscript");
         try {
             Path src = tmp.resolve("Main.kf");
-            String wrapped = pre.contains("main()") ? pre : "main() {\n" + pre + "\n}";
-            Files.writeString(src, wrapped);
+            Files.writeString(src, wrappedForEval);
             RunResult r = runFile(src, target);
             if (r.success()) evalCache.put(key, r);
             // LRU bound 64
@@ -56,6 +57,108 @@ public final class KofScript {
         } finally {
             deleteRecursively(tmp);
         }
+    }
+
+    private static String wrapKsWithGlobals(String pre) {
+        // Extract top-level let/var/val/const as globals -> class KofScriptGlobals
+        // Properly separates top-level decls (fn/class/record/enum) from stmts so that
+        // `let x=5; fn foo(){println(x)}; foo()` generates:
+        //   class KofScriptGlobals { static Int x=5 }
+        //   fn foo(){println(KofScriptGlobals.x)}
+        //   main(){ foo() }
+        java.util.List<String> gNames = new java.util.ArrayList<>();
+        java.util.List<String> gTypes = new java.util.ArrayList<>();
+        java.util.List<String> gInits = new java.util.ArrayList<>();
+        StringBuilder decls = new StringBuilder();
+        StringBuilder stmts = new StringBuilder();
+        String[] lines = pre.split("\n");
+        java.util.regex.Pattern letPat = java.util.regex.Pattern.compile("^(?:let|var|val|const)\\s+(\\w+)(?:\\s*:\\s*([^=]+))?\\s*=\\s*(.+)$");
+        StringBuilder cur = new StringBuilder();
+        boolean curIsDecl = false;
+        for (String raw : lines) {
+            String t = raw.strip();
+            String tNorm = t.replaceFirst("^async\\s+", "");
+            if (t.isEmpty() || t.startsWith("//")) continue;
+            cur.append(raw).append('\n');
+            boolean declStart = tNorm.startsWith("fn ") || tNorm.startsWith("enum ") || tNorm.startsWith("class ") || tNorm.startsWith("record ");
+            if (cur.length() == raw.length() + 1) curIsDecl = declStart;
+            if (cur.toString().chars().filter(ch -> ch == '{').count() > cur.toString().chars().filter(ch -> ch == '}').count()) continue;
+            String block = cur.toString().strip();
+            String blockTrim = block.strip();
+            java.util.regex.Matcher mLet = letPat.matcher(blockTrim);
+            boolean isTopLet = !curIsDecl && mLet.matches() && !blockTrim.contains("{") && !blockTrim.contains("}");
+            if (isTopLet) {
+                gNames.add(mLet.group(1));
+                gTypes.add(mLet.group(2) != null ? mLet.group(2).strip() : null);
+                gInits.add(mLet.group(3).strip().replaceAll(";$", ""));
+            } else if (curIsDecl) decls.append(block).append('\n');
+            else stmts.append(block).append('\n');
+            cur.setLength(0);
+        }
+        if (!cur.isEmpty()) {
+            String block = cur.toString().strip();
+            String bt = block.strip();
+            java.util.regex.Matcher mLet2 = letPat.matcher(bt);
+            boolean isTopLet2 = mLet2.matches() && !bt.contains("{") && !bt.contains("}");
+            if (isTopLet2) { gNames.add(mLet2.group(1)); gTypes.add(mLet2.group(2)!=null?mLet2.group(2).strip():null); gInits.add(mLet2.group(3).strip().replaceAll(";$","")); }
+            else if (curIsDecl) decls.append(block); else stmts.append(block);
+        }
+        if (gNames.isEmpty() && decls.length()==0) {
+            // no globals and no top-level decls — just wrap in main
+            return "main() {\n" + pre + "\n}";
+        }
+        if (gNames.isEmpty()) {
+            // only decls/stmts, no globals
+            StringBuilder prog0 = new StringBuilder();
+            prog0.append(decls);
+            if (!stmts.isEmpty()) prog0.append("main() {\n").append(stmts).append("\n}\n");
+            else if (decls.isEmpty()) prog0.append("main() {}\n");
+            return prog0.toString();
+        }
+        // dedup globals last wins
+        java.util.LinkedHashMap<String,String> typeMap = new java.util.LinkedHashMap<>();
+        java.util.LinkedHashMap<String,String> initMap = new java.util.LinkedHashMap<>();
+        for (int i=0;i<gNames.size();i++) { typeMap.put(gNames.get(i), gTypes.get(i)); initMap.put(gNames.get(i), gInits.get(i)); }
+        StringBuilder prog = new StringBuilder();
+        prog.append("class KofScriptGlobals {\n");
+        for (String n: initMap.keySet()) {
+            String ty=typeMap.get(n);
+            String init=initMap.get(n);
+            String fieldTy = ty != null ? ty.strip() : inferKofType(init);
+            prog.append("  static ").append(fieldTy).append(" ").append(n).append(" = ").append(init).append("\n");
+        }
+        prog.append("}\n");
+        String declStr = decls.toString();
+        String stmtStr = stmts.toString();
+        for (String n : initMap.keySet()) {
+            declStr = declStr.replaceAll("\\b" + java.util.regex.Pattern.quote(n) + "\\b", "KofScriptGlobals." + n);
+            stmtStr = stmtStr.replaceAll("\\b" + java.util.regex.Pattern.quote(n) + "\\b", "KofScriptGlobals." + n);
+        }
+        declStr = normalizeVoidFns(declStr);
+        prog.append(declStr);
+        if (!stmtStr.isBlank()) prog.append("main() {\n").append(stmtStr).append("\n}\n");
+        else if (declStr.isBlank()) prog.append("main() {\nprintln(KofScriptGlobals.").append(initMap.keySet().iterator().next()).append(")\n}\n");
+        else prog.append("main() {}\n");
+        return prog.toString();
+    }
+
+    private static String normalizeVoidFns(String decls0) {
+        // fn foo() { -> fn foo(): Void {
+        return decls0.replaceAll("fn\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{", "fn $1($2): Void {");
+    }
+
+    private static String inferKofType(String init) {
+        String t = init.strip();
+        // string literal
+        if ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) return "String";
+        if ("true".equals(t) || "false".equals(t)) return "Bool";
+        if (t.matches("-?\\d+")) return "Int";
+        if (t.matches("-?\\d*\\.\\d+([eE][+-]?\\d+)?")) return "Double";
+        if (t.startsWith("0x") || t.startsWith("0X")) return "Int";
+        // heuristic: contains quotes => String concatenation
+        if (t.contains("\"") || t.contains("'")) return "String";
+        // fallback to Int (most common) — explicit type in source is preferred
+        return "Int";
     }
 
     /**
@@ -85,18 +188,18 @@ public final class KofScript {
         java.util.List<Path> sources = collectSources(sourceFile);
         // File incremental cache: if single file hasn't changed, reuse
         Path abs = null;
-        long lm = 0;
+        long fileLm = 0;
         long sz = 0;
         String fkey = null;
         String fhash = null;
         try {
             abs = sourceFile.toAbsolutePath().normalize();
             if (Files.isRegularFile(abs)) {
-                lm = Files.getLastModifiedTime(abs).toMillis();
+                fileLm = Files.getLastModifiedTime(abs).toMillis();
                 sz = Files.size(abs);
                 fkey = abs + "|" + target + "|" + sources.size();
                 FileCacheEntry fe = fileCache.get(fkey);
-                if (fe != null && fe.lastModified() == lm && fe.size() == sz) {
+                if (fe != null && fe.lastModified() == fileLm && fe.size() == sz) {
                     String content = Files.readString(abs);
                     String h = Integer.toString(content.hashCode());
                     if (h.equals(fe.hash())) return fe.result();
@@ -113,12 +216,16 @@ public final class KofScript {
             if (sources.size() == 1) {
                 Path single = sources.get(0);
                 if (single.toString().endsWith(".ks")) {
-                    // Wrap single .ks like multi-file does
+                    // Wrap single .ks like multi-file does — with top-level let as KofScriptGlobals
                     String content = Files.readString(single);
                     String pre = preprocess(content);
                     String[] lines = pre.split("\n");
                     StringBuilder decls = new StringBuilder();
                     StringBuilder stmts = new StringBuilder();
+                    java.util.List<String> gNames = new java.util.ArrayList<>();
+                    java.util.List<String> gTypes = new java.util.ArrayList<>();
+                    java.util.List<String> gInits = new java.util.ArrayList<>();
+                    java.util.regex.Pattern letPat2 = java.util.regex.Pattern.compile("^(?:let|var|val|const)\\s+(\\w+)(?:\\s*:\\s*([^=]+))?\\s*=\\s*(.+)$");
                     StringBuilder cur = new StringBuilder();
                     boolean curIsDecl = false;
                     for (String raw : lines) {
@@ -130,17 +237,51 @@ public final class KofScript {
                         if (cur.length() == raw.length() + 1) curIsDecl = declStart;
                         if (cur.toString().chars().filter(ch -> ch == '{').count() > cur.toString().chars().filter(ch -> ch == '}').count()) continue;
                         String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var").replaceAll("\\bconst\\b", "val");
-                        if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
+                        String blockTrim = block.strip();
+                        java.util.regex.Matcher mLet1 = letPat2.matcher(blockTrim);
+                        boolean isTopLet = !curIsDecl && mLet1.matches() && !blockTrim.contains("{") && !blockTrim.contains("}");
+                        if (isTopLet) {
+                            gNames.add(mLet1.group(1));
+                            gTypes.add(mLet1.group(2) != null ? mLet1.group(2).strip() : null);
+                            gInits.add(mLet1.group(3).strip().replaceAll(";$", ""));
+                        } else if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
                         cur.setLength(0);
                     }
                     if (!cur.isEmpty()) {
                         String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var");
-                        if (curIsDecl) decls.append(block); else stmts.append(block);
+                        String bt = block.strip();
+                        java.util.regex.Matcher mLet2 = letPat2.matcher(bt);
+                        boolean isTopLet2 = mLet2.matches() && !bt.contains("{") && !bt.contains("}");
+                        if (isTopLet2) { gNames.add(mLet2.group(1)); gTypes.add(mLet2.group(2)!=null?mLet2.group(2).strip():null); gInits.add(mLet2.group(3).strip().replaceAll(";$","")); }
+                        else if (curIsDecl) decls.append(block); else stmts.append(block);
                     }
+                    // dedup globals (last wins)
+                    java.util.LinkedHashMap<String,String> gTypeMap = new java.util.LinkedHashMap<>();
+                    java.util.LinkedHashMap<String,String> gInitMap = new java.util.LinkedHashMap<>();
+                    for (int i=0;i<gNames.size();i++) { gTypeMap.put(gNames.get(i), gTypes.get(i)); gInitMap.put(gNames.get(i), gInits.get(i)); }
                     StringBuilder prog = new StringBuilder();
+                    if (!gInitMap.isEmpty()) {
+                        prog.append("class KofScriptGlobals {\n");
+                        for (String n: gInitMap.keySet()) {
+                            String ty=gTypeMap.get(n);
+                            String init=gInitMap.get(n);
+                            String fieldTy = ty != null ? ty.strip() : inferKofType(init);
+                            prog.append("  static ").append(fieldTy).append(" ").append(n).append(" = ").append(init).append("\n");
+                        }
+                        prog.append("}\n");
+                        String declStr = decls.toString();
+                        String stmtStr = stmts.toString();
+                        for (String n: gInitMap.keySet()) { declStr = declStr.replaceAll("\\b"+java.util.regex.Pattern.quote(n)+"\\b", "KofScriptGlobals."+n); stmtStr = stmtStr.replaceAll("\\b"+java.util.regex.Pattern.quote(n)+"\\b", "KofScriptGlobals."+n); }
+                        declStr = normalizeVoidFns(declStr);
+                        decls = new StringBuilder(declStr);
+                        stmts = new StringBuilder(stmtStr);
+                    }
+                    // normalize void fns even when no globals
+                    decls = new StringBuilder(normalizeVoidFns(decls.toString()));
                     prog.append(decls);
                     if (!stmts.isEmpty()) prog.append("main() {\n").append(stmts).append("\n}\n");
-                    else if (decls.isEmpty()) prog.append("main() {}\n");
+                    else if (decls.isEmpty() && gInitMap.isEmpty()) prog.append("main() {}\n");
+                    else if (prog.length()==0) prog.append("main() {}\n");
                     Path tmpKsDir = Files.createTempDirectory("kofscript-ks-single");
                     String kfName = single.getFileName().toString().replaceFirst("\\.ks$", ".kf");
                     if (!kfName.endsWith(".kf")) kfName = "Main.kf";
@@ -160,10 +301,13 @@ public final class KofScript {
                         if (tmpKsDir == null) tmpKsDir = Files.createTempDirectory("kofscript-ks");
                         String content = Files.readString(p);
                         String pre = preprocess(content);
-                        // Split decls/stmts like CLI does
                         String[] lines = pre.split("\n");
                         StringBuilder decls = new StringBuilder();
                         StringBuilder stmts = new StringBuilder();
+                        java.util.List<String> gNames2 = new java.util.ArrayList<>();
+                        java.util.List<String> gTypes2 = new java.util.ArrayList<>();
+                        java.util.List<String> gInits2 = new java.util.ArrayList<>();
+                        java.util.regex.Pattern letPat3 = java.util.regex.Pattern.compile("^(?:let|var|val|const)\\s+(\\w+)(?:\\s*:\\s*([^=]+))?\\s*=\\s*(.+)$");
                         StringBuilder cur = new StringBuilder();
                         boolean curIsDecl = false;
                         for (String raw : lines) {
@@ -175,14 +319,35 @@ public final class KofScript {
                             if (cur.length() == raw.length() + 1) curIsDecl = declStart;
                             if (cur.toString().chars().filter(ch -> ch == '{').count() > cur.toString().chars().filter(ch -> ch == '}').count()) continue;
                             String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var").replaceAll("\\bconst\\b", "val");
-                            if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
+                            String bt = block.strip();
+                            java.util.regex.Matcher mLet3 = letPat3.matcher(bt);
+                            boolean isTopLet3 = !curIsDecl && mLet3.matches() && !bt.contains("{") && !bt.contains("}");
+                            if (isTopLet3) { gNames2.add(mLet3.group(1)); gTypes2.add(mLet3.group(2)!=null?mLet3.group(2).strip():null); gInits2.add(mLet3.group(3).strip().replaceAll(";$","")); }
+                            else if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
                             cur.setLength(0);
                         }
                         if (!cur.isEmpty()) {
                             String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var");
-                            if (curIsDecl) decls.append(block); else stmts.append(block);
+                            String bt2 = block.strip();
+                            java.util.regex.Matcher mLet4 = letPat3.matcher(bt2);
+                            boolean isTopLet4 = mLet4.matches() && !bt2.contains("{") && !bt2.contains("}");
+                            if (isTopLet4) { gNames2.add(mLet4.group(1)); gTypes2.add(mLet4.group(2)!=null?mLet4.group(2).strip():null); gInits2.add(mLet4.group(3).strip().replaceAll(";$","")); }
+                            else if (curIsDecl) decls.append(block); else stmts.append(block);
                         }
+                        java.util.LinkedHashMap<String,String> gTypeMap2 = new java.util.LinkedHashMap<>();
+                        java.util.LinkedHashMap<String,String> gInitMap2 = new java.util.LinkedHashMap<>();
+                        for(int i=0;i<gNames2.size();i++){ gTypeMap2.put(gNames2.get(i), gTypes2.get(i)); gInitMap2.put(gNames2.get(i), gInits2.get(i)); }
                         StringBuilder prog = new StringBuilder();
+                        if (!gInitMap2.isEmpty()) {
+                            prog.append("class KofScriptGlobals {\n");
+                            for(String n: gInitMap2.keySet()){ String ty=gTypeMap2.get(n); String init=gInitMap2.get(n); String fieldTy= ty!=null ? ty.strip() : inferKofType(init); prog.append("  static ").append(fieldTy).append(" ").append(n).append(" = ").append(init).append("\n"); }
+                            prog.append("}\n");
+                            String ds=decls.toString(); String ss=stmts.toString();
+                            for(String n: gInitMap2.keySet()){ ds=ds.replaceAll("\\b"+java.util.regex.Pattern.quote(n)+"\\b","KofScriptGlobals."+n); ss=ss.replaceAll("\\b"+java.util.regex.Pattern.quote(n)+"\\b","KofScriptGlobals."+n); }
+                            ds = normalizeVoidFns(ds);
+                            decls=new StringBuilder(ds); stmts=new StringBuilder(ss);
+                        }
+                        decls = new StringBuilder(normalizeVoidFns(decls.toString()));
                         prog.append(decls);
                         if (!stmts.isEmpty()) prog.append("main() {\n").append(stmts).append("\n}\n");
                         Path kf = tmpKsDir.resolve(p.getFileName().toString().replace(".ks", ".kf"));
@@ -274,7 +439,7 @@ public final class KofScript {
             }
             // Cache successful runs for file incremental
             if (rr.success() && abs != null && fkey != null && fhash != null) {
-                fileCache.put(fkey, new FileCacheEntry(lm, sz, fhash, rr));
+                fileCache.put(fkey, new FileCacheEntry(fileLm, sz, fhash, rr));
                 if (fileCache.size() > 64) fileCache.clear();
             }
             return rr;
