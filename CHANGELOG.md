@@ -1546,6 +1546,13 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
   - duplicate if-no-files-found + pipefail head
   - windows pipefail + lib/kof.jar check + jar upload
 
+## [0.1.8-beta] - 2026-08-27
+
+### Bugfixes
+
+  - remove duplicate if-no-files-found
+  - ensure kof-cli jars + lib/kof.jar in dist for 0.1.7
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
