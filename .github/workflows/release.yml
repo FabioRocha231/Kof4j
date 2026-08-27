@@ -109,6 +109,7 @@ jobs:
           scripts/package.sh --jdk || { echo "package --jdk failed, retry without JDK"; scripts/package.sh; }
           ls -la dist/
           echo "dist contents:"; ls -lh dist/; ( tar -tzf dist/kof-$(cat VERSION)-*.tar.gz 2>&1 | grep -E "lib/kof|bin/kof" | head -n 20 || true ); ( unzip -l dist/kof-$(cat VERSION)-*.zip 2>&1 | head -n 20 || true )
+          echo "dist contents:"; ls -lh dist/; ( tar -tzf dist/kof-$(cat VERSION)-*.tar.gz 2>&1 | grep -E "lib/kof|bin/kof" | head -n 20 || true ); ( unzip -l dist/kof-$(cat VERSION)-*.zip 2>&1 | head -n 20 || true )
           ( tar -tzf dist/kof-$(cat VERSION)-*.tar.gz 2>&1 | grep -E "lib/kof|bin/kof" | head -n 20 || true )
           ( unzip -l dist/kof-$(cat VERSION)-*.zip 2>&1 | head -n 20 || true )
 
@@ -144,6 +145,9 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/SHA256SUMS
+            kof-cli/target/kof-cli-*.jar
+            kof-cli/target/*-jar-with-dependencies.jar
+          if-no-files-found: error
             kof-cli/target/kof-cli-*.jar
             kof-cli/target/*-jar-with-dependencies.jar
           if-no-files-found: error
