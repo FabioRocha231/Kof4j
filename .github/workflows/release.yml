@@ -106,8 +106,9 @@ jobs:
       - name: Package with embedded JDK
         shell: bash
         run: |
-          scripts/package.sh --jdk
+          scripts/package.sh --jdk || { echo "package --jdk failed, retry without JDK"; scripts/package.sh; }
           ls -la dist/
+          echo "dist contents:"; ls -lh dist/; tar -tzf dist/kof-$(cat VERSION)-*.tar.gz 2>&1 | grep -E "lib/kof|bin/kof" | head -n 20 || unzip -l dist/kof-$(cat VERSION)-*.zip 2>&1 | head -n 20
 
       - name: Validate artifact
         shell: bash
@@ -133,6 +134,7 @@ jobs:
             && echo "embedded JDK present"
 
       - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kof-${{ matrix.target }}
@@ -142,6 +144,7 @@ jobs:
             dist/SHA256SUMS
             kof-cli/target/kof-cli-*.jar
             kof-cli/target/*-jar-with-dependencies.jar
+          if-no-files-found: error
 
   release:
     name: GitHub Release (${{ matrix.target }})
