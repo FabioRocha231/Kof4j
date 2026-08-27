@@ -27,6 +27,7 @@ final class NativeRuntime {
         emitJsonFindValue(sb);
         emitAlloc(sb);
         emitFree(sb);
+        emitGc(sb);
         emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
@@ -560,6 +561,61 @@ final class NativeRuntime {
                 incq .Lkof_free_count(%rip)
                 addq %rsi, .Lkof_free_bytes(%rip)
             .Lkof_free_done:
+                ret
+            """);
+    }
+
+    private static void emitGc(StringBuilder sb) {
+        sb.append("""
+            .section .data
+            .Lgc_tick: .quad 0
+            .section .text
+            .globl kof_gc_collect
+            .type kof_gc_collect, @function
+            kof_gc_collect:
+                # Automatic GC placeholder: walk free-list and coalesce, no roots yet
+                # For now, just munmap half of free-list if it grows too large (>64 entries)
+                pushq %rbx
+                pushq %r12
+                movq kof_free_head(%rip), %rbx
+                xorq %r12, %r12
+            .Lgc_count:
+                testq %rbx, %rbx
+                je .Lgc_check
+                incq %r12
+                movq 8(%rbx), %rbx
+                cmpq $64, %r12
+                jl .Lgc_count
+            .Lgc_check:
+                cmpq $64, %r12
+                jl .Lgc_done
+                # free half: pop 32 entries and munmap
+                movq kof_free_head(%rip), %rbx
+                movq $32, %r12
+            .Lgc_free_loop:
+                testq %rbx, %rbx
+                je .Lgc_update_head
+                movq 8(%rbx), %r12
+                movq %r12, %r12
+                movq (%rbx), %rsi
+                movq %rbx, %rdi
+                movq $11, %rax
+                syscall
+                decq %r12
+                movq 8(%rbx), %rbx
+                cmpq $0, %r12
+                jne .Lgc_free_loop
+            .Lgc_update_head:
+                movq %rbx, kof_free_head(%rip)
+            .Lgc_done:
+                incq .Lgc_tick(%rip)
+                popq %r12
+                popq %rbx
+                ret
+            .globl kof_gc_tick
+            .type kof_gc_tick, @function
+            kof_gc_tick:
+                movq .Lgc_tick(%rip), %rax
                 ret
             """);
     }

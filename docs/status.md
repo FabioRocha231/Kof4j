@@ -1,6 +1,6 @@
 # Status do Projeto Kof
 
-**Última atualização:** 26 de agosto de 2026
+**Última atualização:** 27 de agosto de 2026
 **Versão:** 0.1.2-beta
 
 ---
@@ -9,9 +9,9 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 639 testes (639 passando, 1 skip condicional)
-kof build            → PASS (--target jvm|native|js) [--release]
-kof run              → PASS (jvm|native|js) [--release]
+mvn test             → 658 testes (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional
+kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
+kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
 kof check            → PASS
 kof test             → PASS (suíte estruturada `test "nome" { }` nos 3 targets)
@@ -20,9 +20,11 @@ kof debug            → PASS (DAP MVP no target JVM)
 kof info             → PASS
 kof lsp              → PASS (hover/completion + diagnostics reais)
 kof install          → PASS
+kof c                → PASS (KofCcompiler nativo-only C subset → ELF x86_64 via kof_c)
+kof script           → PASS (KofScript top-level let → KofScriptGlobals, repl, --watch)
 tests/run-golden.sh  → 16/16 (8 casos × jvm+native)
 tests/run-integration.sh → 9/9 (CLI + serve + kof test)
-scripts/package.sh   → PASS (layout dist + tar.gz + SHA256SUMS)
+scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 ```
 
 ---
@@ -185,8 +187,11 @@ main() {
 | Target | Backend | Execução | Status |
 |--------|---------|----------|--------|
 | `jvm` | `JvmBackend` (ASM) | bytecode V21, exception table, virtual threads | estável |
-| `native` | `NativeBackend` | ELF x86-64, syscalls, sem libc obrigatória | estável |
-| `js` | `JsBackend` + `KofJsRunner` | ES Modules (ECMAScript 2022+) via GraalJS embutido | alpha |
+| `native` | `NativeBackend` (x86_64) | ELF x86_64, syscalls, free-list alloc, GC mark pending | estável |
+| `native.risc` | `NativeBackend` (riscv64) | ELF riscv64 via `riscv64-linux-gnu-as/ld` + qemu (placeholder, separado de `native`) | em progresso |
+| `native.arm` | `NativeBackend` (aarch64) | ELF aarch64 via `aarch64-linux-gnu-as/ld` + qemu (placeholder) | em progresso |
+| `js` | `JsBackend` + `KofJsRunner` | ES Modules via GraalJS, `kof.http` via `Java HttpClient` interop | alpha |
+| `kofc` | `KofCcompiler` | C subset (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → nativo x86_64 | nativo-only |
 
 O mesmo frontend e a mesma Kof IR alimentam os três backends.
 
@@ -233,6 +238,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
+| kof.http (`http.get/post/put/delete/status`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop) |
 | kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
 | kof.mq (publish/subscribe/queue) | ✅ | MQ001 | ✅ |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
@@ -243,6 +249,8 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.ui (Color, Palette, Theme, Window) | ✅ | ✅ (JS render) | ✅ |
 | default parameters em funções | ✅ | ✅ | ✅ |
 | `readLine()` | ✅ | ✅ | ✅ |
+| `KofCcompiler` C subset → nativo | — | ✅ (27/08) | — |
+| `KofScript` top-level `let`/`const` → `KofScriptGlobals` | ✅ | ✅ | ✅ |
 
 ### Concorrência (`spawn`)
 
@@ -372,7 +380,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (581 declarados / 590 JUnit no ecossistema — 1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35 em 25/08)
+## Testes (658 declarados = 650 kof-compiler +8 kof-script +5 kof-c-compiler — 1 skip; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4 em 27/08)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -467,13 +475,11 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 ## Bugs Restantes (reais)
 
-1. GC no Native (memória devolvida ao SO no exit)
+1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
 2. `spawn` no Native: CONC001 (gap documentado) — `spawn`/`await` OK em JVM/JS
 3. JSON de objetos/records no Native: JSN002 (gap documentado)
 4. JSON Float/Double: JSN001 (gap documentado)
-5. ~~JSON decode de arrays (`Int[]`)~~ — ✅ JSN003 fechado: decoders
-   nativos para Int[]/Long[]/Bool[]/String[]; Float/Double[] segue sob
-   o JSN001 (FP sem SSE)
+5. ~~JSON decode de arrays (`Int[]`)~~ — ✅ JSN003 fechado: decoders nativos para Int[]/Long[]/Bool[]/String[]; Float/Double[] segue sob o JSN001 (FP sem SSE)
 6. ~~Lambdas sem captura~~ — ✅ captura implementada (mutable via box `BoxN`; `Lambda0`/`Box0`)
 7. ~~Generics `Box<T>` com println nativo~~ — ✅ 25/08 `Box<Int>`/`T` substituído + `kof_int_to_string`
 8. ~~`SEM025` falso-positivo em `hashCode/equals/toString`~~ — ✅ `isObjectMethod` em 25/08
@@ -482,18 +488,15 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 11. ~~Map/Set~~ — ✅ `List.map/filter/reduce` + `Map/Set` JVM/Native/JS (26/08)
 12. Pattern matching: 🚧 `switch (x) { case String s: ... }` em `Parser/Semantic/CompilerDriver` + `Native rbx→rcx` + `JS typeof`; `record` destructuring pendente
 13. Null safety `String?`: planned (P1)
-14. Módulos multi-arquivo: planned (P1) — `kof build <dir>` já compila, falta semântica unificada
-15. Web: status codes/headers customizados por handler (planned, P2)
-16. Web: target `js` reporta WEB001; target `native` sem servidor web (P2)
-17. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1
-    feito; falta handshake completo, query e prepared statements) (P3)
-18. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão
-    linear dos demais; segfault e fragmentos errados eliminados.
-19. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em
-    compile-time; SSE real + dtoa são trabalho futuro do backend.
-20. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como
-    inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time.
-    Fechar exige backend SSE + formatação double→string.
+14. ~~Módulos multi-arquivo imports perdidos em projetos grandes~~ — ✅ 27/08 `CompilerDriver.java:243` `import a.b.C` file import `+` `a.b` dir import, `largeproj` `a/b/C.kf` `decls=2` `Main.class+a/b/C.class` ok
+15. ~~`List.get` native~~ — ✅ verificado `listOf(1,2,3).get(1) → 2` nativo `kof_list_get` bounds OK (caso `List.of` era `listOf`)
+16. Web: status codes/headers customizados por handler (planned, P2)
+17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS, Native HTTP002
+18. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1 feito; falta handshake completo, query e prepared statements) (P3)
+19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
+20. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em compile-time; SSE real + dtoa são trabalho futuro do backend.
+21. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time. Fechar exige backend SSE + formatação double→string.
+22. `KofCcompiler` riscv64/aarch64 placeholder (target separation feito `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm`, codegen ainda x86_64 placeholder, `qemu` skip)
 
 ---
 
