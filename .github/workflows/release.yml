@@ -172,13 +172,19 @@ jobs:
           name: kof-${{ matrix.target }}
           path: release-artifacts
 
-      - name: Ensure kof-cli jar present (same-step fallback)
+      - name: Build kof-cli jar + dist in same job (no artifact loss)
         shell: bash
         run: |
-          ls -lh release-artifacts/ 2>&1 | head -n 20
-          ls -lh kof-cli/target/kof-cli-*.jar 2>&1 | head -n 5 || mvn -q package -DskipTests -pl kof-cli -am
+          mvn -q package -DskipTests -pl kof-cli -am
+          scripts/package.sh --jdk || scripts/package.sh
+          ls -lh dist/ kof-cli/target/kof-cli-*.jar 2>&1 | head -n 20
+          mkdir -p release-artifacts
+          cp dist/*.tar.gz release-artifacts/ 2>&1 | head -n 5 || true
+          cp dist/*.zip release-artifacts/ 2>&1 | head -n 5 || true
+          cp dist/SHA256SUMS release-artifacts/ 2>&1 | head -n 5 || true
           cp kof-cli/target/kof-cli-*.jar release-artifacts/ 2>&1 | head -n 5 || true
-          ls -lh release-artifacts/*.jar 2>&1 | head -n 10
+          cp kof-cli/target/*-jar-with-dependencies.jar release-artifacts/ 2>&1 | head -n 5 || true
+          ls -lh release-artifacts/ 2>&1 | head -n 20
 
       - name: Prepare changelog
         run: |
