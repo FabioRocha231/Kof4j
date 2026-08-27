@@ -1576,6 +1576,12 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - bump version to 0.1.9-beta [skip ci]
 
+## [0.1.11-beta] - 2026-08-27
+
+### Bugfixes
+
+  - package+release uma coisa só (single job, no artifact loss)
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
