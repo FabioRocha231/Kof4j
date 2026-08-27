@@ -151,7 +151,7 @@ jobs:
 
   release:
     name: GitHub Release (${{ matrix.target }})
-    needs: [test-and-bump, package]
+    needs: [test-and-bump]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -166,13 +166,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download artifact (${{ matrix.target }})
-        uses: actions/download-artifact@v4
+      - name: Set up JDK 21 (Tooling API baseline)
+        uses: actions/setup-java@v4
         with:
-          name: kof-${{ matrix.target }}
-          path: release-artifacts
+          distribution: temurin
+          java-version: '21'
 
-      - name: Build kof-cli jar + dist in same job (no artifact loss)
+      - name: Build kof-cli jar + dist in same job (package+release uma coisa só)
         shell: bash
         run: |
           mvn -q package -DskipTests -pl kof-cli -am
