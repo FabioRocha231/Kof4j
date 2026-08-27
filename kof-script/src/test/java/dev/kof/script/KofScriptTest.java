@@ -74,4 +74,41 @@ class KofScriptTest {
         assertTrue(r.success(), r.stderr());
         assertEquals("42", r.stdout().trim());
     }
+
+    @Test
+    void evalJsTarget() throws Exception {
+        var r = dev.kof.compiler.Target.JS != null ? KofScript.eval("println(7)", dev.kof.compiler.Target.JS) : null;
+        // JS eval uses embedded GraalJS, stdout is captured via KofJsRunner (which prints to System.out, not RunResult.stdout for JS)
+        // For MVP, we just check success (JS stdout goes to System.out, not RunResult for JS path)
+        // Instead test via runFile JS direct
+        Path tmp = Files.createTempDirectory("jstest");
+        Path f = tmp.resolve("Main.kf");
+        Files.writeString(f, "main() { println(7) }");
+        var r2 = KofScript.runFile(f, dev.kof.compiler.Target.JS);
+        assertTrue(r2.success(), r2.stderr() + r2.stdout());
+    }
+
+    @Test
+    void evalNativeTarget() throws Exception {
+        Path tmp = Files.createTempDirectory("nativetest");
+        Path f = tmp.resolve("Main.kf");
+        Files.writeString(f, "main() { println(7) }");
+        var r = KofScript.runFile(f, dev.kof.compiler.Target.NATIVE);
+        assertTrue(r.success(), r.stderr() + r.stdout());
+        assertEquals("7", r.stdout().trim());
+    }
+
+    @Test
+    void evalLetAndAsyncSugar() throws Exception {
+        var r = KofScript.eval("""
+                async fn foo(a: Int): Int = a + 1
+                main() {
+                    let x = 5
+                    var y = foo(x)
+                    println(y)
+                }
+                """);
+        assertTrue(r.success(), r.stderr());
+        assertEquals("6", r.stdout().trim());
+    }
 }

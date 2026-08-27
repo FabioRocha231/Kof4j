@@ -19,6 +19,11 @@
             <artifactId>kof-compiler</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>dev.kof</groupId>
+            <artifactId>kof-script</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

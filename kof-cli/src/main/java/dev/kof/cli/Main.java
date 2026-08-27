@@ -27,6 +27,7 @@ public final class Main {
             case "lsp" -> lsp();
             case "install" -> install(args);
             case "script" -> System.exit(script(args));
+            case "repl" -> System.exit(repl(args));
             case "init" -> System.exit(init(args));
             case "fmt" -> System.exit(Fmt.run(args));
             case "version" -> System.out.println("kof " + KofVersion.version());
@@ -393,7 +394,8 @@ private static void build(String[] args) {
         System.out.println("  run <file.kf> [--target jvm|native|js|android] [--release] [args...]");
         System.out.println("  serve <file.kf> [--port <port>] [--host <host>]");
         System.out.println("  check <file.kf|dir>          type-check without emitting output");
-        System.out.println("  script <file.ks>             execução direta de KofScript (decls top-level + main sintético)");
+        System.out.println("  script <file.ks|kf> [--target jvm|native|js]   execução direta KofScript (JVM/Native/JS, diagnostics com file:line)");
+        System.out.println("  repl                         REPL incremental KofScript (type 'exit' to quit)");
         System.out.println("  test <file.kf|dir> [--target jvm|native]   run programs, PASS/FAIL by exit code");
         System.out.println("  bench [paths...] [--target jvm|native|js|android] [--iterations N] [--warmup N] [--baseline <file>]");
         System.out.println("                          [--update-baseline <file>] [--threshold <ratio>] [--json] [--quick]");
@@ -620,19 +622,39 @@ private static void build(String[] args) {
     }
 
     /**
-     * kof script — execução direta de KofScript (.ks): declarações (fn/enum/
-     * class) viram top-level e todo o resto cai num main() sintético único —
-     * variáveis persistem entre linhas do MESMO arquivo. Um programa por
-     * arquivo, compilado para JVM e executado.
+     * kof script — execução direta de KofScript (.ks/.kf): para .ks,
+     * declarações (fn/enum/class) viram top-level e o resto cai num main()
+     * sintético; para .kf compila direto. Suporta --target jvm|native|js
+     * e diagnostics com file:line via Diagnostic.format().
      */
     private static int script(String[] args) {
-        if (args.length < 2) {
-            System.err.println("usage: kof script <file.ks>");
-            return 1;
+        if (args.length < 2 || "--help".equals(args[1]) || "-h".equals(args[1])) {
+            System.out.println("usage: kof script <file.ks|kf> [--target jvm|native|js]");
+            System.out.println("       kof script --repl  (ou: kof repl)");
+            return 0;
         }
+        if ("--repl".equals(args[1])) return repl(args);
         Path src = Path.of(args[1]);
         if (!Files.exists(src)) { System.err.println("not found: " + src); return 1; }
+        Target target = Target.JVM;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].startsWith("--target=")) target = parseTarget(args[i].substring("--target=".length()));
+            else if (args[i].equals("--target") && i + 1 < args.length) target = parseTarget(args[++i]);
+        }
+        // .kf: compila direto (preserva file:line); .ks: wrap decls/stmts como antes
         try {
+            if (src.toString().endsWith(".kf")) {
+                var r = dev.kof.script.KofScript.runFile(src, target);
+                if (!r.success()) {
+                    if (!r.stderr().isBlank()) System.err.print(r.stderr());
+                    if (!r.stdout().isBlank()) System.out.print(r.stdout());
+                    return 1;
+                }
+                if (!r.stdout().isBlank()) System.out.print(r.stdout());
+                if (!r.stderr().isBlank()) System.err.print(r.stderr());
+                return r.exitCode();
+            }
+            // .ks handling
             List<String> lines = Files.readAllLines(src);
             StringBuilder decls = new StringBuilder();
             StringBuilder stmts = new StringBuilder();
@@ -640,51 +662,64 @@ private static void build(String[] args) {
             boolean curIsDecl = false;
             for (String raw : lines) {
                 String t = raw.strip();
+                // KofScript sugar: let/const -> var/val, async fn -> fn
+                String tNorm = t.replaceFirst("^async\\s+", "");
                 if (t.isEmpty() || t.startsWith("//")) continue;
                 cur.append(raw).append('\n');
-                boolean declStart = t.startsWith("fn ") || t.startsWith("enum ")
-                        || t.startsWith("class ") || t.startsWith("record ")
-                        || DECL_TYPE.matcher(t).find();
+                boolean declStart = tNorm.startsWith("fn ") || tNorm.startsWith("enum ")
+                        || tNorm.startsWith("class ") || tNorm.startsWith("record ")
+                        || DECL_TYPE.matcher(tNorm).find();
                 if (cur.length() == raw.length() + 1) curIsDecl = declStart;
                 if (balance(cur.toString()) > 0) continue;
                 String block = cur.toString().strip();
-                if (curIsDecl) decls.append(block).append('\n');
-                else stmts.append(block).append('\n');
+                // Normalize block for decls (so async fn becomes fn for the compiler)
+                String blockNorm = block.replaceFirst("(?m)^async\\s+fn\\b", "fn");
+                blockNorm = blockNorm.replaceAll("\\blet\\b", "var").replaceAll("\\bconst\\b", "val");
+                if (curIsDecl) decls.append(blockNorm).append('\n');
+                else {
+                    String stmtNorm = block.replaceAll("\\blet\\b", "var").replaceAll("\\bconst\\b", "val");
+                    // keep async inside stmt? async fn already handled
+                    stmts.append(stmtNorm).append('\n');
+                }
                 cur.setLength(0);
             }
-            if (!cur.isEmpty()) { // bloco não fechado
+            if (!cur.isEmpty()) {
                 if (curIsDecl) decls.append(cur); else stmts.append(cur);
             }
             if (stmts.isEmpty() && decls.isEmpty()) return 0;
-
             Path tmp = Files.createTempDirectory("kof-script-");
             StringBuilder program = new StringBuilder();
             program.append(decls);
             program.append("main() {\n").append(stmts).append("\n}\n");
-            Path kf = tmp.resolve("Script.kf");
+            // Preserve original file name for diagnostics (bad.ks -> bad.kf)
+            String kfName = src.getFileName().toString().replaceFirst("\\.ks$", ".kf");
+            if (!kfName.endsWith(".kf")) kfName = "Script.kf";
+            Path kf = tmp.resolve(kfName);
             Files.writeString(kf, program.toString());
-            CompilerDriver driver = new CompilerDriver();
-            CompilationResult result = driver.compile(kf, tmp.resolve("out"), Target.JVM);
-            if (!result.success()) {
-                for (Diagnostic d : result.diagnostics().getDiagnostics()) {
-                    if (d.severity() == dev.kof.compiler.Diagnostic.Severity.ERROR) {
-                        System.out.println(d.format());
-                    }
-                }
+            var r = dev.kof.script.KofScript.runFile(kf, target);
+            // Propaga diagnostics com file:line (KofScript já usa d.format())
+            if (!r.success()) {
+                if (!r.stderr().isBlank()) System.err.print(r.stderr());
+                if (!r.stdout().isBlank()) System.out.print(r.stdout());
                 cleanup(tmp);
                 return 1;
             }
-            ProcessBuilder pb = new ProcessBuilder(javaExecutable(), "-cp",
-                    tmp.resolve("out").toString(), findMainClass(tmp.resolve("out")));
-            pb.redirectErrorStream(true);
-            Process proc = pb.start();
-            String out = new String(proc.getInputStream().readAllBytes());
-            int ec = proc.waitFor();
-            if (!out.isBlank()) System.out.print(out);
+            if (!r.stdout().isBlank()) System.out.print(r.stdout());
+            if (!r.stderr().isBlank()) System.err.print(r.stderr());
             cleanup(tmp);
-            return ec == 0 ? 0 : 1;
+            return r.exitCode();
         } catch (Exception e) {
             System.err.println("kof script: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    private static int repl(String[] args) {
+        try {
+            dev.kof.script.KofScript.repl(System.in, System.out);
+            return 0;
+        } catch (Exception e) {
+            System.err.println("kof repl: " + e.getMessage());
             return 1;
         }
     }
