@@ -1562,6 +1562,20 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
   - remove duplicate if-no-files-found again
   - re-add kof-cli jars to upload for 0.1.8
 
+## [0.1.10-beta] - 2026-08-27
+
+### Bugfixes
+
+  - package+release uma coisa só + JDK 21 no release job
+  - build kof-cli+dist in same job as release (no artifact loss)
+  - ensure kof-cli jar in same-step as release (artifact fallback)
+  - remove duplicate if-no-files-found again
+  - re-add kof-cli jars to upload for 0.1.8
+
+### Build
+
+  - bump version to 0.1.9-beta [skip ci]
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
