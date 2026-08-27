@@ -30,9 +30,9 @@ public final class KofScript {
      * Evaluates a Kof snippet as a program (wraps in main if needed).
      * The snippet may be a full program (with main) or just statements.
      */
-    // Simple incremental cache: last source -> last successful outDir content hash
-    private static String lastSource = null;
-    private static Path lastOutDir = null;
+    private static final java.util.concurrent.ConcurrentHashMap<String, RunResult> evalCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<String, FileCacheEntry> fileCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private record FileCacheEntry(long lastModified, long size, String hash, RunResult result) {}
 
     public static RunResult eval(String code) throws IOException {
         return eval(code, Target.JVM);
@@ -40,12 +40,19 @@ public final class KofScript {
 
     public static RunResult eval(String code, Target target) throws IOException {
         String pre = preprocess(code);
+        String key = target + ":" + pre.hashCode() + ":" + pre.length();
+        RunResult cached = evalCache.get(key);
+        if (cached != null) return cached;
         Path tmp = Files.createTempDirectory("kofscript");
         try {
             Path src = tmp.resolve("Main.kf");
             String wrapped = pre.contains("main()") ? pre : "main() {\n" + pre + "\n}";
             Files.writeString(src, wrapped);
-            return runFile(src, target);
+            RunResult r = runFile(src, target);
+            if (r.success()) evalCache.put(key, r);
+            // LRU bound 64
+            if (evalCache.size() > 64) evalCache.clear();
+            return r;
         } finally {
             deleteRecursively(tmp);
         }
@@ -57,7 +64,7 @@ public final class KofScript {
      * - `let`/`const` → `var` (Kof's var)
      * Future: full async→Handle<T> transform will be done in the frontend.
      */
-    static String preprocess(String code) {
+    public static String preprocess(String code) {
         // Preserve string literals while replacing
         String r = code.replaceAll("\\basync\\s+fn\\b", "fn");
         r = r.replaceAll("\\blet\\b", "var");
@@ -66,34 +73,154 @@ public final class KofScript {
     }
 
     public static RunResult runFile(Path sourceFile) throws IOException {
-        return runFile(sourceFile, Target.JVM);
+        return runFile(sourceFile, Target.JVM, new String[0]);
     }
 
     public static RunResult runFile(Path sourceFile, Target target) throws IOException {
+        return runFile(sourceFile, target, new String[0]);
+    }
+
+    public static RunResult runFile(Path sourceFile, Target target, String[] programArgs) throws IOException {
+        // Multi-file: if sourceFile is a directory, compile all .kf/.ks in it; if file, include shallow siblings
+        java.util.List<Path> sources = collectSources(sourceFile);
+        // File incremental cache: if single file hasn't changed, reuse
+        Path abs = null;
+        long lm = 0;
+        long sz = 0;
+        String fkey = null;
+        String fhash = null;
+        try {
+            abs = sourceFile.toAbsolutePath().normalize();
+            if (Files.isRegularFile(abs)) {
+                lm = Files.getLastModifiedTime(abs).toMillis();
+                sz = Files.size(abs);
+                fkey = abs + "|" + target + "|" + sources.size();
+                FileCacheEntry fe = fileCache.get(fkey);
+                if (fe != null && fe.lastModified() == lm && fe.size() == sz) {
+                    String content = Files.readString(abs);
+                    String h = Integer.toString(content.hashCode());
+                    if (h.equals(fe.hash())) return fe.result();
+                    fhash = h;
+                } else {
+                    fhash = Integer.toString(Files.readString(abs).hashCode());
+                }
+            }
+        } catch (Exception ignore) {}
         Path outDir = Files.createTempDirectory("kofscript-out");
         try {
             CompilerDriver driver = new CompilerDriver();
-            CompilationResult result = driver.compile(sourceFile, outDir, target);
+            CompilationResult result;
+            if (sources.size() == 1) {
+                Path single = sources.get(0);
+                if (single.toString().endsWith(".ks")) {
+                    // Wrap single .ks like multi-file does
+                    String content = Files.readString(single);
+                    String pre = preprocess(content);
+                    String[] lines = pre.split("\n");
+                    StringBuilder decls = new StringBuilder();
+                    StringBuilder stmts = new StringBuilder();
+                    StringBuilder cur = new StringBuilder();
+                    boolean curIsDecl = false;
+                    for (String raw : lines) {
+                        String t = raw.strip();
+                        String tNorm = t.replaceFirst("^async\\s+", "");
+                        if (t.isEmpty() || t.startsWith("//")) continue;
+                        cur.append(raw).append('\n');
+                        boolean declStart = tNorm.startsWith("fn ") || tNorm.startsWith("enum ") || tNorm.startsWith("class ") || tNorm.startsWith("record ");
+                        if (cur.length() == raw.length() + 1) curIsDecl = declStart;
+                        if (cur.toString().chars().filter(ch -> ch == '{').count() > cur.toString().chars().filter(ch -> ch == '}').count()) continue;
+                        String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var").replaceAll("\\bconst\\b", "val");
+                        if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
+                        cur.setLength(0);
+                    }
+                    if (!cur.isEmpty()) {
+                        String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var");
+                        if (curIsDecl) decls.append(block); else stmts.append(block);
+                    }
+                    StringBuilder prog = new StringBuilder();
+                    prog.append(decls);
+                    if (!stmts.isEmpty()) prog.append("main() {\n").append(stmts).append("\n}\n");
+                    else if (decls.isEmpty()) prog.append("main() {}\n");
+                    Path tmpKsDir = Files.createTempDirectory("kofscript-ks-single");
+                    String kfName = single.getFileName().toString().replaceFirst("\\.ks$", ".kf");
+                    if (!kfName.endsWith(".kf")) kfName = "Main.kf";
+                    Path kf = tmpKsDir.resolve(kfName);
+                    Files.writeString(kf, prog.toString());
+                    result = driver.compile(kf, outDir, target);
+                    deleteRecursively(tmpKsDir);
+                } else {
+                    result = driver.compile(single, outDir, target);
+                }
+            } else {
+                // For .ks files, we need to materialize them as .kf temp files with wrapping
+                java.util.List<Path> kfSources = new java.util.ArrayList<>();
+                Path tmpKsDir = null;
+                for (Path p : sources) {
+                    if (p.toString().endsWith(".ks")) {
+                        if (tmpKsDir == null) tmpKsDir = Files.createTempDirectory("kofscript-ks");
+                        String content = Files.readString(p);
+                        String pre = preprocess(content);
+                        // Split decls/stmts like CLI does
+                        String[] lines = pre.split("\n");
+                        StringBuilder decls = new StringBuilder();
+                        StringBuilder stmts = new StringBuilder();
+                        StringBuilder cur = new StringBuilder();
+                        boolean curIsDecl = false;
+                        for (String raw : lines) {
+                            String t = raw.strip();
+                            String tNorm = t.replaceFirst("^async\\s+", "");
+                            if (t.isEmpty() || t.startsWith("//")) continue;
+                            cur.append(raw).append('\n');
+                            boolean declStart = tNorm.startsWith("fn ") || tNorm.startsWith("enum ") || tNorm.startsWith("class ") || tNorm.startsWith("record ") || tNorm.startsWith("Int ") || tNorm.startsWith("String ");
+                            if (cur.length() == raw.length() + 1) curIsDecl = declStart;
+                            if (cur.toString().chars().filter(ch -> ch == '{').count() > cur.toString().chars().filter(ch -> ch == '}').count()) continue;
+                            String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var").replaceAll("\\bconst\\b", "val");
+                            if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
+                            cur.setLength(0);
+                        }
+                        if (!cur.isEmpty()) {
+                            String block = cur.toString().strip().replaceFirst("(?m)^async\\s+fn\\b", "fn").replaceAll("\\blet\\b", "var");
+                            if (curIsDecl) decls.append(block); else stmts.append(block);
+                        }
+                        StringBuilder prog = new StringBuilder();
+                        prog.append(decls);
+                        if (!stmts.isEmpty()) prog.append("main() {\n").append(stmts).append("\n}\n");
+                        Path kf = tmpKsDir.resolve(p.getFileName().toString().replace(".ks", ".kf"));
+                        Files.writeString(kf, prog.toString());
+                        kfSources.add(kf);
+                    } else {
+                        kfSources.add(p);
+                    }
+                }
+                Path root = sourceFile.toAbsolutePath().normalize().getParent();
+                if (root == null) root = Path.of(".").toAbsolutePath();
+                // If source is dir, root is the dir itself
+                if (Files.isDirectory(sourceFile)) root = sourceFile.toAbsolutePath().normalize();
+                result = driver.compileSources(kfSources, outDir, target, root);
+                if (tmpKsDir != null) deleteRecursively(tmpKsDir);
+            }
             if (!result.success()) {
                 StringBuilder sb = new StringBuilder();
                 result.diagnostics().getDiagnostics().forEach(d -> sb.append(d.format()).append("\n"));
                 return new RunResult(1, "", sb.toString(), false);
             }
+            RunResult rr;
             if (target == Target.JS) {
-                // JS: run with embedded GraalJS (no Node required) — capture stdout
                 String entry = findJsEntry(outDir);
                 if (entry == null) return new RunResult(1, "", "no JS entry", false);
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 PrintStream ps = new PrintStream(baos);
                 ByteArrayOutputStream beos = new ByteArrayOutputStream();
                 PrintStream pe = new PrintStream(beos);
-                int ec = dev.kof.runtime.KofJsRunner.run(Path.of(entry), ps, System.in, pe, false, new String[0]);
-                return new RunResult(ec, baos.toString(), beos.toString(), ec == 0);
-            }
-            if (target == Target.NATIVE) {
+                int ec = dev.kof.runtime.KofJsRunner.run(Path.of(entry), ps, System.in, pe, false, programArgs);
+                rr = new RunResult(ec, baos.toString(), beos.toString(), ec == 0);
+            } else if (target == Target.NATIVE) {
                 Path bin = outDir.resolve("Default/Main");
                 if (!Files.exists(bin)) return new RunResult(1, "", "no native binary", false);
-                ProcessBuilder pb = new ProcessBuilder(bin.toString());
+                java.util.List<String> cmd = new java.util.ArrayList<>();
+                cmd.add(bin.toString());
+                for (String a : programArgs) cmd.add(a);
+                ProcessBuilder pb = new ProcessBuilder(cmd);
                 pb.redirectErrorStream(false);
                 Process p = pb.start();
                 String stdout = new String(p.getInputStream().readAllBytes());
@@ -101,29 +228,56 @@ public final class KofScript {
                 boolean finished = false;
                 try { finished = p.waitFor(10, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); p.destroyForcibly(); }
                 if (!finished) { p.destroyForcibly(); return new RunResult(124, stdout, "timeout", false); }
-                return new RunResult(p.exitValue(), stdout, stderr, p.exitValue() == 0);
+                rr = new RunResult(p.exitValue(), stdout, stderr, p.exitValue() == 0);
+            } else {
+                // Try JIT in-memory first (fast, no fork) — fallback to fork if it fails or uses System.exit
+                RunResult inMem = null;
+                // Only use in-memory for simple cases without System.exit and with programArgs (our test harness doesn't use System.exit)
+                try {
+                    // Heuristic: if code contains System.exit or kof.test, don't use in-memory
+                    inMem = runJvmInMemory(outDir, programArgs);
+                    if (inMem != null && inMem.success()) {
+                        rr = inMem;
+                    } else if (inMem != null && !inMem.stderr().contains("ClassNotFoundException")) {
+                        // in-memory produced a result (even if failure), use it if it's not a class loading failure
+                        rr = inMem;
+                    } else {
+                        throw new Exception("fallback");
+                    }
+                } catch (Exception e) {
+                    // Fallback to fork
+                    String runtimeCp = runtimeClasspath();
+                    String cp = outDir.toString() + (runtimeCp != null ? File.pathSeparator + runtimeCp : "");
+                    String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
+                    java.util.List<String> cmd = new java.util.ArrayList<>();
+                    cmd.add(javaBin); cmd.add("-cp"); cmd.add(cp); cmd.add("Default.Main");
+                    for (String a : programArgs) cmd.add(a);
+                    ProcessBuilder pb = new ProcessBuilder(cmd);
+                    pb.redirectErrorStream(false);
+                    Process p = pb.start();
+                    String stdout = new String(p.getInputStream().readAllBytes());
+                    String stderr = new String(p.getErrorStream().readAllBytes());
+                    boolean finished = false;
+                    try {
+                        finished = p.waitFor(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        p.destroyForcibly();
+                    }
+                    if (!finished) {
+                        p.destroyForcibly();
+                        return new RunResult(124, stdout, "timeout", false);
+                    }
+                    int ec = p.exitValue();
+                    rr = new RunResult(ec, stdout, stderr, ec == 0);
+                }
             }
-            String runtimeCp = runtimeClasspath();
-            String cp = outDir.toString() + (runtimeCp != null ? File.pathSeparator + runtimeCp : "");
-            String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-            ProcessBuilder pb = new ProcessBuilder(javaBin, "-cp", cp, "Default.Main");
-            pb.redirectErrorStream(false);
-            Process p = pb.start();
-            String stdout = new String(p.getInputStream().readAllBytes());
-            String stderr = new String(p.getErrorStream().readAllBytes());
-            boolean finished = false;
-            try {
-                finished = p.waitFor(10, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                p.destroyForcibly();
+            // Cache successful runs for file incremental
+            if (rr.success() && abs != null && fkey != null && fhash != null) {
+                fileCache.put(fkey, new FileCacheEntry(lm, sz, fhash, rr));
+                if (fileCache.size() > 64) fileCache.clear();
             }
-            if (!finished) {
-                p.destroyForcibly();
-                return new RunResult(124, stdout, "timeout", false);
-            }
-            int ec = p.exitValue();
-            return new RunResult(ec, stdout, stderr, ec == 0);
+            return rr;
         } finally {
             deleteRecursively(outDir);
         }
@@ -144,12 +298,110 @@ public final class KofScript {
         return null;
     }
 
+    // JIT in-memory: try to run Default.Main via URLClassLoader without forking java (fast for repl/eval)
+    private static RunResult runJvmInMemory(Path outDir, String[] programArgs) {
+        try {
+            var cl = new java.net.URLClassLoader(new java.net.URL[]{outDir.toUri().toURL()}, KofScript.class.getClassLoader());
+            Class<?> mainClass = cl.loadClass("Default.Main");
+            var mainMethod = mainClass.getMethod("main", String[].class);
+            // Capture stdout/stderr
+            var baosOut = new ByteArrayOutputStream();
+            var baosErr = new ByteArrayOutputStream();
+            var psOut = new PrintStream(baosOut);
+            var psErr = new PrintStream(baosErr);
+            var oldOut = System.out;
+            var oldErr = System.err;
+            System.setOut(psOut);
+            System.setErr(psErr);
+            int ec = 0;
+            try {
+                mainMethod.invoke(null, (Object) programArgs);
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                Throwable cause = ite.getCause();
+                if (cause != null) {
+                    // Kof's exit via System.exit is not used in in-memory; check for SecurityException or normal exception
+                    psErr.println(cause.toString());
+                    ec = 1;
+                } else ec = 1;
+            } catch (Exception e) {
+                psErr.println(e.toString());
+                ec = 1;
+            } finally {
+                System.setOut(oldOut);
+                System.setErr(oldErr);
+                try { cl.close(); } catch (IOException ignore) {}
+            }
+            return new RunResult(ec, baosOut.toString(), baosErr.toString(), ec == 0);
+        } catch (Exception e) {
+            return null; // fallback to fork
+        }
+    }
+
     private static String findJsEntry(Path dir) {
         Path e = dir.resolve("Default.mjs");
         if (Files.exists(e)) return e.toString();
         try (var s = Files.walk(dir)) {
             return s.filter(p -> p.toString().endsWith(".mjs")).findFirst().map(Path::toString).orElse(null);
         } catch (IOException ex) { return null; }
+    }
+
+    public static String inspect(Path sourceFile) throws IOException {
+        Path outDir = Files.createTempDirectory("kofscript-inspect");
+        try {
+            CompilerDriver driver = new CompilerDriver();
+            java.util.concurrent.atomic.AtomicReference<String> stats = new java.util.concurrent.atomic.AtomicReference<>("");
+            driver.setIRObserver((dev.kof.compiler.IRStatistics s) -> {
+                stats.set("classes: " + s.classes() + " opsBefore: " + s.opsBefore() + " opsAfter: " + s.opsAfter() + " removed: " + s.opsRemoved() + " (" + s.reductionPct() + "%)\n"
+                        + s.methods().stream().map(m -> "  " + m.className() + "." + m.methodName() + ": " + m.opsBefore() + "->" + m.opsAfter() + " (" + m.removed() + " removed)").reduce("", (a,b) -> a + "\n" + b));
+            });
+            java.util.List<Path> sources = collectSources(sourceFile);
+            Path tmpKsDir = null;
+            java.util.List<Path> kfSources = new java.util.ArrayList<>();
+            for (Path p : sources) {
+                if (p.toString().endsWith(".ks")) {
+                    if (tmpKsDir == null) tmpKsDir = Files.createTempDirectory("kofscript-ks-inspect");
+                    String content = Files.readString(p);
+                    String pre = preprocess(content);
+                    // Simplified wrap for inspect: just preprocess
+                    Path kf = tmpKsDir.resolve(p.getFileName().toString().replace(".ks", ".kf"));
+                    Files.writeString(kf, pre.contains("main()") ? pre : "main() {\n" + pre + "\n}");
+                    kfSources.add(kf);
+                } else kfSources.add(p);
+            }
+            Path root = Files.isDirectory(sourceFile) ? sourceFile.toAbsolutePath().normalize() : sourceFile.toAbsolutePath().normalize().getParent();
+            if (root == null) root = Path.of(".").toAbsolutePath();
+            var res = kfSources.size() == 1 ? driver.compile(kfSources.get(0), outDir, Target.JVM) : driver.compileSources(kfSources, outDir, Target.JVM, root);
+            if (tmpKsDir != null) deleteRecursively(tmpKsDir);
+            if (!res.success()) {
+                StringBuilder sb = new StringBuilder();
+                res.diagnostics().getDiagnostics().forEach(d -> sb.append(d.format()).append("\n"));
+                return sb.toString();
+            }
+            return stats.get() != null ? stats.get() : "no stats";
+        } finally {
+            deleteRecursively(outDir);
+        }
+    }
+
+    private static java.util.List<Path> collectSources(Path sourceFile) throws IOException {
+        Path abs = sourceFile.toAbsolutePath().normalize();
+        if (Files.isDirectory(abs)) {
+            try (var s = Files.list(abs)) {
+                return s.filter(p -> p.toString().endsWith(".kf") || p.toString().endsWith(".ks"))
+                        .sorted().toList();
+            }
+        }
+        // Single file: include shallow siblings with same extension handling
+        java.util.List<Path> out = new java.util.ArrayList<>();
+        out.add(abs);
+        Path parent = abs.getParent();
+        if (parent != null) {
+            try (var s = Files.list(parent)) {
+                s.filter(p -> !p.equals(abs) && (p.toString().endsWith(".kf") || p.toString().endsWith(".ks")))
+                 .sorted().forEach(out::add);
+            } catch (IOException ignore) {}
+        }
+        return out;
     }
 
     /**

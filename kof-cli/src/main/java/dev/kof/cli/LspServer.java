@@ -158,9 +158,49 @@ final class LspServer {
             String path = uri.startsWith("file:") ? uri.substring("file:".length()) : uri;
             int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
             if (slash >= 0) path = path.substring(slash + 1);
-            if (path.endsWith(".kf")) name = path;
+            if (path.endsWith(".kf") || path.endsWith(".ks")) name = path;
+            // KofScript sugar: let/const/async fn for .ks
+            String outText = text;
+            if (name.endsWith(".ks")) {
+                outText = dev.kof.script.KofScript.preprocess(text);
+                // Wrap bare statements into main() if no main present (like kof script)
+                if (!outText.contains("main()")) {
+                    // Split decls (fn/enum/class) vs stmts
+                    String[] lines = outText.split("\n");
+                    StringBuilder decls = new StringBuilder();
+                    StringBuilder stmts = new StringBuilder();
+                    StringBuilder cur = new StringBuilder();
+                    boolean curIsDecl = false;
+                    for (String raw : lines) {
+                        String t = raw.strip();
+                        String tNorm = t.replaceFirst("^async\\s+", "");
+                        if (t.isEmpty() || t.startsWith("//")) continue;
+                        cur.append(raw).append('\n');
+                        boolean declStart = tNorm.startsWith("fn ") || tNorm.startsWith("enum ") || tNorm.startsWith("class ") || tNorm.startsWith("record ");
+                        if (cur.length() == raw.length() + 1) curIsDecl = declStart;
+                        if (cur.toString().chars().filter(ch -> ch == '{').count() > cur.toString().chars().filter(ch -> ch == '}').count()) continue;
+                        String block = cur.toString().strip();
+                        if (curIsDecl) decls.append(block).append('\n'); else stmts.append(block).append('\n');
+                        cur.setLength(0);
+                    }
+                    if (!cur.isEmpty()) {
+                        String block = cur.toString().strip();
+                        if (curIsDecl) decls.append(block); else stmts.append(block);
+                    }
+                    if (!stmts.isEmpty() || !decls.isEmpty()) {
+                        StringBuilder prog = new StringBuilder();
+                        prog.append(decls);
+                        prog.append("main() {\n").append(stmts).append("\n}\n");
+                        outText = prog.toString();
+                        name = name.replace(".ks", ".kf");
+                    }
+                } else {
+                    // Already has main, just preprocess
+                    name = name.replace(".ks", ".kf");
+                }
+            }
             file = tmpDir.resolve(name);
-            Files.writeString(file, text);
+            Files.writeString(file, outText);
 
             CompilationResult result = driver.compile(file, tmpDir.resolve("out"), Target.JVM);
             for (Diagnostic d : result.diagnostics().getDiagnostics()) {
