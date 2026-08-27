@@ -31,6 +31,16 @@ class SemanticAnalyzer {
         };
     }
 
+    private boolean isBuiltinTypeName(String name) {
+        return switch (name) {
+            case "String", "string", "Object", "Int", "int", "Long", "long",
+                    "Bool", "bool", "boolean", "Boolean", "Char", "char",
+                    "Byte", "byte", "Short", "short", "Float", "float",
+                    "Double", "double", "void", "Void" -> true;
+            default -> false;
+        };
+    }
+
     /**
      * Nome simples declarado em import vira tipo qualificado
      * ("import android.webkit.WebView" → ClassType("android.webkit","WebView")).
@@ -782,6 +792,7 @@ class SemanticAnalyzer {
                         && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
+                        && !isBuiltinTypeName(ie.name())
                         && !knownClasses.containsKey(ie.name())) {
                     diagnostics.error("", 0, 0, 0,
                             "Undefined variable or type: '" + ie.name() + "'", "SEM011");

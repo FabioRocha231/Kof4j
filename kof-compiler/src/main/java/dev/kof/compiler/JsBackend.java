@@ -557,7 +557,14 @@ class JsBackend implements Backend {
             return List.of(parseTryStatement(ctx, pos));
         }
         if (op instanceof KofLoadLocal ll && "#switch".equals(ctx.rawLocalNames.get(ll.index()))) {
-            return List.of(parseSwitchStatement(ctx, pos));
+            // Distinguish switch test (load #switch + instanceof or case value) from
+            // pattern body prologue (load #switch + checkcast). The body prologue
+            // should be handled as a normal store expression, not as a switch.
+            if (pos[0] + 1 < ctx.ops.size() && ctx.ops.get(pos[0] + 1) instanceof KofCheckCast) {
+                // pattern body: let s = #switch; fall through to expression handling
+            } else {
+                return List.of(parseSwitchStatement(ctx, pos));
+            }
         }
         if (op instanceof KofJump kj) {
             pos[0]++;
@@ -932,22 +939,10 @@ class JsBackend implements Backend {
     // ── Switch statement ────────────────────────────────────────────
 
     private JsIr.JsStatement parseSwitchStatement(MethodCtx ctx, int[] pos) {
-        // Detect pattern switch (contains KofInstanceOf) -> lower as if-else chain
+        // Detect pattern switch: immediate next after load #switch is KofInstanceOf
         boolean hasPattern = false;
-        for (int i = pos[0]; i < ctx.ops.size(); i++) {
-            KofOperation op = ctx.ops.get(i);
-            if (op instanceof KofInstanceOf) { hasPattern = true; break; }
-            if (op instanceof KofLabel) {
-                // next switch test starts with KofLoadLocal #switch, but if we see a body label, stop
-                // scan ahead for KofLoadLocal #switch to decide
-                if (i + 1 < ctx.ops.size() && ctx.ops.get(i + 1) instanceof KofLoadLocal ll
-                        && "#switch".equals(ctx.rawLocalNames.get(ll.index()))) {
-                    continue;
-                }
-                // if we encounter a body label without preceding KofInstanceOf, not pattern
-                // continue scanning
-            }
-            if (op instanceof KofLabel && hasPattern) break;
+        if (pos[0] + 1 < ctx.ops.size() && ctx.ops.get(pos[0] + 1) instanceof KofInstanceOf) {
+            hasPattern = true;
         }
         if (hasPattern) {
             return parsePatternSwitch(ctx, pos);
@@ -1042,115 +1037,167 @@ class JsBackend implements Backend {
     }
 
     private JsIr.JsStatement parsePatternSwitch(MethodCtx ctx, int[] pos) {
-        // Pattern switch is lowered as: load #switch, instanceof Type, load 0, CJump(NE, body, next)
-        // body: Label(body), load #switch, checkcast Type, store var, ... , Jump(end)
-        String subjectName = null;
+        // Pattern switch lowering in CompilerDriver:
+        //   load #switch; instanceof T; 0; CJ EQ nextTest, body
+        //   ... (for each case, preceded by Label nextTest unless first)
+        //   Label default; (default body); Jump end
+        //   Label body0; load #switch; checkcast T; store var; body0 stmts; Jump end
+        //   ...
+        //   Label end
         if (!(ctx.ops.get(pos[0]) instanceof KofLoadLocal ll
                 && "#switch".equals(ctx.rawLocalNames.get(ll.index())))) {
             throw new IllegalStateException("KofJS: pattern switch subject not found");
         }
-        // Collect all pattern cases
+        String subjectName = localName(ctx, ll.index());
         List<JsIr.JsExpression> conditions = new ArrayList<>();
         List<LabelId> bodyLabels = new ArrayList<>();
-        List<List<JsIr.JsStatement>> bodies = new ArrayList<>();
         LabelId defaultLabel = null;
         LabelId endLabel = null;
-        // First, collect conditions and body labels without consuming bodies
-        int savedPos = pos[0];
-        // We need to parse the test section to get conditions
-        // Use a temporary pos to scan
-        int[] scanPos = {pos[0]};
-        String scanSubject = null;
-        while (scanPos[0] < ctx.ops.size() && ctx.ops.get(scanPos[0]) instanceof KofLoadLocal l2
-                && "#switch".equals(ctx.rawLocalNames.get(l2.index()))) {
-            scanPos[0]++;
-            if (scanSubject == null) scanSubject = localName(ctx, l2.index());
-            if (scanPos[0] >= ctx.ops.size() || !(ctx.ops.get(scanPos[0]) instanceof KofInstanceOf)) break;
-            // consume instanceof
-            List<Object> stack = new ArrayList<>();
-            stack.add(new JsIr.JsIdentifier(scanSubject));
-            consumeExpressionOp(ctx, scanPos, stack, new ArrayList<>());
-            JsIr.JsExpression cond = pop(stack);
+
+        // Collect test section
+        while (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLoadLocal cur
+                && "#switch".equals(ctx.rawLocalNames.get(cur.index()))) {
+            pos[0]++; // consume load #switch
+            if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofInstanceOf io)) {
+                // Not a pattern case (should not happen for pure pattern switches)
+                break;
+            }
+            // Build JS condition directly from KofInstanceOf type
+            JsIr.JsExpression cond;
+            if (BuiltinTypes.isString(io.type())) {
+                cond = new JsIr.JsBinary(new JsIr.JsUnary("typeof", new JsIr.JsIdentifier(subjectName)), "===", new JsIr.JsString("string"));
+            } else if (io.type() instanceof Type.PrimitiveType pt) {
+                String cn = Type.canonicalPrimitiveName(pt.name());
+                if ("int".equals(cn) || "long".equals(cn) || "float".equals(cn) || "double".equals(cn) || "byte".equals(cn) || "short".equals(cn) || "char".equals(cn)) {
+                    cond = new JsIr.JsBinary(new JsIr.JsUnary("typeof", new JsIr.JsIdentifier(subjectName)), "===", new JsIr.JsString("number"));
+                } else if ("bool".equals(cn) || "boolean".equals(cn)) {
+                    cond = new JsIr.JsBinary(new JsIr.JsUnary("typeof", new JsIr.JsIdentifier(subjectName)), "===", new JsIr.JsString("boolean"));
+                } else {
+                    cond = new JsIr.JsInstanceOf(new JsIr.JsIdentifier(subjectName), jsClassName(ownerInternalName(io.type())));
+                }
+            } else {
+                cond = new JsIr.JsInstanceOf(new JsIr.JsIdentifier(subjectName), jsClassName(ownerInternalName(io.type())));
+            }
             conditions.add(cond);
-            // expect load 0 and CJump EQ nextTest, body (if instanceof ==0 goto next)
-            if (scanPos[0] >= ctx.ops.size() || !(ctx.ops.get(scanPos[0]) instanceof KofLoadLiteral zero
-                    && zero.value() instanceof Integer i && i == 0)) break;
-            scanPos[0]++;
-            if (scanPos[0] >= ctx.ops.size() || !(ctx.ops.get(scanPos[0]) instanceof KofConditionalJump cj
-                    && cj.comparison() == KofComparison.EQ)) break;
+            pos[0]++; // consume instanceof
+            if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofLoadLiteral zero
+                    && zero.value() instanceof Integer i && i == 0)) {
+                throw new IllegalStateException("KofJS: pattern switch expected 0");
+            }
+            pos[0]++; // consume 0
+            if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofConditionalJump cj
+                    && cj.comparison() == KofComparison.EQ)) {
+                throw new IllegalStateException("KofJS: pattern switch expected CJump EQ");
+            }
             bodyLabels.add(cj.falseLabel());
             defaultLabel = cj.trueLabel();
-            endLabel = cj.falseLabel();
-            // For pattern, the falseLabel is the body, trueLabel is nextTest
-            // But we need to track nextTest for the next iteration
-            // The next test's label is the trueLabel of this CJump
-            // So we should set defaultLabel to the last trueLabel if no more cases
-            // For now, keep as above, but the next iteration's KofLoadLocal will be after this CJump's trueLabel
-            // The trueLabel is the next test, so we need to handle it
-            // In the scan, the next KofLoadLocal will be after the trueLabel, so we need to skip the trueLabel
-            // The trueLabel is the next test, so we should not treat it as body
-            scanPos[0]++;
-            // check if next is another load #switch
-            if (scanPos[0] < ctx.ops.size() && ctx.ops.get(scanPos[0]) instanceof KofLabel
-                    && scanPos[0] + 1 < ctx.ops.size()
-                    && ctx.ops.get(scanPos[0] + 1) instanceof KofLoadLocal next
-                    && "#switch".equals(ctx.rawLocalNames.get(next.index()))) {
-                scanPos[0]++; // skip the label that is the next test's label? Actually the next test starts with KofLoadLocal, not label
-                // The next test's label is the falseLabel, which we already have, but the next iteration will start with KofLoadLocal
-                // So we don't need to skip anything, just continue
-                // The KofLabel for next test is the falseLabel, which is also the next test's label
-                // In CompilerDriver, the next test's label is the previous falseLabel, which is emitted as KofLabel before next KofLoadLocal
-                // So we need to consume that label if it matches
-                if (ctx.ops.get(scanPos[0]) instanceof KofLabel lbl && lbl.label().equals(defaultLabel)) {
-                    // This label is the next test's label, keep it for next iteration
-                    // Don't consume, let next iteration handle it
+            pos[0]++; // consume CJ
+            // If next op is Label for next test, consume it and continue
+            if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel lbl
+                    && lbl.label().equals(cj.trueLabel())) {
+                // Peek ahead: is next after label a load #switch?
+                if (pos[0] + 1 < ctx.ops.size() && ctx.ops.get(pos[0] + 1) instanceof KofLoadLocal nxt
+                        && "#switch".equals(ctx.rawLocalNames.get(nxt.index()))) {
+                    pos[0]++; // consume nextTest label
+                    continue;
+                } else {
+                    // No more pattern cases, test section ends; pos is at default label
+                    break;
                 }
-                continue;
+            } else {
+                break;
             }
-            break;
         }
-        // Now actually consume the ops and build the if chain
-        // Reset pos to savedPos and build the if chain by parsing bodies
-        // For simplicity, build a nested JsIf chain from the end
-        // First, parse all bodies
-        // We need to advance pos to after the test section
-        // The test section ends at the first body label
-        // Find the first body label
         if (bodyLabels.isEmpty()) {
             throw new IllegalStateException("KofJS: pattern switch no bodies");
         }
-        // Advance pos to the first body label
-        while (pos[0] < ctx.ops.size() && !(ctx.ops.get(pos[0]) instanceof KofLabel cl
-                && cl.label().equals(bodyLabels.get(0)))) {
-            pos[0]++;
-        }
-        for (int i = 0; i < bodyLabels.size(); i++) {
-            LabelId bodyLabel = bodyLabels.get(i);
-            if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofLabel kl)
-                    || !kl.label().equals(bodyLabel)) {
-                throw new IllegalStateException("KofJS: pattern switch body label missing");
-            }
-            pos[0]++;
-            List<JsIr.JsStatement> body = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
-            // The body will include the checkcast and store for the pattern var, which is already handled
-            // Next op should be Jump(end)
-            if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofJump j
-                    && j.target().equals(endLabel)) {
-                pos[0]++;
-            }
-            bodies.add(body);
-        }
+        // Now pos should be at Label defaultLabel
+        // Parse default body to find endLabel
         List<JsIr.JsStatement> defaultCase = List.of();
         if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel dl
                 && dl.label().equals(defaultLabel)) {
-            pos[0]++;
-            defaultCase = parseStatements(ctx, pos, Set.of(), new ArrayList<>());
+            pos[0]++; // consume default label
+            // Default body runs until Jump end
+            List<LabelId> exits = new ArrayList<>();
+            // Parse statements until we hit a Jump; the Jump's target is endLabel
+            // We need to detect Jump explicitly
+            List<JsIr.JsStatement> defStmts = new ArrayList<>();
+            while (pos[0] < ctx.ops.size()) {
+                if (ctx.ops.get(pos[0]) instanceof KofJump j) {
+                    endLabel = j.target();
+                    pos[0]++; // consume Jump end
+                    break;
+                }
+                if (ctx.ops.get(pos[0]) instanceof KofLabel) {
+                    // This would be first body label - no default body? then endLabel is this label?
+                    break;
+                }
+                // For default with actual statements, use parseStatements chunk
+                // Simpler: parse via parseStatements with end detection
+                // But we already are in a loop; use parseStatement
+                if (ctx.ops.get(pos[0]) instanceof KofLabel cl && bodyLabels.contains(cl.label())) {
+                    break;
+                }
+                List<JsIr.JsStatement> chunk = parseStatement(ctx, pos);
+                defStmts.addAll(chunk);
+                // After chunk, if next is Jump, handle
+                if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofJump j2) {
+                    endLabel = j2.target();
+                    pos[0]++;
+                    break;
+                }
+            }
+            defaultCase = defStmts;
+            // If default was empty, the Jump we just consumed is the one after defaultLabel
+            // If we broke without consuming Jump because next is body label, then default was empty and Jump was already consumed?
+            // For empty default (no default body), the IR is Label default (= end) then Jump end - but default==end, so label is end
+            // Handle empty default case: if we didn't capture endLabel yet, scan for it
+            if (endLabel == null && pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel lbl2) {
+                // Might be end label already
+                // Need to find the Jump's target from earlier; it should have been the Jump after default
+                // If default is empty, the label default is also end, and the Jump after default is Jump end (self)
+                // We'll find end by looking at bodies' Jump targets
+            }
         }
-        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel
-                && ctx.ops.get(pos[0]).equals(new KofLabel(endLabel))) {
-            pos[0]++;
-        } else if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel) {
-            // end label
+        // If endLabel still null (no default body), find it from first body's Jump or from default's Jump
+        if (endLabel == null) {
+            // Scan ahead for first Jump that is not a loop jump
+            for (int i = pos[0]; i < ctx.ops.size(); i++) {
+                if (ctx.ops.get(i) instanceof KofJump j) {
+                    endLabel = j.target();
+                    break;
+                }
+            }
+        }
+        // Parse each pattern body
+        List<List<JsIr.JsStatement>> bodies = new ArrayList<>();
+        for (int bi = 0; bi < bodyLabels.size(); bi++) {
+            LabelId bodyLabel = bodyLabels.get(bi);
+            if (pos[0] >= ctx.ops.size() || !(ctx.ops.get(pos[0]) instanceof KofLabel kl)
+                    || !kl.label().equals(bodyLabel)) {
+                throw new IllegalStateException("KofJS: pattern switch body label missing expected " + bodyLabel + " got " + (pos[0] < ctx.ops.size() ? ctx.ops.get(pos[0]) : "EOF"));
+            }
+            pos[0]++; // consume body label
+            // Body starts with load #switch; checkcast; store var  (if pattern var exists)
+            // Let parseStatements handle it, but we need to stop at Jump end
+            List<JsIr.JsStatement> bodyStmts = new ArrayList<>();
+            while (pos[0] < ctx.ops.size()) {
+                if (ctx.ops.get(pos[0]) instanceof KofJump j && j.target().equals(endLabel)) {
+                    pos[0]++; // consume Jump end
+                    break;
+                }
+                if (ctx.ops.get(pos[0]) instanceof KofLabel) {
+                    // Next body label - should not happen before Jump
+                    break;
+                }
+                List<JsIr.JsStatement> chunk = parseStatement(ctx, pos);
+                bodyStmts.addAll(chunk);
+            }
+            bodies.add(bodyStmts);
+        }
+        // Consume final end label if present
+        if (pos[0] < ctx.ops.size() && ctx.ops.get(pos[0]) instanceof KofLabel el
+                && el.label().equals(endLabel)) {
             pos[0]++;
         }
         // Build nested if-else from the end

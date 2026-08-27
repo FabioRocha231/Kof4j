@@ -1557,11 +1557,9 @@ class Parser {
             type.append("[]");
         }
         while (check(TokenType.QUESTION)) {
-            System.err.println("DEBUG parseTypeRef ? at "+peek().value()+" pos "+pos);
             advance();
             type.append("?");
         }
-        System.err.println("DEBUG parseTypeRef final "+type);
         return type.toString();
     }
 
