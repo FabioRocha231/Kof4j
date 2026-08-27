@@ -172,6 +172,14 @@ jobs:
           name: kof-${{ matrix.target }}
           path: release-artifacts
 
+      - name: Ensure kof-cli jar present (same-step fallback)
+        shell: bash
+        run: |
+          ls -lh release-artifacts/ 2>&1 | head -n 20
+          ls -lh kof-cli/target/kof-cli-*.jar 2>&1 | head -n 5 || mvn -q package -DskipTests -pl kof-cli -am
+          cp kof-cli/target/kof-cli-*.jar release-artifacts/ 2>&1 | head -n 5 || true
+          ls -lh release-artifacts/*.jar 2>&1 | head -n 10
+
       - name: Prepare changelog
         run: |
           VERSION=$(cat VERSION)
