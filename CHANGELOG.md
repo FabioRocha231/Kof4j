@@ -1597,6 +1597,12 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - bump version to 0.2.0-beta [skip ci]
 
+## [0.2.2-beta] - 2026-08-28
+
+### Bugfixes
+
+  - shell bash for changelog + remove duplicate release-artifacts step (windows pwsh fix)
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
