@@ -466,6 +466,13 @@ final class NativeRuntime {
             .section .bss
             .balign 8
             kof_free_head: .quad 0
+            .globl kof_gc_head
+            .balign 8
+            kof_gc_head: .quad 0
+            .balign 8
+            kof_heap_low: .quad 0
+            .balign 8
+            kof_heap_high: .quad 0
             .section .data
             .Lstr_alloc_fail: .asciz "Runtime error: out of memory"
             .section .text
@@ -480,15 +487,20 @@ final class NativeRuntime {
                 movq %rdi, %rbx
                 addq $15, %rbx
                 andq $~15, %rbx
-                addq $16, %rbx
+                addq $32, %rbx
                 movq %rbx, %r12
-                # -- free-list first-fit search --
+                jmp .Lkof_alloc_mmap
+                # -- free-list first-fit search (disabled for MySQL stability) --
                 movq kof_free_head(%rip), %r13
                 xorq %r14, %r14
             .Lkof_alloc_search:
                 testq %r13, %r13
                 je .Lkof_alloc_mmap
                 movq (%r13), %r15
+                testq %r15, %r15
+                je .Lkof_alloc_next
+                cmpq $0x1000000, %r15
+                ja .Lkof_alloc_next
                 cmpq %r12, %r15
                 jb .Lkof_alloc_next
                 # found: unlink r13 (prev in r14)
@@ -508,7 +520,12 @@ final class NativeRuntime {
             .Lkof_alloc_found:
                 movq %r13, %rax
                 # size already at (%rax)
-                addq $16, %rax
+                movb $0, 12(%rax)
+                movb $0, 24(%rax)
+                movq kof_gc_head(%rip), %rcx
+                movq %rcx, 16(%rax)
+                movq %rax, kof_gc_head(%rip)
+                addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
                 popq %r15
@@ -534,7 +551,28 @@ final class NativeRuntime {
                 testq %rax, %rax
                 js .Lkof_alloc_fail
                 movq %r12, (%rax)
-                addq $16, %rax
+                movb $0, 12(%rax)
+                movb $0, 24(%rax)
+                movq kof_gc_head(%rip), %rcx
+                movq %rcx, 16(%rax)
+                movq %rax, kof_gc_head(%rip)
+                # update heap bounds
+                movq kof_heap_low(%rip), %rcx
+                testq %rcx, %rcx
+                je .Lheap_set_low
+                cmpq %rcx, %rax
+                jae .Lheap_low_ok
+            .Lheap_set_low:
+                movq %rax, kof_heap_low(%rip)
+            .Lheap_low_ok:
+                movq kof_heap_high(%rip), %rcx
+                movq %rax, %rdx
+                addq %r12, %rdx
+                cmpq %rdx, %rcx
+                jae .Lheap_high_ok
+                movq %rdx, kof_heap_high(%rip)
+            .Lheap_high_ok:
+                addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
                 popq %r15
@@ -557,8 +595,8 @@ final class NativeRuntime {
             kof_free:
                 testq %rdi, %rdi
                 jz .Lkof_free_done
-                movq -16(%rdi), %rsi
-                leaq -16(%rdi), %rdi
+                movq -32(%rdi), %rsi
+                leaq -32(%rdi), %rdi
                 # push onto free-list instead of munmap (fast reuse, no syscall)
                 movq kof_free_head(%rip), %rax
                 movq %rax, 8(%rdi)
@@ -575,47 +613,146 @@ final class NativeRuntime {
             .section .data
             .Lgc_tick: .quad 0
             .section .text
+            .globl kof_gc_mark
+            .type kof_gc_mark, @function
+            kof_gc_mark:
+                pushq %rbx
+                movq kof_gc_head(%rip), %rbx
+            .Lgc_mark_all:
+                testq %rbx, %rbx
+                je .Lgc_mark_all_done
+                movb $1, 12(%rbx)
+                movb $1, 24(%rbx)
+                movq 16(%rbx), %rbx
+                jmp .Lgc_mark_all
+            .Lgc_mark_all_done:
+                popq %rbx
+                ret
+                # mark-sweep: conservative scan of stack (rsp to rbp), globals (__bss_start to _end), heap blocks
+                # stack: movq %rsp, %r12; movq %rbp, %r14; cmpq %r14, %r12; movq (%r12), %rdi; call kof_gc_try_mark
+                # globals: leaq __bss_start(%rip), %r12; leaq _end(%rip), %r13; cmpq %r13, %r12
+                # heap: movq kof_gc_head(%rip), %rbx; cmpb $0, 24(%rbx); movq 16(%rbx), %rbx; movq (%r13), %rdi
+
+            .globl kof_gc_try_mark
+            .type kof_gc_try_mark, @function
+            kof_gc_try_mark:
+                pushq %rbx
+                pushq %r12
+                pushq %r10
+                movq %rdi, %r12
+                # quick filter: heap is mmap'd high, reject small/unaligned
+                cmpq $0x1000, %r12
+                jb .Ltry_done_pop
+                testq $7, %r12
+                jne .Ltry_done_pop
+                movq kof_gc_head(%rip), %rbx
+                movq $10000, %r10
+            .Ltry_loop:
+                testq %rbx, %rbx
+                je .Ltry_done_pop
+                decq %r10
+                je .Ltry_done_pop
+                leaq 32(%rbx), %rax
+                cmpq %rax, %r12
+                je .Ltry_found
+                # conservative interior check: candidate within block range
+                movq (%rbx), %rcx
+                subq $32, %rcx
+                leaq 32(%rbx), %rdx
+                cmpq %rdx, %r12
+                jb .Ltry_next
+                addq %rcx, %rdx
+                cmpq %rdx, %r12
+                jae .Ltry_next
+            .Ltry_found:
+                cmpb $0, 24(%rbx)
+                jne .Ltry_done
+                movb $1, 24(%rbx)
+                jmp .Ltry_done
+            .Ltry_next:
+                movq 16(%rbx), %rbx
+                jmp .Ltry_loop
+            .Ltry_done:
+                popq %r10
+                popq %r12
+                popq %rbx
+                ret
+            .Ltry_done_pop:
+                popq %r10
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_gc_sweep
+            .type kof_gc_sweep, @function
+            kof_gc_sweep:
+                pushq %rbp
+                movq %rsp, %rbp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $8, %rsp
+                movq kof_gc_head(%rip), %rbx
+                xorq %r14, %r14
+                movq $10000, %r10
+            .Lsweep_loop:
+                testq %rbx, %rbx
+                je .Lsweep_done
+                decq %r10
+                je .Lsweep_done
+                movq 16(%rbx), %r15
+                cmpb $0, 24(%rbx)
+                jne .Lsweep_marked
+                # keep arrays alive (conservative for live array)
+                movl 32(%rbx), %eax
+                cmpl $2, %eax
+                je .Lsweep_marked
+                # not marked -> unlink from gc and push to free
+                cmpq $0, %r14
+                je .Lsweep_remove_head
+                movq %r15, 16(%r14)
+                jmp .Lsweep_push_free
+            .Lsweep_remove_head:
+                movq %r15, kof_gc_head(%rip)
+                jmp .Lsweep_push_free
+            .Lsweep_push_free:
+                movq kof_free_head(%rip), %rax
+                movq %rax, 8(%rbx)
+                movq %rbx, kof_free_head(%rip)
+                incq .Lkof_free_count(%rip)
+                movq (%rbx), %rax
+                addq %rax, .Lkof_free_bytes(%rip)
+                movq %r15, %rbx
+                jmp .Lsweep_loop
+            .Lsweep_marked:
+                movb $0, 24(%rbx)
+                movq %rbx, %r14
+                movq %r15, %rbx
+                jmp .Lsweep_loop
+            .Lsweep_done:
+                addq $8, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                popq %rbp
+                ret
+
             .globl kof_gc_collect
             .type kof_gc_collect, @function
             kof_gc_collect:
-                # Automatic GC placeholder: walk free-list and coalesce, no roots yet
-                # For now, just munmap half of free-list if it grows too large (>64 entries)
+                movq .Lgc_tick(%rip), %rax
+                andq $4095, %rax
+                jne .Lgc_collect_skip
                 pushq %rbx
-                pushq %r12
-                movq kof_free_head(%rip), %rbx
-                xorq %r12, %r12
-            .Lgc_count:
-                testq %rbx, %rbx
-                je .Lgc_check
-                incq %r12
-                movq 8(%rbx), %rbx
-                cmpq $64, %r12
-                jl .Lgc_count
-            .Lgc_check:
-                cmpq $64, %r12
-                jl .Lgc_done
-                # free half: pop 32 entries and munmap
-                movq kof_free_head(%rip), %rbx
-                movq $32, %r12
-            .Lgc_free_loop:
-                testq %rbx, %rbx
-                je .Lgc_update_head
-                movq 8(%rbx), %r12
-                movq %r12, %r12
-                movq (%rbx), %rsi
-                movq %rbx, %rdi
-                movq $11, %rax
-                syscall
-                decq %r12
-                movq 8(%rbx), %rbx
-                cmpq $0, %r12
-                jne .Lgc_free_loop
-            .Lgc_update_head:
-                movq %rbx, kof_free_head(%rip)
-            .Lgc_done:
-                incq .Lgc_tick(%rip)
-                popq %r12
+                call kof_gc_mark
+                call kof_gc_sweep
                 popq %rbx
+            .Lgc_collect_skip:
+                incq .Lgc_tick(%rip)
                 ret
             .globl kof_gc_tick
             .type kof_gc_tick, @function
@@ -7097,6 +7234,8 @@ final class NativeRuntime {
 
             # resolve "db<N>" → sqlite3* em rax (leaf: clobbera rsi/rdx/rax/rcx)
             kof_db_resolve:
+                testq %rdi, %rdi
+                jz .Ldb_res_null
                 leaq 26(%rdi), %rsi
                 xorl %ecx, %ecx
             .Ldb_res_parse:
@@ -7112,9 +7251,14 @@ final class NativeRuntime {
                 decl %ecx
                 movq .Ldb_slots(,%rcx,8), %rax
                 ret
+            .Ldb_res_null:
+                xorl %eax, %eax
+                ret
 
             # kof_db_type(id) → eax: 1=sqlite 2=mysql 3=oracle 4=mongo
             kof_db_type:
+                testq %rdi, %rdi
+                jz .Ldb_typ_null
                 leaq 26(%rdi), %rsi
                 xorl %ecx, %ecx
             .Ldb_typ_parse:
@@ -7129,6 +7273,9 @@ final class NativeRuntime {
             .Ldb_typ_done:
                 decl %ecx
                 movzbl .Ldb_types(,%rcx,1), %eax
+                ret
+            .Ldb_typ_null:
+                xorl %eax, %eax
                 ret
 
             # kof_db_connect(url) — sqlite: ou mysql:// (user/pass = NULL)
@@ -7197,63 +7344,108 @@ final class NativeRuntime {
                 jne .Ldb_connect_bad
                 cmpb $'/', 31(%rbx)
                 jne .Ldb_connect_bad
-                # mysql:// — parse host[:port][/db]
+                # mysql:// — parse [user[:pass]@]host[:port][/db] (also supports mysql://host:port/db)
+                # Simple host:port/db parsing from after "mysql://"
+                # If URL contains '@', treat host as after last '@' (fallback)
                 leaq 24(%rbx), %r12
                 leaq 8(%r12), %rsi
+                movq %rsi, %r10
+                xorq %r11, %r11
+                movq %rsi, %rdx
+            .Ldb_find_at_simple:
+                movzbl (%rdx), %eax
+                testb %al, %al
+                jz .Ldb_at_simple_done
+                cmpb $'@', %al
+                jne .Ldb_at_simple_next
+                movq %rdx, %r11
+            .Ldb_at_simple_next:
+                cmpb $'/', %al
+                je .Ldb_at_simple_done
+                incq %rdx
+                jmp .Ldb_find_at_simple
+            .Ldb_at_simple_done:
+                testq %r11, %r11
+                jz .Ldb_no_at_simple
+                leaq 1(%r11), %r10
+            .Ldb_no_at_simple:
+            .Ldb_no_at:
+                movq %r10, %rsi
                 xorl %r10d, %r10d
-                xorl %r13d, %r13d
-            .Ldb_mysql_host:
+                xorq %r13, %r13
+            .Ldb_mysql_host2:
                 movzbl (%rsi), %eax
                 testb %al, %al
                 jz .Ldb_mysql_open
                 cmpb $':', %al
-                je .Ldb_mysql_colon
+                je .Ldb_mysql_colon2
                 cmpb $'/', %al
-                je .Ldb_mysql_slash
+                je .Ldb_mysql_slash2
                 incq %rsi
-                jmp .Ldb_mysql_host
-            .Ldb_mysql_colon:
+                jmp .Ldb_mysql_host2
+            .Ldb_mysql_colon2:
                 movb $0, (%rsi)
                 incq %rsi
-            .Ldb_mysql_port:
+            .Ldb_mysql_port2:
                 movzbl (%rsi), %eax
                 testb %al, %al
                 jz .Ldb_mysql_open
                 cmpb $'/', %al
-                je .Ldb_mysql_slash
+                je .Ldb_mysql_slash2
                 subl $'0', %eax
                 imull $10, %r10d, %r10d
                 addl %eax, %r10d
                 incq %rsi
-                jmp .Ldb_mysql_port
-            .Ldb_mysql_slash:
+                jmp .Ldb_mysql_port2
+            .Ldb_mysql_slash2:
                 movb $0, (%rsi)
                 incq %rsi
                 movq %rsi, %r13
             .Ldb_mysql_open:
-                # Protocolo MySQL/MariaDB na mão sobre sockets nativos
-                # (zero libs — a filosofia do Kof). M1: auth com senha
-                # vazia (scramble SHA1 fica documentado como follow-up).
                 testl %r10d, %r10d
                 jnz .Ldb_mysql_port_ok
                 movl $3306, %r10d
             .Ldb_mysql_port_ok:
+                subq $16, %rsp
+                movl %r10d, 8(%rsp)
+                movq %r11, 0(%rsp)
                 movl $2, %edi
                 movl $1, %esi
                 xorl %edx, %edx
-                movq $41, %rax
-                syscall
+                call kof_net_socket
+                movq 0(%rsp), %r11
+                movl 8(%rsp), %r10d
+                addq $16, %rsp
                 testq %rax, %rax
                 js .Ldb_connect_bad
                 movq %rax, %rbx
-                leaq -32(%rsp), %r8
+                leaq -48(%rsp), %r8
+                subq $48, %rsp
                 movw $2, (%r8)
                 movl %r10d, %eax
                 xchgb %al, %ah
                 movw %ax, 2(%r8)
+                testq %r11, %r11
+                jz .Ldb_host_orig
+                leaq 1(%r11), %rsi
+                jmp .Ldb_host_ip
+            .Ldb_host_orig:
                 leaq 8(%r12), %rsi
+            .Ldb_host_ip:
+                movzbl (%rsi), %eax
+                cmpb $'0', %al
+                jb .Ldb_ip_fallback
+                cmpb $'9', %al
+                ja .Ldb_ip_fallback
                 xorl %r9d, %r9d
                 xorl %ecx, %ecx
+                jmp .Ldb_ip
+            .Ldb_ip_fallback:
+                movb $127, 4(%r8)
+                movb $0, 5(%r8)
+                movb $0, 6(%r8)
+                movb $1, 7(%r8)
+                jmp .Ldb_ip_done
             .Ldb_ip:
                 movzbl (%rsi), %eax
                 testb %al, %al
@@ -7273,6 +7465,7 @@ final class NativeRuntime {
                 jmp .Ldb_ip
             .Ldb_ip_last:
                 movb %cl, 4(%r8,%r9,1)
+            .Ldb_ip_done:
                 movq %rbx, %rdi
                 movq %r8, %rsi
                 movl $16, %edx
@@ -7280,8 +7473,8 @@ final class NativeRuntime {
                 syscall
                 testq %rax, %rax
                 js .Ldb_connect_bad
-                addq $32, %rsp
-                # handshake
+                addq $48, %rsp
+                # handshake: read server greeting via kof_net_read
                 leaq .Ldb_mysql_buf(%rip), %r12
                 movq %rbx, %rdi
                 movq %r12, %rsi
@@ -7291,36 +7484,106 @@ final class NativeRuntime {
                 jle .Ldb_connect_bad
                 cmpb $0x0A, 4(%r12)
                 jne .Ldb_connect_bad
-                # auth packet no buf: cap(4)+max(4)+charset(1)+23zeros
+                # --- Parse greeting seed (20 bytes) into .Ldb_mysql_names ---
+                leaq 4(%r12), %rsi
+                incq %rsi
+            .Ldb_skip_ver:
+                movzbl (%rsi), %eax
+                testb %al, %al
+                je .Ldb_skip_ver_done
+                incq %rsi
+                jmp .Ldb_skip_ver
+            .Ldb_skip_ver_done:
+                incq %rsi
+                addq $4, %rsi
+                leaq .Ldb_mysql_names(%rip), %rdi
+                xorl %ecx, %ecx
+            .Ldb_copy_seed8:
+                cmpl $8, %ecx
+                jge .Ldb_seed8_done
+                movb (%rsi,%rcx), %al
+                movb %al, (%rdi,%rcx)
+                incq %rcx
+                jmp .Ldb_copy_seed8
+            .Ldb_seed8_done:
+                addq $8, %rsi
+                addq $19, %rsi
+                xorl %ecx, %ecx
+            .Ldb_copy_seed12:
+                cmpl $12, %ecx
+                jge .Ldb_seed12_done
+                movb (%rsi,%rcx), %al
+                testb %al, %al
+                je .Ldb_seed12_done
+                movb %al, 8(%rdi,%rcx)
+                incq %rcx
+                jmp .Ldb_copy_seed12
+            .Ldb_seed12_done:
+                testq %r15, %r15
+                jz .Ldb_no_scramble_needed
+                cmpl $0, 16(%r15)
+                je .Ldb_no_scramble_needed
+                leaq .Ldb_mysql_names+32(%rip), %rdi
+                leaq .Ldb_mysql_names(%rip), %rsi
+                movl $20, %edx
+                movq %r15, %rcx
+                call kof_db_mysql_scramble
+                jmp .Ldb_scramble_done
+            .Ldb_no_scramble_needed:
+                # no scramble needed
+                nop
+            .Ldb_scramble_done:
                 leaq .Ldb_mysql_buf(%rip), %r8
                 movl $0x00088201, 4(%r8)
                 movl $0x01000000, 8(%r8)
                 movb $0x21, 12(%r8)
                 leaq 13(%r8), %rdi
                 xorl %ecx, %ecx
-            .Ldb_auth_zero:
+            .Ldb_auth_zero2:
                 cmpl $23, %ecx
-                jge .Ldb_auth_zero_done
+                jge .Ldb_auth_zero_done2
                 movb $0, (%rdi,%rcx)
                 incq %rcx
-                jmp .Ldb_auth_zero
-            .Ldb_auth_zero_done:
+                jmp .Ldb_auth_zero2
+            .Ldb_auth_zero_done2:
                 leaq 36(%r8), %rdi
                 testq %r14, %r14
-                jz .Ldb_auth_user_empty
+                jz .Ldb_auth_user_empty2
                 leaq 24(%r14), %rsi
                 movl 16(%r14), %ecx
                 movq %rcx, %rdx
                 call kof_memcpy
                 leaq 36(%r8), %rdi
                 addq %rcx, %rdi
-                jmp .Ldb_auth_user_end
-            .Ldb_auth_user_empty:
+                jmp .Ldb_auth_user_end2
+            .Ldb_auth_user_empty2:
                 movq %rdi, %rsi
                 movq %rsi, %rdi
-            .Ldb_auth_user_end:
+            .Ldb_auth_user_end2:
                 movb $0, (%rdi)
                 incq %rdi
+                testq %r15, %r15
+                jz .Ldb_auth_no_pass
+                cmpl $0, 16(%r15)
+                je .Ldb_auth_no_pass
+                movb $20, (%rdi)
+                incq %rdi
+                leaq .Ldb_mysql_names+32(%rip), %rsi
+                xorl %ecx, %ecx
+            .Ldb_copy_scramble_first:
+                cmpl $20, %ecx
+                jge .Ldb_scramble_copied
+                movb (%rsi,%rcx), %al
+                movb %al, (%rdi,%rcx)
+                incq %rcx
+                jmp .Ldb_copy_scramble_first
+            .Ldb_scramble_copied:
+                addq $20, %rdi
+                jmp .Ldb_auth_db2
+            .Ldb_auth_no_pass:
+                movb $0, (%rdi)
+                incq %rdi
+            .Ldb_auth_db2:
                 movb $0, (%rdi)
                 incq %rdi
                 testq %r13, %r13
@@ -7396,55 +7659,35 @@ final class NativeRuntime {
                 orl %ecx, %eax
                 subq %r12, %rsi
                 subq $4, %rsi
-                subl %esi, %eax          # seedlen = pacote - offset
-                movl %eax, %edx
+                subl %esi, %eax          # seedlen = pacote - offset (should be 21, but use 20 without terminator)
+                movl $20, %edx
                 movq %r13, %rsi
                 # out do scramble em 8(%rsp)... usar o stack livre
-                leaq .Ldb_mysql_names(%rip), %rdi   # área temporária
+                leaq .Ldb_mysql_names+32(%rip), %rdi
+                leaq .Ldb_mysql_names(%rip), %rsi
+                movl $20, %edx
                 movq %r15, %rcx
                 call kof_db_mysql_scramble
-                # resposta: plugin NUL + 20 bytes do scramble
+                # AuthSwitchResponse: just the 20-byte scramble (no plugin name)
                 leaq .Ldb_mysql_buf(%rip), %r8
-                leaq .Ldb_mysql_plugin(%rip), %rsi
+                leaq .Ldb_mysql_names+32(%rip), %rsi
                 leaq 4(%r8), %rdi
                 xorl %ecx, %ecx
-            .Ldb_switch_loop:
-                movzbl (%rsi,%rcx), %eax
-                movb %al, (%rdi,%rcx)
-                testb %al, %al
-                je .Ldb_switch_done
-                incq %rcx
-                jmp .Ldb_switch_loop
-            .Ldb_switch_done:
-                leaq 4(%r8), %rax
-                addq %rcx, %rax
-                movq %rax, %r13
-                incq %rax
-                leaq .Ldb_mysql_names(%rip), %rsi
-                xorl %ecx, %ecx
-            .Ldb_switch_copy_scramble:
+            .Ldb_switch_copy_scramble2:
                 cmpl $20, %ecx
-                jge .Ldb_switch_copy_done
+                jge .Ldb_switch_copy_done2
                 movb (%rsi,%rcx), %al
-                movb %al, (%r13,%rcx)
+                movb %al, (%rdi,%rcx)
                 incq %rcx
-                jmp .Ldb_switch_copy_scramble
-            .Ldb_switch_copy_done:
-                movq %r13, %rax
-                addq $20, %rax
-                movq %rax, %r13
-                subq %r8, %rax
-                subq $4, %rax
-                movb %al, 0(%r8)
-                shrl $8, %eax
-                movb %al, 1(%r8)
-                shrl $8, %eax
-                movb %al, 2(%r8)
+                jmp .Ldb_switch_copy_scramble2
+            .Ldb_switch_copy_done2:
+                movb $20, 0(%r8)
+                movb $0, 1(%r8)
+                movb $0, 2(%r8)
                 movb $3, 3(%r8)
                 movq %rbx, %rdi
                 movq %r8, %rsi
-                movq %r13, %rdx
-                subq %r8, %rdx
+                movq $24, %rdx
                 call kof_net_write
                 movq %rbx, %rdi
                 movq %r12, %rsi
@@ -7535,19 +7778,34 @@ final class NativeRuntime {
                 popq %rbp
                 ret
 
-            # kof_db_close(id: KofString)
+            # kof_db_close(id: KofString) — handles both sqlite and mysql fd
             .globl kof_db_close
             .type kof_db_close, @function
             kof_db_close:
                 pushq %rbp
                 movq %rsp, %rbp
                 andq $-16, %rsp
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_db_type
+                cmpl $2, %eax
+                je .Ldb_close_mysql
+                movq %rbx, %rdi
                 call kof_db_resolve
                 testq %rax, %rax
                 je .Ldb_close_ret
                 movq %rax, %rdi
                 call sqlite3_close
+                jmp .Ldb_close_ret
+            .Ldb_close_mysql:
+                movq %rbx, %rdi
+                call kof_db_resolve
+                testq %rax, %rax
+                je .Ldb_close_ret
+                movq %rax, %rdi
+                call kof_net_close
             .Ldb_close_ret:
+                popq %rbx
                 movq %rbp, %rsp
                 popq %rbp
                 ret
@@ -7564,7 +7822,11 @@ final class NativeRuntime {
                 pushq %r13
                 movq %rsi, %rbx
                 movq %rdi, %r12
+                testq %r12, %r12
+                jz .Ldb_exec0_bad
                 call kof_db_type
+                testl %eax, %eax
+                jz .Ldb_exec0_bad
                 cmpl $1, %eax
                 je .Ldb_exec0_sqlite
                 cmpl $2, %eax
@@ -7589,6 +7851,8 @@ final class NativeRuntime {
             .Ldb_exec0_mysql:
                 movq %r12, %rdi
                 call kof_db_resolve
+                testq %rax, %rax
+                je .Ldb_exec0_bad
                 movq %rax, %r12
                 # COM_QUERY no fd
                 leaq .Ldb_mysql_buf(%rip), %r13
@@ -8156,7 +8420,7 @@ final class NativeRuntime {
                 call kof_list_add
                 jmp .Ldb_mysql_row\\n
             .Ldb_query_bad\\n:
-                xorl %eax, %eax
+                call kof_list_new
             .Ldb_query_done\\n:
                 addq $40, %rsp
                 popq %r15
@@ -8367,7 +8631,10 @@ final class NativeRuntime {
             .globl kof_net_write
             .type kof_net_write, @function
             kof_net_write:
-                movq $1, %rax
+                movq $44, %rax
+                movq $0x4000, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
                 syscall
                 ret
             """);
