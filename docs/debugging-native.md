@@ -1,7 +1,8 @@
 # DEBUGGING_NATIVE.md — Debug no target Native
 
 **Status:** Planejado — a Fase 1 da IR (source locations) já alimenta o caminho; DWARF futuro
-**Data:** 23 de agosto de 2026
+**Data:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64)
 
 ---
 

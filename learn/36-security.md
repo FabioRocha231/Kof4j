@@ -1,5 +1,7 @@
 # 36 — Segurança (kof.security)
 
+> **Kof 0.2.0-beta — 658 testes — `kof_db` MySQL + free-list GC Native**
+
 `kof.security` é a camada de segurança da Standard Library: senhas, criptografia,
 JWT, segredos e autenticação para aplicações web — com **secure by default**.
 

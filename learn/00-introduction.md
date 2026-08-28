@@ -1,12 +1,14 @@
 # 00 — Introdução
 
+> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+
 ## O que é Kof
 
 Kof é uma linguagem de programação compilada para múltiplas plataformas.
 
 Ela existe por uma razão simples: Java é uma das plataformas mais poderosas do mundo, mas exige uma quantidade absurda de código para expressar ideias simples.
 
-Kof mantém o poder da JVM e do ecossistema Java, mas remove a maior parte da ceremony. E agora, essa mesma linguagem pode gerar binários nativos para Linux x86-64.
+Kof mantém o poder da JVM e do ecossistema Java, mas remove a maior parte da ceremony. E agora, essa mesma linguagem gera binários nativos para Linux x86-64, RISC-V 64 (`native.risc`) e AArch64 (`native.arm`), ES Modules via KofJS (`js`) e binários C via **KofC** (`kof c <file.c>` nativo-only) — tudo a partir do mesmo frontend `intention->Kof->frontend->IR->backend->runtime`.
 
 ## A visão multiplatform
 
@@ -19,26 +21,32 @@ Kof não é apenas uma linguagem para a JVM. É uma linguagem que pode compilar 
                           │
                        Kof IR
                           │
-          ┌───────────────┼────────────────┐
-          │               │                │
-       Kof4J          KofNative        KofScript
-          │               │                │
-          ▼               ▼                ▼
-        JVM          Native Binary      Runtime
-       .class        Executável        Interativo
-          │               │                │
-          ▼               ▼                ▼
-        JVM             OS/CPU        Kof Runtime
+          ┌───────────────┼────────────────┬───────────┐
+          │               │                │           │
+       Kof4J          KofNative         KofJS      KofScript
+          │          ┌────┼────┐          │           │
+          ▼          ▼    ▼    ▼          ▼           ▼
+        JVM       x86-64 riscv arm    ES Module   KofScriptGlobals
+       .class      ELF   ELF  ELF      .mjs        repl --watch
+          │               │                │           │
+          ▼               ▼                ▼           ▼
+        JVM             OS/CPU         Engine JS    Kof Runtime
 ```
 
 **A linguagem não muda. O target muda.**
 
 Isso significa que você pode escrever o mesmo código Kof e compilar para:
 - **JVM** — bytecode `.class` que roda em qualquer JVM
-- **Nativo** — executável ELF x86-64 que roda direto no Linux
+- **Native** — executável ELF x86-64 (`--target=native`) que roda direto no Linux
+- **Native RISC-V** — ELF riscv64 via `--target=native.risc` (cross com `riscv64-linux-gnu-as/ld` + qemu, placeholder separado de `native`)
+- **Native ARM** — ELF aarch64 via `--target=native.arm` (cross com `aarch64-linux-gnu-as/ld` + qemu)
 - **KofJS** — ES Modules (ECMAScript 2022+) executados na engine JS
   embarcada (sem Node); `kof.ui` renderiza em webview nativo ou browser.
   Ver [capítulo 37](37-kofjs.md).
+- **KofScript** — execução direta com `kof script` / `kof repl`, `let`/`const` no topo viram `KofScriptGlobals` persistentes, `--watch` re-executa ao salvar
+- **KofC** — `kof c <file.c>` compila um subset de C (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) direto para ELF x86-64 nativo-only
+
+> **Target separation:** `Target` enum agora distingue `JVM | NATIVE | NATIVE_RISCV64 | NATIVE_AARCH64 | JS | ANDROID`; `parseTarget` aceita `native.risc`/`native.riscv64` e `native.arm`/`native.aarch64`.
 
 ## A comparação visual
 
@@ -93,6 +101,8 @@ O compilador gera exatamente a mesma coisa: uma classe JVM com campos, construto
 
 ## Filosofia
 
+> A cadeia que o Kof preserva: **intention->Kof->frontend->IR->backend->runtime**. Você escreve a intenção; o frontend (`lexer -> parser -> AST`) vira IR; o backend (`jvm/native/js/kofc`) decide o mecanismo. Ver `docs/philosophy.md` e `learn/28-language-design.md`.
+
 Kof segue três princípios:
 
 **1. Menos código, mesma capacidade.**
@@ -103,9 +113,11 @@ Cada linha que você escreve em Kof precisa ter o mesmo peso semântico que a eq
 
 O compilador conhece seus tipos. Erros são encontrados antes de o programa rodar. Isso não muda — é uma das grandes forças da JVM.
 
-**3. A JVM é o runtime.**
+**3. A plataforma cuida do runtime.**
 
-Kof não inventa garbage collector, scheduler, ou modelo de memória. A JVM já faz tudo isso. Kof usa o que já existe.
+Kof não inventa garbage collector, scheduler, ou modelo de memória no código do usuário. Na JVM, a JVM faz tudo. No Native, o runtime tem **free-list GC** (`kof_free_head`, reuso via `mmap`, mark-sweep pendente) e allocator próprio — o programa nunca chama `malloc`/`free`.
+
+Novidades 0.2.0 que seguem a mesma filosofia: pattern matching com `case String s` e destructuring `Point(x,y)`, `String?` básico, `List map/filter/reduce`, `kof.http` em JVM+JS, imports `a.b.C` corrigidos para projetos grandes, e `kof_db` com **MySQL via `kof_db`** (wire protocol nativo em progresso) além do SQLite já estável.
 
 ## Relação com Java
 
@@ -137,7 +149,7 @@ Kof não tenta ser:
 - uma linguagem para machine learning
 
 Kof tenta ser a melhor forma de escrever código orientado a objetos para a
-JVM, para binários nativos e — via KofJS — para a web (frontend com
+JVM, para binários nativos (x86-64, riscv64, aarch64) e — via KofJS — para a web (frontend com
 `kof.ui` + `kof run --target=js`; ver [capítulo 37](37-kofjs.md)).
 
 ## Por que "Kof"
@@ -147,23 +159,25 @@ O nome é curto, fácil de digitar, e não conflita com nenhuma biblioteca Java 
 ## Como funciona por baixo
 
 ```
-Você escreve:     record User(String name)
+Você escreve:     record User(String name)          // intenção
                         ↓
-Compilador Kof:   lexer → parser → AST → IR → backend
+Compilador Kof:   lexer → parser → AST → IR → backend   // intention->Kof->frontend->IR->backend->runtime
                         ↓
-                  ┌─────┴─────┐
-                  │           │
-               JVM          Native
-                  │           │
-                  ▼           ▼
-             User.class    ELF x86-64
-                  │           │
-                  ▼           ▼
-              funciona    executável
-              como uma    direto no
-              classe      Linux
-              Java normal
+                  ┌──────┼──────┐
+                  │      │      │
+               JVM    Native   JS
+                  │      │      │
+                  ▼      ▼      ▼
+             User.class ELF*  .mjs
+                  │      │      │
+                  ▼      ▼      ▼
+              funciona executável ES Module
+              como uma  direto no  na engine
+              classe    Linux      embarcada
+              Java normal (x86-64/riscv/arm)
 ```
+
+`*` Native inclui `native` (x86-64), `native.risc` (riscv64) e `native.arm` (aarch64) — seleção via `Target` enum.
 
 Não existe etapa de geração de Java. Não existe interpretador. O compilador gera bytecode ou código nativo diretamente.
 

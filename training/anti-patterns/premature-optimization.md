@@ -49,12 +49,12 @@ justificável com medição.
 2. Meça (se houver requisito de performance).
 3. Otimize apenas o ponto medido, com comentário explicando por quê.
 
-## Performance real conhecida (0.0.5)
+## Performance real conhecida (0.2.0-beta — 27 Aug 2026)
 
-- Native: sem GC — a memória é devolvida ao SO no exit (mmap por alocação).
-  Programas de longa duração com alocação contínua devem ter isso em mente.
-- Native: strings são UTF-8 bytes; concatenação aloca nova string.
-- JVM: tudo delega para a plataforma (ArrayList, String, GC).
+- Native: free-list `kof_free_head` first-fit + `kof_gc_collect` mark-sweep conservador (27/08). `kof_alloc` tenta GC antes de `mmap` se free-list vazia; `kof_free` push sem syscall. GC ainda não é completo — programas muito longos devem evitar vazamento.
+- Native strings: UTF-8 bytes; concatenação aloca nova string.
+- JVM: ArrayList, String, GC, virtual threads.
+- JS: GraalJS ES Modules; `kof.http` via Java HttpClient interop.
 
 ## Exceptions
 

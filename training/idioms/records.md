@@ -1,6 +1,6 @@
 # Idioms — Records
 
-**Status:** available · **Introduced:** 0.0.4-alpha
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
 
 ## What it is
 
@@ -71,9 +71,48 @@ var a = Point(10, 20)      // construtor canônico
 var b = new Point(3, 4)    // também aceito
 ```
 
+## Pattern matching — record destructuring (0.2.0-beta)
+
+```kof
+record Point(Int x, Int y)
+record User(String name, Int age)
+
+main() {
+    var p = Point(10, 20)
+    switch (p) {
+        case Point(var x, var y):
+            println(x + "," + y)   // 10,20
+            break
+        default:
+            println("outro")
+    }
+
+    // com tipos
+    var obj: Object = User("Mel", 30)
+    switch (obj) {
+        case String s:
+            println(s)
+            break
+        case User(var n, var a):
+            println(n + " " + a)
+            break
+        default:
+            println("unknown")
+    }
+
+    // instanceof + destructuring
+    if (p instanceof Point) {
+        var q = p as Point
+        println(q.x() + "," + q.y())
+    }
+}
+```
+
+O compilador gera `if-chain` com `getfield` nos 3 targets (JVM `INVOKEVIRTUAL`, Native `rcx/r15`, JS `typeof/instanceof`).
+
 ## JSON
 
-Records são suportados por `json.encode`/`json.decode<T>` no JVM:
+Records são suportados por `json.encode`/`json.decode<T>` no JVM e JS:
 
 ```kof
 var p = Point(3, 4)
@@ -83,7 +122,17 @@ var d = json.decode<Point>("{\"x\": 10, \"y\": 20}")
 
 **Limitação:** JSON de objetos/records no target Native não é suportado (diagnostic JSN002).
 
+## Null safety com records (0.2.0-beta)
+
+```kof
+Point? maybe = null
+if (maybe != null) {
+    println(maybe.x())
+}
+```
+
 ## Anti-patterns relacionados
 
 - `java-like-code.md` — record + getters
 - `unnecessary-abstraction.md` — wrapper em volta de record sem motivo
+- `fake-idioms.md` — conferir status de pattern matching

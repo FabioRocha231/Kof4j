@@ -1,16 +1,20 @@
 # 30 — Contribuindo
 
+> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+
 ## Estrutura do repositório
 
 ```
 kof/
-├── kof-compiler/       ← compilador core
-├── kof-cli/            ← linha de comando
-├── kof-runtime/        ← runtime (futuro)
+├── kof-compiler/       ← compilador core (JVM/Native/JS + KofScript/KofC)
+├── kof-cli/            ← CLI (build/run/script/c/test/bench/debug)
+├── kof-script/         ← KofScript (let→KofScriptGlobals, repl, --watch)
+├── kof-c-compiler/     ← KofC (C subset → ELF nativo-only)
+├── kof-runtime/        ← runtime nativo (free-list GC)
 ├── docs/               ← documentação interna
-├── learn/              ← este material
-├── tests/              ← testes golden
-├── pom.xml             ← build Maven
+├── learn/              ← este material (intention->Kof->frontend->IR->backend->runtime)
+├── tests/              ← testes golden (658)
+├── pom.xml             ← build Maven (0.2.0-beta)
 └── README.md
 ```
 
@@ -30,6 +34,8 @@ mvn test
 
 ```
 kof-compiler/src/main/java/dev/kof/compiler/
+├── KofScript.java      ← KofScript eval/runFile/repl (let→Globals)
+├── KofCCompiler.java   ← KofC C subset → ELF
 ├── Lexer.java          ← lexer hand-written
 ├── Parser.java         ← parser recursivo descendente
 ├── AstNodes.java       ← nós da AST
@@ -134,17 +140,18 @@ Sempre que uma feature mudar:
 
 ## Estado atual do projeto
 
-O projeto está em fase inicial, mas funcional:
+O projeto está em 0.2.0-beta (658 testes), funcional:
 
 **Funciona hoje:**
-- Lexer completo com 55+ keywords
-- Parser recursivo descendente funcional
-- Records, classes e interfaces
-- Funções com `main()`
-- CLI com build, run, version
+- Lexer completo com 55+ keywords (`String?`, `let`/`const` alias)
+- Parser recursivo descendente funcional (pattern `case String s`, `Point(x,y)`, `String?`)
+- Records, classes e interfaces + `map/filter/reduce` + `Map/Set`
+- Funções com `main()`, lambdas com capturas, `spawn`/`await`
+- CLI com build/run/script/c/test/bench/debug/version (`--target=jvm|native|native.risc|native.arm|js`)
 - Backend JVM via ASM — gera `.class` funcionais
-- Backend Nativo — gera ELF x86-64
-- Testes golden baseados em shell
+- Backend Nativo — ELF x86-64 (free-list GC) + riscv64/aarch64 placeholders + `kof_db` MySQL WIP
+- KofScript (`let`→`KofScriptGlobals`, repl, --watch) + KofC (`kof c` nativo-only)
+- Testes golden baseados em shell (658)
 
 **Em desenvolvimento:**
 - Type checking completo

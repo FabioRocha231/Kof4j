@@ -1,6 +1,7 @@
 # Kof vs Java — Comparação Técnica
 
-**Última atualização:** 21 de agosto de 2026
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; 6 targets; pattern matching + `String?`)
 
 ---
 
@@ -8,12 +9,12 @@
 
 | Aspecto | Java | Kof |
 |---------|------|-----|
-| Tipagem | Forte, estática | Forte, estática |
-| OO | Classes, interfaces, records | Classes, interfaces, records |
-| Herança | Simples + interfaces | Simples + interfaces |
-| GC | Automático | JVM: automático / Native: pendente |
-| Compilação | javac → bytecode | Kof → IR → JVM/Native |
-| Sintaxe | Verbosa | Concisa |
+| Tipagem | Forte, estática | Forte, estática (0.2.0-beta) |
+| OO | Classes, interfaces, records | Classes, interfaces, records + `enum` + pattern matching `case String s`/`Point(x,y)` |
+| Herança | Simples + interfaces | Simples + interfaces (3 níveis) |
+| GC | Automático | JVM: automático / Native: free-list + `kof_gc_collect` (x86_64, 27/08) |
+| Compilação | javac → bytecode | Kof → IR → JVM/Native (x86_64 + riscv64 + aarch64) / JS (GraalJS) / KofC / KofScript |
+| Sintaxe | Verbosa | Concisa (`String?`, `map/filter/reduce`, `let` → `KofScriptGlobals`) |
 
 ---
 
@@ -163,7 +164,7 @@ Generics por erasure (classes e funções). Bounds: planejados.
 
 ---
 
-## Collections
+## Collections (0.2.0-beta)
 
 ### Java
 
@@ -180,9 +181,10 @@ var list = listOf("hello", "world")     // List<String>
 list.add("!")
 list.contains("hello")
 list.size
+var m = mapOf("a", 1)                   // Map<K,V> 0.1.0 — 3 targets
+var s = setOf(1, 2, 3)                  // Set<T> 0.1.0 — 3 targets
+var doubled = list.map((x: Int) -> x * 2) // 0.2.0 — map/filter/reduce 3 targets
 ```
-
-`Map`/`Set`: planejados (use `List<record>` com busca linear por enquanto).
 
 ---
 
@@ -304,21 +306,21 @@ config {
 
 ---
 
-## Resumo
+## Resumo (0.2.0-beta, 27/08/2026 — `VERSION` 0.2.0-beta, `mvn test` 658, 6 targets)
 
-| Feature | Java | Kof Atual | Kof Futuro |
-|---------|------|-----------|------------|
-| Classes | ✅ | ✅ | ✅ |
-| Records | ✅ | ✅ | ✅ |
-| Herança | ✅ | ✅ | ✅ |
-| Interfaces | ✅ | ✅ | ✅ |
-| Virtual dispatch | ✅ | ✅ | ✅ |
-| Null safety | ✅ | ❌ | Proposta |
-| Generics | ✅ | ❌ | Fase O |
-| Collections | ✅ | ❌ | Standard Library |
-| Exceptions | ✅ | Parcial | Fase F.6 |
-| Concorrência | ✅ | ❌ | Futuro |
-| DI | Framework | ❌ | Proposta |
-| HTTP | Framework | ❌ | Proposta |
-| Config | Framework | ❌ | Proposta |
-| Database | Framework | ❌ | Proposta |
+| Feature | Java | Kof 0.2.0-beta | Kof Futuro |
+|---------|------|---------------|------------|
+| Classes / Records / Herança / Interfaces / Virtual dispatch | ✅ | ✅ (JVM/Native x86_64 + riscv64 + JS `kof.http`) | ✅ |
+| Null safety `String?` | ✅ (via `Optional`/checker) | ✅ básica `String?` (`Type?`) 27/08 | checks avançados |
+| Generics `Box<T>` + `List<T>` | ✅ | ✅ `Box<T>` erasure (`substituteTypeVariable` `CompilerDriver.java:3972`) | bounds |
+| Collections `List`/`Map`/`Set` + `map/filter/reduce` | ✅ | ✅ `List map/filter/reduce` + `Map`/`Set` 3 targets 27/08 | — |
+| Exceptions `try/catch/finally` | ✅ | ✅ JVM unwinding + Native unwinding | — |
+| Pattern matching `case String s` + `Point(x,y)` | ✅ (17+) | ✅ JVM/Native/JS 27/08 | guards |
+| Concorrência `spawn`/`await` | ✅ | ✅ JVM + JS sequencial; Native `CONC001` | Native scheduler |
+| HTTP `serve` + `kof.http` | Framework | ✅ `web.app()` JVM + `kof.http` JVM+JS | Native HTTP |
+| Config `kof.config` | Framework | ✅ JVM+Native (free-list 27/08) | JS `CONF001` |
+| Logging / Observability | Framework | ✅ `kof.log` JVM+Native + `kof.observability` 3 targets | tracing |
+| Database `kof.db`/`kof.orm` | Framework | ✅ JDBC + SQLite native + MySQL `kof_db_mysql_scramble` | query DSL |
+| DI | Framework | ❌ (planned `service`) | proposta |
+| KofScript / KofC | — | ✅ `KofScript` `let`→`KofScriptGlobals` + `KofCcompiler` `kof c` | — |
+| Targets | — | JVM stable, native x86_64 stable (free-list), native.riscv64 riscv64, native.aarch64 placeholder, js alpha, kofc | — |

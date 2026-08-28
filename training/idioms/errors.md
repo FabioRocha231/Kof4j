@@ -1,6 +1,6 @@
 # Idioms — Errors
 
-**Status:** available (JVM e Native) · **Introduced:** 0.0.4-alpha
+**Status:** available (JVM, Native, JS) · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
 
 ## What it is
 
@@ -27,8 +27,7 @@ try {
 
 - Fluxo normal de controle — use `if`.
 - Validação simples — `if` + retorno.
-- **Não existe `Option<T>`** (planned). Não invente sentinelas quando uma
-  exceção comunica o erro melhor.
+- Ausência como valor (não erro) — use `String?` + `if (x != null)` (0.2.0-beta) em vez de sentinela. `Option<T>` genérico ainda é planned.
 
 ## BAD — sentinela
 
@@ -74,9 +73,8 @@ try {
 A exceção carrega a informação do erro no próprio mecanismo de erros da
 linguagem. A sentinela espalha a convenção por todos os consumidores.
 
-> **Limitação honesta:** a linguagem ainda não tem `Option<T>`/`Result<T>`.
-> Se o domínio exige ausência como valor (e não como erro), sentinela pode ser
-> aceitável — marque como `WORKAROUND`, não como idiom.
+> **0.2.0-beta:** ausência como valor agora usa `String?`/`Int?` com narrowing (`if (x != null)`).
+> `Option<T>`/`Result<T>` genéricos ainda são planned — só então sentinela marcada `WORKAROUND` é aceitável.
 
 ## Propagation
 

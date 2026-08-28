@@ -1,5 +1,7 @@
 # Kof Array Reference
 
+**Version:** 0.2.0-beta
+
 ## Creation
 
 ```kof

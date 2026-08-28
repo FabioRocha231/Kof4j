@@ -1,8 +1,8 @@
 # 11 — Generics
 
-> **Status: implementado**
+> **Status: implementado (JVM / Native / JS) — 0.2.0-beta — erasure + `Box<T>` com `T` primitivo**
 >
-> O type system define `TypeVariable` e `WildcardType`, mas o parser e o lowering não suportam generics ainda.
+> Generics por erasure funcionam nos três targets; `Box<Int>` com `substituteTypeVariable` + `kof_int_to_string` nativo já está em 0.2.0.
 
 ## O problema
 

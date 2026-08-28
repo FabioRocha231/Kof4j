@@ -1,6 +1,8 @@
 # 22 — JVM
 
-## Como Kof roda
+> **Kof 0.2.0-beta — 658 testes — `intention->Kof->frontend->IR->backend->runtime`**
+
+## Como Kof roda (JVM é um dos backends — ver Target separation `native.risc/arm` em cap. 31)
 
 ```
 Você escreve:  record Point(Int x, Int y)

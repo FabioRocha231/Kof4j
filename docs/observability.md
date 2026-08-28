@@ -1,8 +1,11 @@
 # kof.observability — Health, Metrics e Request IDs (G5)
 
-> **Status:** DONE (JVM/Native/JS) — `KofObservabilityTest` 3/3
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; `VERSION` 0.2.0-beta)
+
+> **Status:** DONE (JVM/Native/JS) — `KofObservabilityTest` 3/3 (0.2.0-beta, free-list Native)
 > **Módulo:** `kof.observability` — `observability.*`
-> **Targets:** JVM ✅ · Native ✅ · JS ✅ — sem gaps (G5 fechado)
+> **Targets:** JVM ✅ · Native x86_64 ✅ (free-list) · Native riscv64 ✅ · JS ✅ — sem gaps (G5 fechado, 0.2.0-beta)
 
 ---
 

@@ -1,8 +1,8 @@
 # 05 — Controle de Fluxo
 
-> **Status: implementado**
+> **Status: implementado (JVM / Native / JS) — 0.2.0-beta**
 >
-> O parser já reconhece `if`, `else`, `while`, `for`, `switch`, mas a geração de bytecode para controle de fluxo ainda não está implementada. Este capítulo documenta a sintaxe planejada.
+> `if/else`, `while`, `for`, `for-in`, `switch`, `break/continue` funcionam nos três targets. Pattern matching (`case String s`, `Point(x,y)`) ver capítulo 15.
 
 ## Condicional
 

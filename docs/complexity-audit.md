@@ -1,6 +1,7 @@
 # Auditoria de Complexidade
 
-**Última atualização:** 21 de agosto de 2026
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list GC; `VERSION` 0.2.0-beta)
 
 ---
 
@@ -18,20 +19,23 @@ Não queremos acumular features até virar outro Java.
 
 | Arquivo | Linhas | Função |
 |---------|--------|--------|
-| Lexer.java | 408 | Análise léxica |
-| Parser.java | 888 | Análise sintática |
-| SemanticAnalyzer.java | 522 | Análise semântica |
-| CompilerDriver.java | 838 | Lowering IR |
-| JvmBackend.java | 377 | Backend JVM |
-| NativeBackend.java | 652 | Backend Native |
-| NativeRuntime.java | 654 | Runtime nativo |
-| IRNodes.java | 165 | Representação intermediária |
-| Type.java | 83 | Sistema de tipos |
-| SymbolTable.java | 112 | Tabela de símbolos |
-| ClassLayout.java | 138 | Layout de memória |
-| Outros | ~500 | Utilidades |
+| Lexer.java | ~420 | Análise léxica (pattern matching `case` + `String?`) |
+| Parser.java | ~920 | Análise sintática (pattern matching, `String?`, `let` KofScript) |
+| SemanticAnalyzer.java | ~560 | Análise semântica (pattern matching, `String?`, `CompilerDriver.java:243` import fix) |
+| CompilerDriver.java | ~900 | Lowering IR (free-list alloc, `substituteTypeVariable` `Box<T>`, `KofScriptGlobals`) |
+| JvmBackend.java | ~400 | Backend JVM (V21, LineNumberTable, `Java HttpClient` for JS) |
+| NativeBackend.java | ~700 | Backend Native (x86_64 + riscv64 `.option arch,rv64g`, `li a7 214/64/93`) |
+| NativeRuntime.java | ~750 | Runtime nativo (free-list `kof_free_head` + `kof_gc_collect`, `kof_db_mysql_scramble`) |
+| JsBackend.java | ~500 | Backend JS (GraalJS, pattern matching, `kof.http` interop) |
+| KofCcompiler.java | ~200 | C subset (`kof c`) → ELF x86_64 |
+| KofScript.java | ~150 | KofScript (`let` → `KofScriptGlobals`, REPL) |
+| IRNodes.java | ~170 | Representação intermediária (+ KofDebugInfo) |
+| Type.java | ~90 | Sistema de tipos (`Type?` nullable) |
+| SymbolTable.java | ~120 | Tabela de símbolos |
+| ClassLayout.java | ~140 | Layout de memória |
+| Outros | ~600 | Utilidades + Optimizer |
 
-**Total:** ~13.000 linhas de código do compilador
+**Total:** ~14.500 linhas de código do compilador (0.2.0-beta, 27/08)
 
 ### O que é necessariamente complexo
 

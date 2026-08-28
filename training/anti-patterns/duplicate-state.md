@@ -1,5 +1,7 @@
 # Anti-pattern — Duplicate State
 
+**Updated:** 0.2.0-beta (27 Aug 2026) — `List.size` via `kof_list_get` bounds OK; `Box<T>` e `map/filter` não duplicam.
+
 ## Name
 
 Manter o mesmo dado em dois lugares e sincronizar manualmente.

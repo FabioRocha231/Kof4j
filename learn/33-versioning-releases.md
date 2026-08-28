@@ -1,5 +1,7 @@
 # 33 — Versionamento e Releases
 
+> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes**
+
 ## Formato
 
 ```text
@@ -13,16 +15,17 @@ MAJOR.MINOR.PATCH
 O PATCH é o *pontinho da vergonha*: bugfixes, correções, regressões e
 pequenos ajustes sem mudança arquitetural relevante.
 
-## Estágio Alpha
+## Estágio Beta (0.2.0-beta)
 
-O Kof está em `0.0.x` (Alpha). Cada release carrega o sufixo:
+O Kof saiu de `0.0.x` (Alpha) para `0.2.0-beta`. Cada release carrega o sufixo:
 
 ```text
-0.0.5-alpha
+0.2.0-beta
 ```
 
-Nada é chamado de stable. A evolução pretendida: Alpha → Beta → Release
-Candidate → Stable.
+Nada é chamado de stable. A evolução foi: Alpha → Beta (0.2.0-beta, 27 ago 2026, 658 testes) → Release Candidate → Stable. A cadeia `intention->Kof->frontend->IR->backend->runtime` vale para todos.
+
+Targets oficiais em 0.2.0: `jvm`, `native` (x86-64), `native.risc` (riscv64), `native.arm` (aarch64), `js` (KofJS), `kofc` (KofC C subset nativo-only). Target separation já no `Target` enum.
 
 ## Fonte única de verdade
 
@@ -30,17 +33,17 @@ A versão vive em `VERSION` (raiz do repositório). `scripts/bump-version.sh`
 sincroniza:
 
 ```text
-VERSION → pom.xml (<revision>) → dev/kof/version.properties (empacotado)
+VERSION (0.2.0-beta) → pom.xml (<revision>0.2.0-beta</revision>) → dev/kof/version.properties (empacotado)
 ```
 
 Nunca edite versões espalhadas por arquivos — a pipeline cuida disso.
 
 ## Release automático
 
-Cada commit na `main` gera a próxima versão Alpha:
+Cada commit na `main` gera a próxima versão:
 
 ```text
-commit → CI → testes → version bump → package → GitHub Release
+commit → CI (658 testes) → version bump → package (jvm/native/risc/arm/js/kofc) → GitHub Release
 ```
 
 - a `main` nunca aponta para um estado que não compila;
@@ -49,6 +52,7 @@ commit → CI → testes → version bump → package → GitHub Release
 - changelog gerado por `scripts/changelog.sh` a partir da convenção de
   commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `build:`,
   `tooling:`).
+- Native free-list GC e MySQL via `kof_db` entraram no changelog de 0.2.0 como features de runtime, não de linguagem.
 
 ## Referências
 

@@ -1,5 +1,7 @@
 # 07 — Classes e Objetos
 
+> **Kof 0.2.0-beta — `Point(x,y)` destructuring + `String?` + `intention->Kof->frontend->IR->backend->runtime`**
+
 ## O que você vai aprender
 
 Neste capítulo você vai entender como definir classes, criar objetos, e como a orientação a objetos funciona em Kof.

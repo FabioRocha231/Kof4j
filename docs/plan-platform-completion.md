@@ -1,8 +1,9 @@
 # Plano de Ação — Kof como Plataforma Completa de Desenvolvimento
 
-**Data:** 25 de agosto de 2026
-**Base:** estado real 0.1.0 (590 testes, 3 backends, kof.web/db/orm/security/ui + validation/observability/http/mq + generics `Box<T>` fix + SEM025 fix)
-**Filosofia:** [docs/philosophy.md](philosophy.md) · Auditoria: [docs/ecosystem-coverage.md](ecosystem-coverage.md) · Visão: [docs/roadmap.md](roadmap.md)
+**Data:** 27 de agosto de 2026
+**Base:** estado real 0.2.0-beta (658 testes: 650 kof-compiler +8 kof-script +5 kof-c-compiler, 6 targets: jvm stable, native x86_64 stable free-list + kof_gc_collect, native.riscv64 via riscv64-linux-gnu-as, native.aarch64 placeholder, js alpha GraalJS kof.http, kofc native-only; pattern matching + null safety básica; KofScriptGlobals; kof http JVM+JS)
+**Versão:** 0.2.0-beta
+**Filosofia:** [docs/philosophy.md](philosophy.md) · Auditoria: [docs/ecosystem-coverage.md](ecosystem-coverage.md) · Visão: [docs/roadmap.md](roadmap.md) · Status: [docs/status.md](status.md)
 
 ---
 
@@ -36,42 +37,45 @@ Seguir `docs/performance.md` §40-§41. Resumo operacional:
 
 ---
 
-## Estado atual (o que já existe — não refazer)
+## Estado atual (o que já existe — não refazer, 0.2.0-beta)
 
 | Área | Estado |
 |------|--------|
-| Frontend + IR + 3 backends | ✅ estável (JVM V21, ELF x86-64, ES Modules) |
-| Linguagem | classes, records, herança, interfaces, generics erasure, lambdas c/ capturas, exceptions 3 targets, `spawn` JVM |
-| stdlib | `web.app()` (rotas/middleware), `kof.io`, `kof.time`, `kof.config` (JVM), `kof.log` (JVM, JSON+correlation), `kof.security` v1 (3 targets), `kof.db` (JDBC + SQLite nativo; MySQL WIP), `kof.orm` (entity, CRUD, where, migrate, MongoDB), `kof.process`, `kof.ui` (render KofJS/webview) |
-| Tooling | build/run/serve/check/test/bench/debug(DAP MVP)/info/lsp/install, packaging multiplataforma, CI + releases automáticas |
-| Corpus | `docs/`, `learn/` (38 capítulos), `training/` |
+| Frontend + IR + 6 targets | ✅ estável (JVM V21, ELF x86_64 free-list + riscv64/aarch64, ES Modules GraalJS, KofC, KofScript) |
+| Linguagem | classes, records, herança, interfaces, generics erasure (`Box<T>` via `substituteTypeVariable`), lambdas c/ capturas, exceptions 3 targets, `spawn` JVM, **pattern matching `case String s` + `Point(x,y)`** e **`String?` null safety básica** (27/08) |
+| stdlib | `web.app()` (rotas/middleware), `kof.io`, `kof.time`, `kof.config` (JVM+Native free-list), `kof.log` (JVM+Native), `kof.security` v1+G9 (3 targets), `kof.db` (JDBC + SQLite native + MySQL `kof_db_mysql_scramble`), `kof.orm` (entity, CRUD, where com operadores, saveAll, page, migrate, MongoDB), `kof.process`, `kof.ui` (KofJS/webview), `kof.http` (JVM+JS), `List map/filter/reduce` |
+| Tooling | build/run/serve/check/test/bench/debug(DAP MVP)/info/lsp/install/script/repl/c, `kof script --watch` (SIGPIPE fix), packaging multiplataforma (`scripts/package.sh` PASS), CI `release.yml` single job JDK 21, golden 16/16, integration 9/9 |
+| Corpus | `docs/` (0.2.0-beta), `learn/` (38 capítulos), `training/` |
+| Build | `mvn clean package` PASS, `mvn test` 658 (650+8+5), `VERSION` 0.2.0-beta |
 
 ---
 
-## P0 — Higiene e fechamento de paridade *(base; ~1 semana)*
+## P0 — Higiene e fechamento de paridade *(fechado 0.1.0; revisitado 0.2.0-beta)*
 
 Tudo o resto depende disso. Pequeno, alto valor.
 
 | Item | O quê | Aceite |
 |------|-------|--------|
 | ✅ G7 *(feito 0.0.14 → 0.1.0)* | `jwt.*` com entrada explícita em `supportedOn` — Native reporta SECN004 em compile-time; `supportedOn` revisado função a função | zero erros de link silenciosos no security/web |
-| ✅ G6 *(feito 0.0.14 → 0.1.0)* | `kof.test` estruturado: `test "nome" { }`, runner sintetizado em compile-time (desugar → `kof_test_N`), PASS/FAIL por nome nos 3 targets, `--target js` no CLI, `process.exit(code)` nos 3 targets | `StructuredTestE2ETest` 11/11; golden/integração verdes |
+| ✅ G6 *(feito 0.0.14 → 0.1.0)* | `kof.test` estruturado: `test "nome" { }`, runner sintetizado em compile-time (desugar → `kof_test_N`), PASS/FAIL por nome nos 3 targets, `--target js` no CLI, `process.exit(code)` nos 3 targets | `StructuredTestE2ETest` 11/11; golden/integração verdes (16/16, 9/9 em 0.2.0) |
 | ✅ JSON Native *(25/08)* | JSN003 fechado (arrays `Int/Long/Bool/String[]`); JSN001/JSN002 seguem com FLT001/JSN002 | parity JSON total JVM×Native parcial |
-| ✅ Config/Log Native *(LOG001 ✅ 0.0.14; CONFIG001 ✅ 0.1.0)* | `kof.log`/`kof.config` Native completo (asm) | LOG001 ✅; CONFIG001 ✅ |
-| Processo doc | checklist DoD-doc no PR template; `status.md` regenerado por release | docs nunca mais defasam 9 versões |
+| ✅ Config/Log Native *(LOG001 ✅ 0.0.14; CONFIG001 ✅ 0.1.0)* | `kof.log`/`kof.config` Native completo (asm, free-list 27/08) | LOG001 ✅; CONFIG001 ✅ |
+| ✅ 0.2.0-beta target separation | `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.riscv64/aarch64` | `kof build --target native.riscv64` toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; aarch64 placeholder |
+| ✅ 0.2.0-beta GC + MySQL + Bugs | free-list `kof_free_head` + `kof_gc_collect` (Native), `kof_db_mysql_scramble` (MySQL handshake), large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, `release.yml` single job JDK 21, SIGPIPE Windows | `mvn test` 658, `VERSION` 0.2.0-beta |
+| Processo doc | checklist DoD-doc no PR template; `status.md` regenerado por release (27/08 0.2.0) | docs nunca mais defasam 9 versões |
 
-## P1 — Linguagem: coleções e expressividade *(fundação das APIs)*
+## P1 — Linguagem: coleções e expressividade *(fundação das APIs — fechado 0.2.0-beta)*
 
 Sem isso, os módulos das fases seguintes nascem tortos.
 
-| Item | O quê | Por que agora |
-|------|-------|---------------|
-| `Map<K,V>` / `Set<T>` | runtime nos 3 targets, API ≤ 12 métodos (get/put/remove/contains/keys/values/count) | validation, cache, sessions e query DSL precisam |
-| `enum` | declaração + `values()/valueOf` + switch exaustivo em compile-time | modelagem de domínio (roles, status) sem strings soltas |
-| `await`/resultado de `spawn` | `var r = spawn tarefa()` + `await r`; `kof.concurrent.Queue` | concorrência útil de verdade; scheduler depois |
-| Pattern matching | `switch` com tipos/destructuring sobre records/enums | substitui cadeias de instanceof; fecha G11 parcial |
-| Nullability | `Type?` explícito + checagem em compile-time (sem Option no core) | elimina NPE por classe de erro, não por convenção |
-| Módulos multi-arquivo | resolução de símbolos entre arquivos do mesmo projeto | `kof build <dir>` já compila múltiplos arquivos; falta semântica unificada |
+| Item | O quê | Por que agora | Estado 0.2.0-beta |
+|------|-------|---------------|-------------------|
+| `Map<K,V>` / `Set<T>` | runtime nos 3 targets, API ≤ 12 métodos (get/put/remove/contains/keys/values/count) | validation, cache, sessions e query DSL precisam | ✅ 0.1.0 (3 targets, asm) |
+| `enum` | declaração + `values()/valueOf` + switch exaustivo em compile-time | modelagem de domínio (roles, status) sem strings soltas | ✅ 0.1.0 |
+| `await`/resultado de `spawn` | `var r = spawn tarefa()` + `await r`; `kof.concurrent.Queue` | concorrência útil de verdade; scheduler depois | ✅ 0.1.0 (JVM) |
+| Pattern matching | `switch` com tipos/destructuring sobre records/enums | substitui cadeias de instanceof; fecha G11 parcial | ✅ 0.2.0-beta — `case String s` + `Point(x,y)` JVM/Native/JS |
+| Nullability | `Type?` explícito + checagem em compile-time (sem Option no core) | elimina NPE por classe de erro, não por convenção | ✅ 0.2.0-beta — `String?` básica |
+| Módulos multi-arquivo + `List map/filter/reduce` | resolução de símbolos entre arquivos + higher-order | `kof build <dir>` e coleções funcionais | ✅ 0.2.0-beta — `import a.b.C` fix (`CompilerDriver.java:243`) + `List map/filter/reduce` (3 targets) |
 
 ## P2 — Plataforma web completa *(o coração "sem Spring")*
 

@@ -1,7 +1,8 @@
 # stdlib log — Logging Nativo do Kof
 
-**Última atualização:** 23 de agosto de 2026
-**Status:** implementado (Fase 4 do plano de independência do Spring)
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes)
+**Status:** implementado (Fase 4 do plano de independência do Spring) — JVM+Native (Native asm UTC `kof_log_*`, 27/08)
 
 ---
 
@@ -57,27 +58,28 @@ app.get("/users") {
 }
 ```
 
-## 5. Targets
+## 5. Targets (0.2.0-beta)
 
-| Target | Estado |
-|--------|--------|
-| JVM | ✅ completo |
-| Native | LOG001 (gap documentado em compile-time) |
-| JS | LOG001 (gap documentado em compile-time) |
+| Target | Estado | Notas |
+|--------|--------|-------|
+| JVM | ✅ completo | `KofRuntime` gerado, JSON + correlation ID |
+| Native x86_64 | ✅ completo (asm, 27/08) | `kof_log_*` asm próprio (data civil Hinnant, env scan), timestamp UTC; `KOF_LOG_JSON` sem efeito ainda |
+| Native riscv64/aarch64 | ✅/placeholder | riscv64 `li a7`; aarch64 placeholder |
+| JS | LOG001 (gap documentado) | reporta `LOG001` em compile-time |
 
 ## 6. Testes
 
-`KofLogE2ETest` — 7 testes E2E: nível default, debug visível com
+`KofLogE2ETest` 7 (JVM) + `NativeLogE2ETest` 7 (Native asm, 0.2.0-beta) — nível default, debug visível com
 `KOF_LOG_LEVEL=debug`, supressão em `error`, `off` silencioso, warn no
-stderr, log dentro de handler web e LOG001 nos targets native/js.
+stderr, log dentro de handler web e LOG001 no JS.
 
 ## 7. Arquitetura
 
 ```
 Kof source (.kf) → KofLog (tabela compile-time)
    → SemanticAnalyzer (tipos) → CompilerDriver (KofCall kof_log_*)
-   → dev.kof.runtime.KofRuntime (gerado): nível + timestamp + stream
+   → JvmRuntime (gerado): nível + timestamp + stream
+   → NativeRuntime (asm): kof_log_* + env scan + Hinnant date (NativeRuntime.java:1)
 ```
 
-Evolução planejada (Fase 4 completa): structured logging (JSON),
-correlation ID por request, contexto por tarefa.
+Evolução planejada (Fase 4 completa): structured logging JSON `KOF_LOG_JSON` no Native, correlation ID por request, contexto por tarefa.

@@ -3,21 +3,45 @@
 Fatos sobre a CLI oficial do Kof. Use para responder perguntas sobre
 comandos, tooling e editor support.
 
+**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests
+
 ## Comandos oficiais
 
 | Comando | Comportamento |
 |---------|---------------|
-| `kof build <dir> [--target jvm\|native] [--output <dir>]` | Compila |
-| `kof run <file.kf> [args...]` | Compila e executa (JVM) |
+| `kof build <dir> [--target jvm\|native\|native.risc\|native.arm\|js] [--output <dir>] [--release]` | Compila |
+| `kof run <file.kf\|dir> [--target jvm\|native\|native.risc\|native.arm\|js] [args...]` | Compila e executa |
 | `kof serve <file.kf> [--port <port>] [--host <host>]` | Web server HTTP básico |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
 | `kof test <file.kf\|dir> [--target jvm\|native\|js]` | Suíte estruturada `test "nome" { }`: PASS/FAIL por teste; arquivos sem testes rodam inteiros (PASS = exit 0) |
-| `kof info [--json]` | Relatório do ambiente |
-| `kof lsp` | Language Server (stdio, LSP 3.x) |
-| `kof version` | Versão da plataforma |
+| `kof script <file.ks> [--target jvm\|native\|js] [--watch] [--inspect] [args...]` | KofScript: JIT com top-level `let` → KofScriptGlobals, repl, cache 64 LRU |
+| `kof repl` | Alias para `kof script` interativo |
+| `kof c <file.c> [-o outDir]` | KofCcompiler: C subset nativo-only → ELF x86_64 |
+| `kof fmt <file.kf\|dir>` | Formatter (planned P5) |
+| `kof init <nome>` | Inicializa projeto (planned P5) |
+| `kof info [--json]` | Relatório do ambiente (inclui native.risc/arm, kofc) |
+| `kof lsp` | Language Server (stdio, LSP 3.x) — hover/completion + .ks preprocess |
+| `kof version` | Versão da plataforma (0.2.0-beta) |
+| `kof bench [...]` | Benchmark harness com baselines |
+| `kof debug <file.kf>` | DAP MVP no JVM |
 
-Planejado: `kof fmt`. Não existe comando `kof doctor` — o
+Planejado: `kof fmt` ainda. Não existe comando `kof doctor` — o
 diagnóstico oficial é `kof info`.
+
+## KofScript
+
+```bash
+kof script app.ks --target jvm --watch --inspect
+let x = 5
+// top-level let/const → KofScriptGlobals static fields
+```
+
+## KofCcompiler
+
+```bash
+kof c app.c
+# int globals, void funcs, if/while, *(int*), & → ELF x86_64 via as/ld
+```
 
 ## Tooling API Level
 
@@ -36,28 +60,27 @@ diagnóstico oficial é `kof info`.
   IntelliJ via LSP4IJ, Neovim, Helix, Eglot).
 - **Regra: nunca duplicar o parser em um editor.** O editor consome o
   tooling do Kof; o LSP consome o frontend real do compilador.
+- LSP agora suporta `.ks` (KofScript) com preprocess `let` → `var` e wrap `main()`.
 
 ## LSP
 
 - `kof lsp` implementa LSP 3.x sobre stdio (framing Content-Length, JSON-RPC 2.0).
 - Mensagens: initialize, initialized, shutdown, exit, didOpen, didChange,
-  publishDiagnostics.
+  publishDiagnostics, hover, completion.
 - Diagnostics são produzidos pelo CompilerDriver real — os mesmos códigos e
-  mensagens de `kof check`/`kof build`.
+  mensagens de `kof check`/`kof build` (inclui `a.b.C` import fix 27/08).
 - Sync de documentos: completa (change: 1).
 - Sem parser paralelo: editor e compilador sempre concordam.
 
 ## `kof info`
 
-Informa: versão do Kof, versão do compiler, versão do runtime, versão da
-stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
-JVM, targets disponíveis (jvm, native, js) e localização da instalação.
+Informa: versão do Kof (0.2.0-beta), versão do compiler/runtime/stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
+JVM, targets disponíveis (jvm, native, native.risc, native.arm, js, kofc) e localização da instalação.
 Legível por humanos; `--json` para formato estruturado.
 
 ## Regras importantes
 
-- Preservar `kof build`, `kof install` (compatibilidade com a CLI existente),
-  `kof run` e `kof serve`.
+- Preservar `kof build`, `kof install` (compatibilidade), `kof run`, `kof serve`, `kof script`, `kof c`.
 - Não criar `kof doctor` — o comando de diagnóstico é `kof info`.
 - Formatter e test runner serão consumidos do frontend oficial, sem
   implementações paralelas.

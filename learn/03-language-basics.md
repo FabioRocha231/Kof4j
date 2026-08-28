@@ -1,5 +1,7 @@
 # 03 — Fundamentos da Linguagem
 
+> **Kof 0.2.0-beta — `intention->Kof->frontend->IR->backend->runtime` — 658 testes**
+
 ## O que você vai aprender
 
 Neste capítulo você vai entender como o código Kof é estruturado: statements, expressões, literais, comentários e a estrutura básica de um programa.
@@ -37,7 +39,7 @@ Comentários de bloco:
 
 O compilador ignora comentários completamente.
 
-## Literais
+## Literais (inclui `String?` para nullable — ver cap. 13)
 
 ### Strings
 

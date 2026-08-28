@@ -114,3 +114,46 @@ for (var i = 0; i < items.length; i++) {
 // RIGHT — use concatenation
 var result = "Items: " + items.length
 ```
+
+## 9. Manual List.get handling (fix 27/08 — removido)
+
+```kof
+// WRONG (workaround histórico) — bounds check manual antes de get
+if (i >= 0 && i < l.size) { var x = l.get(i) }
+
+// RIGHT (0.2.0-beta) — kof_list_get já faz bounds check com mensagem clara
+var x = l.get(1)   // ou l[1]
+var y = listOf(1,2,3).get(1) // 2
+```
+
+## 10. Manual import workarounds (fix 27/08 — removido)
+
+```kof
+// WRONG — copiar arquivo C.kf para pasta raiz para evitar import a.b.C falhando
+// RIGHT (0.2.0-beta) — CompilerDriver expandKofImports file-specific
+import a.b.C
+import a.b.*
+```
+
+## 11. Ignorar null safety (0.2.0-beta)
+
+```kof
+// WRONG — sentinela para ausência
+String find(String key) { return "" }
+
+// RIGHT — String? com narrowing
+String? find(String key) { if (found) return value; return null }
+var r = find("x")
+if (r != null) { println(r) }
+```
+
+## 12. Loop manual quando higher-order existe (0.2.0-beta)
+
+```kof
+// WRONG
+var nomes = listOf()
+for (var u in users) { nomes.add(u.name) }
+
+// RIGHT
+var nomes = users.map((u: User) -> u.name)
+```

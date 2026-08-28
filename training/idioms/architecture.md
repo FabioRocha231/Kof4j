@@ -1,6 +1,6 @@
 # Idioms — Architecture
 
-**Status:** available · **Introduced:** 0.0.4-alpha
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
 
 ## What it is
 
@@ -29,12 +29,15 @@ class Http {
 }
 ```
 
-## GOOD — plataforma
+## GOOD — plataforma (0.2.0-beta)
 
 ```kof
 var j = json.encode(user)
 var dados = readFile("config.json")
-// kof serve: handle(method, path, body)
+var html = http.get("https://example.com")   // kof.http JVM+JS (Java HttpClient)
+let x = 5                                    // KofScript top-level let → KofScriptGlobals
+// kof serve: handle(method, path, body) + web.app() + ws/sse + cache
+// kof c: C subset nativo-only para hot paths
 ```
 
 ## WHY
@@ -110,10 +113,11 @@ Double total(Cart cart) {
 }
 ```
 
-## 4. Módulos
+## 4. Módulos (0.2.0-beta)
 
-`package`/`import` existem. Para programas pequenos, um único arquivo `.kf`
-é suficiente — o `main()` no topo.
+`package`/`import` existem. `import a.b.C` file-specific fixado 27/08 — projetos grandes com `a/b/C.kf` agora compilam corretamente (CompilerDriver). `import a.b.*` para diretório. Targets: `jvm`, `native`, `native.risc`/`native.arm` (placeholder), `js`, `kofc`, `KofScript` (`.ks` com `let`).
+
+Para programas pequenos, um único arquivo `.kf` é suficiente — o `main()` no topo.
 
 ## When not to use
 

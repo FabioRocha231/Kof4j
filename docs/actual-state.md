@@ -1,7 +1,7 @@
 # Estado Atual do Projeto Kof
 
-**Última atualização:** 25 de agosto de 2026
-**Versão:** 0.1.0
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta
 
 ---
 
@@ -17,7 +17,9 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Pipeline 0.0.5 CONCLUÍDO**: JSON parity JVM/Native, exceptions reais no JVM, sintaxe de funções sem `fun`, serve/LSP/check/install/info, distribuição oficial.
 
-**Plataforma 0.0.7-0.1.0 (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol WIP), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
+**Plataforma 0.0.7-0.1.0 (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol com `kof_db_mysql_scramble`), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable` `CompilerDriver.java:3972`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
+
+**0.2.0-beta (27/08)**: Targets separados `native`/`native.riscv64`/`native.aarch64` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, `release.yml` single job + JDK 21, Windows SIGPIPE; VERSION 0.2.0-beta; `mvn test` 658 (650+8+5), golden 16/16, integration 9/9.
 
 ---
 
@@ -26,20 +28,23 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (590 JUnit / 581 declarados; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35 em 25/08; +1 skip condicional) |
-| `kof run` | ✅ FUNCIONA |
-| `kof build --target jvm` | ✅ FUNCIONA |
-| `kof build --target native` | ✅ FUNCIONA |
-| `kof build --target js` | ✅ FUNCIONA |
-| `kof serve` | ✅ FUNCIONA |
-| `kof check` | ✅ FUNCIONA |
-| `kof test` | ✅ FUNCIONA |
-| `kof bench` | ✅ FUNCIONA (37 benchmarks, baseline+regressão) |
-| `kof debug` | ✅ FUNCIONA (DAP MVP, target JVM) |
-| `kof info` | ✅ FUNCIONA |
-| `kof lsp` | ✅ FUNCIONA |
-| `kof install` | ✅ FUNCIONA |
-| `scripts/package.sh` | ✅ GERA PACOTE + SHA256SUMS |
+| `mvn clean package` | ✅ PASSA |
+| `mvn test` | ✅ PASSA (658 testes: 650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4 |
+| `kof build` | ✅ PASSA (`--target jvm|native|native.riscv64|native.aarch64|js` [--release]) |
+| `kof run` | ✅ PASSA (jvm|native|native.riscv64|native.aarch64|js) [--release] |
+| `kof serve` | ✅ PASSA (web.app() nativo + API legada handle()) |
+| `kof check` | ✅ PASSA |
+| `kof test` | ✅ PASSA (suíte `test "nome" { }` nos 3 targets) |
+| `kof bench` | ✅ PASSA (harness: compile, run, validate, métricas, baseline) |
+| `kof debug` | ✅ PASSA (DAP MVP no JVM) |
+| `kof info` | ✅ PASSA |
+| `kof lsp` | ✅ PASSA (hover/completion + diagnostics reais) |
+| `kof install` | ✅ PASSA |
+| `kof c` | ✅ PASSA (KofCcompiler native-only C subset → ELF x86_64 via `kof_c`) |
+| `kof script` | ✅ PASSA (top-level `let` → `KofScriptGlobals`, repl, --watch; Windows SIGPIPE fix) |
+| `tests/run-golden.sh` | ✅ 16/16 (8 casos × jvm+native) |
+| `tests/run-integration.sh` | ✅ 9/9 (CLI + serve + kof test) |
+| `scripts/package.sh` | ✅ PASSA (layout dist + tar.gz/zip + SHA256SUMS + jars) |
 
 ---
 
@@ -280,56 +285,48 @@ handles no-ops.
 
 ---
 
-## O que NÃO está implementado
+## O que NÃO está implementado (residual 0.2.0-beta)
 
 ### Language Features
-- Enums, Annotations, Pattern matching
-- Map, Set
-- Async/await, concorrência (spawn: JVM)
-- Reflection
+- Null safety completo (`String?` básico ✅ 27/08, checks avançados planned)
+- Pattern matching avançado (destructuring aninhado, guards — básico `case String s` + `Point(x,y)` ✅ 27/08)
+- Annotations genéricas, Reflection
 
 ### Type System
 - Overload resolution completo
-- Variance
+- Variance / bounds avançados
 - Sealed types
 
 ### Backends
-- KofJS — funcional (while(true), try/finally, switch, incrementos, listOf, decode de objetos — com parity JVM/Native/JS nos testes E2E); UI via webview nativo
-- KofScript — hoje = compilar para JVM e executar (`kof run`)
+- KofJS — alpha (GraalJS embarcado): `while(true)`, `try/finally`, `switch` pattern, `listOf map/filter/reduce`, `kof.http` via `Java HttpClient`, decode de objetos — parity JVM/Native/JS; UI via webview nativo
+- KofScript — ✅ `KofScript` top-level `let` → `KofScriptGlobals` + REPL + `--watch` (Windows SIGPIPE fix 27/08)
+- KofC — ✅ `KofCcompiler` C subset native-only (`kof c`) → ELF x86_64 (while/if/deref `&`/`*(int*)`); riscv64/aarch64 placeholder
+- Native riscv64 — toolchain estável (`riscv64-linux-gnu-as`, `.option arch,rv64g`, `li a7 214/64/93`), codegen riscv64 implementado; aarch64 placeholder (target separation done)
 
 ### Runtime
-- GC no Native (`kof_free` é no-op)
-- Exceptions recuperáveis no Native (`throw` = `kof_panic`)
-- JSON de objetos no Native (JSN002 — diagnostic claro)
+- GC automático Native — free-list `kof_free_head` + `kof_gc_collect` implementados 27/08 (reuso `mmap`); mark-sweep pendente (`munmap` fallback remanescente)
+- JSON Float/Double: JSN001 (diagnostic claro)
+- Ponto flutuante Native: sem SSE real (FLT001)
 
 ### Security (kof.security — docs/security.md)
-- v1 implementado (ver seção "Segurança" acima).
-- Pendente: OAuth2/OIDC client, sessions, rate limiting, audit logging,
-  JWT/passwords no Native (SECN001 — HMAC asm já existe), sha512 no Native
-  (SECN003), AES-GCM fora do JVM (SECN002), e diagnósticos de target
-  completos para jwt/auth/csrf/cors/headers (gap G7 da auditoria).
+- v1 + G9 implementado (3 targets).
+- Pendente: OAuth2/OIDC client, audit logging, JWT/passwords fora do JVM completos (SECN001/004 em progresso).
 
 ### Database (docs/future/DATABASE_VISION.md)
-- Nível 0 (conexão + SQL), 2 (ORM básico) e 4 (migrations) implementados.
-- Pendente: nível 1 (query DSL tipada `User.query { where ... }`), connection
-  pooling, MySQL nativo completo (wire protocol WIP), kof.db/kof.orm fora do
-  JVM (DB001/ORM001).
+- Nível 0 (conexão + SQL), 2 (ORM básico) e 4 (migrations) implementados; SQLite nativo + MySQL handshake `kof_db_mysql_scramble` 27/08.
+- Pendente: nível 3 query DSL tipada `User.query { where ... }`, connection pooling, MySQL completo (query/prepared), kof.db/kof.orm fora do JVM (DB001/ORM001 — JS).
 
-### Plataforma (gaps da auditoria — docs/ecosystem-coverage.md §4)
-- HTTP client (G2), validation (G4), health/metrics (G5), suíte estruturada
-  de testes (G6), scheduling (G8) — todos ✅ em 0.1.0 (25/08).
-- Rate limiting/sessions/API keys (G9), TLS/HTTPS (G12), kof.security Native (G10) — ✅ 25/08.
-- ~~Database/SQL (G1)~~ — ✅ nível 0 do kof.db/kof.orm implementado.
-- `kof.config`/`kof.log` fora do JVM: CONFIG001/LOG001 (paridade JVM/Native asm; JS CONF001/LOG001).
+### Plataforma (gaps — docs/ecosystem-coverage.md §4)
+- Todos P0 originais fechados em 0.1.0; 0.2.0 fecha pattern matching, null safety básica, kof.http JS, free-list GC, target separation, KofScriptGlobals, KofCcompiler.
+- Residual: WebSocket/SSE, cache, tracing, scheduler Native, `kof fmt` (P5).
 
 ### Tooling
-- Suíte estruturada `test "nome" { }` (hoje: PASS/FAIL por exit code com `assert`)
-- REPL
-- `kof fmt` (planejado)
+- `kof fmt` (planejado, P5)
+- LSP hover/completion/rename + Debugger Native DWARF/JS source maps (P5)
 
 ---
 
-## Arquitetura
+## Arquitetura (0.2.0-beta — 6 targets)
 
 ```text
 Source (.kf)
@@ -339,9 +336,15 @@ Source (.kf)
   ↓ Symbol Resolution
   ↓ Semantic Analysis
   ↓ Type Checking
-  ↓ Kof IR (backend-agnostic)
-  ├── JVM Backend (ASM)
-  └── Native Backend (x86-64)
+  ↓ Kof IR (backend-agnostic + KofDebugInfo)
+  ↓ Optimizer
+  ├── JVM Backend (ASM) → .class V21
+  ├── Native Backend (x86-64, free-list + kof_gc_collect)
+  ├── Native riscv64 (.option arch,rv64g, li a7 214/64/93)
+  ├── Native aarch64 (placeholder)
+  ├── JS Backend (GraalJS, kof.http via HttpClient)
+  ├── KofC Backend (C subset → native)
+  └── KofScript (let → KofScriptGlobals)
 ```
 
 | Módulo | Estado |
@@ -350,17 +353,22 @@ Source (.kf)
 | kof-cli | Funcional (build, run, serve, check, info, lsp, install) |
 | kof-runtime | Estrutura criada (runtime nativa embutida no NativeBackend; KofJson no JVM) |
 
-| Métrica | Valor |
-|---------|-------|
-| Testes JUnit | 590 (581 declarados em 25/08; +1 skip condicional) |
+| Métrica | Valor (0.2.0-beta 27/08) |
+|---------|--------------------------|
+| Testes JUnit | 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip |
 | E2E JVM | 29 |
-| E2E Native | 50 |
-| E2E JS (KofJS) | 35 |
+| E2E Native (x86_64) | 50 |
+| E2E JS (KofJS) | 35 (+ kof.http JS) |
+| E2E KofScript | 8 |
+| E2E KofCcompiler | 5 |
 | E2E JSON | 14 + 7 (completo) |
 | E2E Exceptions | 9 |
-| E2E HTTP/Web | 8 + 9 (TLS 5) |
+| E2E HTTP/Web | 8 + 9 (TLS 5) + http 4 (JVM+JS) |
 | E2E kof.io | 15 |
 | E2E UI | 14 + 3 (Window) |
-| E2E kof.db / kof.orm | 8 + 16 |
+| E2E kof.db / kof.orm | 8 + 16 (SQLite native + MySQL scramble) |
 | E2E kof.security + G9 | 22 + 3 |
+| Golden | 16/16 (8 casos × jvm+native) |
+| Integration | 9/9 |
 | Benchmarks | 37 em 17 categorias |
+| Targets | jvm stable, native x86_64 stable (free-list), native.riscv64 riscv64 toolchain, native.aarch64 placeholder, js alpha, kofc native-only |

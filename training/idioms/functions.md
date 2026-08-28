@@ -1,13 +1,13 @@
 # Idioms — Functions
 
-**Status:** available · **Introduced:** 0.0.4-alpha (sem `fun`)
+**Status:** available · **Introduced:** 0.0.4-alpha (sem `fun`) · **Updated:** 0.2.0-beta
 
 ## What it is
 
 Kof não possui a palavra-chave `fun`. Funções são declaradas pelo nome,
 com o tipo de retorno antes do nome **ou** após os parâmetros.
 
-## Formas válidas (todas verificadas)
+## Formas válidas (todas verificadas — 0.2.0-beta)
 
 ```kof
 main() {
@@ -77,7 +77,7 @@ String capitalizar(String s) {
 A utility class de Java existe porque Java não tem funções fora de classes.
 Kof tem funções top-level. A camada extra de classe é ruído.
 
-## Lambdas
+## Lambdas (0.2.0-beta — captura implementada)
 
 ```kof
 var f = (x: Int) -> x * 2
@@ -88,24 +88,47 @@ println(g(3, 4))        // 7
 
 var h = () -> 99
 println(h())            // 99
+
+// Captura mutável — ✅ desde 0.2.0-beta via box sintético Box0
+var offset = 10
+var f2 = (x: Int) -> x + offset
+println(f2(5))          // 15
+offset = 20
+println(f2(5))          // 25 — mutável
+
+// Higher-order com List
+var dobrados = listOf(1, 2, 3).map((x: Int) -> x * 2)
+var pares = listOf(1, 2, 3, 4).filter((x: Int) -> x % 2 == 0)
 ```
 
 - Lambdas compilam para classes sintéticas com método `invoke`.
-- **Sem captura de variáveis do escopo** (planned).
-- Lambdas não podem referenciar variáveis locais externas ainda.
+- Captura mutável via `BoxN` — sem limitação.
+- `Box<T>` erasure fix permite `Box<Int>` com primitivos.
 
-## BAD — lambda que espera captura
+## BAD — utility class para transformação
 
 ```kof
-var offset = 10
-var f = (x: Int) -> x + offset   // ERROR: captura não suportada
+class ListUtils {
+    static List<Int> dobrar(List<Int> l) {
+        var r = listOf<Int>()
+        for (var x in l) { r.add(x * 2) }
+        return r
+    }
+}
 ```
 
-## WHY
+## GOOD — higher-order
 
-Captura está planned. Usar lambdas apenas com parâmetros e literais por enquanto.
+```kof
+var dobrados = nums.map((x: Int) -> x * 2)
+```
+
+## WHY (captura)
+
+Antes de 0.2.0-beta captura era planned. Em 0.2.0-beta está implementada — usar lambdas com parâmetros, literais e capturas livremente.
 
 ## Anti-patterns relacionados
 
 - `java-like-code.md` — utility classes
 - `unnecessary-abstraction.md` — factory/wrapper
+- `fake-idioms.md` — conferir status de higher-orders

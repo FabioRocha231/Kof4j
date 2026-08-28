@@ -1,6 +1,6 @@
 # Idioms — Concurrency
 
-**Status:** available (JVM) · **Introduced:** 0.0.5-alpha · **Native:** CONC001 (planned)
+**Status:** available (JVM + JS) · **Introduced:** 0.0.5-alpha · **Updated:** 0.2.0-beta · **Native:** CONC001 (planned)
 
 ## What it is
 
@@ -18,26 +18,35 @@ main() {
     }
     println("fim")
 }
+
+// Com resultado (0.2.0-beta)
+main() {
+    val r = spawn trabalho()   // Handle<T> tipado
+    var v = await r            // bloqueia; T com unboxing de primitivos
+    println(v)
+}
 ```
 
-## Semântica real (verificada)
+## Semântica real (verificada — 0.2.0-beta, 658 testes)
 
-- a tarefa roda em paralelo (JVM: virtual threads — detalhe interno);
+- a tarefa roda em paralelo (JVM: virtual threads; JS: via KofJsRunner);
 - o programa **espera as tarefas antes de sair** (join implícito);
-- o retorno da função é descartado (fire-and-forget);
+- `val r = spawn f()` devolve `Handle<T>` tipado; `await r` com unboxing;
 - exceção na tarefa não derruba o programa;
-- **Native ainda não suporta** (diagnostic CONC001) — use o JVM.
+- **Native ainda não suporta** (diagnostic CONC001) — use JVM ou JS.
+- **KofScript** `let` top-level também suporta spawn/await via KofScriptGlobals.
 
 ## When to use
 
 - trabalho independente que pode rodar em paralelo (processamento de filas,
   I/O, notificações);
-- tarefas de background.
+- tarefas de background;
+- quando o resultado é necessário — use `val r = spawn f(); await r`.
 
 ## When not to use
 
-- quando o resultado é necessário no fluxo principal (`await` é planned — não existe);
-- quando a ordem importa.
+- quando a ordem importa e não há sincronização.
+- Native — CONC001; use JVM/JS.
 
 ## BAD — expor plataforma
 
@@ -51,6 +60,15 @@ t.start()
 
 ```kof
 spawn work()
+val r = spawn compute()
+var v = await r
+```
+
+## GOOD — kof.time interval como scheduler
+
+```kof
+// kof.time + spawn para periódicas (JS/JVM)
+var id = kof.time.interval(() -> println("tick"), 1000)
 ```
 
 ## WHY
@@ -58,13 +76,12 @@ spawn work()
 `spawn` expressa intenção. Thread/Runnable/Executor são mecanismos da
 plataforma — a decisão de como executar pertence ao runtime.
 
-## Limitações honestas
+## Limitações honestas (0.2.0-beta)
 
-- resultado observável de tarefa: **planned** (`await`/join explícito);
-- filas produtor/consumidor: **planned** (`kof.concurrent.Queue`);
-- Native: **CONC001** — use o target JVM por enquanto;
-- lambdas sem captura (mesma limitação das lambdas).
+- Native: **CONC001** — use JVM/JS por enquanto;
+- filas produtor/consumidor: `kof.mq` / `kof.concurrent.Queue` são alternativas via `kof.mq`;
+- lambdas com captura funcionam em spawn (BoxN).
 
 ## Anti-patterns relacionados
 
-- `fake-idioms.md` — `async`/`await`/Thread não existem
+- `fake-idioms.md` — `async`/`await`/Thread não existem (use `spawn`/`await`)

@@ -1,5 +1,7 @@
 # Arquitetura do KofNative
 
+> **Kof 0.2.0-beta — 658 testes — Target separation + free-list GC + kof_db MySQL**
+
 ## Visão geral
 
 KofNative é a extensão do compilador Kof para gerar binários nativos Linux x86-64. Não substitui o backend JVM — funciona em paralelo.
@@ -20,8 +22,8 @@ KofNative é a extensão do compilador Kof para gerar binários nativos Linux x8
                  Semantic Analysis
                          │
                          ▼
-                    Kof IR (compartilhado)
-                     /       \
+                    Kof IR (compartilhado) — intention->Kof->frontend->IR->backend->runtime
+                     /       |       \
                     /         \
                    ▼           ▼
             JVM Backend    Native Backend
@@ -56,7 +58,7 @@ KofNative é a extensão do compilador Kof para gerar binários nativos Linux x8
 | Componente | Arquivo | Target | Status |
 |------------|---------|--------|--------|
 | Backend | `Backend.java` | Ambos | ✅ Interface comum |
-| Target | `Target.java` | Ambos | ✅ Enum de targets |
+| Target | `Target.java` | Todos | ✅ Enum `JVM/NATIVE/NATIVE_RISCV64/NATIVE_AARCH64/JS/ANDROID` + `isNative()`/`nativeArch()` + `parseTarget native.risc/arm` |
 | CompilerDriver | `CompilerDriver.java` | Ambos | ✅ Orquestrador parametrizado |
 | JvmBackend | `JvmBackend.java` | JVM | ✅ Funcional via ASM |
 | NativeBackend | `NativeBackend.java` | Nativo | ✅ Funcional via assembly |
@@ -196,7 +198,7 @@ O backend nativo usa a System V AMD64 ABI:
 - [x] IR definida
 - [x] Backend nativo funcional
 - [x] CLI com --target=native
-- [x] Records geram structs
+- [x] Records geram structs (free-list GC em 0.2.0)
 - [x] Funções main funcionam
 - [x] Strings funcionam
 - [x] println funciona

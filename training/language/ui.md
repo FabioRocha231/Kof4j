@@ -59,7 +59,14 @@ dark.background().toCss()   // rgb(18, 18, 18)
   WebKitGTK). JVM/Native: handles no-ops.
 - Não há JavaFX, AWT ou dependência de GUI em nenhum backend.
 
+## Idioma KofScript (0.2.0-beta)
+
+```kof
+let x = 5
+var app = Window("Hi", Label("Olá"))
+```
+
 ## Referência
 
 - `learn/35-kof-ui.md`
-- `kof-compiler/src/test/java/dev/kof/compiler/UiE2ETest.java`
+- `kof-compiler/src/test/java/dev/kof/compiler/UiE2ETest.java` (14 testes, 0.2.0-beta)

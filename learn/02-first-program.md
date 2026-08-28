@@ -1,5 +1,7 @@
 # 02 — Primeiro Programa
 
+> **Kof 0.2.0-beta — 27 ago 2026 — targets jvm/native/native.risc/native.arm/js/kofc — 658 testes**
+
 ## O construto mais básico
 
 Em Kof, o construto mais simples que o compilador gera bytecode válido é o **record**:
@@ -13,6 +15,8 @@ Isso cria uma classe JVM com:
 - um construtor público que aceita `Int` e `Int`
 - dois métodos públicos `x()` e `y()` que retornam os valores
 - um método `toString()`
+
+No Native vira struct com fields e métodos equivalentes; no JS, classe ES — a cadeia `intention->Kof->frontend->IR->backend->runtime` mantém a semântica.
 
 ## Entendendo cada parte
 
@@ -63,7 +67,9 @@ main() = print("Olá, mundo!")
 Compilando e executando:
 
 ```bash
-kof run main.kf
+kof run main.kf                 # jvm (padrão)
+kof run main.kf --target=native # ELF x86-64
+kof run main.kf --target=js     # ES Module via GraalJS embarcado
 ```
 
 Resultado:
@@ -97,6 +103,77 @@ Resultado:
 Ponto[x=3, y=7]
 ```
 
+### Pattern matching com destructuring (0.2.0)
+
+Records já desestruturam em `switch`:
+
+```kf
+record Ponto(Int x, Int y)
+
+String descreve(Object o) {
+    switch (o) {
+        case Ponto(x, y): { return "ponto " + x + "," + y }
+        case String s: { return "texto " + s }
+        default: { return "outro" }
+    }
+}
+
+main() {
+    println(descreve(Ponto(3, 7)))  // ponto 3,7
+    println(descreve("kof"))        // texto kof
+}
+```
+
+```bash
+kof run ponto.kf --target=jvm     # JVM instanceof+checkcast
+kof run ponto.kf --target=native  # Native rbx→rcx fix
+kof run ponto.kf --target=js      # JS typeof
+```
+
+### KofScript: `let` no topo vira global
+
+No `kof script` / `kof repl`, `let`/`const` no nível do arquivo não são locais de `main` — viram `KofScriptGlobals`:
+
+Arquivo `demo.ks`:
+
+```kf
+let nome = "Mel"
+const pi = 3.14
+
+main() {
+    println(nome + " " + pi)
+}
+```
+
+```bash
+kof script demo.ks                # execução direta
+kof script --repl                 # REPL incremental (digite 'exit' para sair)
+kof script demo.ks --watch        # re-executa ao salvar
+```
+
+### KofC: C subset nativo-only
+
+`kof c` não compila Kof — compila um subset de C para ELF x86-64:
+
+```c
+// hello.c
+int x = 42;
+void printInt(int v);
+
+int main() {
+    if (x > 0) {
+        printInt(x);
+    }
+    while (x > 0) { x = x - 1; }
+    return 0;
+}
+```
+
+```bash
+kof c hello.c --run               # compila via GAS+LD e executa
+kof c hello.c --output ./bin      # só compila (native-only, sem --target jvm/js)
+```
+
 ## Variáveis e inferência
 
 Kof suporta inferência de tipos:
@@ -105,6 +182,7 @@ Kof suporta inferência de tipos:
 var nome = "Mel"
 var idade = 26
 var pi = 3.14
+var apelido: String? = null   // String? básico (0.2.0): nullable com verificação em compile-time
 ```
 
 O compilador entende os tipos automaticamente.
@@ -121,6 +199,12 @@ O compilador entende os tipos automaticamente.
 1. Crie um record `Pessoa` com campos `nome String` e `idade Int`
 2. Crie uma função main que crie uma pessoa e imprima seus dados
 3. Execute com `kof run`
+
+## Exercício 3 — destructuring + KofScript
+
+1. Crie `ponto.kf` com `record Ponto(Int x, Int y)` e um `switch` com `case Ponto(x, y):`
+2. Rode com `kof run --target=jvm` e `--target=js`
+3. Crie `demo.ks` com `let n = 10` no topo e use `n` dentro de `main()` via `kof script demo.ks`
 
 ## Próximo passo
 

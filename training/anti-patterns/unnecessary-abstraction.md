@@ -1,5 +1,7 @@
 # Anti-pattern — Unnecessary Abstraction
 
+**Updated:** 0.2.0-beta (27 Aug 2026)
+
 ## Name
 
 Abstrações criadas sem problema real.

@@ -1,6 +1,7 @@
 # Kof — Roadmap de Longo Prazo
 
-**Última atualização:** 21 de agosto de 2026
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta
 
 ---
 
@@ -54,7 +55,7 @@ Objetivos:
 - possibilidade de utilizar frameworks legados como Spring, Hibernate etc.;
 - backend principal durante a consolidação inicial.
 
-Estado atual: ✅ funcional (Fase D concluída)
+Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 658 testes 27/08)
 
 ### KofNative — Binário Nativo
 
@@ -69,7 +70,7 @@ Objetivos:
 - reutilização da mesma semântica da linguagem;
 - mesma aplicação podendo ser compilada para JVM ou Native.
 
-Estado atual: ✅ funcional (Fases E+F concluídas, 381/381 testes passam, JSON parity, exceptions reais no JVM)
+Estado atual: ✅ estável x86_64 (free-list `kof_free_head` + `kof_gc_collect` 27/08) + `native.riscv64` (riscv64 via `riscv64-linux-gnu-as`, `.option arch,rv64g`, `li a7 214/64/93` — toolchain estável) + `native.aarch64` (placeholder, target separation done `Target.java:1`)
 
 ### KofJS — Web
 
@@ -102,9 +103,10 @@ A intenção é semelhante à filosofia do Flutter:
 
 Estado atual: 🟡 alpha — pipeline `.kf → Kof IR → KofJS → .mjs` funcional com
 execução na engine JS embarcada do próprio Kof (sem Node.js). Classes,
-herança, List, String API, JSON, exceções, kof.time/kof.io e `kof run
+herança, List `map/filter/reduce`, String API, JSON, exceções, pattern matching
+`case String s` + `Point(x,y)`, `String?` básica, `kof.time`/`kof.io`/`kof.http` (via `Java HttpClient` interop) e `kof run
 --target=js` funcionam. A plataforma web (HTML/CSS/JS, browser) é a próxima
-fase. Ver: [docs/targets/KOFJS.md](../targets/KOFJS.md).
+fase. Ver: `docs/targets/KOFJS.md`.
 
 ### KofScript — Execução Direta
 
@@ -118,7 +120,7 @@ kof run arquivo.kf
 
 A implementação interna poderá evoluir para interpretação, compilação incremental, JIT ou execução híbrida, mas a decisão será tomada posteriormente com base em benchmarks.
 
-Estado atual: ❌ não implementado
+Estado atual: ✅ implementado (0.2.0-beta): `kof script app.kf [--watch]` + `kof repl` (top-level `let` → `KofScriptGlobals`; Windows SIGPIPE fix). `KofCcompiler` (`kof c`) compila C subset → ELF x86_64 nativo (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`).
 
 ---
 
@@ -189,17 +191,16 @@ api "/users" {
 ```
 
 Estado atual: 🟡 parcial — HTTP/rotas (`kof.web` + TLS `listenSecure`),
-JSON, configuração (`kof.config`), logging (`kof.log`), segurança
-(`kof.security` + G9 web security) e concorrência (`spawn stmt`,
-`spawn expr` com `Handle<T>` tipado + `await` com unboxing) implementados.
-Faltam: WebSocket/SSE, HTTP client no Native/JS (HTTP002), RPC,
-eventos/filas/pub-sub fora do JVM, cache, tracing, scheduling/cron.
+JSON, configuração (`kof.config` free-list Native), logging (`kof.log` Native), segurança
+(`kof.security` + G9), concorrência (`spawn` + `await`/`Handle<T>`), `kof.http` (JVM+JS), `List map/filter/reduce`, `Box<T>`, pattern matching e `String?` implementados (0.2.0-beta).
+Faltam: WebSocket/SSE, HTTP client no Native (HTTP002), RPC,
+eventos/filas/pub-sub fora do JVM, cache, tracing, scheduling/cron, Native aarch64 codegen.
 Ver `docs/plan-spring-independence.md` (Fases 5-14).
 
-### Concorrência — fila residual (0.1.x)
+### Concorrência — fila residual (0.2.0-beta)
 
-Estado 0.1.0: concorrência real **só no JVM** (~40% da visão). Native é
-CONC001 e JS é CONC003 — ambos explícitos em compile-time.
+Estado 0.2.0-beta: concorrência real **JVM** (virtual threads) + **JS** sequencial; Native é
+CONC001 e JS `spawn` é CONC003 — ambos explícitos em compile-time.
 
 | Item | Descrição | Prioridade |
 |------|-----------|------------|
@@ -215,14 +216,14 @@ CONC001 e JS é CONC003 — ambos explícitos em compile-time.
 Critério de "100%": os três targets executando os mesmos programas
 concorrentes com golden diff vazio (mesmo padrão da métrica 1 do plano).
 
-### Linguagem — fila residual (P1/P2)
+### Linguagem — fila residual (P1/P2, 0.2.0-beta)
 
 | Item | Status | Plano |
 |------|--------|-------|
-| pattern matching | ⏳ planned — **não use ainda** | switch com tipos e destructuring sobre records/enums; substitui cadeias de instanceof |
-| null safety | ⏳ planned | `Type?` explícito com checagem em compile-time; **sem Option no core** (decisão registrada) |
-| higher-order em coleções | ⏳ planned | `map/filter/reduce` em List com lambdas existentes (capturas já suportadas) |
-| módulos multi-arquivo | 🟡 parcial | resolução de símbolos entre arquivos do mesmo diretório já existe (PKG004); falta semântica unificada de visibilidade/import
+| pattern matching | ✅ 0.2.0-beta — `switch (x) { case String s: ... }` + `case Point(x,y)` em JVM/Native/JS | guards e destructuring aninhado pendentes |
+| null safety | ✅ 0.2.0-beta — `String?` básica com `?`-check em compile-time; **sem Option no core** | checks avançados pendentes |
+| higher-order em coleções | ✅ 0.2.0-beta — `List map/filter/reduce` em JVM/Native/JS | `Map/Set` já ✅ 0.1.0 |
+| módulos multi-arquivo | ✅ 0.2.0-beta — `import a.b.C` file handling fix (`CompilerDriver.java:243`) para projetos grandes (`a/b/C.kf`) | semântica unificada de visibilidade/import residual |
 
 ---
 
@@ -252,16 +253,16 @@ security {
 
 Estado atual: ✅ implementado (v1, docs/security.md)
 
-**Implementado (0.0.5):**
+**Implementado (0.2.0-beta, inclui 0.0.5):**
 - `kof.security` com API idiomática: `passwords`, `crypto`, `jwt`,
-  `secrets`, `security`, `auth`.
+  `secrets`, `security`, `auth` + G9 (`rateLimit`, `sessionCreate`, `apiKeyGenerate`).
 - Password hashing PBKDF2-HMAC-SHA256 (600k iterações, salt, constant-time,
   formato versionado).
-- Crypto: SHA-256/512, HMAC, AES-GCM, random seguro — JVM, Native (asm) e JS.
+- Crypto: SHA-256/512, HMAC, AES-GCM, random seguro — JVM, Native (asm, `kof_db_mysql_scramble` para MySQL) e JS.
 - JWT HS256 (alg fixo — sem confusão de algoritmo), exp/iss/aud.
-- Secrets por env + redação para logs; comparison constant-time.
+- Secrets por env + redação para logs; comparison constant-time; free-list Native.
 - Web auth middleware (`auth.authenticated()`, `auth.hasRole(...)`).
-- Gaps de target com diagnóstico claro (SECN001/002/003).
+- Gaps de target com diagnóstico claro (SECN001/002/003/004, HTTP002).
 
 **Pendente:**
 - OAuth2/OIDC client (arquitetura preparada em docs/security.md §2.3);
@@ -312,13 +313,13 @@ sql """
 Princípio: "Abstração quando ajuda, SQL quando precisa."
 
 Estado atual: 🟡 parcial — **nível 0-2 e 4 implementados** (`kof.db` +
-`kof.orm`, ver `docs/future/DATABASE_VISION.md`): conexão idiomática
-(JDBC no JVM; SQLite nativo via `.so`; MySQL nativo WIP), SQL com prepared
+`kof.orm`, ver `docs/DATABASE_VISION.md`): conexão idiomática
+(JDBC no JVM; SQLite nativo via `.so`; MySQL handshake `kof_db_mysql_scramble` 27/08), SQL com prepared
 statements, transactions, `entity` declarativo em compile-time, CRUD
-(`create/save/find/all/where/delete/count`), `orm.where` por campo,
+(`create/save/find/all/where/delete/count`), `orm.where` por campo + operadores, `saveAll` batch, `page`/`count`/`deleteAll`,
 migrations versionadas (`kof_migrations`) e MongoDB (driver oficial).
 Faltam: query DSL tipada (`User.query { where age > 18 }`), connection
-pooling, kof.db/kof.orm fora do JVM (DB001/ORM001), NoSQL além do MongoDB.
+pooling, MySQL completo (query/prepared), kof.db/kof.orm fora do JVM (DB001/ORM001 JS), NoSQL além do MongoDB.
 
 ---
 
@@ -471,10 +472,10 @@ kof-security / kof-concurrency / kof-io / kof-ui
 
 Mas NÃO criar dezenas de módulos prematuramente. Primeiro definir contratos, tipos e arquitetura.
 
-Estado atual: 🟡 em progresso — já existem como namespaces da stdlib:
-`kof.web`, `kof.io`, `kof.time`, `kof.config` (JVM), `kof.log` (JVM),
-`kof.security` (3 targets), `kof.db` + `kof.orm` (JVM; SQLite nativo),
-`kof.process`, `kof.ui`. A organização em módulos separados virá depois dos
+Estado atual: 🟡 em progresso — já existem como namespaces da stdlib (0.2.0-beta):
+`kof.web` (JVM, `kof.http` JVM+JS), `kof.io`, `kof.time`, `kof.config` (JVM+Native free-list), `kof.log` (JVM+Native),
+`kof.security` (3 targets, G9), `kof.db` + `kof.orm` (JVM; SQLite native + `kof_db_mysql_scramble`), `kof.validation`/`kof.observability`/`kof.mq` (3 targets),
+`kof.process`, `kof.ui` + `KofScript`/`KofCcompiler`. A organização em módulos separados virá depois dos
 contratos estabilizarem.
 
 ---
@@ -563,9 +564,8 @@ contratos estabilizarem.
   - kof_free (no-op, documentado) ✅
   - kof_memstats para debug ✅
   - MEMORY_MODEL.md documentado ✅
-> **Atualizado (0.0.5):** interfaces (F.5), exceptions reais (F.6, JVM +
-> Native unwinding) e memory management (allocator com header, kof_free
-> funcional) estão implementados.
+> **Atualizado (0.2.0-beta):** interfaces (F.5), exceptions reais (F.6, JVM +
+> Native unwinding) e memory management (free-list `kof_free_head` + `kof_gc_collect` 27/08; `mmap` + reuso) estão implementados.
 
 ### Fase 1 — Core
 
@@ -649,17 +649,17 @@ contratos estabilizarem.
 
 ---
 
-## 17. Distribuição e Tooling (0.0.4+)
+## 17. Distribuição e Tooling (0.2.0-beta)
 
 O Kof é uma plataforma distribuível, não apenas um JAR:
 
-- distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK embutido);
+- distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
-- versionamento centralizado (`VERSION` → pom/properties via `scripts/bump-version.sh`);
-- releases automáticas por push na `main` (testes → bump → package → GitHub Release);
-- artefatos multiplataforma + SHA256SUMS;
-- editor support oficial: grammar TextMate + LSP consumindo o frontend real;
-- `kof info`, `kof check`, `kof lsp`, `kof test` ✅; `kof fmt` planejado.
+- versionamento centralizado (`VERSION` 0.2.0-beta → pom/properties via `scripts/bump-version.sh`);
+- releases single-job (`release.yml` package+release, JDK 21 fix 27/08) por push na `main` (testes 658 → package 3 plataformas → GitHub Release);
+- `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
+- editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);
+- `kof build/run/serve/check/test/bench/debug/info/lsp/install/script/repl/c` PASS; `kof fmt` planejado.
 
 Referências: `docs/distribution/`, `docs/tooling/`.
 

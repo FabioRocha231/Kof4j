@@ -1,7 +1,8 @@
 # stdlib config — Configuração Nativa do Kof
 
-**Última atualização:** 23 de agosto de 2026
-**Status:** implementado (Fase 3 do plano de independência do Spring)
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes)
+**Status:** implementado (Fase 3 do plano de independência do Spring) — JVM+Native (Native asm próprio `/proc/self/environ` + free-list, 27/08)
 
 ---
 
@@ -57,19 +58,20 @@ main() {
 }
 ```
 
-## 5. Targets
+## 5. Targets (0.2.0-beta)
 
-| Target | Estado |
-|--------|--------|
-| JVM | ✅ completo |
-| Native | CONF001 (gap documentado em compile-time) |
-| JS | CONF001 (gap documentado em compile-time) |
+| Target | Estado | Notas |
+|--------|--------|-------|
+| JVM | ✅ completo | `KofRuntime` gerado |
+| Native x86_64 | ✅ completo (asm próprio, 27/08) | `/proc/self/environ` scan, trim, comentários, free-list `kof_free_head` |
+| Native riscv64/aarch64 | ✅/placeholder | riscv64 `li a7` syscalls; aarch64 placeholder |
+| JS | CONF001 (gap documentado) | `config.*` reporta `CONF001` em compile-time; `secrets.get` funciona |
 
 ## 6. Testes
 
-`KofConfigE2ETest` — 8 testes E2E: env por convenção, defaults, arquivo
+`KofConfigE2ETest` — 8 testes E2E (27/08, 0.2.0-beta): env por convenção, defaults, arquivo
 explícito, profiles, arquivo padrão no diretório de trabalho, `env()`,
-precedência completa e CONF001 nos targets native/js.
+precedência completa e CONF001 no JS (Native agora ✅).
 
 ## 7. Arquitetura
 

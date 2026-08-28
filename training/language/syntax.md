@@ -1,5 +1,7 @@
 # Kof Syntax Reference
 
+**Version:** 0.2.0-beta (27 Aug 2026)
+
 ## Declarations
 
 ### Package
@@ -7,28 +9,41 @@
 package com.example
 ```
 
-### Import
+### Import (0.2.0-beta fix: file-specific)
+
 ```kof
-import java.util.List
-import java.util.*
+import a.b.C          // arquivo a/b/C.kf — fix 27/08 CompilerDriver expandKofImports
+import a.b.*          // diretório a/b
+import kof.http
 ```
+
+Projetos grandes com `import a.b.C` agora geram `Main.class` + `a/b/C.class` corretamente. Evitar `import java.util.List` — use `listOf`/`List<T>` da stdlib.
 
 ### Function
 ```kof
 add(Int a, Int b): Int {
     return a + b
 }
+main() {
+    println("oi")
+}
+String saudacao() { return "oi" }
+despedida(): String { return "tchau" }
+Bool positivo(Int x) = x > 0
 ```
+
+Sem `fun` keyword.
 
 ### Class
 ```kof
-class User {
+class User(String name, Int age) {
+    greeting(): String { return "Hello " + name }
+}
+// verboso ainda válido
+class User2 {
     String name
     public constructor(String name) {
         this.name = name
-    }
-    public getName(): String {
-        return name
     }
 }
 ```
@@ -36,15 +51,16 @@ class User {
 ### Record
 ```kof
 record Point(Int x, Int y)
+var p = Point(10, 20)
 ```
 
 ### Enum
 
-```kf
+```kof
 enum Name { A, B, C }
 ```
 
-Constants only (v0.1.0). See Types for the embedded API and SEM030/SEM031.
+`values()` / `valueOf("A")` / `name()` + exhaustive switch SEM031. See Types.
 
 ### Interface
 ```kof
@@ -56,19 +72,67 @@ interface Speaker {
 ### Variable
 ```kof
 var x = 10
-Type name = value
+val y = 20
+String name = "Mel"
+String? maybe = null        // 0.2.0-beta nullable
+Box<Int> b = Box(42)        // generics com primitivo
 ```
 
+### Nullable (0.2.0-beta)
+
+```kof
+String? s = null
+if (s != null) {
+    println(s.length)   // narrowing
+}
+String t = s            // erro SEM014 se sem check
+```
+
+### KofScript top-level let (0.2.0-beta)
+```kof
+let x = 5
+const y: Int = 10
+// → KofScriptGlobals static fields + rewriting
+```
+
+### Pattern matching (0.2.0-beta)
+
+```kof
+switch (obj) {
+    case String s:
+        println(s)
+        break
+    case Point(var x, var y):
+        println(x + "," + y)
+        break
+    default:
+        println("outro")
+}
+if (p instanceof Point) {
+    var q = p as Point
+}
+```
 
 ### Spawn / Await
 
-```kf
+```kof
 spawn expr();            // fire-and-forget (virtual thread, JVM)
 val r = spawn expr();    // Handle<T> typed handle
 val v = await r;         // blocks; T (primitives unboxed)
 ```
 
-Gaps: Native CONC001 · JS CONC003 · Android AND001 (compile-time).
+Gaps: Native CONC001 · JS OK (desde 0.2.0-beta) · Android AND001.
+
+### kof.http (0.2.0-beta)
+
+```kof
+var html = http.get("https://example.com")
+var resp = http.post(api, json.encode(body), "Content-Type: application/json")
+if (http.status(url) == 404) { }
+http.timeout(30)
+```
+
+JVM + JS (Java HttpClient interop); Native HTTP002.
 
 ## Statements
 
@@ -79,29 +143,15 @@ if (x > 0) {
 } else {
     println("non-positive")
 }
+var status = if (ativo) "online" else "offline"
 ```
 
-### While
+### While / Do-While / For
 ```kof
-while (i < 10) {
-    println(i)
-    i = i + 1
-}
-```
-
-### Do-While
-```kof
-do {
-    println(i)
-    i = i + 1
-} while (i < 10)
-```
-
-### For
-```kof
-for (var i = 0; i < 10; i++) {
-    println(i)
-}
+while (i < 10) { println(i); i = i + 1 }
+do { println(i); i = i + 1 } while (i < 10)
+for (var i = 0; i < 10; i++) { println(i) }
+for (var x in listOf(1,2,3)) { println(x) }
 ```
 
 ### Try/Catch
@@ -117,35 +167,16 @@ try {
 
 ## Expressions
 
-### Arithmetic
+### Arithmetic / Comparison / Logical
 ```kof
-a + b
-a - b
-a * b
-a / b
-a % b
-```
-
-### Comparison
-```kof
-a == b
-a != b
-a < b
-a > b
-a <= b
-a >= b
-```
-
-### Logical
-```kof
-a && b
-a || b
-!a
+a + b; a - b; a * b; a / b; a % b
+a == b; a != b; a < b; a > b; a <= b; a >= b
+a && b; a || b; !a
 ```
 
 ### String Concatenation
 ```kof
-"Hello" + " World"  // "Hello World"
+"Hello" + " World"
 ```
 
 ### Array Access
@@ -154,6 +185,14 @@ var arr = new Int[5]
 arr[0] = 10
 println(arr[0])
 println(arr.length)
+```
+
+### Collections higher-order
+
+```kof
+var dobrados = listOf(1,2,3).map((x: Int) -> x * 2)
+var pares = listOf(1,2,3).filter((x: Int) -> x % 2 == 0)
+var soma = listOf(1,2,3).reduce((a: Int, b: Int) -> a + b, 0)
 ```
 
 ### Method Call

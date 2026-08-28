@@ -1,8 +1,8 @@
 # 12 — Collections
 
-> **Status: implementado (JVM / Native / JS)**
+> **Status: implementado (JVM / Native / JS) — 0.2.0-beta**
 >
-> `List<T>`, `Map<K,V>` e `Set<T>` são coleções nativas de Kof. O tipo dos
+> `List<T>`, `Map<K,V>` e `Set<T>` são coleções nativas de Kof. `List` agora tem `map/filter/reduce` idiomáticos (0.2.0) além das operações base. O tipo dos
 > elementos é preservado pela pipeline inteira (inferência, for-in, `get`,
 > resolução de métodos). No Native, Map e Set rodam em assembly próprio
 > sobre o mesmo layout de alocação do List.
@@ -49,6 +49,38 @@ l.remove(0)       // remove por índice, devolve o elemento
 l.set(0, 9)       // substitui in-place
 l.clear()         // esvazia
 ```
+
+### map / filter / reduce (0.2.0)
+
+`List<T>` expõe transformações funcionais diretas — sem expor `Stream` — via `intention->Kof->frontend->IR->backend->runtime`:
+
+```kf
+main() {
+    var nums = listOf(1, 2, 3, 4, 5)
+
+    var dobrados = nums.map((x: Int) -> x * 2)          // List<Int> [2,4,6,8,10]
+    println(dobrados.get(1))                       // 4
+
+    var pares = nums.filter((x: Int) -> x % 2 == 0)     // [2,4]
+    println(pares.size())                          // 2
+
+    var soma = nums.reduce(0, (acc: Int, x: Int) -> acc + x) // 15
+    println(soma)
+
+    // encadeando:
+    var r = listOf(1, 2, 3, 4)
+        .filter((x: Int) -> x > 1)
+        .map((x: Int) -> x * 10)
+    println(r.get(0))   // 20
+
+    // com records:
+    var users = listOf(User("Ana", 26), User("Bob", 31))
+    var nomes = users.map((u: User) -> u.name)
+    println(nomes.contains("Ana"))   // true
+}
+```
+
+Todos os três métodos rodam em JVM, Native e JS com a mesma semântica.
 
 ## Map — pares chave/valor
 
@@ -106,13 +138,30 @@ tags.add("kof")        // false
 println(tags.size())   // 1
 ```
 
+## kof.http — exemplo com coleções (JVM+JS)
+
+`kof.http` funciona em JVM e JS (Native reporta `HTTP002`):
+
+```kf
+main() {
+    var resp = http.get("https://api.example.com/users")
+    if (http.status(resp) == 200) {
+        var users = json.decode<List<User>>(http.body(resp))
+        var ativos = users.filter((u: User) -> u.age > 18)
+        println(ativos.map((u: User) -> u.name).get(0))
+    }
+}
+```
+
 ## Paridade entre targets
 
 | Operação | JVM | Native | JS |
 |----------|-----|--------|----|
 | List completa | ✅ | ✅ asm | ✅ |
+| List map/filter/reduce | ✅ | ✅ | ✅ |
 | Map (todas as operações) | ✅ HashMap | ✅ asm próprio | ✅ JS Map |
 | Set (todas as operações) | ✅ HashSet | ✅ asm sobre List | ✅ JS Set |
+| kof.http (JVM+JS) | ✅ | HTTP002 | ✅ |
 
 Igualdade em Map/Set usa `equals` no JVM, comparação nativa (com tag de
 tipo para strings) no Native e `===`/`Map`/`Set` no JS.

@@ -1,10 +1,10 @@
 # Backend Parity — Kof JVM × Native × KofJS
 
-**Última atualização:** 25 de agosto de 2026
-**Versão:** 0.1.0
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta
 
-> Deltas desde 0.0.5: `kof.db` SQLite **nativo** + MySQL WIP; `kof.orm`/MongoDB JVM-only (ORM001); `kof.security` Native completo (PBKDF2/SHA512/JWT/AES-GCM asm, G10), G9 rateLimit/session/apiKey 3 targets, `kof.config`/`kof.log` asm Native, TLS `listenSecure` JVM, `kof.validation`/`kof.observability`/`kof.http`/`kof.mq` 3 targets, generics `Box<T>` fix 25/08, `SEM025` Object fix.
-> Tabela reflete 0.1.0 (25/08) — DoD em `docs/plan-platform-completion.md`.
+> Deltas desde 0.1.0: Targets `native.riscv64` (riscv64 via `riscv64-linux-gnu-as`, `.option arch,rv64g`, `li a7 214/64/93`) e `native.aarch64` (placeholder) separados de `native` x86_64; Native free-list (`kof_free_head`) + `kof_gc_collect`; MySQL handshake via `kof_db_mysql_scramble`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `kof.http` JVM+JS (GraalJS via `Java HttpClient` interop); `List map/filter/reduce` + `Box<T>`; bugs: large-project `import a.b.C` file handling (`CompilerDriver.java:243`), `List.get`/`listOf`, release.yml single job + JDK 21, Windows SIGPIPE.
+> Tabela reflete 0.2.0-beta (27/08) — Build `mvn test` 658 (650+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -45,13 +45,21 @@
 | `readLine`, `readFile`, `writeFile` | ✅ | ✅ | ✅ | |
 | `kof.validation` (13 preds) | ✅ | ✅ | ✅ | `KofValidationTest` |
 | `kof.observability` (health/metrics/requestId) | ✅ | ✅ | ✅ | `KofObservabilityTest` |
-| `kof.http` client | ✅ | HTTP002 | HTTP002 | `KofHttpE2ETest` |
+| `kof.http` client | ✅ | HTTP002 | ✅ (GraalJS via `Java HttpClient` interop) | `KofHttpE2ETest` 4/4 (JVM+JS) |
 | `kof.mq` (pub/sub + queue) | ✅ | MQ001 | MQ001 | `KofMqE2ETest` |
-| `kof.config` (typed) | ✅ | ✅ | CONF001 | asm Native |
+| `kof.config` (typed) | ✅ | ✅ | CONF001 | asm Native (free-list) |
 | `kof.log` | ✅ | ✅ | LOG001 | asm Native |
 | `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM asm |
-| `kof.db`/`kof.orm` | ✅ | ✅/ORM001 | DB001/ORM001 | SQLite nativo; MongoDB JVM |
+| `kof.db`/`kof.orm` | ✅ | ✅/ORM001 | DB001/ORM001 | SQLite nativo; MySQL `kof_db_mysql_scramble` |
 | `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
+| `switch` pattern matching `case String s` | ✅ | ✅ | ✅ | 0.2.0-beta |
+| `switch` record destructuring `Point(x,y)` | ✅ | ✅ | ✅ | 0.2.0-beta |
+| `String?` null safety básica | ✅ | ✅ | ✅ | 0.2.0-beta (`Type?`) |
+| `List map/filter/reduce` | ✅ | ✅ | ✅ | 0.2.0-beta |
+| `Box<T>` generic | ✅ | ✅ | ✅ | `substituteTypeVariable` |
+| `KofScript` top-level `let` → `KofScriptGlobals` | ✅ | ✅ | ✅ | `KofScript` 0.2.0 |
+| `KofCcompiler` (`kof c`) C subset | — | ✅ x86_64 native-only | — | `kof_c`, while/if/deref &/* |
+| `native.riscv64` / `native.aarch64` | — | riscv64 stable / aarch64 placeholder | — | 0.2.0 target separation |
 
 ## Gaps documentados (não mascarados)
 
@@ -60,12 +68,12 @@
 | spawn/await no Native | `CONC001` | planned (virtual threads é JVM-only) |
 | spawn/await no JS | `CONC003` | planned (modelo event-loop) |
 | web TLS no Native/JS | `WEB002` | planned |
-| kof.http no Native/JS | `HTTP002` | planned |
+| kof.http no Native | `HTTP002` | planned (JS now ✅) |
 | JSON Float/Double | `JSN001` | planned |
+| Native aarch64 codegen | `NATIVE002` | placeholder (target separation done) |
 
-Fechados em 0.1.0: Map/Set nativo (era COL001), await com unboxing,
-JSN002 (objetos no Native), captura em lambdas (BoxN), resultado de
-tarefa (`await`).
+Fechados em 0.2.0-beta: pattern matching `switch case String s` + record `Point(x,y)` (JVM/Native/JS), `String?` null safety básica, `kof.http` no JS via `Java HttpClient`, `List map/filter/reduce`, large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, free-list GC (`kof_free_head` + `kof_gc_collect`), release.yml single job + JDK 21, Windows SIGPIPE.
+Fechados em 0.1.0: Map/Set nativo (era COL001), await com unboxing, JSN002 (objetos no Native), captura em lambdas (BoxN), resultado de tarefa (`await`).
 
 ## Princípio
 

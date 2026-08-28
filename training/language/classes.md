@@ -1,9 +1,15 @@
 # Kof Classes
 
-## Basic Class
+**Version:** 0.2.0-beta (27 Aug 2026)
+
+## Basic Class (idiomático: primary constructor)
 
 ```kof
-class User {
+class User(String name, Int age) { }
+var u = User("Mel", 30)
+
+// Verboso ainda válido
+class User2 {
     String name
     Int age
     public constructor(String name, Int age) {
@@ -18,6 +24,9 @@ class User {
 ```kof
 record Point(Int x, Int y)
 // Auto-generates: constructor, accessors x(), y(), toString()
+switch (p) {
+    case Point(var x, var y): println(x + "," + y) // 0.2.0-beta destructuring
+}
 ```
 
 ## Inheritance

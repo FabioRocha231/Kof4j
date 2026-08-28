@@ -1,5 +1,7 @@
 # 37 — KofJS: o caminho da Web
 
+> **Kof 0.2.0-beta — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+
 KofJS é o target `js` da Kof: a mesma linguagem, o mesmo frontend e a
 mesma Kof IR gerando **ES Modules (ECMAScript 2022+)** — sem Node.js, sem
 runtime externo. Com ele vem a plataforma de UI (`kof.ui`) que renderiza em
@@ -7,8 +9,8 @@ webview nativo (WebKitGTK) ou no browser.
 
 ## A ideia em uma frase
 
-Uma linguagem, três alvos: `kof build --target=jvm|native|js`. O que muda é
-o backend; o código é o mesmo.
+Uma linguagem, seis alvos: `kof build --target=jvm|native|native.risc|native.arm|js` + `kof c`/`kof script`. O que muda é
+o backend; o código Kof é o mesmo (`intention->Kof->frontend->IR->backend->runtime`).
 
 ```text
                     Kof Source

@@ -1,5 +1,14 @@
 # 27 — Boas Práticas
 
+> **Kof 0.2.0-beta — `String?`, `Point(x,y)`, `map/filter/reduce`, `intention->Kof->frontend->IR->backend->runtime`**
+
+## Novidades 0.2.0 que afetam estilo
+
+- Use `String?` para nullable em vez de comentários sobre null.
+- Prefira `case Point(x, y):` a `if` cascata quando desestruturar records.
+- Use `list.map/filter/reduce` em vez de `for` manual quando a intenção for transformar.
+- `let`/`const` no topo só em `.ks` (KofScript → `KofScriptGlobals`); em `.kf` use `var`/`val`.
+
 ## Naming
 
 - **Classes**: PascalCase (`UserService`, `TaskRepository`)

@@ -1,14 +1,10 @@
 # Web Architecture — `kof serve`
 
-**Data:** 22 de agosto de 2026
-> **Atualizado (0.0.5):** além do `kof serve` com handlers top-level, a stack
-> web nativa `web.app()` está implementada (Fase 1 da independência do
-> Spring): rotas com lambda trailing, path params, query, headers, body,
-> middleware, JSON tipado e servidor HTTP gerado no runtime do programa.
-> Ver [docs/stdlib-web.md](stdlib-web.md). A arquitetura abaixo é o desenho
-> original; o modelo real é documentado no status e nos testes.
+**Data:** 27 de agosto de 2026
+> **Atualizado (0.2.0-beta):** `kof serve` com handlers top-level + stack web nativa `web.app()` (Fase 1 Spring independence) — rotas com lambda trailing, path params, query, headers, body, middleware, JSON tipado e servidor HTTP gerado no runtime; `kof.http` client `http.get/post/put/delete/status` funciona em **JVM + JS** (JS via `Java HttpClient` interop no `KofJsRunner`, 27/08) — Native `HTTP002`; TLS `listenSecure` JVM. Ver [docs/stdlib-web.md](stdlib-web.md) e `docs/status.md:10-28` (658 testes, golden 16/16, integration 9/9).
 
-**Status:** Implementado (Fase H)
+**Status:** Implementado (Fase H) — 0.2.0-beta `VERSION` 0.2.0-beta
+**Versão:** 0.2.0-beta
 
 ---
 

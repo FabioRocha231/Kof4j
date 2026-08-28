@@ -1,7 +1,8 @@
 # DEBUGGING_JS.md — Debug no target KofJS
 
 **Status:** Planejado — source maps futuros
-**Data:** 23 de agosto de 2026
+**Data:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64)
 
 ---
 

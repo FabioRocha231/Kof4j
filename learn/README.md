@@ -6,18 +6,18 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 
 ## O que Kof é hoje
 
-* Compilador completo (Lexer → Parser → AST → Type System → IR → JVM/Native/KofJS)
+* Compilador completo (Lexer → Parser → AST → Type System → IR → JVM/Native/Native.risc/Native.arm/KofJS/KofC) — `intention->Kof->frontend->IR->backend->runtime`
 * Classes, records, interfaces, herança, virtual dispatch
-* Strings, arrays, exceptions, JSON, List\<T\>, lambdas com capturas
+* Strings, arrays, exceptions, JSON, List\<T\> + `map/filter/reduce`, Map/Set, lambdas com capturas, `String?`, pattern `case String s` + `Point(x,y)`
 * Web server via `kof serve` + stack web nativa (`web.app()`)
-* Runtime nativo x86-64
-* Target **KofJS**: ES Modules executados na engine embarcada (sem Node)
+* Runtime nativo x86-64 (free-list GC `kof_free_head`) + riscv64/aarch64 placeholders + SQLite + MySQL via `kof_db`
+* Target **KofJS**: ES Modules (GraalJS) + `kof.http` JVM+JS + Target separation (`jvm/native/native.risc/native.arm/js/kofc`)
 * **kof.ui**: Window, Label, Button (ações), Input, Column/Row, View+Style —
   renderização em webview nativo (WebKitGTK)
 * Distribuição oficial (JDK embutido, tooling, editor support)
-* CLI: build, run, serve, check, test, info, lsp, version
-* kof.io: File, Path, Directory (JVM + Native)
-* 508 testes
+* CLI: build, run, serve, check, test, bench, debug, info, lsp, install, script, c, version — `kof script` (`let`→`KofScriptGlobals`, repl, --watch), `kof c` (C subset nativo-only)
+* kof.io: File, Path, Directory (JVM + Native) + kof.http (JVM+JS, HTTP002 Native)
+* 658 testes
 
 ## Para quem é
 
@@ -110,18 +110,18 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 05 | Controle de Fluxo | ✅ |
 | 06 | Funções | ✅ |
 | 07 | Classes e Objetos | ✅ |
-| 08 | Propriedades | ✅ |
+| 08 | Propriedades | ✅ (planejado) |
 | 09 | Interfaces | ✅ |
 | 10 | Herança | ✅ |
 | 11 | Generics (erasure) | ✅ |
-| 12 | Collections (List<T>) | ✅ |
-| 13 | Nullability | Planejado |
-| 14 | Exceptions | ✅ (JVM + Native) |
-| 15 | Pattern Matching | Planejado |
-| 16 | Lambdas | ✅ (sem capturas) |
-| 17 | Programação Funcional | Parcial |
+| 12 | Collections (List/Map/Set + map/filter/reduce) | ✅ |
+| 13 | Nullability | ✅ Básico (`String?`) |
+| 14 | Exceptions | ✅ (JVM + Native unwinding) |
+| 15 | Pattern Matching | ✅ (`case String s` + `Point(x,y)`) |
+| 16 | Lambdas | ✅ (com capturas) |
+| 17 | Programação Funcional | ✅ (`map/filter/reduce`) |
 | 18 | Concorrência (spawn) | ✅ (JVM; Native CONC001) |
-| 19 | Packages e Módulos | ✅ Parcial |
+| 19 | Packages e Módulos | ✅ (`a.b.C` fix) |
 | 20 | Annotations | Implementado (JVM/KofJS) |
 | 21 | Java Interop | Planejado |
 | 22 | JVM | ✅ |
@@ -140,27 +140,28 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 37 | KofJS (caminho da Web) | ✅ (alpha) |
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM,
-Native e KofJS.
+Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.0-beta, 658 testes).
 
-**Testes:** 508
+**Testes:** 658
 
-**O que funciona hoje (0.0.5-alpha):**
-- Frontend completo (lexer, parser, type system, semântica)
-- Três backends: JVM (ASM), Native (ELF x86-64) e KofJS (GraalJS embutido)
-- Classes, records, herança, interfaces, virtual dispatch, generics (erasure)
-- Funções (sem `fun`), lambdas, if-expr, switch, for-in
-- Exceptions reais (JVM + Native), `assert`, `spawn` (JVM)
-- Strings (API completa), arrays, `List<T>`, JSON, kof.io, kof.time
-- CLI: `build, run, serve, check, test, info, lsp, install, version`
-- `kof serve` (KofHttpServer com thread pool), `kof test` (PASS/FAIL)
-- Distribuição oficial (Temurin 21 embutido, package, CI/release)
+**O que funciona hoje (0.2.0-beta — 27 ago 2026 — 658 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
+- Frontend completo (lexer, parser, type system, semântica) — `intention->Kof->frontend->IR->backend->runtime`
+- Seis targets: JVM (ASM), Native x86-64 (free-list GC), Native.risc, Native.arm, KofJS (GraalJS) e KofC (C subset nativo-only)
+- Classes, records, herança, interfaces, virtual dispatch, generics (erasure), imports `a.b.C` fix (largeproj)
+- Funções (sem `fun`), lambdas com capturas, if-expr, switch com `case String s` + `Point(x,y)` destructuring, `String?`, for-in
+- Exceptions reais (JVM + Native unwinding), `assert`, `spawn` (JVM, CONC001 Native)
+- Strings (API completa), arrays, `List<T>` + `map/filter/reduce`, `Map<K,V>`/`Set<T>`, JSON, kof.io, kof.time, `kof.http` (JVM+JS), `kof_db` (SQLite+MySQL WIP)
+- `KofScript` (`let`/`const` no topo → `KofScriptGlobals`, `kof script --repl`, `--watch`), `KofC` (`kof c <file.c>` nativo-only)
+- CLI: `build, run, serve, check, test, bench, debug, info, lsp, install, script, c, version` + `--target=jvm|native|native.risc|native.arm|js`
+- `kof serve` (KofHttpServer com thread pool), `kof test` (PASS/FAIL por `test "nome" {}`), `kof bench`/`kof debug`
+- Distribuição oficial (Temurin 21 embutido, package, CI/release) — Target separation (`Target.NATIVE_RISCV64/AARCH64`)
 
-**O que está planejado:**
-- Null safety, pattern matching, annotations
-- Captura em lambdas, resultado de tarefa (`await`), `kof.concurrent.Queue`
-- `spawn` no Native, JSON de objetos no Native
-- Map/Set, `kof fmt`, hover/completion no LSP
-- Database, security, messaging
+
+**O que está planejado (pós 0.2.0):**
+- `kof fmt`, `spawn` no Native, JSON de objetos/records no Native (JSN002)
+- GC mark-sweep completo (hoje free-list), MySQL wire completo, floating-point SSE nativo
+- `when` guards em pattern matching, flow analysis profundo para `String?`
+- Hover/completion completos no LSP, `kof_db` ORM MongoDB já OK em JVM
 
 ## Arquivos
 
@@ -171,26 +172,26 @@ Native e KofJS.
 | Primeiro Programa | `02-first-program.md` | ✅ |
 | Fundamentos | `03-language-basics.md` | ✅ |
 | Variáveis e Tipos | `04-variables-and-types.md` | ✅ |
-| Controle de Fluxo | `05-control-flow.md` | Planejado |
-| Funções | `06-functions.md` | ✅ Parcial |
+| Controle de Fluxo | `05-control-flow.md` | ✅ |
+| Funções | `06-functions.md` | ✅ |
 | Classes e Objetos | `07-classes-and-objects.md` | ✅ Parcial |
 | Propriedades | `08-properties.md` | Planejado |
-| Interfaces | `09-interfaces.md` | ✅ Parcial |
-| Herança | `10-inheritance.md` | Planejado |
-| Generics | `11-generics.md` | Planejado |
-| Collections | `12-collections.md` | Planejado |
-| Nullability | `13-nullability.md` | Planejado |
-| Exceptions | `14-exceptions.md` | Planejado |
-| Pattern Matching | `15-pattern-matching.md` | Planejado |
-| Lambdas | `16-lambdas.md` | Planejado |
-| Programação Funcional | `17-functional-programming.md` | Planejado |
+| Interfaces | `09-interfaces.md` | ✅ |
+| Herança | `10-inheritance.md` | ✅ |
+| Generics | `11-generics.md` | ✅ (erasure) |
+| Collections | `12-collections.md` | ✅ (List/Map/Set + map/filter/reduce) |
+| Nullability | `13-nullability.md` | ✅ Básico (`String?`) |
+| Exceptions | `14-exceptions.md` | ✅ (JVM+Native) |
+| Pattern Matching | `15-pattern-matching.md` | ✅ (`case String s` + `Point(x,y)`) |
+| Lambdas | `16-lambdas.md` | ✅ (com capturas) |
+| Programação Funcional | `17-functional-programming.md` | ✅ (`map/filter/reduce`) |
 | Concorrência | `18-concurrency.md` | Planejado |
-| Packages e Módulos | `19-packages-and-modules.md` | ✅ Parcial |
+| Packages e Módulos | `19-packages-and-modules.md` | ✅ (`a.b.C` fix) |
 | Annotations | `20-annotations.md` | Implementado (JVM/KofJS) |
 | Java Interop | `21-java-interoperability.md` | Planejado |
 | JVM | `22-jvm.md` | Planejado |
-| Testes | `23-testing.md` | ✅ Parcial |
-| Build Tools | `24-build-tools.md` | Planejado |
+| Testes | `23-testing.md` | ✅ |
+| Build Tools | `24-build-tools.md` | ✅ |
 | Spring | `25-spring.md` | Planejado |
 | Aplicação Real | `26-real-world-application.md` | Planejado |
 | Boas Práticas | `27-best-practices.md` | Planejado |

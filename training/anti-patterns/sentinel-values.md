@@ -46,20 +46,29 @@ Int findIndex(String key) {
 
 O consumidor trata com `try/catch` e recebe a informação do erro.
 
-## Preferred approach (ausência como dado)
+## Preferred approach (ausência como dado — 0.2.0-beta)
 
 ```kof
-// Quando ausência é um estado normal do domínio:
-record Found(Bool ok, Int index)
-// ou, até Option<T> existir:
-Bool findIndex(String key): Int  // hmm — veja o aviso abaixo
+// ✅ 0.2.0-beta — String? / Int? com narrowing é o idiom
+String? find(String key) {
+    for (var e in entries) {
+        if (e.key == key) return e.value
+    }
+    return null
+}
+var r = find("x")
+if (r != null) {
+    println(r.length)
+}
+
+// Alternativa quando erro e dado não se misturam: exception
+String findOrThrow(String key) {
+    for (var e in entries) { if (e.key == key) return e.value }
+    throw "not found: " + key
+}
 ```
 
-> **WORKAROUND — não idiom:**
-> A linguagem **não possui** `Option<T>`/`null safety` ainda (planned).
-> Se o domínio exige "ausência como valor" (não como erro), o retorno de
-> sentinela pode ser o workaround aceitável NO MOMENTO — mas marque-o
-> explicitamente como `WORKAROUND`, não como idiom da linguagem.
+> **Nota:** `Option<T>` genérico ainda é `planned` — para casos simples use `String?`/`Int?`. Sentinela (`""`/`-1`) só é `WORKAROUND` se `null` não modela o domínio e deve ser marcada explicitamente.
 
 ## Exceptions
 

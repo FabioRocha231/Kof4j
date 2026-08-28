@@ -4,9 +4,9 @@
 
 Neste capítulo você vai entender como declara variáveis, como o sistema de tipos funciona, e como a inferência de tipos opera.
 
-## Declaração de variáveis
+## Declaração de variáveis (0.2.0-beta)
 
-Em Kof existem duas palavras-chave para variáveis:
+Em Kof existem duas palavras-chave para variáveis (mais `let`/`const` como alias no KofScript → `KofScriptGlobals`):
 
 ### `var` — variável mutável
 
@@ -21,6 +21,15 @@ nome = "Outro"  // funciona
 val PI = 3.14
 // PI = 2.0  // ERRO: não pode reatribuir
 ```
+
+### `let` / `const` — alias KofScript (top-level → `KofScriptGlobals`)
+
+```kf
+let nome = "Mel"   // topo de .ks vira KofScriptGlobals.nome
+const pi = 3.14   // alias para val, persistente no repl
+```
+
+No `.kf` tradicional use `var`/`val`; `let`/`const` existem para compatibilidade KofScript e viram o mesmo IR.
 
 ## Tipagem explícita
 
@@ -149,9 +158,19 @@ Kof usa os mesmos tipos da JVM:
 | `Char` | `char` | `C` |
 | `String` | `String` | `Ljava/lang/String;` |
 
-## Status atual
+## KofScript let/const + String? (0.2.0)
+
+```kf
+let x = 5            // KofScript topo: KofScriptGlobals.x
+String? s = null     // nullable básico
+if (s != null) { println(s.length()) }
+```
+
+## Status atual (0.2.0-beta, 658 testes)
 
 ✅ `var` e `val` funcionam
+✅ `let`/`const` (alias → `KofScriptGlobals` no KofScript)
+✅ `String?` nullable básico
 ✅ Inferência de tipos funciona
 ✅ Records funcionam
 ✅ Classes com campos funcionam

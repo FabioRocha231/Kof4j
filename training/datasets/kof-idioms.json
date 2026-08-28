@@ -1,7 +1,10 @@
 {
   "language": "kof",
-  "version": "0.0.5-alpha",
-  "description": "Pares BAD/GOOD/WHY para treinamento de modelos. Cada entrada representa um erro de estilo, não necessariamente um erro de sintaxe.",
+  "version": "0.2.0-beta",
+  "updated": "27 Aug 2026",
+  "tests": 658,
+  "targets": ["jvm", "native", "native.risc", "native.arm", "js", "kofc"],
+  "description": "Pares BAD/GOOD/WHY para treinamento de modelos. Cada entrada representa um erro de estilo, não necessariamente um erro de sintaxe. Atualizado para 0.2.0-beta.",
   "entries": [
     {
       "id": "kof-001",
@@ -86,12 +89,12 @@
     {
       "id": "kof-009",
       "category": "lambdas",
-      "problem": "função anônima simples",
-      "bad": "function dobro(Int x): Int { return x * 2 } (sem função anônima)",
-      "good": "var f = (x: Int) -> x * 2; println(f(21))",
-      "reason": "Lambda é a forma de função anônima. Captura de escopo não existe ainda (planned).",
+      "problem": "função anônima com captura",
+      "bad": "class Multiplier { Int offset; apply(Int x): Int { return x + offset } }",
+      "good": "var offset = 10; var f = (x: Int) -> x + offset; println(f(5)) // 15",
+      "reason": "Lambda com captura mutável via Box0 é implementado desde 0.2.0-beta. Captura via classe wrapper é cerimônia.",
       "status": "implemented",
-      "introduced": "0.0.5-alpha"
+      "introduced": "0.2.0-beta"
     },
     {
       "id": "kof-010",
@@ -105,13 +108,13 @@
     },
     {
       "id": "kof-011",
-      "category": "fake-idioms",
+      "category": "collections-higher-order",
       "problem": "mapear coleção",
-      "bad": "var nomes = users.map(u -> u.name)",
-      "good": "var nomes = listOf(); for (var u in users) { nomes.add(u.name) }",
-      "reason": "map/higher-order functions são planned, não existem. for-in + List é a forma atual.",
-      "status": "planned",
-      "introduced": "planned"
+      "bad": "var nomes = listOf(); for (var u in users) { nomes.add(u.name) } // manual quando higher-order existe",
+      "good": "var nomes = users.map((u: User) -> u.name)",
+      "reason": "map/filter/reduce implementados em 0.2.0-beta nos 3 targets. Loop manual só quando necessário.",
+      "status": "implemented",
+      "introduced": "0.2.0-beta"
     },
     {
       "id": "kof-012",
@@ -119,9 +122,59 @@
       "problem": "serializar objeto",
       "bad": "ObjectMapper() (Java)",
       "good": "var j = json.encode(user)",
-      "reason": "JSON é integrado à linguagem. Objetos/records no JVM; primitivos/lists em ambos os targets.",
+      "reason": "JSON é integrado à linguagem. Objetos/records no JVM e JS; primitivos/lists em ambos.",
       "status": "implemented",
       "introduced": "0.0.4-alpha"
+    },
+    {
+      "id": "kof-013",
+      "category": "records-pattern",
+      "problem": "destruturar record",
+      "bad": "var x = p.x(); var y = p.y() // acesso manual quando pattern matching existe",
+      "good": "switch (p) { case Point(var x, var y): println(x + \",\" + y) }",
+      "reason": "Record destructuring via PatternExpr fieldVars implementado em 0.2.0-beta (3 targets).",
+      "status": "implemented",
+      "introduced": "0.2.0-beta"
+    },
+    {
+      "id": "kof-014",
+      "category": "null-safety",
+      "problem": "ausência como valor",
+      "bad": "String find(String key) { return \"\" } // sentinela",
+      "good": "String? find(String key) { if (found) return value; return null } ; if (r != null) println(r.length)",
+      "reason": "String? + narrowing if (x != null) implementado em 0.2.0-beta (NullableType). Sentinela colide com valores legítimos.",
+      "status": "implemented",
+      "introduced": "0.2.0-beta"
+    },
+    {
+      "id": "kof-015",
+      "category": "kofscript",
+      "problem": "variável global em script",
+      "bad": "class Globals { static Int x = 5 } // manual",
+      "good": "let x = 5 // KofScript → KofScriptGlobals static field",
+      "reason": "KofScript top-level let/const reescrito para KofScriptGlobals desde 0.2.0-beta.",
+      "status": "implemented",
+      "introduced": "0.2.0-beta"
+    },
+    {
+      "id": "kof-016",
+      "category": "http",
+      "problem": "cliente HTTP",
+      "bad": "HttpClient.newHttpClient() (Java interop manual)",
+      "good": "var html = http.get(\"https://example.com\"); if (http.status(url)==200) println(html)",
+      "reason": "kof.http disponível em JVM e JS (Java HttpClient interop) desde 0.2.0-beta; Native HTTP002.",
+      "status": "implemented",
+      "introduced": "0.2.0-beta"
+    },
+    {
+      "id": "kof-017",
+      "category": "imports",
+      "problem": "importar módulo específico",
+      "bad": "import a.b.* // só wildcard quando precisa de um tipo",
+      "good": "import a.b.C",
+      "reason": "File-specific import a.b.C fixado 27/08 (CompilerDriver). Projetos grandes com a/b/C.kf agora compilam ambos os units.",
+      "status": "implemented",
+      "introduced": "0.2.0-beta"
     }
   ]
 }

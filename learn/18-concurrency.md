@@ -1,11 +1,11 @@
 # 18 — Concorrência
 
-> **Status: implementado (JVM, virtual threads)**
+> **Status: implementado (JVM, virtual threads) — 0.2.0-beta**
 >
 > Kof não expõe `Thread`, `Runnable` nem `CompletableFuture`: a intenção é
 > `spawn` (rode em paralelo) e `await` (espere o resultado). No Native e
 > no JS os mesmos programas reportam gap claro em compile-time — nunca
-> comportamento silenciosamente diferente.
+> comportamento silenciosamente diferente. Chain: `intention->Kof->frontend->IR->backend->runtime`.
 
 ## spawn — dispare e esqueça
 
@@ -148,6 +148,10 @@ Bloqueia até **qualquer** handle completar e devolve o valor dele. No JS
 O diagnóstico vem em compile-time, com código — o programa não compila.
 No JS o modelo é single-threaded/event-loop; um port futuro seguirá o
 mesmo par spawn/await.
+
+## Target separation (0.2.0)
+
+`Target` enum agora separa `NATIVE` (x86-64) de `NATIVE_RISCV64` e `NATIVE_AARCH64`. `spawn` continua com gap `CONC001` em todos os Natives — a separação vale para codegen/linker (`as`/`ld` por arch), não muda a semântica de concorrência. Native ainda usa free-list `kof_free_head` para reuso de `mmap`, sem `spawn`.
 
 ## Próximo passo
 

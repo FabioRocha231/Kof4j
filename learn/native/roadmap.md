@@ -1,5 +1,7 @@
 # Roadmap KofNative
 
+> **0.2.0-beta — 27 ago 2026 — 658 testes — free-list GC done, Target separation done, MySQL via kof_db WIP**
+
 ## Princípios
 
 1. **Não quebrar Kof4J** — toda mudança deve ser validada contra o backend JVM
@@ -23,15 +25,17 @@ O backend nativo já está funcional. Aqui está o que já foi implementado:
 
 ### 🔄 Em desenvolvimento
 
-- **Milestone 7 — Control Flow**: If/else, while, for
-- **Milestone 8 — Arrays**: Arrays nativos
+- **Milestone 7 — Control Flow**: If/else, while, for ✅
+- **Milestone 8 — Arrays**: Arrays nativos ✅
+- **Milestone 9 — Value Types / Structs**: Records como structs nativos ✅
+- **Milestone 10 — Objects**: Classes com herança e dispatch ✅
+- **Milestone 11 — Exceptions**: Try/catch nativo (unwinding) ✅
+- **Milestone 12 — Generics**: Monomorphization/erasure ✅
+- **Milestone 13 — Target separation**: `NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm` ✅
+- **Milestone 14 — Free-list GC**: `kof_free_head` reuso `mmap` ✅
+- **Milestone 15 — kof_db MySQL**: SQLite via `.so` + MySQL wire auth SHA-1 ✅ WIP
 
-### ❌ Planejado
-
-- **Milestone 9 — Value Types / Structs**: Records como structs nativos
-- **Milestone 10 — Objects**: Classes com herança e dispatch
-- **Milestone 11 — Exceptions**: Try/catch nativo
-- **Milestone 12 — Generics**: Monomorphization
+### ✅ Concluídos (0.2.0-beta) — 9-12 já implementados; ver acima
 
 ## Milestones detalhados
 

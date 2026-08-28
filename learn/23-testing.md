@@ -1,6 +1,6 @@
 # 23 — Testes
 
-> **Status: implementado — `test "nome" { }`, `kof test` + `assert`**
+> **Status: implementado — `test "nome" { }`, `kof test` + `assert` — 0.2.0-beta, 658 testes**
 >
 > Testar Kof é escrever Kof. A suíte estruturada declara casos com
 > `test "nome" { }`; `kof test` roda cada teste isolado e reporta

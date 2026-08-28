@@ -1,11 +1,12 @@
 # CONCURRENCY.md — Modelo de Concorrência Kof
 
-**Status:** Parcialmente implementado (JVM) — Native pendente
-**Data:** 22 de agosto de 2026
+**Status:** Implementado (JVM + JS sequencial) — Native `CONC001` gap documentado — 0.2.0-beta 27/08 (658 testes)
+**Versão:** 0.2.0-beta
+**Data:** 27 de agosto de 2026
 
 ---
 
-## 0. Implementado (0.0.5-alpha)
+## 0. Implementado (0.2.0-beta)
 
 ### `spawn` — statement
 
@@ -28,17 +29,22 @@ Semântica implementada:
 - isolamento por valor: a tarefa recebe os argumentos; sem estado
   compartilhado primitivo na linguagem.
 
+### Implementado 0.1.0 → 0.2.0-beta
+
+- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial (`CONC003` para `spawn` nativo futuro); Native `CONC001`
+- Lambdas com captura via `BoxN` já suportam `spawn { println(x) }`
+- `kof.mq` publish/subscribe/queue — JVM+JS (MQ001 Native); `kof.time interval/cancel` — JVM
+
 ### Não exposto
 
 Nenhuma API de plataforma (Thread/Runnable/Executor) é visível na linguagem.
 `Thread.startVirtualThread` é detalhe interno do runtime JVM.
 
-### Próximas iterações (planned)
+### Próximas iterações (P2)
 
-- resultado observável de tarefa (`await`/join explícito);
-- filas produtor/consumidor (`kof.concurrent.Queue`);
-- scheduler nativo (threads no target Native);
-- erros propagáveis entre tarefas.
+- filas produtor/consumidor tipadas (`kof.concurrent.Queue`);
+- scheduler nativo (threads no target Native — depende de futex/clone);
+- `await` com timeout / `select` múltiplo / cancelamento cooperativo.
 
 Concorrência é uma capacidade da **linguagem/stdlib**, não uma coleção de
 APIs da plataforma.
@@ -110,40 +116,43 @@ Troca de valores entre tarefas através de:
 
 ---
 
-## 3. Sintaxe (escolhida: `spawn`)
+## 3. Sintaxe (escolhida: `spawn` — 0.2.0-beta)
 
-**Escolhida e implementada (JVM):**
+**Implementada (JVM + JS sequencial):**
 
 ```kof
 spawn task()
-spawn { ... }
+spawn { println("background") }
+val handle = spawn tarefa()   // Handle<T> tipado — 0.1.0
+val result = await handle      // unboxing + exceção limpa — 0.1.0
 ```
 
-Rejeitadas por enquanto: `async { }` (confunde com async/await de outras
-linguagens), `await` (resultado de tarefa ainda não implementado).
+`spawn`/`await` funcionam em JVM (virtual threads) e JS (sequencial); Native reporta `CONC001`.
 
-Decisões pendentes para as próximas iterações:
+Rejeitadas: `async { }` (confunde com async/await).
 
-- resultado observável de tarefa (`await`/join explícito);
-- como expressar filas/pub-sub;
-- modelo de erro (exceção atravessa a tarefa?).
+Decisões pendentes:
 
-**Não implementar sintaxe antes da semântica acima ser validada.**
+- como expressar filas/pub-sub (`kof.concurrent.Queue` planned);
+- modelo de erro (exceção já propaga via `await` com unwrap `ExecutionException` — ver `KofAwaitTest`).
+
+**Não implementar sintaxe antes da semântica acima ser validada.** — validada 0.1.0.
 
 ---
 
-## 4. Mapeamento por Target
+## 4. Mapeamento por Target (0.2.0-beta)
 
 A mesma semântica Kof utiliza implementações diferentes:
 
-| Target | Implementação |
-|--------|---------------|
-| JVM 25+ | Virtual Threads (scheduler da JVM) |
-| JVM 21 | Platform threads / scheduler Kof sobre Executors |
-| Native | OS threads + scheduler Kof |
-| KofJS (futuro) | Event loop + Promises + Workers |
+| Target | Implementação | Status |
+|--------|---------------|--------|
+| JVM 21+ | Virtual Threads (scheduler da JVM) | ✅ `await`/`Handle<T>` + `kof.mq` |
+| Native x86_64 | OS threads + scheduler Kof (free-list heap) | `CONC001` (gap documentado) |
+| Native riscv64 | riscv64 syscalls (`li a7`) + OS threads futuro | `CONC001` (placeholder) |
+| JS (GraalJS) | Event loop (sequencial hoje; Promises futuro) | ✅ sequencial (`spawn`/`await` sequencial) |
+| KofScript | JVM via KofScriptGlobals | ✅ |
 
-O código Kof não muda entre targets.
+O código Kof não muda entre targets (gaps diagnosticados `CONC001`/`CONC003`).
 
 ---
 
@@ -172,12 +181,12 @@ Essa decisão pertence ao target/runtime.
 
 ---
 
-## 6. Dependências
+## 6. Dependências (0.2.0-beta)
 
-- Lambdas com captura (planned) — necessário para `spawn { ... }` idiomático;
-- filas na stdlib (`kof.concurrent.Queue`);
-- modelo de exceção por tarefa;
-- scheduler Kof no Native (threads + pilha própria).
+- ✅ Lambdas com captura via `BoxN` — implementado (necessário para `spawn { ... }` idiomático);
+- filas na stdlib (`kof.concurrent.Queue` — planned, `kof.mq` já fornece pub/sub);
+- modelo de exceção por tarefa — ✅ unwrap `ExecutionException` no `await` (JVM);
+- scheduler Kof no Native (threads + pilha própria) — pending `CONC001`.
 
 ## 7. Fases de Implementação
 

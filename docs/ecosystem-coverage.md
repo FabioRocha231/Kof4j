@@ -4,10 +4,11 @@
 > plataforma moderna (checklist derivado do ecossistema Spring, usado como
 > **matriz de capacidades**, não como especificação de API).
 >
-> **Data:** 25 de agosto de 2026 · **Versão:** 0.1.0
+> **Data:** 27 de agosto de 2026 · **Versão:** 0.2.0-beta
 > **Método:** auditoria do repositório (código + testes + docs) — ver §2.
+> **Build:** `mvn clean package` PASS, `mvn test` 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.0-beta, `release.yml` single job JDK 21 fix, Windows SIGPIPE fix.
 > **Resultado:** nenhuma implementação nova foi feita neste documento —
-> apenas inventário, matriz, gaps, prioridade e estratégia.
+> apenas inventário, matriz, gaps, prioridade e estratégia (0.2.0-beta acrescenta targets `native.riscv64`/`native.aarch64`, free-list GC, pattern matching, `String?`, `KofScriptGlobals`, `KofCcompiler`).
 
 ---
 
@@ -48,13 +49,13 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 
 | Módulo | Invocações Kof | Arquivo de origem | Tests |
 |--------|----------------|-------------------|-------|
-| `kof.core`/`kof.collections` | `println/print`, `String` (concat, length, indexOf, split...), `List<T>`, `listOf`, `map/filter/reduce` | JvmRuntime/NativeRuntime/JsBackend | KofHigherOrderTest (5) + JvmE2ETest, NativeE2ETest, KofJsE2ETest |
+| `kof.core`/`kof.collections` | `println/print`, `String` (concat, length, indexOf, split...), `List<T>`, `listOf`, `map/filter/reduce` (0.2.0), pattern matching `case String s` + `Point(x,y)` (0.2.0), `String?` (0.2.0) | JvmRuntime/NativeRuntime/JsBackend | KofHigherOrderTest (5) + JvmE2ETest, NativeE2ETest, KofJsE2ETest |
 | `kof.io` | `File/Path/Directory` (+métodos), `readFile/writeFile/readLine` | KofIo.java | IoE2ETest (15) |
 | `kof.time` | `now()`, `sleep` (JVM/Native/JS), `interval`/`cancel` (JVM) | KofTime.java | KofTimeE2ETest (5) |
 | `kof.json` | `json.encode/decode<T>` | JvmRuntime/NativeRuntime/JsBackend | JsonE2ETest (14) |
 | `kof.security` | `passwords.*`, `crypto.*`, `jwt.*`, `secrets.*`, `security.*`, `auth.*` | KofSecurity.java | KofSecurityTest (22) |
 | `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8) |
-| `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) | KofHttp.java | KofHttpE2ETest (3) |
+| `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) — JVM+JS (JS via `Java HttpClient` interop) | KofHttp.java + KofJsRunner | KofHttpE2ETest (4, JVM+JS) |
 | `kof.mq` | `mq.publish/subscribe/unsubscribe`, `queue/push/pop/size` (JVM + JS; Native MQ001) | KofMq.java | KofMqE2ETest (4) |
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
 | `kof.test` | `assert(cond[, msg])`, `test "nome" { }` (runner sintetizado), `kof test` | CompilerDriver/CLI | AssertE2ETest (5), StructuredTestE2ETest (11) |
@@ -100,19 +101,19 @@ Documentação: `docs/security.md`; testes: `KofSecurityTest` (22).
 | Native | `NativeRuntime.java` (asm x86-64, sem libc) | strings, listas, json, io, sec (parcial), net (símbolos), time, print |
 | JS | `JsBackend` gera `kof-runtime.mjs` + `kof-runtime-io.mjs`; `kof-runtime` module = `KofJsRunner` (GraalJS embarcado) | linguagem, io via `kof_platform`, sec, ui (DOM/webview) |
 
-## 2.6 Testes (38 arquivos, 590 JUnit) — por módulo
+## 2.6 Testes (658 JUnit: 650 kof-compiler +8 kof-script +5 kof-c-compiler) — por módulo (27/08)
 
 Security (22) · CompilerDriver (190) · Native E2E (50) · KofJS E2E (35) ·
 JVM E2E (29) · Optimizer (21) · Io (15) · Json (14) · CoreRegression (12) ·
 BackendParity (10) · Exceptions (9) · Web E2E (9) · HttpServer (8) ·
-**KofConfig (8)** · **KofLog (7)** · Idiomatic (7+6) · Ui (6) · Assert (5) ·
+**KofConfig (8)** · **KofLog (7+Native 7)** · Idiomatic (7+6) · Ui (6) · Assert (5) ·
 FunctionSyntax (4) · Lambda (4) · **KofTime (4)** · **KofMq (4)** ·
-**KofHttp (3)** · TuringComplete (3) · **KofOrm (16, E2E MariaDB/Postgres)** ·
-**KofDb (8)** · Spawn (3) · Window (3) · IRStatistics (2) · DebugInfo (2) ·
-NativeDebug (5) · StructuredTest (11) · AndroidInterop (11).
-Golden: `tests/golden/` 16 casos × jvm+native (16/16).
+**KofHttp (4, JVM+JS)** · TuringComplete (3) · **KofOrm (16, E2E MariaDB/Postgres + MongoDB + SQLite native)** ·
+**KofDb (8, + MySQL scramble)`** · Spawn (3) · Window (3) · IRStatistics (2) · DebugInfo (2) ·
+NativeDebug (5) · StructuredTest (11) · AndroidInterop (11) · **KofScript (8)** · **KofCcompiler (5)**.
+Golden: `tests/golden/` 16/16 (8 casos × jvm+native). Integration: `tests/run-integration.sh` 9/9. `mvn test` 658.
 
-## 2.7 Benchmarks (33, em 16 categorias)
+## 2.7 Benchmarks (37, em 17 categorias, `kof bench` PASS)
 
 micro, algorithms, collections, strings, math, objects, inheritance,
 interfaces, generics, json, io, concurrency, startup, memory, stress,
@@ -146,12 +147,12 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| HTTP server | `web.app()` | y | – | – WEB001 | KofWebE2ETest | web |
+| HTTP server | `web.app()` | y | – WEB002 | – WEB001 | KofWebE2ETest | web |
 | routing (path params, query, headers) | `app.get("/users/:id")` | y | – | – | KofWebE2ETest | web |
 | REST verbs | get/post/put/delete/patch/options | y | – | – | KofWebE2ETest | web |
 | JSON body | automático (Content-Type) | y | – | – | KofWebE2ETest | web |
 | middleware | `app.use` | y | – | – | KofWebE2ETest | web |
-| HTTP client | ✅ `kof.http` (get/post/put/delete/patch/options/status/timeout, headers, JSON; HTTP002 Native/JS) | y | – | – | KofHttpE2ETest | http.md |
+| HTTP client | ✅ `kof.http` (get/post/put/delete/patch/options/status/timeout, headers, JSON; HTTP002 Native) | y | – HTTP002 | y (GraalJS `Java HttpClient`) | KofHttpE2ETest (4, JVM+JS) | http.md |
 | typed path/query/body | `PLANNED` (hoje strings) | — | — | — | — | web |
 | status codes custom | `PLANNED` | — | — | — | — | web |
 | headers de resposta custom | `PLANNED` | — | — | — | — | web |
@@ -169,8 +170,8 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` | y | y (SQLite; MySQL WIP) | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
-| `db.connect/query/transaction` | ✅ (+ `query<T>` tipado) | y | y | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
+| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` + MySQL handshake `kof_db_mysql_scramble` (27/08) | y | y (SQLite + MySQL scramble) | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
+| `db.connect/query/transaction` | ✅ (+ `query<T>` tipado) | y | y | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
 | prepared statements | ✅ (binds `?`) | y | y | – DB001 | KofDbE2ETest | — |
 | connection pools | `PLANNED` | — | — | — | — | — |
 | migrations | ✅ `orm.migrate` versionado (`kof_migrations`) | y | – ORM001 | – ORM001 | KofOrmE2ETest | future/DATABASE_VISION.md |
@@ -278,9 +279,9 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| `assert(cond[, msg])` | `DONE` | y | y | — | AssertE2ETest | language-state.md |
-| `kof test` (per-file, exit code) | `DONE` | y | y | — | — | roadmap.md |
-| suíte estruturada `test "nome" { }` | `PLANNED` | — | — | — | — | roadmap.md |
+| `assert(cond[, msg])` | `DONE` | y | y (free-list) | y | AssertE2ETest | language-state.md |
+| `kof test` (per-file, exit code) | `DONE` | y | y | y | — | roadmap.md |
+| suíte estruturada `test "nome" { }` | `DONE` (`test "nome" { }` + `kof test` nos 3 targets, `CompilerDriver.java:1`) | y | y | y | StructuredTestE2ETest | roadmap.md |
 | HTTP testing | `DONE` (E2E com sockets) | y | — | — | KofWebE2ETest | web |
 | mocks / fixtures | `PLANNED` | — | — | — | — | — |
 | property testing / stress | `PARTIAL` (benchmarks stress) | y | y | – | Bench | performance.md |
@@ -291,7 +292,9 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| `kof` CLI completo | `DONE` | y | y | y | — | tooling/ |
+| `kof` CLI completo | `DONE` (build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/script/repl/c) | y (native.riscv64/aarch64) | y (free-list) | y (GraalJS) | — | tooling/ |
+| `kof script` / `kof repl` | `DONE` (top-level `let` → `KofScriptGlobals`, `--watch`, SIGPIPE fix) | y | y | y | KofScript | stdlib.md |
+| `kof c` (KofCcompiler) | `DONE` (C subset `while/if/deref &/*` → ELF x86_64) | — | y x86_64 native-only | — | KofCCompilerTest | architecture.md |
 | command parsing (em Kof) | `PLANNED` (`kof.cli` como lib) | — | — | — | — | roadmap.md |
 | interactive CLI / prompts / progress | `PLANNED` | — | — | — | — | — |
 

@@ -1,12 +1,14 @@
 # Kof Overview
 
-Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86-64) and KofJS (ES Modules).
+Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86_64, riscv64, aarch64) and KofJS (ES Modules), plus KofScript and KofC.
+
+**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests (650 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
 
 ## Key Characteristics
 
-- **Compiled** — the compiler emits JVM bytecode (via ASM), a native ELF binary, or ES Modules; there is no interpreter
-- **Statically typed** — type errors caught at compile time
-- **Multi-target** — same code runs on JVM, Native and KofJS (webview/browser)
+- **Compiled** — the compiler emits JVM bytecode (via ASM), a native ELF binary (x86_64/riscv64/aarch64), or ES Modules; there is no interpreter
+- **Statically typed** — type errors caught at compile time; null safety `String?` + narrowing `if (x != null)` since 0.2.0-beta
+- **Multi-target** — same code runs on JVM, Native, JS, Native.risc, Native.arm, plus KofScript (JIT in-memory) and KofC (C subset → native)
 - **Intent-oriented** — not a formal paradigm, but object orientation taken to
   its extreme: code expresses *what* should happen; the platform (language +
   compiler + runtime + stdlib) decides *how*, per target. The chain is
@@ -16,77 +18,78 @@ Kof is a compiled, statically-typed, object-oriented programming language target
   (not a manual parser), `Palette.red` (not hex). Gaps are reported at
   compile time with codes (`CONC001`, `JSN002`) — never silently.
   See `docs/philosophy.md`.
-- **Minimal boilerplate** — intent over ceremony
-- **Memory managed** — no manual allocation/deallocation in user code
+- **Minimal boilerplate** — intent over ceremony (records, primary constructors, top-level functions)
+- **Memory managed** — free-list GC with mark-sweep (Native `kof_free_head` + `kof_gc_collect` since 27/08)
 - **No `fun` keyword** — functions are declared by name (`main()`, `String f()`, `f(): String`)
 
 ## Compilation Pipeline
 
 ```
-Source (.kf)
+Source (.kf / .ks / .c)
     ↓
 Lexer → Tokens
     ↓
-Parser → AST
+Parser → AST (PatternExpr, NullableType)
     ↓
-Semantic Analysis → Typed AST
+Semantic Analysis → Typed AST (isAssignable com Nullable, record destructuring)
     ↓
-Kof IR (backend-agnostic)
+Kof IR (backend-agnostic, KofOperation)
     ↓
-┌─────────┬──────────┐
-│  JVM    │  Native  │
-└─────────┴──────────┘
+┌─────────┬──────────┬──────┬─────────┬────────┐
+│  JVM    │ Native   │ JS   │ KofScript│ KofC  │
+│  (ASM)  │ x86_64   │ ES   │ JIT      │ C→ELF │
+│         │ riscv64* │      │ let/top  │       │
+│         │ aarch64* │      │ level    │       │
+└─────────┴──────────┴──────┴─────────┴────────┘
+ * placeholder via riscv64-linux-gnu-as/ld + qemu
 ```
 
-## Current Features (0.1.0)
+## Current Features (0.2.0-beta)
+
+| Feature | JVM | Native | JS | Notes |
+|---------|-----|--------|----|-------|
+| Classes, records, interfaces, inheritance, virtual dispatch | ✅ | ✅ | ✅ | super = SUP001 no Native |
+| Constructors (`constructor(...)`, primary `class X(...)`) | ✅ | ✅ | ✅ | desde 0.0.5 |
+| Functions (all forms, no `fun`, expression body) | ✅ | ✅ | ✅ | |
+| Enums (`enum Color { Red }` + values/valueOf/name + exhaustive switch SEM031) | ✅ | ✅ | ✅ | 3 targets |
+| Lambdas com captura mutável (Box0) | ✅ | ✅ | ✅ | 0.2.0-beta |
+| If-expressions `var x = if (c) a else b` | ✅ | ✅ | ✅ | |
+| `List<T>` + `listOf` + `map/filter/reduce` | ✅ | ✅ | ✅ | higher-order 27/08 |
+| `Map<K,V>` + `mapOf` (put/get/remove/contains/size/keys/values/clear/isEmpty) | ✅ | ✅ | ✅ | desde 0.1.0 |
+| `Set<T>` + `setOf` (add/contains/remove/size/clear/isEmpty) | ✅ | ✅ | ✅ | desde 0.1.0 |
+| `Box<T>` generics com `T` primitivo | ✅ | ✅ | ✅ | fix substituteTypeVariable 25/08 |
+| Null safety `String?` / `Int?` + narrowing `if (x != null)` | ✅ | ✅ | ✅ | 0.2.0-beta |
+| Pattern matching `case String s` + `instanceof`/`as` | ✅ | ✅ | ✅ | 0.2.0-beta |
+| Record destructuring `case Point(x, y)` | ✅ | ✅ | ✅ | Parser fieldVars |
+| Concorrência: `spawn` / `Handle<T>` / `await` | ✅ | CONC001 | ✅ | virtual threads |
+| Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ | ✅ | ✅ | |
+| Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
+| Exceptions `throw "msg"` / try/catch/finally | ✅ | ✅ | ✅ | Native unwinding |
+| Generics (erasure) | ✅ | ✅ | ✅ | |
+| JSON `json.encode` / `json.decode<T>` | ✅ | ✅* | ✅ | * objetos JSN002 no Native |
+| kof.io: `readFile`, `writeFile`, `readLine`, `File/Path/Directory` | ✅ | ✅ | ✅ | |
+| kof.time: `now()` / `sleep()` | ✅ | ✅ | ✅ | |
+| kof.http: `http.get/post/put/delete/status/timeout` | ✅ | HTTP002 | ✅ | JS via Java HttpClient 27/08 |
+| kof.cache: `cache.get/set/set_ttl/ttl/delete/clear` | ✅ | ✅ | ✅ | ConcurrentHashMap/Js Map |
+| switch, instanceof, `as` | ✅ | ✅ | ✅ | |
+| Web server (`web.app()` rotas/middleware/TLS `listenSecure` + ws/sse) | ✅ | WEB002 | — | |
+| kof.validation (13 predicados) | ✅ | ✅ | ✅ | |
+| kof.security (passwords/crypto/jwt/secrets/auth + rateLimit/sessions/apiKeys) | ✅ | ✅ | ✅ | |
+| kof.observability (health/readiness/liveness/counter/increment/gauge/requestId) | ✅ | ✅ | ✅ | |
+| kof.db + SQLite nativo + MySQL handshake | ✅ | ✅ (MySQL auth scramble SHA-1 done) | DB001 | |
+| KofScript `let` top-level + repl --watch --inspect | ✅ | ✅ | ✅ | KofScriptGlobals |
+| KofC C subset → ELF x86_64 | — | ✅ | — | nativo-only |
+
+## Planned / Unavailable (0.2.0-beta)
 
 | Feature | Status |
 |---------|--------|
-| Classes, records, interfaces, inheritance, virtual dispatch | ✅ |
-| Constructors (`constructor(...)`, default auto) | ✅ |
-| Functions (all declaration forms, no `fun`) | ✅ |
-| Enums (`enum Color { Red }` + values/valueOf/name + exhaustive switch SEM031) | ✅ 3 targets |
-| Lambdas com captura (mutável via box) | ✅ |
-| If-expressions `var x = if (c) a else b` | ✅ |
-| `List<T>` + `listOf` + `for (var x in coll)` | ✅ |
-| `Map<K,V>` + `mapOf` (put/get/remove/contains/size/keys/values/clear/isEmpty) | ✅ 3 targets |
-| `Set<T>` + `setOf` (add/contains/remove/size/clear/isEmpty) | ✅ 3 targets |
-| Concorrência: `spawn stmt` / `val r = spawn f()` / `await r` (virtual threads) | ✅ JVM; CONC001/003 nos outros |
-| Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ |
-| Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ |
-| Exceptions `throw "msg"` / try/catch/finally (JVM + Native) | ✅ |
-| Generics (erasure) | ✅ |
-| JSON `json.encode` / `json.decode<T>` | ✅ (objetos: JVM + Native JSN002) |
-| kof.io: `readFile`, `writeFile`, `readLine`, `File/Path/Directory` | ✅ |
-| kof.time: `now()` | ✅ |
-| switch, instanceof, `as` | ✅ |
-| Web server (`web.app()` rotas/middleware/TLS `listenSecure`) | ✅ JVM |
-| kof.validation (13 predicados) | ✅ 3 targets |
-| kof.security (passwords/crypto/jwt/secrets/auth + rateLimit/sessions/apiKeys) | ✅ 3 targets (web auth JVM) |
-| kof.observability (health/readiness/liveness/counter/increment/gauge/requestId) | ✅ 3 targets |
-| Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ |
-| Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ |
-| Exceptions `throw "msg"` / try/catch/finally (JVM + Native) | ✅ |
-| Generics (erasure) | ✅ |
-| JSON `json.encode` / `json.decode<T>` | ✅ (objetos só JVM) |
-| kof.io: `readFile`, `writeFile`, `readLine`, `File/Path/Directory` | ✅ |
-| kof.time: `now()` | ✅ |
-| switch, instanceof, `as` | ✅ |
-| Web server (`kof serve`, `handle(...)`) | ✅ |
-
-## Planned / Unavailable
-
-| Feature | Status |
-|---------|--------|
-| `Map`, `Set` | Planned |
-| `Option<T>` / null safety | Planned |
-| `spawn` (tarefas concorrentes) | Implemented (JVM; Native CONC001) |
-| Lambdas + if-expr | Implemented |
-| Higher-order functions (`map`, `filter`) | Planned |
-| Lambda captures | Planned |
-| Pattern matching | Planned |
-| Primary constructors `class X(...)` | Implemented (record-style desde 0.0.5) |
-| Array literals `{1, 2, 3}` | Unavailable — use `new Int[n]` |
+| `Option<T>` genérico | Planned — use `String?` |
+| `kof fmt` / `kof init` | Planned (P5) |
+| Native `spawn` | Planned CONC001 |
+| `Array literals {1, 2, 3}` | Unavailable — use `new Int[n]` / `listOf` |
+| MySQL query/prepared completo no Native | In progress (handshake done 27/08) |
+| RISC-V/ARM codegen real | Placeholder (target separation done, as/ld+qemu) |
 
 ## What Kof Is NOT
 

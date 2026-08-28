@@ -1,6 +1,7 @@
 # Licenciamento do Kof
 
-**Última atualização:** 22 de agosto de 2026
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64)
 
 ---
 
@@ -14,31 +15,30 @@ O arquivo `LICENSE` na raiz do repositório contém o texto completo da GPLv3.
 
 ---
 
-## 2. JDK embutido na distribuição oficial
+## 2. JDK embutido na distribuição oficial (0.2.0-beta, JDK 21)
 
-O pacote oficial do Kof embarca um **OpenJDK Eclipse Temurin** (binários da
-Adoptium), distribuído sob a **GPLv2 com Classpath Exception**. O JDK
+O pacote oficial do Kof embarca um **OpenJDK Eclipse Temurin 21** (binários da
+Adoptium, Tooling API Level 21), distribuído sob a **GPLv2 com Classpath Exception**. O JDK
 embutido é um componente separado do código-fonte do Kof, empacotado apenas
 na distribuição (não no repositório), e mantém sua própria licença.
 
-O Kof não modifica o JDK embutido; o launcher (`bin/kof`) apenas o localiza
-e executa.
+O Kof não modifica o JDK embutido; o launcher (`bin/kof`/`bin/kof.bat`, Windows SIGPIPE fix 27/08) apenas o localiza
+e executa. `scripts/package.sh` gera layout dist + tar.gz/zip + SHA256SUMS, `release.yml` usa single job `package+release` com JDK 21 fix.
 
 ---
 
-## 2. Compilador
+## 2.1 Compilador (0.2.0-beta)
 
-O compilador Kof (módulo `kof-compiler`) é GPLv3.
+O compilador Kof (módulos `kof-compiler` 650 testes + `kof-script` 8 + `kof-c-compiler` 5 = 658, `VERSION` 0.2.0-beta) é GPLv3.
 
 Ele contém:
-- Lexer
-- Parser
-- AST
-- Sistema de tipos
-- Análise semântica
-- IR (representação intermediária)
-- Backends (JVM e Native)
-- Geração de código
+- Lexer / Parser (`case String s` + `Point(x,y)` + `String?`)
+- AST / `Type.java` (`String?` nullable)
+- Sistema de tipos / SymbolTable
+- Análise semântica (`CompilerDriver.java:243` import `a.b.C` fix)
+- IR (backend-agnóstica + `KofDebugInfo`)
+- Backends: `JvmBackend` (ASM V21), `NativeBackend` (x86_64 free-list + riscv64 `.option arch,rv64g` + aarch64 placeholder), `JsBackend` (GraalJS + `Java HttpClient` interop), `KofScript` (`let`→`KofScriptGlobals`), `KofCcompiler` (`kof_c`)
+- Geração de código + `Optimizer` (constant folding etc.)
 
 Usar o compilador Kof para compilar seu código NÃO torna seu código GPLv3.
 
@@ -54,12 +54,12 @@ O backend JVM delega para as facilities da JVM (java.lang.String, arrays nativos
 
 ### Runtime Nativo
 
-O backend Nativo gera funções de runtime em assembly durante a compilação. Essas funções são:
+O backend Nativo gera funções de runtime em assembly durante a compilação (0.2.0-beta: `kof_free_head` free-list + `kof_gc_collect`). Essas funções são:
 
-- `kof_alloc` — alocação de memória
-- `kof_print`, `kof_println` — saída
-- `kof_string_*` — operações de string
-- `kof_array_*` — operações de array
+- `kof_alloc` / `kof_free_head` / `kof_gc_collect` — alocação com reuso `mmap`
+- `kof_print`, `kof_println`, `kof_print_int`, `kof_int_to_string` — saída
+- `kof_string_*`, `kof_array_*`, `kof_list_*` (`map/filter/reduce`), `kof_map_*` — coleções
+- `kof_db_mysql_scramble` — MySQL handshake SHA-1 (27/08)
 - `kof_panic`, `kof_null_error`, `kof_bounds_error` — tratamento de erros
 
 **Importante:** Essas funções são **geradas pelo compilador** durante o processo de compilação. Elas não são distribuídas como uma biblioteca pré-compilada. São incorporadas ao executável final como parte do processo de compilação.

@@ -1,8 +1,8 @@
 # 21 — Java Interoperability
 
-> **Status: planejado**
+> **Status: parcial — bytecode JVM compatível, chamada Java direta funcional (0.2.0-beta)**
 >
-> A interoperabilidade com Java é um dos pilares da Kof. Hoje, o compilador gera bytecode JVM que é nativamente compatível com Java. Mas a sintaxe de chamada de APIs Java ainda não está implementada.
+> O compilador gera bytecode JVM padrão compatível com Java (chamar e ser chamado, libs, annotations). A sintaxe `import java.util.*` + `new ArrayList<String>()` já funciona; `super.metodo()` contra classes do classpath (`.jar`/`.aar`) resolve descritores via `CompilerDriver.setExternalClasspath`.
 
 ## A premissa
 

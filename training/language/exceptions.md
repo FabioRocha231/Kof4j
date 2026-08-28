@@ -71,10 +71,9 @@ try {
   captures (no type dispatch between multiple catches).
 - **finally**: always executed (normal path, caught path, propagation).
 
-## Limitations
+## Limitations (0.2.0-beta)
 
 - No stack traces in Native
 - In Native, multiple catches on one try: the first one captures
-- Exceptions are Strings (no exception object model yet)
-- No exception object model (exceptions are simple values)
-- Native exceptions are fatal (no recovery)
+- Exceptions are Strings (no exception object model yet) — use `String?` for ausência como valor
+- Native exceptions propagate via unwinding (not fatal); `finally` always runs

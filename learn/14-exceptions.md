@@ -1,8 +1,8 @@
 # 14 — Exceptions
 
-> **Status: implementado (JVM real; Native unwinding)**
+> **Status: implementado (JVM + Native unwinding) — 0.2.0-beta**
 >
-> O lexer reconhece `throw`, `try`, `catch`, `finally`. O parser suporta `throw` e `try/catch` parcialmente. A geração de bytecode para exceptions ainda não está implementada.
+> `throw`/`try`/`catch`/`finally` com unwinding real em JVM e Native; a cadeia `intention->Kof->frontend->IR->backend->runtime` mantém a mesma semântica nos dois runtimes.
 
 ## throw
 

@@ -1,6 +1,6 @@
 # Idioms — Classes
 
-**Status:** available · **Introduced:** 0.0.4-alpha
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
 
 ## What it is
 
@@ -131,8 +131,19 @@ class Dog extends Animal {
 - Override é implícito (mesmo nome de método).
 - Dispatch é virtual em ambos os targets.
 
+## Generics Box<T> (0.2.0-beta)
+
+```kof
+class Box<T>(T value) {
+    get(): T { return value }
+}
+var b: Box<Int> = Box(42)
+println(b.get())   // erasure + substituteTypeVariable — Native OK
+```
+
 ## Anti-patterns relacionados
 
 - Utility class de métodos estáticos → funções top-level (`functions.md`)
 - Service layer sem estado → funções top-level
 - Factory trivial → chamar o construtor
+- `Box<T>` manual → usar generics nativo

@@ -1,5 +1,7 @@
 # 28 — Design da Linguagem
 
+> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — `intention->Kof->frontend->IR->backend->runtime`**
+
 ## Filosofia
 
 Kof existe porque Java é uma das plataformas mais poderosas do mundo, mas exige uma quantidade absurda de código para expressar ideias simples.
@@ -20,11 +22,15 @@ convenção. O mecanismo nunca sobe para o código do usuário:
 
 | Intenção | Você escreve | O mecanismo fica com |
 |----------|--------------|----------------------|
-| paralelismo | `spawn tarefa()` | virtual threads (JVM) |
+| paralelismo | `spawn tarefa()` | virtual threads (JVM) / CONC001 Native |
 | HTTP | `app.get("/users/:id") { ... }` | servidor próprio, sem container |
+| HTTP client | `http.get(url)` | `kof.http` JVM+JS (HTTP002 Native) |
 | UI | `Window(...)`, `Button("+1", () -> ...)` | KofJS + webview nativo |
 | JSON | `json.decode<User>(body)` | engine + binding por tipo |
 | cor | `Palette.red` | Int 32-bit, canais por bitwise |
+| nullable | `String?` | verificação em compile-time |
+| pattern | `case String s` / `Point(x,y)` | instanceof+checkcast / field loads por backend |
+| script | `let x = 5` no topo | `KofScriptGlobals` (repl --watch) |
 
 A intenção compila em todos os alvos; o alvo que não consegue realizá-la
 reporta em compile-time com código de gap (`CONC001`, `JSN002`) — nunca
@@ -37,25 +43,26 @@ Kof não é apenas uma linguagem para a JVM. É uma linguagem que pode compilar 
 ```text
                          KOF
                           │
-                    Kof Compiler
+                    Kof Compiler (frontend)
                           │
                        Kof IR
                           │
-          ┌───────────────┼───────────────┐
-          │               │               │
-       Kof4J          KofNative        KofJS
-          │               │               │
-          ▼               ▼               ▼
-        JVM          Native Binary   ES Modules
-       .class        Executável      (webview/browser)
+          ┌───────────────┼────────────────┬───────────┐
+          │               │                │           │
+       Kof4J          KofNative         KofJS      KofScript/KofC
+          │          ┌────┼────┐          │           │
+          ▼          ▼    ▼    ▼          ▼           ▼
+        JVM       x86-64 riscv arm    ES Module   Globals/C-ELF
+       .class      ELF   ELF  ELF      .mjs        repl/kof c
 ```
 
 **A linguagem não muda. O target muda.**
 
-Isso é uma decisão de design fundamental. A mesma fonte Kof pode gerar:
+Isso é uma decisão de design fundamental. A mesma fonte Kof pode gerar (0.2.0-beta, 658 testes):
 - Bytecode JVM para aplicações que precisam do ecossistema Java
-- Executáveis nativos para ferramentas CLI e sistemas
+- Executáveis nativos x86-64 / riscv64 (`native.risc`) / aarch64 (`native.arm`) para ferramentas CLI e sistemas (Target separation)
 - ES Modules para o navegador/webview via KofJS (ver [capítulo 37](37-kofjs.md))
+- Execução direta via KofScript (`let`→`KofScriptGlobals`) e C via KofC (`kof c` nativo-only)
 
 ## Decisões de design
 
@@ -90,6 +97,10 @@ Para o backend nativo, Kof usa:
 - assembly x86-64 direto
 - Linux syscall conventions
 - Runtime mínimo em C
+
+### Native runtime (0.2.0)
+
+Native usa **free-list GC** (`kof_free_head`, reuso `mmap`, mark-sweep pendente) e `kof_db` com **MySQL via `kof_db`** (wire protocol, auth scramble SHA-1 pronto). Nada disso vaza para o código Kof — é `intention->Kof->frontend->IR->backend->runtime`.
 
 ### Compile-time > runtime
 

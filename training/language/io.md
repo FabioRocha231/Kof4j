@@ -96,8 +96,8 @@ println(file.readBytes().length)
 - Operações booleanas retornam `true`/`false`.
 - `size()` retorna `-1` para arquivo inexistente.
 
-## Limitações atuais
+## Limitações atuais (0.2.0-beta)
 
-- Native: apenas Linux x86-64 (syscalls POSIX).
+- Native: Linux x86_64 (syscalls POSIX) + riscv64/aarch64 placeholder via qemu; GC free-list aplica-se a buffers de arquivo.
 - Symlinks, timestamps e permissões são futuros.
 - Não há API de streams (`Reader`/`Writer`); operações são inteiras.

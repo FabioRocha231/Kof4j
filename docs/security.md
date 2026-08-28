@@ -1,5 +1,8 @@
 # Kof Standard Library — Security + Enterprise Capability Audit
 
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64; `kof.http` JVM+JS)
+
 > Documento arquitetural permanente.
 >
 > Objetivo: mapear as capacidades do ecossistema Spring, auditar o estado
@@ -268,25 +271,25 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 
 ---
 
-# 7. ESTADO DA IMPLEMENTAÇÃO (0.0.5)
+# 7. ESTADO DA IMPLEMENTAÇÃO (0.2.0-beta, 27/08/2026 — `VERSION` 0.2.0-beta, 658 testes, free-list + riscv64)
 
-## 7.1 Implementado
+## 7.1 Implementado (0.2.0-beta)
 
-| API | JVM | Native | JS | Formato |
-|-----|-----|--------|----|---------|
-| `passwords.hash(password)` | ✅ PBKDF2-HMAC-SHA256 600k | ✅ (asm: HMAC interno + b64 + getrandom) | ✅ PBKDF2 (platform-delegated) | `pbkdf2$sha256$600000$salt$hash` |
+| API | JVM | Native x86_64 (+ riscv64) | JS | Formato |
+|-----|-----|---------------------------|----|---------|
+| `passwords.hash(password)` | ✅ PBKDF2-HMAC-SHA256 600k | ✅ (asm: HMAC interno + b64 + getrandom, free-list 27/08) | ✅ PBKDF2 (platform-delegated) | `pbkdf2$sha256$600000$salt$hash` |
 | `passwords.verify(password, hash)` | ✅ constant-time | ✅ (asm, constant-time) | ✅ | |
 | `passwords.needsRehash(hash)` | ✅ | ✅ | ✅ | |
-| `crypto.sha256(data)` | ✅ | ✅ (asm FIPS 180-4) | ✅ (JS puro) | hex |
+| `crypto.sha256(data)` | ✅ | ✅ (asm FIPS 180-4, riscv64 `li a7`) | ✅ (JS puro) | hex |
 | `crypto.sha512(data)` | ✅ | ✅ (asm FIPS 180-4, vetores FIPS testados) | ✅ (JS puro) | hex |
 | `crypto.hmacSha256(key, data)` | ✅ | ✅ (asm) | ✅ (JS puro) | hex |
 | `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ❌ SECN002 | ❌ SECN002 | `aesgcm$iv$ct` |
 | `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ❌ SECN002 | ❌ SECN002 | |
-| `crypto.randomHex(n)` | ✅ SecureRandom | ✅ getrandom | ✅ platform | hex |
+| `crypto.randomHex(n)` | ✅ SecureRandom | ✅ getrandom (`li a7 318` x86_64 / `214` riscv64) | ✅ platform | hex |
 | `crypto.randomInt(bound)` | ✅ | ✅ getrandom + rejection | ✅ platform | |
 | `jwt.create(claims, secret[, ttl])` | ✅ HS256 + iat/exp | ✅ (asm: base64url + HMAC + kof_now) | ✅ | RFC 7519 HS256 |
 | `jwt.verify(token, secret[, iss, aud])` | ✅ (sig, exp, iss, aud) | ✅ (asm, constant-time + exp/iss/aud) | ✅ | alg fixado HS256 |
-| `jwt.secret()` | ✅ env `KOF_JWT_SECRET` ou gerado | ✅ | ✅ | 32 bytes hex |
+| `jwt.secret()` | ✅ env `KOF_JWT_SECRET` ou gerado | ✅ (`/proc/self/environ`) | ✅ | 32 bytes hex |
 | `secrets.get(name[, fallback])` | ✅ env | ✅ `/proc/self/environ` | ✅ platform | |
 | `secrets.redact(value)` | ✅ | ✅ (asm) | ✅ | `abcd********wxyz` |
 | `security.constantTimeEquals(a, b)` | ✅ `MessageDigest.isEqual` | ✅ (asm) | ✅ | |
@@ -295,7 +298,7 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 | `security.corsAllowed(origin, allowed)` | ✅ | ❌ | ❌ | |
 | `security.cspHeader/hstsHeader/contentTypeOptionsHeader/frameHeader/referrerHeader` | ✅ (valores prontos) | ❌ | ❌ | |
 | `auth.secret/token/authenticated/claims/user/hasRole/hasPermission` | ✅ (contexto web, Bearer JWT) | ❌ | ❌ | |
-| `security.rateLimit(key, limit, window)` | ✅ fixed-window per-key | ✅ (asm, per-key counter) | ✅ (JS, Date.now) | per-key count |
+| `security.rateLimit(key, limit, window)` | ✅ fixed-window per-key | ✅ (asm, per-key counter, free-list) | ✅ (JS, Date.now) | per-key count |
 | `security.sessionCreate(data)` / `sessionGet` / `sessionDestroy` | ✅ (ConcurrentHashMap) | ✅ (asm, 32 slots) | ✅ (JS object) | randomHex(16) id |
 | `security.apiKeyGenerate` / `apiKeyValid` | ✅ (ConcurrentHashMap) | ✅ (asm, 32 slots) | ✅ (JS object) | randomHex(32) |
 

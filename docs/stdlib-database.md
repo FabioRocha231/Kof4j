@@ -1,7 +1,8 @@
 # stdlib database — Banco de Dados Nativo do Kof
 
-**Última atualização:** 23 de agosto de 2026
-**Status:** implementado (Fase 5 do plano de independência do Spring)
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta (658 testes)
+**Status:** implementado (Fase 5 do plano de independência do Spring) — JVM + SQLite native + MySQL handshake 27/08
 
 ---
 
@@ -81,26 +82,28 @@ main() {
 ## 5. Drivers
 
 JDBC por `java.sql.DriverManager` — qualquer driver JDBC no classpath
-funciona (H2, SQLite, PostgreSQL, MySQL). O driver é resolvido pelo
+funciona (H2, SQLite, PostgreSQL, MySQL) no JVM. O driver é resolvido pelo
 `ServiceLoader` do JDK; nenhum acoplamento de biblioteca no runtime Kof.
+Native: SQLite via link direto `libsqlite3.so.0` (sem JDBC) + MySQL/MariaDB via wire protocol (`kof_db_mysql_scramble` 27/08).
 
-## 6. Targets
+## 6. Targets (0.2.0-beta)
 
-| Target | Estado |
-|--------|--------|
-| JVM | ✅ completo (JDBC) |
-| Native | DB001 (gap documentado em compile-time) |
-| JS | DB001 (gap documentado em compile-time) |
+| Target | Estado | Notas |
+|--------|--------|-------|
+| JVM | ✅ completo (JDBC) | `db.connect`/`execute`/`query<T>`/`transaction` + `orm.*` (entity, `saveAll`, `where` operadores, `page`, `migrate`, MongoDB) |
+| Native x86_64 | ✅ SQLite; MySQL handshake `kof_db_mysql_scramble` | `sqlite:` DSN + MySQL scramble SHA-1 (query/prepared pendentes) |
+| Native riscv64 | ✅ SQLite (riscv64) | `li a7` syscalls |
+| JS | DB001 (gap documentado) | reporta `DB001`/`ORM001` em compile-time |
 
-## 7. Testes
+## 7. Testes (0.2.0-beta)
 
-`KofDbE2ETest` — 7 testes E2E com H2 em memória: execute + query JSON,
+`KofDbE2ETest` 8 + `KofOrmE2ETest` 16 (inclui MariaDB/PostgreSQL/MongoDB com skip condicional + SQLite native) — execute + query JSON,
 query tipada com bind, transação com commit, rollback em exceção,
-credenciais, e DB001 nos targets native/js.
+credenciais, e DB001 no JS (Native SQLite ✅).
 
-## 8. Evolução planejada
+## 8. Evolução planejada (0.2.0 residual)
 
-- `repository<User>` / abstração de repositório.
-- Connection pooling.
-- Migrations (`kof migrate`).
-- Suporte no Native (implementação JDBC nativa ou documentação de gap).
+- Query DSL tipada `User.query { where age > 18 }` (nível 3 DATABASE_VISION)
+- Connection pooling + `kof.db`/`kof.orm` fora do JVM (JS via WASM, Native ORM sobre SQLite)
+- MySQL/MariaDB native completo (handshake `kof_db_mysql_scramble` done; falta query/prepared)
+- `repository<User>` / abstração de repositório

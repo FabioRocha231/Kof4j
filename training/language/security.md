@@ -36,17 +36,17 @@ app.use {
 }
 ```
 
-## Suporte por target
+## Suporte por target (0.2.0-beta — 658 testes)
 
 | Função | JVM | Native | JS |
 |--------|-----|--------|----|
-| passwords | ✅ | ❌ SECN001 | ✅ |
+| passwords (PBKDF2 600k) | ✅ | ✅ (asm SHA-256 + hmac) | ✅ (via platform) |
 | sha256 / hmacSha256 | ✅ | ✅ | ✅ |
-| sha512 | ✅ | ❌ SECN003 | ✅ |
+| sha512 | ✅ | ✅ (asm FIPS 180-4) | ✅ |
 | aesGcm | ✅ | ❌ SECN002 | ❌ SECN002 |
-| jwt | ✅ | ❌ | ✅ |
-| secrets | ✅ | ✅ | ✅ |
+| jwt HS256 | ✅ | ✅ (asm, iat/exp/iss/aud) | ✅ |
+| secrets | ✅ | ✅ (/proc/self/environ) | ✅ |
 | constantTimeEquals | ✅ | ✅ | ✅ |
-| auth web | ✅ | ❌ | ❌ |
+| auth web (rateLimit/sessions/apiKeys) | ✅ | ✅ | ✅ |
 
-Referência: docs/security.md, learn/36-security.md.
+Referência: docs/security.md (0.2.0-beta), learn/36-security.md.

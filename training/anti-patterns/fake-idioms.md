@@ -11,74 +11,91 @@ O modelo pode inventar `users.map(...)`, `Option<T>`, `async/await`,
 porque existem em outras linguagens. Código assim **não compila** ou
 **compila por acidente** com semântica errada.
 
-## Status real (verificar sempre no compilador)
+## Status real (verificado no compilador — 0.2.0-beta, 27 Aug 2026, 658 testes)
 
 | Feature | Status |
 |---|---|
-| `List<T>` (add/get/set/size/contains/isEmpty/remove/clear/listOf) | Implemented |
-| `for (var x in coll)` | Implemented |
-| Lambdas `(x: Int) -> expr` (sem capturas) | Implemented |
-| If-expr `if (c) a else b` | Implemented |
-| `json.encode` / `json.decode<T>` | Implemented |
-| `throw "msg"` / `try/catch/finally` | Implemented |
-| `Map` / `Set` | Planned |
-| `Option<T>` / null safety | Planned |
-| `async` / `await` / resultado de tarefa | Planned |
-| `spawn` (tarefas concorrentes) | Implemented (JVM; Native CONC001) |
-| `Thread` / `Executor` (APIs de plataforma) | Unavailable — nunca use |
-| Pattern matching | Planned |
-| `users.map(...)` / funções higher-order | Planned |
-| Primary constructor `class X(...)` | Implemented (record-style desde 0.0.5) |
-| Array literals `{1, 2, 3}` | Unavailable |
-| `instanceof` com binding | Unavailable |
-| `for user in users` (sem var) | Unavailable |
+| `List<T>` (add/get/set/size/contains/isEmpty/remove/clear/listOf) | ✅ Implemented (3 targets, free-list GC no Native) |
+| `for (var x in coll)` | ✅ Implemented |
+| `Map<K,V>` / `Set<T>` + `mapOf`/`setOf` | ✅ Implemented (JVM HashMap, Native asm, JS Map/Set desde 0.1.0) |
+| Higher-order `list.map/filter/reduce` | ✅ Implemented (0.2.0-beta, 3 targets) |
+| `Box<T>` generics com `T` primitivo (ex.: `Box<Int>`) | ✅ Implemented (fix substituteTypeVariable 25/08) |
+| Lambdas `(x: Int) -> expr` com captura mutável (via box sintético Box0) | ✅ Implemented |
+| If-expr `if (c) a else b` | ✅ Implemented |
+| `json.encode` / `json.decode<T>` | ✅ Implemented (objetos: JVM+JS; Native JSN002 para records) |
+| `throw "msg"` / `try/catch/finally` | ✅ Implemented (JVM + Native unwinding) |
+| `String?` / `Int?` null safety + `if (x != null)` narrowing | ✅ Implemented (0.2.0-beta, NullableType + isAssignable) |
+| Pattern matching `switch (x) { case String s: ... }` + `instanceof`/`as` | ✅ Implemented |
+| Pattern record destructuring `case Point(x, y):` | ✅ Implemented (Parser PatternExpr fieldVars, 0.2.0-beta) |
+| `spawn` / `await` com `Handle<T>` e unboxing | ✅ JVM + JS; Native CONC001 |
+| Primary constructor `class X(...)` / `record` | ✅ Implemented (record-style desde 0.0.5) |
+| `Thread` / `Executor` (APIs de plataforma) | ❌ Unavailable — nunca use (`spawn` é a intenção) |
+| `Option<T>` genérico | ❌ Planned — use `String?` para nulabilidade |
+| `for user in users` (sem var) | ❌ Unavailable |
+| Array literals `{1, 2, 3}` / `[1,2,3]` | ❌ Unavailable — use `new Int[n]` + `listOf` |
+| `async`/`await` (JS-style) | ❌ Unavailable — use `spawn`/`await` |
 
-## Bad example
+## Bad example (ainda não compila)
 
 ```kof
-// NÃO COMPILA — map não existe
-var nomes = users.map(u -> u.name)
-
 // NÃO COMPILA — array literal não existe
 var nums = [1, 2, 3]
 
-// OK — primary constructor existe (record-style, desde 0.0.5)
-class User(String name) { }
-
-// NÃO COMPILA — Option não existe
+// NÃO COMPILA — Option genérico não existe
 var maybe = Option.of(x)
+
+// NÃO COMPILA — for sem var
+for (user in users) { }
 ```
 
-## Good example (o que existe)
+## Good example — o que existe em 0.2.0-beta
 
 ```kof
-var nomes = listOf()
-for (var u in users) {
-    nomes.add(u.name)
+// map/filter/reduce — implementado
+var nomes = users.map((u: User) -> u.name)
+var adultos = users.filter((u: User) -> u.age >= 18)
+var soma = nums.reduce((a: Int, b: Int) -> a + b, 0)
+
+// Null safety String?
+String? maybe = null
+if (maybe != null) {
+    println(maybe.length)
+}
+var s: String = maybe   // erro SEM014 — não atribuível sem check
+
+// Pattern matching + record destructuring
+switch (obj) {
+    case String s:
+        println(s)
+        break
+    case Point(var x, var y):
+        println(x + "," + y)
+        break
+    default:
+        println("outro")
+}
+if (p instanceof Point) {
+    var q = p as Point
 }
 
-var nums = new Int[3]
-nums[0] = 1
+// Box<T> com primitivo
+var b = Box<Int>(42)
+println(b.get())
 
-class User {
-    String name
-    public constructor(String name) {
-        this.name = name
-    }
-}
+// Captura mutável
+var offset = 10
+var f = (x: Int) -> x + offset   // OK — box sintético
 
-try {
-    // tratar ausência como erro
-} catch (String e) {
-    // WORKAROUND até Option<T> existir
-}
+// Primary constructor
+class User(String name, Int age) { }
+var u = User("Mel", 30)
 ```
 
 ## Why it is bad
 
 Um modelo que "aprende" features inexistentes produz código que o compilador
 rejeita — ou pior, código que compila com outra semântica. O corpus deve
-ensinar a fronteira exata do que existe.
+ensinar a fronteira exata do que existe em 0.2.0-beta.
 
 ## Regra
 

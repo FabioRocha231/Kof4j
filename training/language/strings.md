@@ -1,5 +1,7 @@
 # Kof String Reference
 
+**Version:** 0.2.0-beta
+
 ## Creation
 
 ```kof
@@ -58,6 +60,15 @@ println(a == b)  // true (byte-level comparison)
 ## Immutability
 
 Strings are immutable. Operations like `concat` create new strings.
+
+## Null safety (0.2.0-beta)
+
+```kof
+String? s = null
+if (s != null) {
+    println(s.length)   // OK — narrowing
+}
+```
 
 ## Encoding and length — per target
 

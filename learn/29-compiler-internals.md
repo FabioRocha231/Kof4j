@@ -1,5 +1,7 @@
 # 29 — Internals do Compilador
 
+> **Kof 0.2.0-beta — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+
 ## Arquitetura
 
 ```
@@ -149,12 +151,17 @@ Isso permite que o compilador suporte múltiplos targets sem acoplamento.
 
 ## Target Enum (Target.java)
 
-**Responsabilidade**: identificar o target de compilação.
+**Responsabilidade**: identificar o target de compilação (Target separation 0.2.0: `NATIVE` vs `NATIVE_RISCV64`/`NATIVE_AARCH64`, `JS`, `ANDROID`, `KofC` separado).
 
 ```java
 enum Target {
     JVM,
-    NATIVE
+    NATIVE,           // x86-64
+    NATIVE_RISCV64,   // riscv64 (--target=native.risc)
+    NATIVE_AARCH64,   // aarch64 (--target=native.arm)
+    JS,
+    ANDROID,
+    // kofc = KofCCompiler (C subset → ELF x86-64 nativo-only, separado)
 }
 ```
 
@@ -197,45 +204,47 @@ error: type mismatch
 
 | Componente | Status |
 |------------|--------|
-| Lexer | ✅ Completo (55+ keywords) |
-| Parser | ✅ Funcional (records, classes, interfaces, funções) |
+| Lexer | ✅ Completo (55+ keywords, `String?`, `let`/`const` alias para KofScript) |
+| Parser | ✅ Funcional (records, classes, interfaces, funções, `case String s`, `Point(x,y)`, `String?`) |
 | AST | ✅ Completo para constructs suportados |
-| Type system | ⚠️ Definido mas não usado completamente |
+| Type system | ✅ `String?` nullable, `List<T>` inference, imports `a.b.C` fix |
 | Symbol table | ⚠️ Definido mas não usado completamente |
-| IR | ✅ Definido, lowering funcional |
-| JVM Backend | ✅ Funcional (via ASM) |
-| Native Backend | ✅ Funcional (via assembly + as + ld) |
+| IR | ✅ Definido, lowering funcional (`intention->Kof->frontend->IR->backend->runtime`) |
+| JVM Backend | ✅ Funcional (via ASM, 658 testes) |
+| Native Backend | ✅ Funcional (x86-64 free-list GC; riscv/arm placeholders via qemu) |
 | Diagnostics | ✅ Funcional |
-| CLI | ✅ Funcional (build, run, version) |
+| KofScript (`KofScriptGlobals`) | ✅ `let`/`const` topo, repl, --watch |
+| KofC (`KofCCompiler`) | ✅ C subset → ELF nativo-only (`kof c`) |
+| CLI | ✅ Funcional (build, run, script, c, version, 658 testes) |
 
 ## Multiplatform architecture
 
 A arquitetura do compilador foi projetada para suportar múltiplos backends:
 
 ```text
-                    Kof Source (.kf)
+                    Kof Source (.kf / .ks / .c)
                           │
                           ▼
-                        Lexer
+                        Lexer (let/const alias, String?)
                           │
                           ▼
-                        Parser
+                        Parser (case String s, Point(x,y))
                           │
                           ▼
-                         AST
+                         AST (+ KofScriptGlobals, KofC AST)
                           │
                           ▼
-                     Kof IR (compartilhado)
-                      /       \
-                     /         \
-                    ▼           ▼
-             JVM Backend    Native Backend
-                    │           │
-                    ▼           ▼
-                .class       ELF .o
-                    │           │
-                    ▼           ▼
-                javac/jar     ld → executável
+                     Kof IR (compartilhado) — intention->Kof->frontend->IR->backend->runtime
+                      /       |       \      \
+                     /        |        \      \
+                    ▼         ▼         ▼       ▼
+             JVM Backend  Native(x86/riscv/arm)  JS   KofC
+                    │           │               │     │
+                    ▼           ▼               ▼     ▼
+                .class       ELF .o          .mjs   ELF
+                    │           │               │     │
+                    ▼           ▼               ▼     ▼
+                javac/jar     ld → executável  GraalJS  ld
 ```
 
 O IR compartilhado permite que o mesmo código seja compilado para diferentes targets sem modificações.

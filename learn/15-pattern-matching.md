@@ -1,14 +1,17 @@
 # 15 — Pattern Matching
 
-> **Status: planejado**
+> **Status: implementado (JVM / Native / JS) — 0.2.0-beta**
 >
-> O parser suporta `instanceof` básico, mas pattern matching com tipos e destructuring ainda não foi implementado.
+> `switch case String s` (type pattern) e destructuring de records `case Point(x, y):` funcionam nos três targets. Parser + Semantic + CompilerDriver com `Native rbx→rcx` fix e `JS typeof`. `instanceof String s` também funciona como statement.
 
 ## instanceof com padrão
 
 ```kf
-if (obj instanceof String s) {
-    print("é uma string: " + s);
+main() {
+    Object obj = "kof"
+    if (obj instanceof String s) {
+        println("é uma string: " + s)
+    }
 }
 ```
 
@@ -16,20 +19,79 @@ Em vez de:
 
 ```kf
 if (obj instanceof String) {
-    String s = (String) obj;
-    print("é uma string: " + s);
+    String s = (String) obj
+    println("é uma string: " + s)
 }
 ```
 
-## switch com padrões
+Runnable — `kof run --target=jvm|native|js`:
 
 ```kf
-return switch (forma) {
-    case Circulo c -> "círculo com raio " + c.raio();
-    case Retangulo r -> "retângulo " + r.largura() + "x" + r.altura();
-    default -> "forma desconhecida";
-};
+main() {
+    Object o = "kof"
+    if (o instanceof String s) {
+        assert(s == "kof")
+        println(s)
+    }
+}
 ```
+
+## switch com padrões — type pattern
+
+```kf
+record Circulo(Double raio)
+record Retangulo(Double largura, Double altura)
+
+String descreve(Object forma) {
+    switch (forma) {
+        case Circulo c: { return "círculo com raio " + c.raio() }
+        case Retangulo r: { return "retângulo " + r.largura() + "x" + r.altura() }
+        default: { return "forma desconhecida" }
+    }
+}
+
+main() {
+    println(descreve(Circulo(2.0)))
+    println(descreve(Retangulo(3.0, 4.0)))
+}
+```
+
+> Sintaxe Kof para switch: `case Tipo var:` (com `:` e bloco `{ }`), não `case Tipo var ->`. O `->` dos exemplos antigos era placeholder Java-like.
+
+## Record destructuring — `Point(x, y)`
+
+0.2.0 suporta desestruturação direta do record no `case`:
+
+```kf
+record Ponto(Int x, Int y)
+record Pessoa(String nome, Int idade)
+
+main() {
+    Object o = Ponto(3, 7)
+    switch (o) {
+        case Ponto(x, y): {
+            println("ponto " + x + "," + y)   // 3,7
+        }
+        case Pessoa(nome, idade): {
+            println(nome + " " + idade)
+        }
+        case String s: {
+            println("texto " + s)
+        }
+        default: {
+            println("outro")
+        }
+    }
+
+    // destructuring com var explícito também vale:
+    switch (Ponto(1, 2)) {
+        case Ponto(var a, var b): { println(a + b) }  // 3
+        default: {}
+    }
+}
+```
+
+Compile e rode nos três targets — a cadeia `intention->Kof->frontend->IR->backend->runtime` mantém a semântica: o frontend normaliza `Ponto(x, y)` para `PatternExpr`, o IR emite `instanceof`+`checkcast`+`getfield` (JVM) / loads diretos (Native) / `typeof`+field access (JS).
 
 ## Padrões em sealed hierarchies
 
@@ -37,25 +99,28 @@ return switch (forma) {
 sealed class Resultado<T> permits Sucesso<T>, Erro<T> {}
 
 String mensagem(Resultado<String> r) {
-    return switch (r) {
-        case Sucesso<String> s -> "ok: " + s.valor();
-        case Erro<String> e -> "falha: " + e.mensagem();
-    };
+    switch (r) {
+        case Sucesso s: { return "ok: " + s.valor() }
+        case Erro e: { return "falha: " + e.mensagem() }
+        default: { return "?" }
+    }
 }
 ```
 
-O compilador verifica se todos os casos foram cobertos (exhaustiveness check).
+O compilador verifica se todos os casos foram cobertos quando houver sealed (exhaustiveness check em evolução).
 
-## Padrões com guards
+## Padrões com guards (planejado)
 
 ```kf
 switch (nota) {
-    case Int n when n >= 9 -> "excelente";
-    case Int n when n >= 7 -> "bom";
-    case Int n when n >= 5 -> "regular";
-    default -> "reprovado";
+    case Int n when n >= 9: { println("excelente") }
+    case Int n when n >= 7: { println("bom") }
+    case Int n when n >= 5: { println("regular") }
+    default: { println("reprovado") }
 }
 ```
+
+> `when` ainda é desugar futuro — hoje use `if` dentro do `case`.
 
 ## Próximo passo
 

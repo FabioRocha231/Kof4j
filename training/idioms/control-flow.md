@@ -1,6 +1,6 @@
 # Idioms — Control Flow
 
-**Status:** available · **Introduced:** 0.0.4-alpha
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
 
 ## What it is
 
@@ -84,7 +84,7 @@ for (var n in nums) {
 }
 ```
 
-## switch
+## switch (0.2.0-beta: pattern matching)
 
 ```kof
 switch (x) {
@@ -93,6 +93,18 @@ switch (x) {
         break
     case 2:
         println("dois")
+        break
+    default:
+        println("outro")
+}
+
+// pattern matching com type + record destructuring
+switch (obj) {
+    case String s:
+        println(s)
+        break
+    case Point(var x, var y):
+        println(x + "," + y)
         break
     default:
         println("outro")

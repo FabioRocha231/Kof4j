@@ -10,12 +10,12 @@ interface Comparavel {
 }
 ```
 
-## Implementando uma interface
+## Implementando uma interface (com pattern matching 0.2.0)
 
 ```kf
 class Produto(String nome, Double preco) implements Comparavel {
     Bool maiorQue(Comparavel outro) {
-        if (outro instanceof Produto outroProduto) {
+        if (outro instanceof Produto outroProduto) {  // type pattern funciona
             return this.preco > outroProduto.preco
         }
         return false

@@ -1,8 +1,8 @@
 # 24 — Build Tools
 
-> **Status: planejado**
+> **Status: parcial — Maven/Gradle via `kof build` + `kof test` (0.2.0-beta)**
 >
-> A integração com build tools ainda não está implementada. Este capítulo documenta a visão planejada.
+> `kof build`/`kof test` são os build tools nativos (658 testes); integração Maven/Gradle como plugin externo ainda é visão planejada, mas coexistência `src/main/java` + `src/main/kof` já funciona para gerar `.class` interoperáveis.
 
 ## Maven
 
@@ -53,7 +53,7 @@ O plugin Kof compila `.kf` antes de `.java`.
 
 ```kotlin
 plugins {
-    id("dev.kof.kof") version "0.1.0"
+    id("dev.kof.kof") version "0.2.0-beta"
 }
 
 dependencies {

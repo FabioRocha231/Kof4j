@@ -1,15 +1,17 @@
 # 31 — Distribuição
 
+> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+
 ## Kof é uma plataforma, não apenas um JAR
 
-A partir do 0.0.4, o Kof se comporta como uma linguagem distribuível:
+A partir do 0.2.0-beta, o Kof se comporta como uma linguagem distribuível:
 
 ```text
-Kof 0.0.5-alpha
+Kof 0.2.0-beta
         ├── Compiler
-        ├── CLI
-        ├── Runtime
-        ├── Standard Library
+        ├── CLI (build/run/script/c/test/bench/debug/info/lsp)
+        ├── Runtime (JVM + Native free-list + JS + KofScript + KofC)
+        ├── Standard Library (kof.io, kof.http, kof_db, kof.security...)
         ├── Tooling
         ├── Language Server / editor support
         ├── Embedded OpenJDK
@@ -17,7 +19,7 @@ Kof 0.0.5-alpha
 ```
 
 O usuário instala o Kof e recebe tudo o que precisa — **sem instalar Java
-separadamente**.
+separadamente**. A cadeia `intention->Kof->frontend->IR->backend->runtime` é a mesma para todos os targets.
 
 ## Estrutura do pacote
 
@@ -34,12 +36,12 @@ kof/
 ├── tooling/         # definições consumidas por editores
 ├── editor/          # grammar TextMate oficial
 ├── docs/
-└── VERSION
+└── VERSION          # 0.2.0-beta (fonte única)
 ```
 
 O `kof-webview` é compilado por `scripts/build-webview.sh` (Linux, requer
 `libwebkit2gtk-4.1`); sem ele, `kof run --target=js` abre no browser do
-sistema.
+sistema. `kof script` e `kof c` não precisam de webview.
 
 ## JDK embutido
 
@@ -54,6 +56,8 @@ Verificação:
 
 ```bash
 kof info
+# Kof 0.2.0-beta
+# Targets: jvm, native, native.risc, native.arm, js, kofc
 # JVM: Eclipse Temurin 21.0.x (embedded)
 ```
 
@@ -65,24 +69,28 @@ O baseline de API Java do tooling é **21**:
   apropriado (ex.: Virtual Threads com Java 25), sem virar requisito;
 - o pacote oficial carrega sua própria JVM.
 
-## Multi-target preservado
+## Multi-target preservado (Target separation 0.2.0)
 
 A distribuição não muda a arquitetura da linguagem:
 
 ```text
-Kof Source → Frontend → Kof IR → JVM | Native | Script | KofJS
+Kof Source → Frontend → Kof IR → JVM | Native (x86-64 / riscv64 / aarch64) | KofJS | KofScript | KofC
 ```
+
+`Target` enum: `JVM`, `NATIVE`, `NATIVE_RISCV64`, `NATIVE_AARCH64`, `JS`, `ANDROID`. `parseTarget` aceita `native.risc`/`native.riscv64` e `native.arm`/`native.aarch64` como aliases.
 
 A linguagem é a mesma; o backend muda. Para nativo, o programador nunca
 escreve `malloc`, `free` ou gerencia memória manualmente — o compilador/
-runtime absorvem isso.
+runtime absorvem isso com **free-list GC** (`kof_free_head`, reuso via `mmap`; mark-sweep pendente, memória devolvida só no `munmap` fallback).
 
 ## Instalação
 
 ```bash
-tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
+tar -xzf kof-0.2.0-beta-linux-x86_64.tar.gz
+export PATH="$PWD/kof-0.2.0-beta-linux-x86_64/bin:$PATH"
 kof info
+kof script --repl   # testa KofScript
+kof c --help        # testa KofC
 ```
 
 Verificar integridade: `sha256sum -c SHA256SUMS`.

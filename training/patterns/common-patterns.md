@@ -1,36 +1,62 @@
 # Kof Common Patterns
 
-## CRUD Entity
+**Version:** 0.2.0-beta (27 Aug 2026)
+
+## CRUD Entity (record + primary constructor)
 
 ```kof
 record User(String name, String email)
+var u = User("Mel", "mel@kof.dev")
 ```
 
-## Service Pattern
+## Service Pattern — prefer funções top-level (0.2.0-beta)
+
+```kof
+// Kof não precisa de Service/Repository ceremony — função top-level é idiomática
+User findUser(Int id) {
+    // implementation
+}
+String createUser(String name, String email): String {
+    return json.encode(User(name, email))
+}
+```
+
+Se estado for necessário, use classe com `Map`:
 
 ```kof
 class UserService {
-    User[] users = new User[0]
-    
-    find(Int id): User {
-        // implementation
-    }
-    
-    create(String name, String email): User {
-        // implementation
-    }
+    Map<Int, User> store
+    constructor() { store = mapOf() }
+    put(Int id, User u) { store.put(id, u) }
+    get(Int id): User? { return store.get(id) } // String?/User? se ausente
 }
 ```
 
-## Web Handler
+## Web Handler — legada + nativa
 
 ```kof
+// Legada (ainda suportada)
 handle(String method, String path, String body): String {
-    if (path == "/users") {
-        return "{\"users\": []}"
-    }
+    if (path == "/users") return "{\"users\": []}"
     return "Not found"
 }
+
+// Nativa (idiomática 0.2.0-beta)
+var app = web.app()
+app.get("/users") { return json.encode(users) }
+app.get("/users/:id") { return param("id") }
+app.post("/users") { var u = json.decode<User>(body()); return json.encode(u) }
+app.listen(8080)
+```
+
+## HTTP client (0.2.0-beta)
+
+```kof
+var html = http.get("https://example.com")
+var resp = http.post(api, json.encode(body), "Content-Type: application/json")
+if (http.status(url) == 200) { println(resp) }
+http.timeout(30)
+// JVM + JS (Java HttpClient interop); Native HTTP002
 ```
 
 ## Error Handling
@@ -44,6 +70,37 @@ try {
 } finally {
     println("Cleanup")
 }
+
+// Ausência como valor — String? (0.2.0-beta)
+String? maybe = find("key")
+if (maybe != null) {
+    println(maybe)
+} else {
+    println("not found")
+}
+```
+
+## Collections — higher-order (0.2.0-beta)
+
+```kof
+var nomes = users.map((u: User) -> u.name)
+var adultos = users.filter((u: User) -> u.age >= 18)
+var soma = nums.reduce((a: Int, b: Int) -> a + b, 0)
+
+// Sem workaround manual de List.get
+var x = listOf(1,2,3).get(1)   // 2
+```
+
+## Record pattern destructuring (0.2.0-beta)
+
+```kof
+record Point(Int x, Int y)
+var p = Point(10, 20)
+switch (p) {
+    case Point(var x, var y):
+        println(x + "," + y)
+        break
+}
 ```
 
 ## Array Processing
@@ -53,8 +110,8 @@ var items = new Int[5]
 for (var i = 0; i < items.length; i++) {
     items[i] = i * 2
 }
-for (var i = 0; i < items.length; i++) {
-    println(items[i])
+for (var n in items) {
+    println(n)   // for-in também para arrays
 }
 ```
 
@@ -68,6 +125,8 @@ println(s.substring(0, 5))  // "Hello"
 println(s.contains("World")) // true
 println(s.startsWith("Hello")) // true
 println(s.endsWith("World"))   // true
+var t: String? = null
+if (t != null) println(t.length)
 ```
 
 ## Inheritance + Interface
@@ -85,4 +144,20 @@ class Entity implements Serializable {
         return "{\"id\": \"" + id + "\"}"
     }
 }
+```
+
+## KofScript global (0.2.0-beta)
+
+```kof
+let x = 5
+const prefix: String = "ola"
+println(prefix + " " + x)   // KofScript → KofScriptGlobals
+```
+
+## KofC — C subset nativo-only
+
+```c
+int counter;
+void inc() { counter = counter + 1; }
+int main() { inc(); return counter; }
 ```

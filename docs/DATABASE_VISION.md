@@ -1,12 +1,12 @@
 # Database Vision — Persistência como Parte da Linguagem
 
-**Última atualização:** 24 de agosto de 2026
-**Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`):
+**Última atualização:** 27 de agosto de 2026
+**Versão:** 0.2.0-beta
+**Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`, 0.2.0-beta):
 `entity` (schema na linguagem), `orm.create/save/saveAll/find/all/where/
 where-op/delete/deleteAll/count/count-filtrado/page/migrate` (JDBC no JVM:
 H2, MySQL, MariaDB, PostgreSQL, SQLite; mappings de records; migrations
-versionadas); SQLite nativo via `libsqlite3` direto; wire protocol nativo
-MySQL/MariaDB em andamento.
+versionadas); SQLite nativo via `libsqlite3` direto; MySQL/MariaDB handshake via `kof_db_mysql_scramble` (27/08) — wire protocol sobre sockets nativos em progresso; `VERSION` 0.2.0-beta; build 658 testes.
 
 ---
 
@@ -196,11 +196,10 @@ db.close(db)
   rollback), `close`.
 - **Native:** SQLite via link direto de `libsqlite3.so.0` (sem JDBC driver) —
   `db.connect("sqlite:/path.db")`, execute/query tipado, roundtrip testado.
-- **Native MySQL/MariaDB:** wire protocol próprio (handshake, scramble
-  SHA-1, lenenc, execução de queries) sobre sockets nativos — em andamento
-  (sem teste E2E contra servidor real).
+- **Native MySQL/MariaDB:** wire protocol próprio (handshake `kof_db_mysql_scramble` SHA-1 27/08, lenenc, execução de queries) sobre sockets nativos — em andamento
+  (handshake scramble válido; query/prepared pendentes; sem teste E2E contra servidor real ainda).
 - **JS:** `DB001` (diagnóstico claro em compile-time).
-- Testes: `KofDbE2ETest` (8). O link nativo inclui a lib do MySQL apenas
+- Testes: `KofDbE2ETest` (8) + `KofOrmE2ETest` (16, inclui MariaDB/PostgreSQL/MongoDB com skip condicional). O link nativo inclui a lib do MySQL apenas
   quando o programa a usa (URL literal detectado em compile-time).
 
 Limitações conhecidas do nível 0: bind máximo de 4 parâmetros; sem
