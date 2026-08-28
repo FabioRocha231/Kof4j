@@ -134,6 +134,7 @@ jobs:
             && echo "embedded JDK present"
 
       - name: Prepare changelog
+        shell: bash
         run: |
           VERSION=$(cat VERSION)
           scripts/changelog.sh > /tmp/changelog-section.md
@@ -152,22 +153,3 @@ jobs:
             dist/SHA256SUMS
             kof-cli/target/kof-cli-*.jar
             kof-cli/target/*-jar-with-dependencies.jar
-
-      - name: Prepare changelog
-        run: |
-          VERSION=$(cat VERSION)
-          scripts/changelog.sh > /tmp/changelog-section.md
-          { echo "# Kof $VERSION (${{ matrix.target }})"; echo ""; cat /tmp/changelog-section.md; } > release-notes.md
-          cat release-notes.md
-
-      - name: Create GitHub Release (${{ matrix.target }})
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: kof-${{ needs.test-and-bump.outputs.version }}-${{ matrix.target }}
-          name: Kof ${{ needs.test-and-bump.outputs.version }} (${{ matrix.target }})
-          body_path: release-notes.md
-          files: |
-            release-artifacts/*.tar.gz
-            release-artifacts/*.zip
-            release-artifacts/*.jar
-            release-artifacts/SHA256SUMS
