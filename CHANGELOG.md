@@ -1582,6 +1582,21 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - package+release uma coisa só (single job, no artifact loss)
 
+## [0.2.1-beta] - 2026-08-28
+
+### Features
+
+  - GC mark-sweep + MySQL handshake + RISC-V placeholder (code it all)
+
+### Documentation
+
+  - update all md to 0.2.0-beta 27 Aug 2026 (658 tests, KofC, KofScript, kof.http JS, imports fix)
+  - update all md to 0.2.0-beta 27 Aug 2026 (658 tests, KofC, KofScript, kof.http JS, imports fix)
+
+### Build
+
+  - bump version to 0.2.0-beta [skip ci]
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
