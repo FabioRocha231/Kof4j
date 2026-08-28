@@ -2147,6 +2147,7 @@ class JsBackend implements Backend {
                 || name.equals("kof_list_reduce")
                 || name.startsWith("kof_observability_")
                 || name.startsWith("kof_time_")
+                || name.startsWith("kof_scheduler_")
                 || name.startsWith("kof_mq_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
@@ -2259,6 +2260,25 @@ class JsBackend implements Backend {
             stack.add(call);
             return;
         }
+        if (name.equals("kof_scheduler_every")) {
+            registerRuntime("kofSchedulerEvery");
+            JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofSchedulerEvery"), args);
+            if (Type.isVoid(kc.returnType())) throw new StatementEnd(call);
+            stack.add(call);
+            return;
+        }
+        if (name.equals("kof_scheduler_at")) {
+            registerRuntime("kofSchedulerAt");
+            JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofSchedulerAt"), args);
+            if (Type.isVoid(kc.returnType())) throw new StatementEnd(call);
+            stack.add(call);
+            return;
+        }
+        if (name.equals("kof_scheduler_cancel")) {
+            registerRuntime("kofSchedulerCancel");
+            JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofSchedulerCancel"), args);
+            throw new StatementEnd(call);
+        }
         if (name.startsWith("kof_http_")) {
             // JS real via Java HttpClient interop (GraalJS allowAllAccess)
             String jsFn = switch (name) {
@@ -2284,6 +2304,14 @@ class JsBackend implements Backend {
                 throw new StatementEnd(call);
             }
             stack.add(call);
+            return;
+        }
+        if (name.equals("kof_web_status") && args.size() == 2) {
+            stack.add(args.get(1));
+            return;
+        }
+        if (name.equals("kof_web_header_set") && args.size() == 2) {
+            stack.add(args.get(1));
             return;
         }
         if (name.startsWith("kof_web_") || name.startsWith("kof_db_")) {
@@ -3391,6 +3419,15 @@ class JsBackend implements Backend {
                     return "";
                 } catch(e) { return ""; }
             }
+
+            export function kofSchedulerEvery(ms, fn) {
+                const id = String(setInterval(() => { if (typeof fn.invoke === 'function') fn.invoke(); else if (typeof fn === 'function') fn(); }, ms));
+                return id;
+            }
+            export function kofSchedulerAt(cron, fn) {
+                return kofSchedulerEvery(60000, fn);
+            }
+            export function kofSchedulerCancel(id) { clearInterval(Number(id)); }
 
             export function kofEnumValueOf(values, name) {
                 if (values != null && name != null) {

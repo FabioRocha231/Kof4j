@@ -61,6 +61,19 @@ final class JvmTimeRuntime {
                     KOF_TIME_JOBS.remove(id);
                 }
 
+                public static String kof_scheduler_every(int ms, Object fn) {
+                    return kof_time_interval(ms, fn);
+                }
+
+                public static String kof_scheduler_at(String cron, Object fn) {
+                    // MVP: cron "0 3 * * *" -> 60s interval for now; parse simple "*/5 * * * *"
+                    return kof_time_interval(60000, fn);
+                }
+
+                public static void kof_scheduler_cancel(String id) {
+                    kof_time_cancel(id);
+                }
+
 """;
     }
 }

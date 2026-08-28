@@ -46,6 +46,7 @@ final class KofWeb {
         return switch (name) {
             case "param", "query", "header" -> true;
             case "body", "method", "path" -> true;
+            case "status", "headerSet", "setHeader" -> true;
             default -> false;
         };
     }

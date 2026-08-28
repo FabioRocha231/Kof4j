@@ -1,7 +1,7 @@
 # Status do Projeto Kof
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
+**Versão:** 0.2.2-beta
 
 ---
 
@@ -486,12 +486,12 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 9. `await`/join: ✅ JVM/JS; Native CONC001
 10. `kof fmt`: planned (P5)
 11. ~~Map/Set~~ — ✅ `List.map/filter/reduce` + `Map/Set` JVM/Native/JS (26/08)
-12. Pattern matching: 🚧 `switch (x) { case String s: ... }` em `Parser/Semantic/CompilerDriver` + `Native rbx→rcx` + `JS typeof`; `record` destructuring pendente
-13. Null safety `String?`: planned (P1)
+12. Pattern matching: ✅ `switch (x) { case String s: ... }` + `case Point(x,y)` em `Parser/Semantic/CompilerDriver` + `Native rbx→rcx` + `JS typeof` (27/08 `Point(x,y)` `JVM:30 Native:30 JS:30` `KofPatternMatchingTest 10/10` + `KofWebE2ETest 9/9`)
+13. Null safety `String?`: ✅ básica `String?` `Int?` `?`-check em compile-time `Type.NullableType` `JvmBackend:110` `SemanticAnalyzer:1637` `isAssignable` `var s:String?=null` `s==null` `t="hello"` `jvm: null/hello native: null/hello js: null/hello` (27/08)
 14. ~~Módulos multi-arquivo imports perdidos em projetos grandes~~ — ✅ 27/08 `CompilerDriver.java:243` `import a.b.C` file import `+` `a.b` dir import, `largeproj` `a/b/C.kf` `decls=2` `Main.class+a/b/C.class` ok
 15. ~~`List.get` native~~ — ✅ verificado `listOf(1,2,3).get(1) → 2` nativo `kof_list_get` bounds OK (caso `List.of` era `listOf`)
-16. Web: status codes/headers customizados por handler (planned, P2)
-17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS, Native HTTP002
+16. Web: status codes/headers customizados por handler: ✅ `kof.web.status(201, body)` + `headerSet("X","y")` em `KofWeb.java:107` + `JvmWebRuntime.java:22` `KOF_WEB_STATUS/HEADERS` + `JvmRuntime.java:489` `kof_web_dispatch` `+wired` `kof_web_build` headers `+wired` `status_text 201 Created 202 Accepted` `JVM: 201/hellox 202/value` `KofWebE2ETest 9/9` (27/08)
+17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS (`Java HttpClient`), Native HTTP002
 18. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1 feito; falta handshake completo, query e prepared statements) (P3)
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
 20. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em compile-time; SSE real + dtoa são trabalho futuro do backend.
@@ -504,15 +504,15 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 **P1 — Linguagem (em progresso):**
 1. ✅ `Map/Set` + `enum` + `await` + `List.map/filter/reduce` (JVM/Native/JS)
-2. 🚧 `Pattern matching` — `switch (x) { case String s: ... }` + `instanceof`/`checkcast` nos 3 backends (record destructuring pendente)
-3. `Nullability` `String?`/`Int?` + `?`-check em compile-time
-4. `Módulos multi-arquivo` — `kof build <dir>` com resolução unificada
+2. ✅ `Pattern matching` — `switch (x) { case String s: ... }` + `case Point(x,y)` `JVM/Native/JS` `30` `10/10`
+3. ✅ `Nullability` `String?`/`Int?` + `?`-check `Type.NullableType` `jvm/native/js null/hello` (27/08 básica)
+4. `Módulos multi-arquivo` — `kof build <dir>` com resolução unificada (`import a.b.C` file fix done, semântica unificada residual)
 
 **P2 — Web completa (próxima listinha):**
-5. Resposta rica `status(201, body)`/`header("X","y")` no handler
+5. ✅ Resposta rica `status(201, body)`/`headerSet("X","y")` `JVM` `201 Created 202 Accepted` `X-Custom/X-Test` `KofWebE2ETest 9/9` (27/08) `Native WEB002` `JS stub`
 6. `cache.get/set/ttl` in-process (depende de Map)
 7. `WebSocket` `app.ws("/chat") { }` + `SSE`
-8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM done, Native/JS gap)
+8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM `every/at/cancel` `kof_scheduler_every` `ScheduledExecutor` + JS `setInterval` `kofSchedulerEvery` `27/08` `scheduler.every(100) job-1` `JVM:job-1 JS:kofSchedulerEvery` `KofTimeE2ETest 5/0` `Native SCHED001`)
 9. `kof.http` client já ✅, falta `HTTP/2`/`retry`/`timeout`/`circuit breaker`
 
 **P3 — Data produção:**

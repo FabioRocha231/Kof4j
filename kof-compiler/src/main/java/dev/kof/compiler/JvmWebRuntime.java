@@ -20,6 +20,41 @@ final class JvmWebRuntime {
                 private static final java.util.concurrent.atomic.AtomicInteger KOF_WEB_SEQ =
                         new java.util.concurrent.atomic.AtomicInteger();
                 private static final ThreadLocal<WebRequest> KOF_WEB_REQUEST = new ThreadLocal<>();
+                private static final ThreadLocal<Integer> KOF_WEB_STATUS = new ThreadLocal<>();
+                private static final ThreadLocal<java.util.Map<String, String>> KOF_WEB_HEADERS =
+                        ThreadLocal.withInitial(java.util.HashMap::new);
+
+                public static String kof_web_status(int code, String body) {
+                    KOF_WEB_STATUS.set(code);
+                    return body;
+                }
+
+                public static String kof_web_header_set(String name, String value) {
+                    KOF_WEB_HEADERS.get().put(name, value);
+                    return value;
+                }
+
+                private static String kof_web_status_text(int code) {
+                    return switch (code) {
+                        case 200 -> "OK";
+                        case 201 -> "Created";
+                        case 202 -> "Accepted";
+                        case 204 -> "No Content";
+                        case 301 -> "Moved Permanently";
+                        case 302 -> "Found";
+                        case 304 -> "Not Modified";
+                        case 400 -> "Bad Request";
+                        case 401 -> "Unauthorized";
+                        case 403 -> "Forbidden";
+                        case 404 -> "Not Found";
+                        case 409 -> "Conflict";
+                        case 422 -> "Unprocessable Entity";
+                        case 500 -> "Internal Server Error";
+                        case 502 -> "Bad Gateway";
+                        case 503 -> "Service Unavailable";
+                        default -> "OK";
+                    };
+                }
 
                 public static final class WebRoute {
                     final String method;

@@ -42,6 +42,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_http_")
                 || methodName.startsWith("kof_mq_")
                 || methodName.startsWith("kof_time_")
+                || methodName.startsWith("kof_scheduler_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
                 || methodName.equals("kof_read_file")
@@ -181,6 +182,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_time_now" -> "()J";
             case "kof_time_interval" -> "(ILjava/lang/Object;)Ljava/lang/String;";
             case "kof_time_cancel" -> "(Ljava/lang/String;)V";
+            case "kof_scheduler_every" -> "(ILjava/lang/Object;)Ljava/lang/String;";
+            case "kof_scheduler_at" -> "(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/String;";
+            case "kof_scheduler_cancel" -> "(Ljava/lang/String;)V";
             case "kof_config_str" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_config_has" -> "(Ljava/lang/String;)I";
             case "kof_config_int", "kof_config_bool" -> "(Ljava/lang/String;I)I";
@@ -309,7 +313,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_dir_list" -> "Ljava/util/ArrayList;";
             case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
                     "kof_web_body", "kof_web_method", "kof_web_path",
-                    "kof_web_status", "kof_web_header_set" -> "Ljava/lang/String;";
+                    "kof_web_status", "kof_web_header_set",
+                    "kof_scheduler_every", "kof_scheduler_at" -> "Ljava/lang/String;";
             case "kof_config_get", "kof_config_env", "kof_config_str" -> "Ljava/lang/String;";
             case "kof_cache_get" -> "Ljava/lang/String;";
             case "kof_cache_set", "kof_cache_set_ttl", "kof_cache_delete", "kof_cache_clear" -> "V";
@@ -322,7 +327,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_mq_queue" -> "Ljava/lang/String;";
             case "kof_mq_pop" -> "Ljava/lang/Object;";
             case "kof_http_timeout_set", "kof_mq_publish", "kof_mq_subscribe", "kof_mq_unsubscribe",
-                    "kof_mq_push", "kof_time_sleep", "kof_time_cancel" -> "V";
+                    "kof_mq_push", "kof_time_sleep", "kof_time_cancel", "kof_scheduler_cancel" -> "V";
             case "kof_time_now" -> "J";
             case "kof_time_interval" -> "Ljava/lang/String;";
             case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
@@ -488,12 +493,20 @@ static boolean hasRuntimeFn(String methodName) {
 
                 private static String kof_web_dispatch(WebApp app, WebRequest req) {
                     KOF_WEB_REQUEST.set(req);
+                    KOF_WEB_STATUS.remove();
+                    KOF_WEB_HEADERS.get().clear();
                     KOF_LOG_REQUEST_ID.set(kof_sec_random_hex(16));
                     try {
                         for (Object middleware : app.middlewares) {
                             Object result = kof_web_invoke(middleware, req);
                             if (result != null) {
-                                return kof_web_build(200, "OK", String.valueOf(result));
+                                Integer st = KOF_WEB_STATUS.get();
+                                int code = st != null ? st : 200;
+                                String text = kof_web_status_text(code);
+                                String resp = kof_web_build(code, text, String.valueOf(result));
+                                KOF_WEB_STATUS.remove();
+                                KOF_WEB_HEADERS.get().clear();
+                                return resp;
                             }
                         }
                         for (WebRoute route : app.routes) {
@@ -512,20 +525,34 @@ static boolean hasRuntimeFn(String methodName) {
                             }
                             if (!match) continue;
                             req.params.putAll(params);
+                            KOF_WEB_STATUS.remove();
+                            KOF_WEB_HEADERS.get().clear();
                             Object result = kof_web_invoke(route.handler, req);
                             if (result == null) {
+                                KOF_WEB_STATUS.remove();
+                                KOF_WEB_HEADERS.get().clear();
                                 return kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}");
                             }
-                            return kof_web_build(200, "OK", String.valueOf(result));
+                            Integer st2 = KOF_WEB_STATUS.get();
+                            int code2 = st2 != null ? st2 : 200;
+                            String text2 = kof_web_status_text(code2);
+                            String resp2 = kof_web_build(code2, text2, String.valueOf(result));
+                            KOF_WEB_STATUS.remove();
+                            KOF_WEB_HEADERS.get().clear();
+                            return resp2;
                         }
                         return kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}");
                     } catch (Exception e) {
                         String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                        KOF_WEB_STATUS.remove();
+                        KOF_WEB_HEADERS.get().clear();
                         return kof_web_build(500, "Internal Server Error",
                                 "{\\"error\\": \\"handler error: " + msg + "\\"}");
                     } finally {
                         KOF_WEB_REQUEST.remove();
                         KOF_LOG_REQUEST_ID.remove();
+                        KOF_WEB_STATUS.remove();
+                        KOF_WEB_HEADERS.remove();
                     }
                 }
 
@@ -547,8 +574,19 @@ static boolean hasRuntimeFn(String methodName) {
                     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
                         contentType = "application/json; charset=utf-8";
                     }
+                    java.util.Map<String, String> extra = KOF_WEB_HEADERS.get();
+                    boolean hasContentType = false;
+                    StringBuilder hdr = new StringBuilder();
+                    if (extra != null) {
+                        for (java.util.Map.Entry<String, String> e : extra.entrySet()) {
+                            if (e.getKey().equalsIgnoreCase("Content-Type")) hasContentType = true;
+                            hdr.append(e.getKey()).append(": ").append(e.getValue()).append("\\r\\n");
+                        }
+                    }
+                    String ctHeader = hasContentType ? "" : "Content-Type: " + contentType + "\\r\\n";
                     return "HTTP/1.1 " + status + " " + statusText + "\\r\\n"
-                            + "Content-Type: " + contentType + "\\r\\n"
+                            + ctHeader
+                            + hdr.toString()
                             + "Content-Length: " + bodyBytes.length + "\\r\\n"
                             + "Connection: close\\r\\n"
                             + "\\r\\n"

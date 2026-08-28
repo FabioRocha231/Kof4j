@@ -789,6 +789,7 @@ class SemanticAnalyzer {
                         && !KofHttp.isHttpNamespace(ie.name())
                         && !KofMq.isMqNamespace(ie.name())
                         && !KofTime.isTimeNamespace(ie.name())
+                        && !KofScheduler.isSchedulerNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !"Theme".equals(ie.name())
@@ -824,6 +825,7 @@ class SemanticAnalyzer {
                                 && !KofHttp.isHttpNamespace(ie.name())
                                 && !KofMq.isMqNamespace(ie.name())
                                 && !KofTime.isTimeNamespace(ie.name())
+                                && !KofScheduler.isSchedulerNamespace(ie.name())
                                 && !knownClasses.containsKey(ie.name())) {
                             diagnostics.error("", 0, 0, 0,
                                     "undefined variable: '" + ie.name() + "'", "SEM020");
@@ -916,6 +918,13 @@ class SemanticAnalyzer {
                         && KofWeb.contextCall(mc.methodName(), mc.arguments().size()) != null) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield BuiltinTypes.STRING;
+                }
+                if ((mc.receiver() == null && KofScheduler.isSchedulerMethod(mc.methodName()))
+                        || (mc.receiver() instanceof IdentifierExpr rid2 && KofScheduler.isSchedulerNamespace(rid2.name())
+                                && KofScheduler.isSchedulerMethod(mc.methodName()))) {
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    if ("cancel".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                    else yield BuiltinTypes.STRING;
                 }
                 if (mc.receiver() == null && "transaction".equals(mc.methodName())
                         && mc.arguments().size() == 1) {
@@ -1344,6 +1353,7 @@ class SemanticAnalyzer {
                         && !KofIo.isConstructor(mc.methodName())
                         && !KofUi.isConstructor(mc.methodName())
                         && !KofWeb.isContextFunction(mc.methodName())
+                        && !KofScheduler.isSchedulerMethod(mc.methodName())
                         && !"transaction".equals(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));

@@ -3219,6 +3219,58 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofScheduler.isSchedulerNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofScheduler.SchedulerCall schedCall = KofScheduler.staticCall(mc.methodName(), argTypes);
+                    if (schedCall != null) {
+                        if (!KofScheduler.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (SCHED001)",
+                                        "SCHED001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofScheduler.SCHEDULER, schedCall.function(), schedCall.parameterTypes(),
+                                schedCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() == null && KofScheduler.isSchedulerMethod(mc.methodName())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofScheduler.SchedulerCall schedCall = KofScheduler.staticCall(mc.methodName(), argTypes);
+                    if (schedCall != null) {
+                        if (!KofScheduler.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (SCHED001)",
+                                        "SCHED001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofScheduler.SCHEDULER, schedCall.function(), schedCall.parameterTypes(),
+                                schedCall.returnType(), KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
+                    // fall through to normal handling if not matched
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                             && KofMq.isMqNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -4845,6 +4897,20 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                     KofTime.TimeCall timeCall = KofTime.staticCall(mc.methodName(), argTypes);
                     if (timeCall != null) yield timeCall.returnType();
                     yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() instanceof IdentifierExpr rid && KofScheduler.isSchedulerNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofScheduler.SchedulerCall sc = KofScheduler.staticCall(mc.methodName(), argTypes);
+                    if (sc != null) yield sc.returnType();
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && KofScheduler.isSchedulerMethod(mc.methodName())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofScheduler.SchedulerCall sc = KofScheduler.staticCall(mc.methodName(), argTypes);
+                    if (sc != null) yield sc.returnType();
+                    // fall through
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid && KofLog.isLogNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
