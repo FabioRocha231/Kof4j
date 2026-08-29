@@ -1603,6 +1603,16 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - shell bash for changelog + remove duplicate release-artifacts step (windows pwsh fix)
 
+## [0.2.3-beta] - 2026-08-29
+
+### Features
+
+  - resposta rica status/header + scheduler every/at (JVM+JS)
+
+### Bugfixes
+
+  - string concat null -> anull, if null, List and subclass parity (4 bugs)
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
