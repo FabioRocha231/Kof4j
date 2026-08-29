@@ -484,26 +484,18 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                movq %rdi, %rbx
-                addq $15, %rbx
-                andq $~15, %rbx
-                addq $32, %rbx
-                movq %rbx, %r12
-                jmp .Lkof_alloc_mmap
-                # -- free-list first-fit search (disabled for MySQL stability) --
+                movq %rdi, %r12
+                addq $7, %r12
+                andq $~7, %r12
+                addq $32, %r12
                 movq kof_free_head(%rip), %r13
                 xorq %r14, %r14
             .Lkof_alloc_search:
                 testq %r13, %r13
                 je .Lkof_alloc_mmap
-                movq (%r13), %r15
-                testq %r15, %r15
-                je .Lkof_alloc_next
-                cmpq $0x1000000, %r15
-                ja .Lkof_alloc_next
+                movq 0(%r13), %r15
                 cmpq %r12, %r15
                 jb .Lkof_alloc_next
-                # found: unlink r13 (prev in r14)
                 cmpq $0, %r14
                 je .Lkof_alloc_found_head
                 movq 8(%r13), %r15
@@ -512,19 +504,9 @@ final class NativeRuntime {
             .Lkof_alloc_found_head:
                 movq 8(%r13), %rax
                 movq %rax, kof_free_head(%rip)
-                jmp .Lkof_alloc_found
-            .Lkof_alloc_next:
-                movq %r13, %r14
-                movq 8(%r13), %r13
-                jmp .Lkof_alloc_search
             .Lkof_alloc_found:
+                movb $0, 24(%r13)
                 movq %r13, %rax
-                # size already at (%rax)
-                movb $0, 12(%rax)
-                movb $0, 24(%rax)
-                movq kof_gc_head(%rip), %rcx
-                movq %rcx, 16(%rax)
-                movq %rax, kof_gc_head(%rip)
                 addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
@@ -534,15 +516,18 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+            .Lkof_alloc_next:
+                movq %r13, %r14
+                movq 8(%r13), %r13
+                jmp .Lkof_alloc_search
             .Lkof_alloc_mmap:
-                # try GC before mmap if free-list was empty
                 call kof_gc_collect
                 movq kof_free_head(%rip), %r13
                 testq %r13, %r13
                 jne .Lkof_alloc_search
                 movq $0, %rdi
                 movq %r12, %rsi
-                movq $0x22, %rdx
+                movq $3, %rdx
                 movq $0x22, %r10
                 movq $-1, %r8
                 movq $0, %r9
@@ -550,13 +535,12 @@ final class NativeRuntime {
                 syscall
                 testq %rax, %rax
                 js .Lkof_alloc_fail
-                movq %r12, (%rax)
-                movb $0, 12(%rax)
-                movb $0, 24(%rax)
+                movq %r12, 0(%rax)
+                movq $0, 8(%rax)
                 movq kof_gc_head(%rip), %rcx
                 movq %rcx, 16(%rax)
+                movb $0, 24(%rax)
                 movq %rax, kof_gc_head(%rip)
-                # update heap bounds
                 movq kof_heap_low(%rip), %rcx
                 testq %rcx, %rcx
                 je .Lheap_set_low
@@ -597,7 +581,6 @@ final class NativeRuntime {
                 jz .Lkof_free_done
                 movq -32(%rdi), %rsi
                 leaq -32(%rdi), %rdi
-                # push onto free-list instead of munmap (fast reuse, no syscall)
                 movq kof_free_head(%rip), %rax
                 movq %rax, 8(%rdi)
                 movq %rdi, kof_free_head(%rip)
@@ -617,21 +600,50 @@ final class NativeRuntime {
             .type kof_gc_mark, @function
             kof_gc_mark:
                 pushq %rbx
-                movq kof_gc_head(%rip), %rbx
-            .Lgc_mark_all:
-                testq %rbx, %rbx
-                je .Lgc_mark_all_done
-                movb $1, 12(%rbx)
-                movb $1, 24(%rbx)
-                movq 16(%rbx), %rbx
-                jmp .Lgc_mark_all
-            .Lgc_mark_all_done:
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                pushq %rbp
+                movq %rsp, %r12
+                movq %rbp, %r13
+                testq %r13, %r13
+                je .Lgc_mark_stack_fallback
+                cmpq %r13, %r12
+                jae .Lgc_mark_stack_fallback
+                movq %r13, %rax
+                subq %r12, %rax
+                cmpq $1048576, %rax
+                ja .Lgc_mark_stack_fallback
+                jmp .Lgc_mark_stack
+            .Lgc_mark_stack_fallback:
+                leaq 4096(%r12), %r13
+            .Lgc_mark_stack:
+                cmpq %r13, %r12
+                jge .Lgc_mark_stack_done
+                movq (%r12), %rdi
+                call kof_gc_try_mark
+                addq $8, %r12
+                jmp .Lgc_mark_stack
+            .Lgc_mark_stack_done:
+                leaq __bss_start(%rip), %r12
+                leaq _end(%rip), %r13
+            .Lgc_mark_bss:
+                cmpq %r13, %r12
+                jge .Lgc_mark_bss_done
+                movq (%r12), %rdi
+                call kof_gc_try_mark
+                addq $8, %r12
+                jmp .Lgc_mark_bss
+            .Lgc_mark_bss_done:
+            .Lgc_mark_heap_done:
+                popq %rbp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
                 popq %rbx
                 ret
-                # mark-sweep: conservative scan of stack (rsp to rbp), globals (__bss_start to _end), heap blocks
-                # stack: movq %rsp, %r12; movq %rbp, %r14; cmpq %r14, %r12; movq (%r12), %rdi; call kof_gc_try_mark
-                # globals: leaq __bss_start(%rip), %r12; leaq _end(%rip), %r13; cmpq %r13, %r12
-                # heap: movq kof_gc_head(%rip), %rbx; cmpb $0, 24(%rbx); movq 16(%rbx), %rbx; movq (%r13), %rdi
 
             .globl kof_gc_try_mark
             .type kof_gc_try_mark, @function
@@ -640,11 +652,19 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r10
                 movq %rdi, %r12
-                # quick filter: heap is mmap'd high, reject small/unaligned
                 cmpq $0x1000, %r12
                 jb .Ltry_done_pop
                 testq $7, %r12
                 jne .Ltry_done_pop
+                movq kof_heap_low(%rip), %rbx
+                testq %rbx, %rbx
+                je .Ltry_heap_ok
+                cmpq %rbx, %r12
+                jb .Ltry_done_pop
+                movq kof_heap_high(%rip), %rbx
+                cmpq %rbx, %r12
+                jae .Ltry_done_pop
+            .Ltry_heap_ok:
                 movq kof_gc_head(%rip), %rbx
                 movq $10000, %r10
             .Ltry_loop:
@@ -655,8 +675,7 @@ final class NativeRuntime {
                 leaq 32(%rbx), %rax
                 cmpq %rax, %r12
                 je .Ltry_found
-                # conservative interior check: candidate within block range
-                movq (%rbx), %rcx
+                movq 0(%rbx), %rcx
                 subq $32, %rcx
                 leaq 32(%rbx), %rdx
                 cmpq %rdx, %r12
@@ -705,24 +724,18 @@ final class NativeRuntime {
                 movq 16(%rbx), %r15
                 cmpb $0, 24(%rbx)
                 jne .Lsweep_marked
-                # keep arrays alive (conservative for live array)
-                movl 32(%rbx), %eax
-                cmpl $2, %eax
-                je .Lsweep_marked
-                # not marked -> unlink from gc and push to free
                 cmpq $0, %r14
                 je .Lsweep_remove_head
                 movq %r15, 16(%r14)
                 jmp .Lsweep_push_free
             .Lsweep_remove_head:
                 movq %r15, kof_gc_head(%rip)
-                jmp .Lsweep_push_free
             .Lsweep_push_free:
                 movq kof_free_head(%rip), %rax
                 movq %rax, 8(%rbx)
                 movq %rbx, kof_free_head(%rip)
                 incq .Lkof_free_count(%rip)
-                movq (%rbx), %rax
+                movq 0(%rbx), %rax
                 addq %rax, .Lkof_free_bytes(%rip)
                 movq %r15, %rbx
                 jmp .Lsweep_loop
@@ -761,7 +774,6 @@ final class NativeRuntime {
                 ret
             """);
     }
-
 
     static void emitMemstats(StringBuilder sb) {
         sb.append("""
@@ -958,6 +970,9 @@ final class NativeRuntime {
 
     private static void emitStringConcat(StringBuilder sb) {
         sb.append("""
+            .section .rodata
+            .Lkof_null_str: .asciz "null"
+            .section .text
             .globl kof_string_concat
             .type kof_string_concat, @function
             kof_string_concat:
@@ -965,10 +980,27 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 movq %rdi, %rbx
                 movq %rsi, %r12
+                xorl %r13d, %r13d
+                xorl %r15d, %r15d
+                testq %rbx, %rbx
+                jnz .Lkof_concat_rbx_len
+                movl $4, %r13d
+                movl $1, %r15d
+                jmp .Lkof_concat_r12_len
+            .Lkof_concat_rbx_len:
                 movl 16(%rbx), %r13d
+            .Lkof_concat_r12_len:
+                testq %r12, %r12
+                jnz .Lkof_concat_r12_len2
+                addl $4, %r13d
+                orl $2, %r15d
+                jmp .Lkof_concat_alloc
+            .Lkof_concat_r12_len2:
                 addl 16(%r12), %r13d
+            .Lkof_concat_alloc:
                 leal 25(%r13), %edi
                 call kof_alloc
                 movq %rax, %r14
@@ -979,18 +1011,38 @@ final class NativeRuntime {
                 movl $0, 20(%r14)
                 movq %r14, %rdi
                 addq $24, %rdi
+                testl $1, %r15d
+                jnz .Lkof_concat_copy_null_rbx
                 leaq 24(%rbx), %rsi
                 movl 16(%rbx), %edx
                 call kof_memcpy
                 movl 16(%rbx), %eax
+                jmp .Lkof_concat_after_rbx
+            .Lkof_concat_copy_null_rbx:
+                leaq .Lkof_null_str(%rip), %rsi
+                movl $4, %edx
+                call kof_memcpy
+                movl $4, %eax
+            .Lkof_concat_after_rbx:
                 movq %r14, %rdi
                 addq $24, %rdi
                 addq %rax, %rdi
+                testl $2, %r15d
+                jnz .Lkof_concat_copy_null_r12
+                testq %r12, %r12
+                jz .Lkof_concat_done
                 leaq 24(%r12), %rsi
                 movl 16(%r12), %edx
                 call kof_memcpy
+                jmp .Lkof_concat_done
+            .Lkof_concat_copy_null_r12:
+                leaq .Lkof_null_str(%rip), %rsi
+                movl $4, %edx
+                call kof_memcpy
+            .Lkof_concat_done:
                 movb $0, 24(%r14,%r13)
                 movq %r14, %rax
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
