@@ -872,6 +872,16 @@ class SemanticAnalyzer {
                 yield operandType;
             }
             case MethodCallExpr mc -> {
+                // F10: métodos de instância do handle de process.spawn
+                if (mc.receiver() != null) {
+                    Type recv = inferType(mc.receiver(), scope);
+                    if (KofProcess.isHandle(recv)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(), argTypes);
+                        if (hm != null) yield hm.returnType();
+                    }
+                }
                 if (mc.receiver() == null && "listOf".equals(mc.methodName())) {
                     // listOf(...) keeps its element type: List<T> must survive
                     // the whole pipeline (for-in, get, method resolution).
@@ -1121,7 +1131,7 @@ class SemanticAnalyzer {
                             && !isLocalName(rid.name(), scope)) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
-                        KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                        KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
                         if (procCall != null) yield procCall.returnType();
                         KofProcess.ProcessCall exitCall = KofProcess.exitCall(argTypes);
                         if (exitCall != null) yield exitCall.returnType();

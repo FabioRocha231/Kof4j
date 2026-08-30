@@ -48,6 +48,8 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_read_file")
                 || methodName.equals("kof_write_file")
                 || methodName.equals("kof_spawn")
+                || methodName.startsWith("kof_spawn_")
+                || methodName.equals("kof_process_spawn")
                 || methodName.equals("kof_process_run")
                 || methodName.equals("kof_process_exit")
                 || methodName.equals("kof_args_list");
@@ -115,6 +117,12 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_path_resolve" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_process_run" -> "(Ljava/lang/String;Ljava/util/List;)Ldev/kof/runtime/KofRuntime$ProcessResult;";
             case "kof_process_exit" -> "(I)V";
+            case "kof_process_spawn" -> "(Ljava/lang/String;Ljava/util/List;)Ljava/lang/Long;";
+            case "kof_spawn_read_line" -> "(Ljava/lang/Long;)Ljava/lang/String;";
+            case "kof_spawn_write" -> "(Ljava/lang/Long;Ljava/lang/String;)V";
+            case "kof_spawn_exit_code" -> "(Ljava/lang/Long;)I";
+            case "kof_spawn_kill" -> "(Ljava/lang/Long;)V";
+            case "kof_spawn_alive" -> "(Ljava/lang/Long;)Z";
             case "kof_args_list" -> "([Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_io_path_is_absolute" -> "(Ljava/lang/String;)I";
             case "kof_ui_color_to_css" -> "(I)Ljava/lang/String;";
@@ -1526,6 +1534,86 @@ static boolean hasRuntimeFn(String methodName) {
                     }
                 }
 
+                // ── process.spawn — stdin/stdout vivos (F10) ────────
+
+                private static final java.util.concurrent.ConcurrentHashMap<Long, Process> SPAWNED =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.ConcurrentHashMap<Long, java.io.BufferedReader> SPAWN_READERS =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.ConcurrentHashMap<Long, java.io.PrintWriter> SPAWN_WRITERS =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static long SPAWN_SEQ = 0;                public static Long kof_process_spawn(String program, List<String> args) {
+                    try {
+                        List<String> cmd = new ArrayList<>();
+                        cmd.add(program);
+                        cmd.addAll(args);
+                        Process p = new ProcessBuilder(cmd)
+                                .redirectErrorStream(false)
+                                .start();
+                        long id;
+                        synchronized (KofRuntime.class) { id = ++SPAWN_SEQ; }
+                        SPAWNED.put(id, p);
+                        SPAWN_READERS.put(id, new java.io.BufferedReader(
+                                new java.io.InputStreamReader(p.getInputStream(),
+                                        java.nio.charset.StandardCharsets.UTF_8)));
+                        SPAWN_WRITERS.put(id, new java.io.PrintWriter(
+                                new java.io.OutputStreamWriter(p.getOutputStream(),
+                                        java.nio.charset.StandardCharsets.UTF_8), true));
+                        return Long.valueOf(id);
+                    } catch (Exception e) {
+                        return Long.valueOf(-1);
+                    }
+                }
+
+                public static String kof_spawn_read_line(Long handleBoxed) {
+                    long handle = handleBoxed == null ? -1 : handleBoxed;
+                    var r = SPAWN_READERS.get(handle);
+                    if (r == null) return "";
+                    try {
+                        String line = r.readLine();
+                        return line == null ? "" : line;
+                    } catch (Exception e) {
+                        return "";
+                    }
+                }
+
+                public static void kof_spawn_write(Long handleBoxed, String data) {
+                    long handle = handleBoxed == null ? -1 : handleBoxed;
+                    var w = SPAWN_WRITERS.get(handle);
+                    if (w == null) return;
+                    w.println(data);
+                    w.flush();
+                }
+
+                public static int kof_spawn_exit_code(Long handleBoxed) {
+                    long handle = handleBoxed == null ? -1 : handleBoxed;
+                    var p = SPAWNED.get(handle);
+                    if (p == null) return -1;
+                    try {
+                        if (p.isAlive()) return Integer.MIN_VALUE;
+                        return p.exitValue();
+                    } catch (Exception e) {
+                        return -1;
+                    }
+                }
+
+                public static void kof_spawn_kill(Long handleBoxed) {
+                    long handle = handleBoxed == null ? -1 : handleBoxed;
+                    var p = SPAWNED.get(handle);
+                    if (p != null) {
+                        p.destroyForcibly();
+                        SPAWNED.remove(handle);
+                        SPAWN_WRITERS.remove(handle);
+                        SPAWN_READERS.remove(handle);
+                    }
+                }
+
+                public static boolean kof_spawn_alive(Long handleBoxed) {
+                    long handle = handleBoxed == null ? -1 : handleBoxed;
+                    var p = SPAWNED.get(handle);
+                    return p != null && p.isAlive();
+                }
+
                 // ── kof.io — File / Path / Directory ──────────────
 
                 private static java.nio.file.Path p(String path) {
@@ -1686,7 +1774,15 @@ static boolean hasRuntimeFn(String methodName) {
                 public static int kof_io_dir_delete(String path) {
                     try {
                         if (!java.nio.file.Files.exists(p(path))) return 0;
-                        java.nio.file.Files.deleteIfExists(p(path));
+                        // recursivo: precisa remover sub-árvore (Files.delete
+                        // falha em diretório não-vazio)
+                        try (var walk = java.nio.file.Files.walk(p(path))) {
+                            walk.sorted(java.util.Comparator.reverseOrder())
+                                    .forEach(pp -> {
+                                        try { java.nio.file.Files.deleteIfExists(pp); }
+                                        catch (java.io.IOException ignored) {}
+                                    });
+                        }
                         return 1;
                     } catch (java.io.IOException e) {
                         return 0;

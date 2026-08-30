@@ -265,6 +265,19 @@ public class NativeBackend implements Backend {
             NativeRuntime.emitDbSqlite(sb);
         }
         IRClass mainClass = null;
+        // pré-registro do mangle de TODOS os métodos antes de emitir —
+        // forward reference de função top-level (callee depois do caller)
+        // não pode cair no fallback não-mangled (undefined reference no ld)
+        for (IRClass clazz : module.classes()) {
+            for (IRMethod method : clazz.methods()) {
+                if ("<clinit>".equals(method.name())) continue;
+                String mangled = sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
+                if ("<init>".equals(method.name())) {
+                    mangled += "_" + method.parameterTypes().size();
+                }
+                functionMangleMap.putIfAbsent(method.name(), mangled);
+            }
+        }
         for (IRClass clazz : module.classes()) {
             currentClass = clazz;
             for (IRMethod method : clazz.methods()) {

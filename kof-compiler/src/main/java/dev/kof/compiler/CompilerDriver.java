@@ -1477,6 +1477,7 @@ private Target target = Target.JVM;
             case ReturnStmt ret -> {
                 if (ret.value() != null) {
                     localIdx = emitExpression(ret.value(), ops, owner, localIdx, locals);
+                    emitWideningIfNeeded(ops, inferExprType(ret.value(), locals), returnType);
                     ops.add(new KofReturn(returnType));
                 } else if (Type.isVoid(returnType)) {
                     ops.add(new KofReturnVoid());
@@ -2348,12 +2349,40 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     SymbolTable.ConstructorSymbol ctor = null;
                     SymbolTable.Symbol ctorSym = userCtor.members().resolve("<init>");
-                    if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
-                    ops.add(new KofNewObject(userCtor.type(), argTypes));
-                    ops.add(new KofDup());
+                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctorSingle) ctor = ctorSingle;
                     List<Type> ctorParamTypes = (ctor != null
                             && ctor.parameterTypes().size() == mc.arguments().size())
-                            ? ctor.parameterTypes() : argTypes;
+                            ? ctor.parameterTypes() : null;
+                    if (ctorParamTypes == null && ctorSym instanceof SymbolTable.ConstructorSet set) {
+                        // resolve por assignability: arg pode ser subtipo do
+                        // formal (ex.: FixedClock onde TimeSource esperado)
+                        for (SymbolTable.ConstructorSymbol c : set.constructors()) {
+                            if (c.parameterTypes().size() != argTypes.size()) continue;
+                            boolean compatible = true;
+                            for (int ai = 0; ai < argTypes.size(); ai++) {
+                                Type formalP = c.parameterTypes().get(ai);
+                                Type argP = argTypes.get(ai);
+                                if (!(formalP.equals(argP) || Type.isUnknown(argP)
+                                        || (formalP instanceof Type.ClassType
+                                            && argP instanceof Type.ClassType))) {
+                                    compatible = false;
+                                    break;
+                                }
+                            }
+                            if (compatible) { ctorParamTypes = c.parameterTypes(); break; }
+                        }
+                        if (ctorParamTypes == null) {
+                            for (SymbolTable.ConstructorSymbol c2 : set.constructors()) {
+                                if (c2.parameterTypes().size() == argTypes.size()) {
+                                    ctorParamTypes = c2.parameterTypes();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (ctorParamTypes == null) ctorParamTypes = argTypes;
+                    ops.add(new KofNewObject(userCtor.type(), argTypes));
+                    ops.add(new KofDup());
                     localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                     ops.add(new KofCall(userCtor.type(), "<init>", ctorParamTypes,
                             Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
@@ -3155,7 +3184,25 @@ private Target target = Target.JVM;
                         && findLocalVar(rid.name(), locals) == null) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                    KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                    KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
+                    if (procCall != null && "kof_process_spawn".equals(procCall.function())) {
+                        // F10: process.spawn(program, args...) → monta List<String>
+                        // e chama kof_process_spawn (stdin/stdout vivos)
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        Type listType = KofProcess.STRING_LIST;
+                        ops.add(new KofCall(listType, "kof_list_new", List.of(), listType, KofCallKind.FUNCTION));
+                        for (int i = 1; i < mc.arguments().size(); i++) {
+                            ops.add(new KofDup());
+                            localIdx = emitExpression(mc.arguments().get(i), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(listType, "kof_list_add",
+                                    List.of(BuiltinTypes.STRING), Type.PrimitiveType.VOID,
+                                    KofCallKind.INSTANCE));
+                        }
+                        ops.add(new KofCall(KofProcess.HANDLE, "kof_process_spawn",
+                                List.of(BuiltinTypes.STRING, KofProcess.STRING_LIST),
+                                KofProcess.HANDLE, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     if (procCall != null) {
                         if (target.isNative()) {
                             if (currentDiagnostics != null) {
@@ -3751,6 +3798,25 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                         yield localIdx;
                     }
+                    if (KofProcess.isHandle(recvType)) {
+                        // F10: h.write/readLine/exitCode/kill/alive — o handle
+                        // empilhado entra como 1º parâmetro do call estático
+                        KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(),
+                                mc.arguments().stream().map(a -> inferExprType(a, locals)).toList());
+                        if (hm != null) {
+                            List<Type> params = new ArrayList<>();
+                            params.add(KofProcess.HANDLE);
+                            for (int pi = 1; pi < hm.parameterTypes().size(); pi++) {
+                                params.add(hm.parameterTypes().get(pi));
+                            }
+                            for (ExpressionNode arg : mc.arguments()) {
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
+                            ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                    hm.function(), params, hm.returnType(), KofCallKind.FUNCTION));
+                            yield localIdx;
+                        }
+                    }
                     if (BuiltinTypes.isList(recvType)) {
                         String listFn = switch (mc.methodName()) {
                             case "add", "push", "append" -> "kof_list_add";
@@ -3904,7 +3970,7 @@ private Target target = Target.JVM;
                     if (resolvedMethod != null) {
                         recvType = ownerTypeFromInternal(resolvedMethod.ownerClass());
                         methodReturnType = resolvedMethod.returnType();
-                        methodParamTypes = resolvedMethod.parameterTypes();
+                        methodParamTypes = new ArrayList<>(resolvedMethod.parameterTypes());
                     } else if (BuiltinTypes.isString(recvType)) {
                         StringMethodSig sig = stringMethodSignature(mc.methodName(), mc.arguments().size(),
                                 methodParamTypes);
@@ -4975,7 +5041,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                         && findLocalVar(rid.name(), locals) == null) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                    KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                    KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
                     if (procCall != null) yield procCall.returnType();
                     yield Type.UnknownType.UNKNOWN;
                 }
@@ -4998,6 +5064,12 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofProcess.isHandle(recvType)) {
+                        List<Type> hArgs = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) hArgs.add(inferExprType(arg, locals));
+                        KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(), hArgs);
+                        if (hm != null) yield hm.returnType();
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
