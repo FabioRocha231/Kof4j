@@ -6259,18 +6259,26 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         if (isNumeric(left) && isNumeric(right)) {
             return commonNumericType(left, right);
         }
-        // referências (incl. nullable vs null): preserva o tipo para o
-        // backend emitir if_acmp* em vez de if_icmp* sobre referência
+        // comparação contra literal null é sempre referência (if_acmp*)
+        if (isNullLiteral(bin.left()) || isNullLiteral(bin.right())) {
+            return left instanceof Type.NullableType || left instanceof Type.UnknownType
+                    || left instanceof Type.PrimitiveType ? (isNullLiteral(bin.left()) ? right : left) : left;
+        }
+        // referências conhecidas (String vs String, record vs record):
+        // preserva o tipo para o backend emitir if_acmp*
         if (left instanceof Type.ClassType || left instanceof Type.ArrayType
-                || left instanceof Type.TypeVariable || left instanceof Type.NullableType
-                || left instanceof Type.UnknownType
-                || right instanceof Type.ClassType || right instanceof Type.ArrayType
-                || right instanceof Type.TypeVariable || right instanceof Type.NullableType
-                || right instanceof Type.UnknownType) {
-            return left instanceof Type.ClassType || left instanceof Type.ArrayType
-                    || left instanceof Type.TypeVariable || left instanceof Type.NullableType ? left : right;
+                || left instanceof Type.TypeVariable || left instanceof Type.NullableType) {
+            return left;
+        }
+        if (right instanceof Type.ClassType || right instanceof Type.ArrayType
+                || right instanceof Type.TypeVariable || right instanceof Type.NullableType) {
+            return right;
         }
         return Type.PrimitiveType.INT;
+    }
+
+    private boolean isNullLiteral(ExpressionNode e) {
+        return e instanceof LiteralExpr le && le.kind() == ConcreteLiteralKind.NULL;
     }
 
     /**
