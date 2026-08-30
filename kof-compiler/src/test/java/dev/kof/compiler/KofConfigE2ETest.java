@@ -218,25 +218,23 @@ class KofConfigE2ETest {
         } catch (InterruptedException e) {
             throw new IOException("Interrupted while running native binary", e);
         }
-        // JS: config via arquivo kof.config no diretório de trabalho
+        // JS: config via arquivo kof.config no CWD do processo (o runner JS
+        // herda o CWD do surefire — escrevemos o arquivo e limpamos no fim)
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
         assertTrue(jsResult.success(), "JS: " + jsResult.diagnostics().getDiagnostics());
-        Path workDir = tempDir.resolve("js-work");
-        Files.createDirectories(workDir);
-        Files.writeString(workDir.resolve("kof.config"), "database.url = jdbc:h2:mem:req\n");
-        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+        Path cwdConfig = Path.of("kof.config").toAbsolutePath();
+        Files.writeString(cwdConfig, "database.url = jdbc:h2:mem:req\n");
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+             java.io.ByteArrayOutputStream errBuf = new java.io.ByteArrayOutputStream()) {
             Path jsEntry = findJsEntry(tempDir.resolve("js-out"));
-            String prevDir = System.getProperty("user.dir");
-            System.setProperty("user.dir", workDir.toString());
-            try {
-                int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
-                        java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
-                String outJs = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
-                assertEquals(0, ec, "JS exit, output: " + outJs);
-                assertTrue(outJs.contains("jdbc:h2:mem:req"), "JS output: " + outJs);
-            } finally {
-                System.setProperty("user.dir", prevDir);
-            }
+            int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
+                    java.io.InputStream.nullInputStream(), errBuf);
+            String outJs = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            String errJs = errBuf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "JS exit, out: " + outJs + " err: " + errJs);
+            assertTrue(outJs.contains("jdbc:h2:mem:req"), "JS output: " + outJs + " err: " + errJs);
+        } finally {
+            Files.deleteIfExists(cwdConfig);
         }
     }
 

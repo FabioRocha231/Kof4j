@@ -3995,7 +3995,7 @@ class JsBackend implements Backend {
                         if (typeof kof_platform !== 'undefined' && kof_platform.readFile) {
                             const text = kof_platform.readFile('kof.config');
                             if (text) {
-                                for (const line of String(text).split('\n')) {
+                                for (const line of String(text).split('\\n')) {
                                     const t = line.trim();
                                     if (!t || t.startsWith('#')) continue;
                                     const eq = t.indexOf('=');
