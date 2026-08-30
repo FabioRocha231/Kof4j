@@ -56,6 +56,17 @@ final class JvmWebRuntime {
                     };
                 }
 
+                public static String wsAccept(String secWebSocketKey) {
+                    try {
+                        String concat = secWebSocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+                        java.security.MessageDigest sha1 = java.security.MessageDigest.getInstance("SHA-1");
+                        byte[] hash = sha1.digest(concat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        return java.util.Base64.getEncoder().encodeToString(hash);
+                    } catch (Exception e) {
+                        throw new RuntimeException("SHA-1 unavailable on JVM", e);
+                    }
+                }
+
                 public enum RouteKind { HTTP, SSE, WS }
 
                 record WebDispatchResult(RouteKind kind, String response, WebRoute route) {}

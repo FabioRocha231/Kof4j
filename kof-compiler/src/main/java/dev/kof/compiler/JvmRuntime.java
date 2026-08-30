@@ -424,8 +424,8 @@ static boolean hasRuntimeFn(String methodName) {
                         try {
                             java.net.Socket client = app.serverSocket.accept();
                             // 15s default protects HTTP `readRequest` against
-                            // client half-open sockets. SSE/WS override this
-                            // higher inside `kof_web_keep_alive`.
+                            // client half-open sockets. WS raises this after
+                            // the handshake.
                             client.setSoTimeout(15000);
                             Thread.startVirtualThread(() -> kof_web_handle(app, client));
                         } catch (java.io.IOException e) {
@@ -518,8 +518,8 @@ static boolean hasRuntimeFn(String methodName) {
                             handler.join();
                             return;
                         }
-                        if (result.kind != RouteKind.HTTP) {
-                            kof_web_keep_alive(client);
+                        if (result.kind == RouteKind.WS) {
+                            kof_web_ws_handshake(req, client);
                             return;
                         }
                         client.getOutputStream().write(result.response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -529,25 +529,61 @@ static boolean hasRuntimeFn(String methodName) {
                     }
                 }
 
-                // Idle timeout for persistent connections (SSE/WS in PR2/PR3).
-                // Without this, a client that opens the socket and never sends
-                // data would pin a virtual thread indefinitely. PR6 may move
-                // this to a configurable `web.configure(...)` knob.
+                // Idle timeout for the WS handshake stub. PR4 replaces the read
+                // loop with a frame codec and per-connection timeout handling.
                 private static final int KEEPALIVE_IDLE_MS = 300_000;
 
-                private static void kof_web_keep_alive(java.net.Socket client) throws java.io.IOException {
-                    client.setSoTimeout(KEEPALIVE_IDLE_MS);
-                    byte[] buffer = new byte[8192];
-                    try {
-                        while (client.getInputStream().read(buffer) != -1) {
-                            // PR1: no SSE/WS protocol yet; PR2/PR3 replace this with real loops.
-                            // Until then, any bytes from the client are discarded.
-                        }
-                    } catch (java.net.SocketTimeoutException idle) {
-                        // Idle socket — close cleanly. PR2 will replace this body with
-                        // real SSE/WS loops that respect the same per-read budget.
+                private static void kof_web_ws_handshake(WebRequest req, java.net.Socket client)
+                        throws java.io.IOException {
+                    String upgradeVal = req.headers.get("upgrade");
+                    String connectionVal = req.headers.get("connection");
+                    String version = req.headers.get("sec-websocket-version");
+                    String key = req.headers.get("sec-websocket-key");
+
+                    boolean hasUpgrade = containsToken(upgradeVal, "websocket");
+                    boolean hasConnection = containsToken(connectionVal, "upgrade");
+                    boolean valid = hasUpgrade
+                            && hasConnection
+                            && "13".equals(version)
+                            && key != null;
+
+                    if (!valid) {
+                        java.io.OutputStream out = client.getOutputStream();
+                        out.write("HTTP/1.1 400 Bad Request\\r\\n\\r\\n"
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        out.flush();
+                        return;
                     }
+
+                    String accept = wsAccept(key);
+                    java.io.OutputStream out = client.getOutputStream();
+                    out.write(("HTTP/1.1 101 Switching Protocols\\r\\n"
+                            + "Upgrade: websocket\\r\\n"
+                            + "Connection: Upgrade\\r\\n"
+                            + "Sec-WebSocket-Accept: " + accept + "\\r\\n"
+                            + "\\r\\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    out.flush();
+
+                    // Stub frame loop (PR4 substitui). Lê bytes até EOF ou timeout.
+                    client.setSoTimeout(KEEPALIVE_IDLE_MS);
+                    byte[] buf = new byte[8192];
+                    try {
+                        while (client.getInputStream().read(buf) != -1) { /* discard */ }
+                    } catch (java.net.SocketTimeoutException ignored) { /* idle */ }
                 }
+
+                    // Splits a comma-separated header value (RFC 7230 §3.2.2) into
+                    // trimmed tokens, returning true when any token equals the
+                    // expected name case-insensitively. Null/empty header -> false.
+                    // Used by WS handshake to validate Upgrade/Connection tokens
+                    // even when the same line carries unrelated tokens.
+                    private static boolean containsToken(String headerValue, String expected) {
+                        if (headerValue == null) return false;
+                        for (String token : headerValue.split(",")) {
+                            if (token.trim().equalsIgnoreCase(expected)) return true;
+                        }
+                        return false;
+                    }
 
                 private static WebDispatchResult kof_web_dispatch(WebApp app, WebRequest req) {
                     KOF_WEB_REQUEST.set(req);
