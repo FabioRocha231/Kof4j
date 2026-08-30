@@ -1,7 +1,7 @@
 # Status do Projeto Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.2-beta
+**Última atualização:** 30 de agosto de 2026
+**Versão:** 0.2.3-beta
 
 ---
 
@@ -398,6 +398,7 @@ main() { /* ignorado pelo kof test */ }
 | KofLogE2ETest | 10 | kof.log JVM: níveis, stderr, off, JSON estruturado, correlation ID |
 | NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
+| KofCacheE2ETest | 5 | kof.cache: get/set/ttl/expiry/delete/clear x3 targets |
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofDbE2ETest | 8 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
@@ -497,6 +498,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 20. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em compile-time; SSE real + dtoa são trabalho futuro do backend.
 21. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time. Fechar exige backend SSE + formatação double→string.
 22. `KofCcompiler` riscv64/aarch64 placeholder (target separation feito `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm`, codegen ainda x86_64 placeholder, `qemu` skip)
+23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
 
 ---
 
@@ -510,7 +512,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 **P2 — Web completa (próxima listinha):**
 5. ✅ Resposta rica `status(201, body)`/`headerSet("X","y")` `JVM` `201 Created 202 Accepted` `X-Custom/X-Test` `KofWebE2ETest 9/9` (27/08) `Native WEB002` `JS stub`
-6. `cache.get/set/ttl` in-process (depende de Map)
+6. ✅ `kof.cache` `get/set/set(key,v,ttl)/ttl/delete/clear` — ✅ JVM/Native/JS (30/08; fix nativo: clobber de `%rax/%rdi` em `set_ttl/get/ttl` + `println(null)` segfault; `KofCacheE2ETest 5/5 x3 targets`)
 7. `WebSocket` `app.ws("/chat") { }` + `SSE`
 8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM `every/at/cancel` `kof_scheduler_every` `ScheduledExecutor` + JS `setInterval` `kofSchedulerEvery` `27/08` `scheduler.every(100) job-1` `JVM:job-1 JS:kofSchedulerEvery` `KofTimeE2ETest 5/0` `Native SCHED001`)
 9. `kof.http` client já ✅, falta `HTTP/2`/`retry`/`timeout`/`circuit breaker`
