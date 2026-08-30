@@ -2285,6 +2285,15 @@ private Target target = Target.JVM;
                     } else {
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
                         Type operandType = accType;
+                        // comparação contra null é referência (if_acmp*):
+                        // usa o tipo do lado não-null, ou Object se Unknown
+                        if (("==".equals(be.operator()) || "!=".equals(be.operator()))
+                                && (isNullLiteral(be.left()) || isNullLiteral(be.right()))) {
+                            Type other = isNullLiteral(be.left()) ? rightType : accType;
+                            operandType = (other instanceof Type.ClassType || other instanceof Type.ArrayType
+                                    || other instanceof Type.TypeVariable || other instanceof Type.NullableType)
+                                    ? other : new Type.ClassType("java.lang", "Object", List.of());
+                        }
                         switch (be.operator()) {
                             case "+" -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
                             case "-" -> ops.add(new KofBinary(KofBinaryOp.SUB, operandType));
@@ -5092,7 +5101,11 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                         if ("toLong".equals(mn)) yield Type.PrimitiveType.LONG;
                         if ("toDouble".equals(mn)) yield Type.PrimitiveType.DOUBLE;
                         if ("toFloat".equals(mn)) yield Type.PrimitiveType.FLOAT;
-                        if ("length".equals(mn) || "indexOf".equals(mn) || "compareTo".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("length".equals(mn) || "indexOf".equals(mn) || "lastIndexOf".equals(mn)
+                                || "compareTo".equals(mn) || "compareToIgnoreCase".equals(mn)
+                                || "hashCode".equals(mn) || "size".equals(mn) || "count".equals(mn)) {
+                            yield Type.PrimitiveType.INT;
+                        }
                         if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn)
                                 || "equals".equals(mn) || "equalsIgnoreCase".equals(mn)) {
                             yield Type.PrimitiveType.BOOL;
@@ -5680,6 +5693,8 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
             case "equalsIgnoreCase" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(str)) : null;
             case "indexOf" -> argCount == 1 ? new StringMethodSig(INT, List.of(str))
                     : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
+            case "lastIndexOf" -> argCount == 1 ? new StringMethodSig(INT, List.of(str))
+                    : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
             case "concat" -> argCount == 1 ? new StringMethodSig(str, List.of(str)) : null;
             case "trim" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
             case "toInt" -> argCount == 0 ? new StringMethodSig(INT, List.of()) : null;
@@ -6259,10 +6274,15 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         if (isNumeric(left) && isNumeric(right)) {
             return commonNumericType(left, right);
         }
-        // comparação contra literal null é sempre referência (if_acmp*)
+        // comparação contra literal null é sempre referência (if_acmp*);
+        // quando o outro lado é Unknown (get de Map, etc.) marca como Object
         if (isNullLiteral(bin.left()) || isNullLiteral(bin.right())) {
-            return left instanceof Type.NullableType || left instanceof Type.UnknownType
-                    || left instanceof Type.PrimitiveType ? (isNullLiteral(bin.left()) ? right : left) : left;
+            Type other = isNullLiteral(bin.left()) ? right : left;
+            if (other instanceof Type.ClassType || other instanceof Type.ArrayType
+                    || other instanceof Type.TypeVariable || other instanceof Type.NullableType) {
+                return other;
+            }
+            return new Type.ClassType("java.lang", "Object", List.of());
         }
         // referências conhecidas (String vs String, record vs record):
         // preserva o tipo para o backend emitir if_acmp*

@@ -1393,6 +1393,20 @@ class SemanticAnalyzer {
                     yield new Type.ClassType(ctorClass.packageName(), ctorClass.name(), List.of());
                 }
                 for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                // String API: métodos que devolvem Int (indexOf, lastIndexOf,
+                // length, compareTo...) — sem isso o var local infere Unknown
+                // e o backend emite aload+if_icmp* (VerifyError)
+                if (mc.receiver() != null) {
+                    Type recv = inferType(mc.receiver(), scope);
+                    if (Type.isString(recv) || recv instanceof Type.NullableType nt && Type.isString(nt.inner())) {
+                        yield switch (mc.methodName()) {
+                            case "indexOf", "lastIndexOf", "length", "size", "count",
+                                 "compareTo", "compareToIgnoreCase", "hashCode" -> Type.PrimitiveType.INT;
+                            case "isEmpty" -> Type.PrimitiveType.BOOL;
+                            default -> Type.UnknownType.UNKNOWN;
+                        };
+                    }
+                }
                 yield Type.UnknownType.UNKNOWN;
             }
             case NewExpr ne -> {

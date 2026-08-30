@@ -674,10 +674,10 @@ class JvmBackend implements Backend {
                     boolean isLong = isPrimitiveOf(kb.operandType(), "long");
                     boolean isFloat = isPrimitiveOf(kb.operandType(), "float");
                     boolean isDouble = isPrimitiveOf(kb.operandType(), "double");
+                    // Unknown NÃO é referência (int não-inferido também infere Unknown)
                     boolean isRef = kb.operandType() instanceof Type.ClassType
                             || kb.operandType() instanceof Type.ArrayType
-                            || kb.operandType() instanceof Type.TypeVariable
-                            || kb.operandType() instanceof Type.UnknownType;
+                            || kb.operandType() instanceof Type.TypeVariable;
                     int cmpOpcode;
                     if (isRef) {
                         cmpOpcode = switch (kb.op()) {
@@ -751,10 +751,11 @@ class JvmBackend implements Backend {
             boolean isLong = isPrimitiveOf(kc.operandType(), "long");
             boolean isFloat = isPrimitiveOf(kc.operandType(), "float");
             boolean isDouble = isPrimitiveOf(kc.operandType(), "double");
+            // Unknown NÃO é referência: int não-inferido (r.exitCode != 0)
+            // também infere Unknown — if_acmp sobre int = VerifyError
             boolean isRef = kc.operandType() instanceof Type.ClassType
                     || kc.operandType() instanceof Type.ArrayType
-                    || kc.operandType() instanceof Type.TypeVariable
-                    || kc.operandType() instanceof Type.UnknownType;
+                    || kc.operandType() instanceof Type.TypeVariable;
             if (isLong) {
                 mv.visitInsn(LCMP);
             } else if (isFloat) {
