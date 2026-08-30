@@ -221,4 +221,22 @@ class KofWebE2ETest {
         assertEquals("A", bodyOf(request(port, "GET /a HTTP/1.1\r\nHost: x\r\n\r\n")));
         assertEquals("B", bodyOf(request(port, "GET /b HTTP/1.1\r\nHost: x\r\n\r\n")));
     }
+
+    @Test
+    void sseAndWsGapOnNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("App.kf");
+        Files.writeString(source, """
+                main() {
+                    var app = web.app()
+                    app.sse("/events") { return "x" }
+                    app.ws("/chat") { return "x" }
+                }
+                """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        var diagnostics = result.diagnostics().getDiagnostics();
+        assertTrue(diagnostics.stream().anyMatch(d -> d.code().equals("WEB003")),
+                "Should have WEB003, got: " + diagnostics);
+        assertTrue(diagnostics.stream().anyMatch(d -> d.code().equals("WEB004")),
+                "Should have WEB004, got: " + diagnostics);
+    }
 }

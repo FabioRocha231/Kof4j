@@ -3458,7 +3458,7 @@ private Target target = Target.JVM;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                             && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
-                        if (target != Target.JVM) {
+                        if (target != Target.JVM && target != Target.ANDROID) {
                             if (currentDiagnostics != null) {
                                 currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                         mc.position() != null ? mc.position().line() : 0,
@@ -3624,11 +3624,18 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) {
-                            if (target != Target.JVM) {
-                                String webCode = "kof_web_listen_secure".equals(webCall.function()) ? "WEB002" : "WEB001";
-                                String webMsg = "kof_web_listen_secure".equals(webCall.function())
-                                        ? "web TLS: not available on the " + target + " target yet (WEB002)"
-                                        : "web: not available on the " + target + " target yet (WEB001)";
+                            if (target != Target.JVM && target != Target.ANDROID) {
+                                String webCode = KofWeb.gapCode(webCall.function());
+                                String webMsg = switch (webCode) {
+                                    case "WEB002" -> "web TLS: not available on the " + target
+                                            + " target yet (WEB002)";
+                                    case "WEB003" -> "web SSE: not available on the " + target
+                                            + " target yet (WEB003)";
+                                    case "WEB004" -> "web WebSocket: not available on the " + target
+                                            + " target yet (WEB004)";
+                                    default -> "web: not available on the " + target
+                                            + " target yet (WEB001)";
+                                };
                                 if (currentDiagnostics != null) {
                                     currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                             mc.position() != null ? mc.position().line() : 0,
@@ -3637,18 +3644,16 @@ private Target target = Target.JVM;
                                 }
                                 yield localIdx;
                             }
-                            if (KofWeb.isRouteMethod(mc.methodName())) {
-                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING, mc.methodName().toUpperCase()));
-                            }
-                            for (ExpressionNode arg : mc.arguments()) {
-                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
-                            }
                             List<Type> webParams = new ArrayList<>();
                             webParams.add(BuiltinTypes.STRING);
-                            if (KofWeb.isRouteMethod(mc.methodName())) {
+                            if (KofWeb.isRouteMethod(mc.methodName()) && !"ws".equals(mc.methodName())) {
+                                ops.add(new KofLoadLiteral(BuiltinTypes.STRING, mc.methodName().toUpperCase()));
                                 webParams.add(BuiltinTypes.STRING);
                             }
-                            webParams.addAll(webCall.parameterTypes());
+                            for (ExpressionNode arg : mc.arguments()) {
+                                webParams.add(inferExprType(arg, locals));
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
                             ops.add(new KofCall(KofWeb.APP, webCall.function(), webParams,
                                     webCall.returnType(), KofCallKind.FUNCTION));
                         }

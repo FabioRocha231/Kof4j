@@ -56,13 +56,19 @@ final class JvmWebRuntime {
                     };
                 }
 
+                public enum RouteKind { HTTP, SSE, WS }
+
+                record WebDispatchResult(RouteKind kind, String response) {}
+
                 public static final class WebRoute {
                     final String method;
                     final String[] segments;
                     final boolean[] params;
                     final Object handler;
+                    final RouteKind kind;
 
-                    WebRoute(String method, String path, Object handler) {
+                    WebRoute(RouteKind kind, String method, String path, Object handler) {
+                        this.kind = kind;
                         this.method = method;
                         String[] raw = path.split("/");
                         this.segments = new String[raw.length];
@@ -148,9 +154,23 @@ final class JvmWebRuntime {
                 public static void kof_web_route(String appId, String method, String path, Object handler) {
                     if (handler == null) throw new IllegalArgumentException("route handler is null");
                     String m = method.toUpperCase();
-                    if ("WS".equals(m)) m = "GET";
-                    if ("SSE".equals(m)) m = "GET";
-                    kof_web_app(appId).routes.add(new WebRoute(m, path, handler));
+                    if ("SSE".equals(m) || "WS".equals(m)) {
+                        throw new IllegalArgumentException(
+                                "route method " + m + " requires kof_web_sse_route/kof_web_ws_route");
+                    }
+                    kof_web_app(appId).routes.add(new WebRoute(RouteKind.HTTP, m, path, handler));
+                }
+
+                public static void kof_web_sse_route(String appId, String method, String path, Object handler) {
+                    if (handler == null) throw new IllegalArgumentException("route handler is null");
+                    kof_web_app(appId).routes.add(
+                            new WebRoute(RouteKind.SSE, method.toUpperCase(), path, handler));
+                }
+
+                public static void kof_web_ws_route(String appId, String path, Object handler) {
+                    if (handler == null) throw new IllegalArgumentException("route handler is null");
+                    kof_web_app(appId).routes.add(
+                            new WebRoute(RouteKind.WS, "WS", path, handler));
                 }
 
                 public static void kof_web_use(String appId, Object handler) {
