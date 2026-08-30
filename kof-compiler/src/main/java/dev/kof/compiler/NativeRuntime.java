@@ -1089,6 +1089,15 @@ final class NativeRuntime {
             .globl kof_print_string
             .type kof_print_string, @function
             kof_print_string:
+                testq %rdi, %rdi
+                jnz .Lkof_print_string_ok
+                leaq .Lkof_null_str(%rip), %rsi
+                movq $4, %rdx
+                movq $1, %rax
+                movq $1, %rdi
+                syscall
+                ret
+            .Lkof_print_string_ok:
                 movq %rdi, %rsi
                 addq $24, %rsi
                 movl 16(%rdi), %edx
@@ -5505,6 +5514,7 @@ final class NativeRuntime {
             kof_cache_get:
                 pushq %rbx
                 pushq %r12
+                pushq %r13
                 movq %rdi, %rbx
                 xorq %r12, %r12
             .kof_cache_get_loop:
@@ -5521,12 +5531,13 @@ final class NativeRuntime {
                 movq kof_cache_exps(,%r12,8), %rax
                 testq %rax, %rax
                 jz .kof_cache_get_hit
-                movq %rax, %rdi
+                movq %rax, %r13
                 call kof_time_now
-                cmpq %rax, %rdi
-                jg .kof_cache_get_expired
+                cmpq %rax, %r13
+                jle .kof_cache_get_expired
             .kof_cache_get_hit:
                 movq kof_cache_vals(,%r12,8), %rax
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -5539,6 +5550,7 @@ final class NativeRuntime {
                 jmp .kof_cache_get_loop
             .kof_cache_get_miss:
                 xorq %rax, %rax
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -5565,26 +5577,31 @@ final class NativeRuntime {
                 pushq %rbx
                 pushq %r12
                 pushq %r13
+                pushq %r14
                 movq %rdi, %rbx
                 movq %rsi, %r12
                 movl %edx, %r13d
                 xorq %rax, %rax
                 call kof_cache_find_slot
-                movq %rbx, kof_cache_keys(,%rax,8)
-                movq %r12, kof_cache_vals(,%rax,8)
+                movq %rax, %r14
+                pushq %r15
+                movq %rbx, kof_cache_keys(,%r14,8)
+                movq %r12, kof_cache_vals(,%r14,8)
                 testl %r13d, %r13d
                 jz .kof_cache_set_ttl_noexp
                 movl %r13d, %edi
                 movq $1000, %rax
                 mul %rdi
-                movq %rax, %rdi
+                movq %rax, %r15
                 call kof_time_now
-                addq %rax, %rdi
-                movq %rdi, kof_cache_exps(,%rax,8)
+                addq %r15, %rax
+                movq %rax, kof_cache_exps(,%r14,8)
                 jmp .kof_cache_set_ttl_done
             .kof_cache_set_ttl_noexp:
-                movq $0, kof_cache_exps(,%rax,8)
+                movq $0, kof_cache_exps(,%r14,8)
             .kof_cache_set_ttl_done:
+                popq %r15
+                popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
@@ -5595,6 +5612,7 @@ final class NativeRuntime {
             kof_cache_ttl:
                 pushq %rbx
                 pushq %r12
+                pushq %r13
                 movq %rdi, %rbx
                 xorq %r12, %r12
             .kof_cache_ttl_loop:
@@ -5611,25 +5629,31 @@ final class NativeRuntime {
                 movq kof_cache_exps(,%r12,8), %rax
                 testq %rax, %rax
                 jz .kof_cache_ttl_noexp
-                movq %rax, %rdi
+                movq %rax, %r13
                 call kof_time_now
+                movq %r13, %rdi
                 subq %rax, %rdi
                 js .kof_cache_ttl_expired
                 movq %rdi, %rax
                 movq $1000, %rcx
                 xorq %rdx, %rdx
                 divq %rcx
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
             .kof_cache_ttl_noexp:
                 movq $-1, %rax
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
             .kof_cache_ttl_expired:
                 movq $0, kof_cache_keys(,%r12,8)
+                movq $0, kof_cache_vals(,%r12,8)
+                movq $0, kof_cache_exps(,%r12,8)
                 movq $-1, %rax
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -5638,11 +5662,13 @@ final class NativeRuntime {
                 jmp .kof_cache_ttl_loop
             .kof_cache_ttl_miss:
                 movq $-1, %rax
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
             .kof_cache_ttl_miss2:
                 movq $-1, %rax
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -5695,18 +5721,32 @@ final class NativeRuntime {
             .globl kof_cache_find_slot
             .type kof_cache_find_slot, @function
             kof_cache_find_slot:
+                pushq %rbx
+                pushq %r12
+                xorq %r12, %r12
+            .kof_cache_find_existing:
+                cmpq $64, %r12
+                jge .kof_cache_find_first_empty
+                movq kof_cache_keys(,%r12,8), %rax
+                testq %rax, %rax
+                jz .kof_cache_find_first_empty
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_string_equals
+                testq %rax, %rax
+                jnz .kof_cache_find_done
+                incq %r12
+                jmp .kof_cache_find_existing
+            .kof_cache_find_first_empty:
+                cmpq $64, %r12
+                jl .kof_cache_find_done
                 xorq %rax, %rax
-            .kof_cache_find_loop:
-                cmpq $64, %rax
-                jge .kof_cache_find_full
-                movq kof_cache_keys(,%rax,8), %rcx
-                testq %rcx, %rcx
-                jz .kof_cache_find_done
-                incq %rax
-                jmp .kof_cache_find_loop
-            .kof_cache_find_full:
-                xorq %rax, %rax
+                jmp .kof_cache_find_ret
             .kof_cache_find_done:
+                movq %r12, %rax
+            .kof_cache_find_ret:
+                popq %r12
+                popq %rbx
                 ret
             """);
     }
