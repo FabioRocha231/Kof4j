@@ -7,6 +7,17 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## Unreleased
+
+### Added
+- Native JVM WebSocket support (RFC 6455 handshake + frames + context calls)
+- Native JVM Server-Sent Events support (streaming + context calls)
+- `WEB003` / `WEB004` compile-time diagnostics for SSE/WS on non-JVM targets
+
+### Changed
+- `app.ws(...)` and `app.sse(...)` are no longer aliases of GET; they now dispatch to dedicated routes
+- WebSocket connections stay open after the handshake; the frame loop handles PING/PONG/CLOSE/oversized/unmasked/fragmented
+
 ## [0.1.0] - 2026-08-25
 
 Primeira release estável da plataforma base — P0 (ecossistema) e P1

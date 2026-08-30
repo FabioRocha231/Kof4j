@@ -237,7 +237,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) |
-| kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
+| kof.web (`web.app()`, HTTP/SSE/WS, middleware) | ✅ | WEB001/002/003/004 | WEB001/002/003/004 |
 | kof.http (`http.get/post/put/delete/status`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop) |
 | kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
 | kof.mq (publish/subscribe/queue) | ✅ | MQ001 | ✅ |
@@ -266,7 +266,7 @@ spawn {
 - Zero API de plataforma exposta (Thread/Runnable são internos do runtime).
 - Ver: `docs/concurrency.md`.
 
-### HTTP (`kof serve`)
+### HTTP, SSE e WebSocket (`web.app()`)
 
 API legada (handler top-level):
 
@@ -298,21 +298,35 @@ main() {
     app.get("/users/:id") {
         return "user " + param("id") + " q=" + query("name")
     }
-    app.post("/user") {
-        var user = json.decode<User>(body())
-        return json.encode(user)
+    app.sse("/events/:room") {
+        var r = param("room")
+        sse("joined:" + r)
+        sse("tick")
+    }
+
+    app.ws("/chat") {
+        var m = wsMessage()
+        if (m == "bye") {
+            return
+        }
+        wsSend("echo: " + m)
     }
     app.listen(8080)
 }
 ```
 
 - `web.app()` + rotas com lambda trailing; path params (`:id`), query,
-  headers, body, `method()`, `path()`; middleware `app.use { ... }`.
-- Engine HTTP gerado dentro do runtime do programa (sem servlet container,
-  sem Spring); cada conexão em virtual thread.
+  headers, body, `method()`, `path()`, `status()`, `headerSet()`; middleware
+  `app.use { ... }`.
+- `app.sse(...)` usa `sse(...)` para enviar eventos; `app.ws(...)` usa
+  `wsMessage()`/`wsSend(...)` para receber/responder frames de texto.
+- Engine HTTP/SSE/WebSocket gerado dentro do runtime do programa (sem servlet
+  container, sem Spring); cada conexão em virtual thread.
 - `kof serve <file.kf>` detecta `main()` e executa apps `web.app()`;
   a API legada `handle(...)` continua funcionando.
-- Ver: `docs/stdlib-web.md` e `KofWebE2ETest` (9 testes E2E com sockets reais).
+- SSE/WebSocket: JVM apenas; JS/Native emitem `WEB003`/`WEB004`.
+- Ver: `docs/stdlib-web.md`, `KofWebE2ETest`, `KofWebSseE2ETest`,
+  `KofWebWsE2ETest`, `KofWsFrameTest` e `KofWebStreamE2ETest`.
 
 ### Configuração nativa (`kof.config`)
 
@@ -513,7 +527,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 **P2 — Web completa (próxima listinha):**
 5. ✅ Resposta rica `status(201, body)`/`headerSet("X","y")` `JVM` `201 Created 202 Accepted` `X-Custom/X-Test` `KofWebE2ETest 9/9` (27/08) `Native WEB002` `JS stub`
 6. ✅ `kof.cache` `get/set/set(key,v,ttl)/ttl/delete/clear` — ✅ JVM/Native/JS (30/08; fix nativo: clobber de `%rax/%rdi` em `set_ttl/get/ttl` + `println(null)` segfault; `KofCacheE2ETest 5/5 x3 targets`)
-7. `WebSocket` `app.ws("/chat") { }` + `SSE`
+7. ✅ `WebSocket` `app.ws("/chat") { wsMessage() ... wsSend(...) }` + `SSE`
+   `app.sse(...) { sse(...) }` — JVM (30/08); JS/Native emitem `WEB004`/`WEB003`;
+   `KofWebWsE2ETest`/`KofWebSseE2ETest`/`KofWsFrameTest`/`KofWebStreamE2ETest`
 8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM `every/at/cancel` `kof_scheduler_every` `ScheduledExecutor` + JS `setInterval` `kofSchedulerEvery` `27/08` `scheduler.every(100) job-1` `JVM:job-1 JS:kofSchedulerEvery` `KofTimeE2ETest 5/0` `Native SCHED001`)
 9. `kof.http` client já ✅, falta `HTTP/2`/`retry`/`timeout`/`circuit breaker`
 

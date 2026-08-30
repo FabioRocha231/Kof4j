@@ -165,7 +165,7 @@ A visão de longo prazo é permitir construir backends modernos sem Spring.
 Não reimplementar Spring. Em vez disso, transformar capacidades recorrentes em primitivas do Kof Runtime.
 
 Objetivos futuros:
-- HTTP / REST / WebSocket / SSE;
+- HTTP / REST (WebSocket/SSE: JVM concluído, JS/Native follow-up);
 - HTTP client;
 - JSON;
 - RPC;
@@ -191,9 +191,9 @@ api "/users" {
 ```
 
 Estado atual: 🟡 parcial — HTTP/rotas (`kof.web` + TLS `listenSecure`),
-JSON, configuração (`kof.config` free-list Native), logging (`kof.log` Native), segurança
+WebSocket/SSE no JVM, JSON, configuração (`kof.config` free-list Native), logging (`kof.log` Native), segurança
 (`kof.security` + G9), concorrência (`spawn` + `await`/`Handle<T>`), `kof.http` (JVM+JS), `List map/filter/reduce`, `Box<T>`, pattern matching e `String?` implementados (0.2.0-beta).
-Faltam: WebSocket/SSE, HTTP client no Native (HTTP002), RPC,
+Faltam: HTTP client no Native (HTTP002), RPC,
 eventos/filas/pub-sub fora do JVM, cache, tracing, scheduling/cron, Native aarch64 codegen.
 Ver `docs/plan-spring-independence.md` (Fases 5-14).
 
@@ -594,6 +594,8 @@ contratos estabilizarem.
 - Documentação (`docs/http.md`) ✅;
 - Path parameters (`:id`), query, headers, middleware `app.use` ✅
   (stack `web.app()` — Fase 1 do plano Spring independence).
+- WebSocket/SSE no JVM (`app.ws`/`app.sse`, RFC 6455 frames,
+  `WEB003`/`WEB004` fora do JVM) ✅ (30/08); JS/Native follow-up.
 
 ### Fase 4 — Security
 

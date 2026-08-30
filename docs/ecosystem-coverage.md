@@ -54,7 +54,7 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 | `kof.time` | `now()`, `sleep` (JVM/Native/JS), `interval`/`cancel` (JVM) | KofTime.java | KofTimeE2ETest (5) |
 | `kof.json` | `json.encode/decode<T>` | JvmRuntime/NativeRuntime/JsBackend | JsonE2ETest (14) |
 | `kof.security` | `passwords.*`, `crypto.*`, `jwt.*`, `secrets.*`, `security.*`, `auth.*` | KofSecurity.java | KofSecurityTest (22) |
-| `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8) |
+| `kof.web` | `web.app()`, `app.get/post/.../use/listen/listenSecure/port/close`, `app.sse`, `app.ws`, `param/query/header/body/method/path/status/headerSet/setHeader`, `sse`, `wsMessage`, `wsSend` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofWebSseE2ETest, KofWebWsE2ETest, KofWsFrameTest, KofWebStreamE2ETest, KofHttpServerTest (8) |
 | `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) — JVM+JS (JS via `Java HttpClient` interop) | KofHttp.java + KofJsRunner | KofHttpE2ETest (4, JVM+JS) |
 | `kof.mq` | `mq.publish/subscribe/unsubscribe`, `queue/push/pop/size` (JVM + JS; Native MQ001) | KofMq.java | KofMqE2ETest (4) |
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
@@ -82,15 +82,22 @@ Documentação: `docs/security.md`; testes: `KofSecurityTest` (22).
 ## 2.4 kof.web — inventário
 
 - `web.app()` → rotas `app.get/post/put/delete/patch/options(path) { }`,
-  middleware `app.use { }`, `app.listen(port)` (bloqueante, virtual
-  threads), `app.port()`, `app.close()`.
-- Contexto: `param/query/header/body/method/path` (ThreadLocal por request).
+  `app.sse(path) { sse(...) }`, `app.ws(path) { wsMessage()/wsSend(...) }`,
+  middleware `app.use { }`, `app.listen(port)` / `app.listenSecure(port)`
+  (bloqueante, virtual threads), `app.port()`, `app.close()`.
+- Contexto: `param/query/header/body/method/path`,
+  `status(code, body)`, `headerSet`/`setHeader`, `sse`, `wsMessage`, `wsSend`
+  (ThreadLocal por request).
 - Path params `:id`; query e headers case-insensitive; Content-Type
   automático (JSON se `{`/`[`); 404/500; middlewares em cadeia.
-- Engine: `WebRoute/WebRequest` gerados no KofRuntime; `KofHttpServer`
-  (legado `kof serve`, `ReflectiveHandler`).
-- Targets: JVM ✅; Native ❌ (sem `kof_web_*` no asm); JS ❌ WEB001.
-- Tests: `KofWebE2ETest` (9, sockets reais), `KofHttpServerTest` (8).
+- Engine: `WebRoute` (kind HTTP/SSE/WS), `SseConnection`, `WsConnection`,
+  `WebRequest` gerados no KofRuntime; `KofHttpServer` (legado `kof serve`,
+  `ReflectiveHandler`).
+- Targets: JVM ✅ (HTTP + TLS + SSE + WebSocket); Native ❌
+  `WEB001/002/003/004`; JS ❌ `WEB001/002/003/004`.
+- Tests: `KofWebE2ETest` (9, sockets reais), `KofWebSseE2ETest`,
+  `KofWebWsE2ETest`, `KofWsFrameTest`, `KofWebStreamE2ETest`,
+  `KofHttpServerTest` (8).
 - Docs: `docs/stdlib-web.md`.
 
 ## 2.5 Runtimes
@@ -160,8 +167,8 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | multipart | `PLANNED` | — | — | — | — | — |
 | content negotiation | `PLANNED` | — | — | — | — | — |
 | error handling | 404/500 + mensagem | y | – | – | KofWebE2ETest | web |
-| WebSocket | `PLANNED` | — | — | — | — | roadmap.md |
-| SSE | `PLANNED` | — | — | — | — | — |
+| WebSocket | `SHIPPED (JVM only)` — `app.ws("/chat") { wsMessage() ... wsSend(...) }` | y | – WEB004 | – WEB004 | KofWebWsE2ETest, KofWebStreamE2ETest | web |
+| SSE | `SHIPPED (JVM only)` — `app.sse("/events") { sse("...") }` | y | – WEB003 | – WEB003 | KofWebSseE2ETest, KofWebStreamE2ETest | web |
 | gRPC / GraphQL / SOAP | `EXTERNAL`/`PLANNED` (interop) | — | — | — | — | roadmap.md |
 | REST documentation (OpenAPI) | `PLANNED` | — | — | — | — | roadmap.md |
 | HATEOAS | `NA` (sem framework pesado) | — | — | — | — | — |
@@ -438,9 +445,10 @@ Princípios mantidos:
 
 ## P1
 
+WebSocket/SSE: SHIPPED (JVM only); JS/Native follow-up.
 messaging (`kof.concurrent.Queue`, event bus, adapters Kafka/AMQP),
-caching, resilience (retry/timeout/circuit breaker), WebSocket/SSE,
-GraphQL/gRPC (interop), HTTP/2.
+caching, resilience (retry/timeout/circuit breaker), GraphQL/gRPC (interop),
+HTTP/2.
 
 ## P2
 

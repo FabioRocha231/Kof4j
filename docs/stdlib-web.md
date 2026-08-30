@@ -1,8 +1,8 @@
 # stdlib web — Stack Web Nativa do Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; `kof.http` JVM+JS)
-**Status:** implementado (Fase 1 do plano de independência do Spring) — `kof serve` + `kof.http` JVM+JS
+**Última atualização:** 30 de agosto de 2026
+**Versão:** 0.2.6-beta
+**Status:** implementado no JVM — HTTP + TLS + SSE + WebSocket; JS/Native reportam `WEB001`-`WEB004`
 
 ---
 
@@ -18,45 +18,25 @@ container, sem Spring MVC, sem annotations.
 ## 2. Exemplo completo
 
 ```kof
-record User(String name, Int age)
-
 main() {
     var app = web.app()
-
-    // Middleware: retorna null para continuar; String para responder direto
-    app.use {
-        if (header("x-auth") == "secret") {
-            return null
-        }
-        return "{\"error\": \"unauthorized\"}"
-    }
 
     app.get("/hello") {
         return "Hello from Kof"
     }
 
-    // Path parameter + query string
-    app.get("/users/:id") {
-        return "user " + param("id") + " q=" + query("name")
+    app.sse("/events/:room") {
+        var r = param("room")
+        sse("joined:" + r)
+        sse("tick")
     }
 
-    app.get("/agent") {
-        return "agent=" + header("user-agent")
-    }
-
-    app.get("/me") {
-        return method() + " " + path()
-    }
-
-    // Corpo da request
-    app.post("/echo") {
-        return "got:" + body()
-    }
-
-    // JSON tipado de ponta a ponta
-    app.post("/user") {
-        var user = json.decode<User>(body())
-        return json.encode(user)
+    app.ws("/chat") {
+        var m = wsMessage()
+        if (m == "bye") {
+            return
+        }
+        wsSend("echo: " + m)
     }
 
     app.listen(8080)
@@ -68,6 +48,14 @@ kof serve app.kf              # compila e executa (a app chama app.listen)
 kof run app.kf                # idem — o programa inicia o próprio servidor
 ```
 
+## Suporte por target
+
+| Target | HTTP + TLS | SSE | WebSocket |
+|--------|-----------|-----|-----------|
+| JVM | ✅ | ✅ | ✅ |
+| JS | ❌ `WEB001`/`WEB002` | ❌ `WEB003` | ❌ `WEB004` |
+| Native | ❌ `WEB001`/`WEB002` | ❌ `WEB003` | ❌ `WEB004` |
+
 ## 3. API
 
 ### `web.app()`
@@ -77,22 +65,28 @@ Cria uma aplicação. O valor retornado (`kof.web.App`) é um handle; em runtime
 
 ### Rotas
 
-| Chamada | Método HTTP |
-|---------|-------------|
-| `app.get(path) { ... }` | GET |
-| `app.post(path) { ... }` | POST |
-| `app.put(path) { ... }` | PUT |
-| `app.delete(path) { ... }` | DELETE |
-| `app.patch(path) { ... }` | PATCH |
-| `app.options(path) { ... }` | OPTIONS |
+| Chamada | Tipo |
+|---------|------|
+| `app.get(path) { ... }` | HTTP GET |
+| `app.post(path) { ... }` | HTTP POST |
+| `app.put(path) { ... }` | HTTP PUT |
+| `app.delete(path) { ... }` | HTTP DELETE |
+| `app.patch(path) { ... }` | HTTP PATCH |
+| `app.options(path) { ... }` | HTTP OPTIONS |
+| `app.sse(path, handler)` | SSE (JVM) |
+| `app.ws(path, handler)` | WebSocket (JVM) |
 
 O corpo `{ ... }` é um lambda trailing — o handler da rota. Um handler pode
 também ser passado explicitamente: `app.get("/x", handler)`.
 
 - `path` suporta segmentos com parâmetro: `/users/:id` (prefixo `:`).
-- O handler retorna `String` (corpo da resposta, 200) ou `null` (404).
-- A resposta detecta JSON automaticamente quando o corpo começa com `{` ou `[`
-  (`Content-Type: application/json`).
+- HTTP: o handler retorna `String` (corpo da resposta, 200) ou `null` (404);
+  a resposta detecta JSON automaticamente quando o corpo começa com `{` ou `[`.
+- SSE: o handler é chamado uma vez por conexão; `sse("...")` envia um evento
+  `data: ...` e a conexão fica aberta até o handler retornar ou o cliente fechar.
+- WebSocket: o handler é chamado por mensagem de texto; `wsMessage()` expõe a
+  mensagem atual e `wsSend("...")` envia um frame de texto. A conexão fica
+  aberta até CLOSE ou idle timeout.
 
 ### Middleware
 
@@ -104,6 +98,7 @@ Retorno `null` → continua; retorno `String` → resposta imediata (200).
 | Chamada | Descrição |
 |---------|-----------|
 | `app.listen(port)` | Inicia o servidor (bloqueante) em `0.0.0.0` |
+| `app.listenSecure(port)` | Inicia servidor HTTPS (JVM, certificado self-signed) |
 | `app.port()` | Porta efetivamente vinculada (útil com `listen(0)`) |
 | `app.close()` | Encerra o servidor (graceful shutdown) |
 
@@ -119,30 +114,41 @@ Retorno `null` → continua; retorno `String` → resposta imediata (200).
 | `body()` | Corpo cru da request |
 | `method()` | Método HTTP ("GET", "POST", ...) |
 | `path()` | Caminho da request |
+| `status(code, body)` | Define o status HTTP e retorna o body |
+| `headerSet(name, value)` / `setHeader(name, value)` | Define header de resposta |
+| `sse(data)` | Dentro de `app.sse`, envia um evento SSE |
+| `wsMessage()` | Dentro de `app.ws`, retorna a mensagem de texto atual |
+| `wsSend(data)` | Dentro de `app.ws`, envia um frame de texto |
 
 O contexto é por-request (ThreadLocal em runtime) — handlers podem ser
 concorrentes sem estado compartilhado.
 
 ## 4. Concorrência
 
-Cada conexão é tratada em uma virtual thread (JVM). O programador escreve
+Cada conexão/rota é tratada em virtual threads (JVM). O programador escreve
 handlers síncronos; o runtime decide a estratégia.
 
-## 5. Limitações atuais (Fase 1, 0.2.0-beta)
+## 5. Limitações atuais
 
-- Status codes customizados ainda não (200/404/500 automáticos).
-- Headers de resposta customizados ainda não.
-- O target `js` reporta `WEB001` (gap documentado, `kof.http` já funciona no JS via `Java HttpClient`).
-- O target `native` (`x86_64`/`riscv64`/`aarch64`) não possui servidor web ainda (`WEB002` TLS também).
+- SSE/WebSocket existem somente no JVM. JS e Native não têm backend web e
+  emitem `WEB003` (SSE) / `WEB004` (WebSocket); HTTP/TLS já emitem
+  `WEB001`/`WEB002`.
+- Sem cap de conexões concorrentes.
+- Sem limite configurável de frame/message no WebSocket.
+- Sem deadline por evento no SSE.
+- Hardening (limites configuráveis, backpressure, deadlines) é PR futuro.
 - `kof.http` client — ✅ JVM+JS (27/08), Native `HTTP002` pendente.
 - Middleware/rotas de outros métodos HTTP além dos listados: futuramente.
 
-## 6. Testes (0.2.0-beta)
+## 6. Testes
 
-`KofWebE2ETest` 9 + `KofHttpServerTest` 8 + `KofHttpE2ETest` 4 (JVM+JS, 27/08) + `KofWebTlsTest` 5 — cada teste compila um programa Kof, executa o
-bytecode/JS como subprocesso e exercita o servidor/cliente com sockets reais
-(routing, path params, query, headers, body, JSON round-trip, middleware,
-404, múltiplas rotas com lambda trailing, `http.get/post/put/delete` + TLS).
+`KofWebE2ETest` 9 + `KofWebSseE2ETest` + `KofWebWsE2ETest` +
+`KofWsFrameTest` + `KofWebStreamE2ETest` + `KofWebTlsTest` 5 + `KofHttpServerTest`
+8 + `KofHttpE2ETest` 4 (JVM+JS, 27/08) — cada teste compila um programa Kof,
+executa o bytecode/JS como subprocesso e exercita o servidor/cliente com
+sockets reais (routing, path params, query, headers, body, JSON round-trip,
+middleware, 404, múltiplas rotas, SSE, WebSocket, `http.get/post/put/delete`
++ TLS).
 
 ## 7. Arquitetura
 
@@ -153,10 +159,11 @@ Kof IR (KofCall kof_web_*)
    ↓ JvmBackend
 bytecode JVM
    ↓
-dev.kof.runtime.KofRuntime (gerado)  ← engine HTTP embutido no programa
+dev.kof.runtime.KofRuntime (gerado)  ← engine HTTP/SSE/WS embutido no programa
    ├── KOF_WEB_APPS (registro de apps)
-   ├── WebRoute (method, segments, params, handler)
+   ├── WebRoute (method, segments, params, handler, kind: HTTP/SSE/WS)
    ├── WebRequest (method, path, query, headers, body)
+   ├── SseConnection / WsConnection / WsFrame
    └── accept loop (virtual threads) + dispatch
 ```
 

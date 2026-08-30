@@ -51,7 +51,8 @@
 | `kof.log` | ✅ | ✅ | LOG001 | asm Native |
 | `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM asm |
 | `kof.db`/`kof.orm` | ✅ | ✅/ORM001 | DB001/ORM001 | SQLite nativo; MySQL `kof_db_mysql_scramble` |
-| `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
+| `web.*` (`web.app()`, HTTP, middleware, TLS `listenSecure`) | ✅ | WEB001/WEB002 | WEB001/WEB002 | `KofWebTlsTest` |
+| WebSocket/SSE (`app.ws`/`app.sse`) | ✅ | WEB004/WEB003 | WEB004/WEB003 | `KofWebWsE2ETest`/`KofWebSseE2ETest` |
 | `switch` pattern matching `case String s` | ✅ | ✅ | ✅ | 0.2.0-beta |
 | `switch` record destructuring `Point(x,y)` | ✅ | ✅ | ✅ | 0.2.0-beta |
 | `String?` null safety básica | ✅ | ✅ | ✅ | 0.2.0-beta (`Type?`) |
@@ -61,6 +62,10 @@
 | `KofCcompiler` (`kof c`) C subset | — | ✅ x86_64 native-only | — | `kof_c`, while/if/deref &/* |
 | `native.riscv64` / `native.aarch64` | — | riscv64 stable / aarch64 placeholder | — | 0.2.0 target separation |
 
+> Android usa o backend JVM, mas `web.*` continua gated por
+> `WEB001`/`WEB002`/`WEB003`/`WEB004`; SSE/WebSocket não são liberados no
+> Android.
+
 ## Gaps documentados (não mascarados)
 
 | Gap | Diagnostic | Status |
@@ -68,6 +73,8 @@
 | spawn/await no Native | `CONC001` | planned (virtual threads é JVM-only) |
 | spawn/await no JS | `CONC003` | planned (modelo event-loop) |
 | web TLS no Native/JS | `WEB002` | planned |
+| web SSE no Native/JS/Android | `WEB003` | planned |
+| web WebSocket no Native/JS/Android | `WEB004` | planned |
 | kof.http no Native | `HTTP002` | planned (JS now ✅) |
 | JSON Float/Double | `JSN001` | planned |
 | Native aarch64 codegen | `NATIVE002` | placeholder (target separation done) |
