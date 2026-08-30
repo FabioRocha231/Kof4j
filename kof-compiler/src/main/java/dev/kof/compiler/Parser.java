@@ -1197,9 +1197,26 @@ class Parser {
                 }
                 if (check(TokenType.LBRACE)) {
                     // trailing lambda call: receiver.method { ... } — the
-                    // block is the final argument of the method call
-                    expr = new MethodCallExpr(pos(), expr, field, List.of(),
-                            List.of(new LambdaExpr(pos(), List.of(), parseBlock())));
+                    // block is the final argument of the method call.
+                    // With explicit parameters (receiver.method { s -> ... }
+                    // or { s: Int -> ... }) the block is a typed lambda: the
+                    // remaining statements up to '}' form the lambda body.
+                    if (looksLikeLambdaBlockParams()) {
+                        List<FormalParameterNode> params = parseLambdaBlockParams();
+                        expect(TokenType.ARROW, "Expected '->'", "PARSE042");
+                        // the opening '{' was consumed by the parameter list;
+                        // the lambda body is the statement list up to '}'
+                        List<StatementNode> body = new ArrayList<>();
+                        while (!check(TokenType.RBRACE) && !atEnd()) {
+                            body.add(parseStatement());
+                        }
+                        expect(TokenType.RBRACE, "Expected '}'", "PARSE025");
+                        expr = new MethodCallExpr(pos(), expr, field, List.of(),
+                                List.of(new LambdaExpr(pos(), params, body)));
+                    } else {
+                        expr = new MethodCallExpr(pos(), expr, field, List.of(),
+                                List.of(new LambdaExpr(pos(), List.of(), parseBlock())));
+                    }
                 } else {
                     expr = new FieldAccessExpr(pos(), expr, field);
                 }
@@ -1332,6 +1349,60 @@ class Parser {
             i++;
         }
         return false;
+    }
+
+    /**
+     * Trailing-lambda block with explicit parameters:
+     * {@code method { s -> ... }}, {@code method { s: Int -> ... }} or
+     * {@code method { a, b -> ... }}. A plain block ({@code method { ... }})
+     * returns false — statements start with keywords/identifiers, and an
+     * identifier followed by `->` or `,` or `: type ->` is a parameter list.
+     */
+    private boolean looksLikeLambdaBlockParams() {
+        int i = pos + 1; // first token inside the block
+        if (i >= tokens.size()) return false;
+        int look = 0;
+        // scan a small window: ident (: type)? (, ident (: type)?)* ->
+        while (look < 8 && i + look < tokens.size()) {
+            TokenType t = tokens.get(i + look).type();
+            if (t == TokenType.ARROW) {
+                return look > 0;
+            }
+            if (t == TokenType.IDENTIFIER || isPrimitiveTypeToken(t)) {
+                look++;
+                // optional ": Type"
+                if (i + look < tokens.size() && tokens.get(i + look).type() == TokenType.COLON) {
+                    look++;
+                    // type reference: identifier or primitive type keyword
+                    if (i + look < tokens.size()
+                            && (tokens.get(i + look).type() == TokenType.IDENTIFIER
+                                    || isPrimitiveTypeToken(tokens.get(i + look).type()))) {
+                        look++;
+                    } else {
+                        return false;
+                    }
+                }
+                if (i + look < tokens.size() && tokens.get(i + look).type() == TokenType.COMMA) {
+                    look++;
+                    continue;
+                }
+                continue;
+            }
+            return false;
+        }
+        return false;
+    }
+
+    /** Parses {@code { s: Int -> ... }} parameter list (the LBRACE is current). */
+    private List<FormalParameterNode> parseLambdaBlockParams() {
+        expect(TokenType.LBRACE, "Expected '{'", "PARSE013");
+        List<FormalParameterNode> params = new ArrayList<>();
+        params.add(parseLambdaParameter());
+        while (check(TokenType.COMMA)) {
+            advance();
+            params.add(parseLambdaParameter());
+        }
+        return params;
     }
 
     private List<FormalParameterNode> parseLambdaParams() {
@@ -1567,6 +1638,14 @@ class Parser {
         return check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE,
                 TokenType.DOUBLE_TYPE, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE,
                 TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE);
+    }
+
+    private static boolean isPrimitiveTypeToken(TokenType t) {
+        return t == TokenType.INT_TYPE || t == TokenType.LONG_TYPE
+                || t == TokenType.FLOAT_TYPE || t == TokenType.DOUBLE_TYPE
+                || t == TokenType.BOOL_TYPE || t == TokenType.BYTE_TYPE
+                || t == TokenType.SHORT_TYPE || t == TokenType.CHAR_TYPE
+                || t == TokenType.STRING_TYPE;
     }
 
     private boolean check(TokenType... types) {

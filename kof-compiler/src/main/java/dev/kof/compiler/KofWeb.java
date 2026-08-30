@@ -68,6 +68,7 @@ final class KofWeb {
             case "param", "query", "header" -> true;
             case "body", "method", "path" -> true;
             case "status", "headerSet", "setHeader" -> true;
+            case "sse", "wsSend", "wsMessage" -> true;
             default -> false;
         };
     }
@@ -164,6 +165,15 @@ final class KofWeb {
                     : null;
             case "headerSet", "setHeader" -> argCount == 2
                     ? new WebCall("kof_web_header_set", STR, List.of(STR, STR))
+                    : null;
+            case "sse" -> argCount == 1
+                    ? new WebCall("kof_web_sse_send", STR, List.of(STR))
+                    : null;
+            case "wsSend" -> argCount == 1
+                    ? new WebCall("kof_web_ws_send", VOID, List.of(STR))
+                    : null;
+            case "wsMessage" -> argCount == 0
+                    ? new WebCall("kof_web_ws_message", STR, List.of())
                     : null;
             default -> null;
         };

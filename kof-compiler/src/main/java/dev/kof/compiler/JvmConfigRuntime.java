@@ -21,6 +21,18 @@ final class JvmConfigRuntime {
                     return kof_config_lookup(key);
                 }
 
+                public static String kof_config_required(String key) {
+                    String v = kof_config_lookup(key);
+                    if (v == null) {
+                        throw new IllegalStateException(
+                            "Kof config: missing required key '" + key
+                            + "' (searched KOF_CONFIG, env KOF_"
+                            + key.toUpperCase().replace('.', '_').replace('-', '_')
+                            + ", profile file and kof.config)");
+                    }
+                    return v;
+                }
+
                 public static String kof_config_str(String key, String def) {
                     String v = kof_config_lookup(key);
                     return v != null ? v : def;

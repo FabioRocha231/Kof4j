@@ -83,3 +83,83 @@ Kof source (.kf) → KofConfig (tabela compile-time)
 
 O compilador conhece cada chamada em compile-time; o runtime nunca é
 descoberto por reflection.
+
+## 8. Onde estamos vs. o padrão ouro (Spring/Quarkus) — auditoria honesta
+
+**Última revisão:** 30/08/2026 (0.2.4-beta, auditoria da Fase de Configuração)
+
+| Capacidade | kof.config hoje | Spring Boot | Status |
+|------------|-----------------|-------------|--------|
+| Arquivo de config | `kof.config` (key=value) | `application.properties` | ✅ equivalente |
+| Profiles | `KOF_PROFILE` → `kof.prod.config` | `spring.profiles.active` | ✅ equivalente |
+| Env por convenção | `server.port` → `KOF_SERVER_PORT` | `SERVER_PORT` (relaxed binding) | ✅ equivalente |
+| Typed com default | `config.int/str/bool/long` | `@Value` / `@ConfigurationProperties` | ✅ equivalente |
+| Falhar cedo (required) | ❌ `null` silencioso | falha no boot | ❌ **gaps** |
+| Config declarativa tipada | ❌ | ❌ (reflection em runtime) | 🎯 vantagem planejada |
+| Interpolação | ❌ | `${key}` | ❌ gap |
+| Descoberta de chaves | ❌ | Actuator `/env` | ❌ gap (mas há alternativa melhor: o compilador já conhece as chaves) |
+| Secrets | separados (`kof.security.secrets.get`, env-only) | `Environment` mistura tudo | ✅ Kof é mais seguro |
+
+### 8.1 Decisões de projeto (firmes)
+
+1. **O arquivo se chama `kof.config`** — não `application.properties` nem
+   `application.kof`. Consistência com `kof.log`, `kof.cache`, `kof.db`:
+   tudo do Kof vive no namespace `kof.*`. O "application.kof" da discussão
+   inicial já está atendido pelo nome certo.
+2. **Secret NUNCA vai no arquivo.** `kof.config` é comittável no git;
+   secrets vivem em env (`secrets.get`) — separação config/secret é
+   segurança, não conveniência. Padrão 12-factor; melhor que a prática
+   comum de misturar no mesmo arquivo.
+3. **Nunca reflection.** A precedência é implementada direto (JVM gerado,
+   asm nativo, `kof_platform` no JS). Sem PropertySource, sem relfection.
+
+### 8.2 Roadmap (na ordem de valor)
+
+**P1 — `config.required(key)` — falhar cedo.**
+```kof
+var url = config.required("database.url")   // erro de startup claro se ausente
+```
+Elimina a classe inteira de bugs de deploy (" rodou na minha máquina").
+Runtime: se ausente → `KofPanic` com a chave e a precedência consultada.
+Os 3 targets; pequeno.
+
+**P2 — Interpolação no arquivo.**
+```text
+# kof.config
+db.host = localhost
+db.url  = jdbc:h2://${db.host}/mem
+```
+Lookup recursivo com detecção de ciclo. Baixo custo, alto valor de DX.
+
+**P3 — `kof config gen` — template a partir do código.**
+O compilador JÁ conhece todas as chaves (compile-time dispatch). Um subcomando
+lista as chaves usadas + defaults e gera um `kof.config` de exemplo para
+deploy. Nenhum concorrente faz isso sem rodar a aplicação.
+
+**P3 — Config declarativa tipada (a visão do KOF_VS_SPRING §2).**
+```kof
+config App {
+    port    = 8080
+    db.url  = "jdbc:h2:mem"
+    debug   = false
+}
+```
+Um bloco na linguagem; o compilador valida chaves/tipos em compile-time,
+emite a classe `AppConfig` e sabe TODAS as chaves. Erro de digitação em
+config vira erro de compilação — nada no mercado faz isso (Spring resolve
+em runtime por reflection; Quarkus usa anotações + APT).
+Depende: parser de blocos nomeados, codegen. Fase própria, grande.
+
+**P4 — JS:** fechar o gap CONF001 (via `kof_platform` — o host já expõe
+`getenv`).
+
+### 8.3 O que NÃO faremos
+
+- Recarga automática de config (hot reload): complexidade de runtime alto,
+  valor baixo em ambientes containerizados (o pod reinicia).
+- Secrets em arquivo (mesmo cifrado): a env já é o contrato universal
+  (Kubernetes, systemd, CI). Nada de inventar formato de cofre.
+- YAML/TOML: o formato `key=value` com `#` cobre 100% dos casos reais de
+  config de app; YAML traz dependência e superfície de erro (indentação)
+  sem benefício. Se um dia precisar de estrutura, o P3 (bloco declarativo)
+  resolve com tipagem, não com indentação.

@@ -934,7 +934,7 @@ class SemanticAnalyzer {
                 if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())
                         && KofWeb.contextCall(mc.methodName(), mc.arguments().size()) != null) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
-                    yield BuiltinTypes.STRING;
+                    yield KofWeb.contextCall(mc.methodName(), mc.arguments().size()).returnType();
                 }
                 if ((mc.receiver() == null && KofScheduler.isSchedulerMethod(mc.methodName()))
                         || (mc.receiver() instanceof IdentifierExpr rid2 && KofScheduler.isSchedulerNamespace(rid2.name())
@@ -947,6 +947,22 @@ class SemanticAnalyzer {
                         && mc.arguments().size() == 1) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield Type.PrimitiveType.VOID;
+                }
+                if (mc.receiver() == null && "uiNodesLive".equals(mc.methodName())
+                        && mc.arguments().isEmpty()) {
+                    // kof.ui probe (testes de leak): nº de componentes vivos.
+                    yield Type.PrimitiveType.INT;
+                }
+                if (mc.receiver() == null && "emit".equals(mc.methodName())
+                        && mc.arguments().size() == 2) {
+                    // Fase 5: dispara evento (bubbling) — args inferidos.
+                    for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                    yield Type.PrimitiveType.VOID;
+                }
+                if (mc.receiver() == null && "storesLive".equals(mc.methodName())
+                        && mc.arguments().isEmpty()) {
+                    // kof.ui probe de leak de stores.
+                    yield Type.PrimitiveType.INT;
                 }
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     inferType(mc.arguments().get(0), scope);
@@ -991,6 +1007,14 @@ class SemanticAnalyzer {
                     inferType(mc.arguments().get(0), scope);
                     yield KofUi.VIEW;
                 }
+                if (mc.receiver() == null && KofUi.isConstructor(mc.methodName())
+                        && !mc.arguments().isEmpty() && mc.arguments().size() <= 3) {
+                    Type ct = KofUi.constructorType(mc.methodName());
+                    if (KofUi.isLayoutType(ct) || KofUi.isStore(ct)) {
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        yield ct;
+                    }
+                }
                 if (mc.receiver() == null && "Style".equals(mc.methodName()) && mc.arguments().size() == 4) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield KofUi.STYLE;
@@ -1012,6 +1036,11 @@ class SemanticAnalyzer {
                         && (mc.arguments().size() == 2 || mc.arguments().size() == 3)) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                     yield KofUi.FONT;
+                }
+                if (mc.receiver() == null && "Component".equals(mc.methodName())
+                        && mc.arguments().size() == 1) {
+                    inferType(mc.arguments().get(0), scope);
+                    yield KofUi.COMPONENT;
                 }
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
@@ -1385,7 +1414,10 @@ class SemanticAnalyzer {
                         && !KofUi.isConstructor(mc.methodName())
                         && !KofWeb.isContextFunction(mc.methodName())
                         && !KofScheduler.isSchedulerMethod(mc.methodName())
-                        && !"transaction".equals(mc.methodName())) {
+                        && !"transaction".equals(mc.methodName())
+                        && !"uiNodesLive".equals(mc.methodName())
+                        && !"emit".equals(mc.methodName())
+                        && !"storesLive".equals(mc.methodName())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                     boolean found = false;
@@ -1501,6 +1533,9 @@ class SemanticAnalyzer {
                     yield KofUi.COLOR;
                 }
                 Type recvType = inferType(fa.receiver(), scope);
+                if (KofUi.isComponent(recvType) && "state".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
+                }
                 if (KofProcess.isResult(recvType) && KofProcess.isField(fa.fieldName())) {
                     yield KofProcess.fieldType(fa.fieldName());
                 }

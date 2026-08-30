@@ -32,6 +32,16 @@ final class KofUi {
     static final Type IMAGE = new Type.ClassType("kof.ui", "Image", List.of());
     static final Type ICON = new Type.ClassType("kof.ui", "Icon", List.of());
     static final Type FONT = new Type.ClassType("kof.ui", "Font", List.of());
+    static final Type COMPONENT = new Type.ClassType("kof.ui", "Component", List.of());
+    static final Type EVENT = new Type.ClassType("kof.ui", "Event", List.of());
+    static final Type BOX = new Type.ClassType("kof.ui", "Box", List.of());
+    static final Type STACK = new Type.ClassType("kof.ui", "Stack", List.of());
+    static final Type SPACER = new Type.ClassType("kof.ui", "Spacer", List.of());
+    static final Type WRAP = new Type.ClassType("kof.ui", "Wrap", List.of());
+    static final Type GRID = new Type.ClassType("kof.ui", "Grid", List.of());
+    static final Type CENTER = new Type.ClassType("kof.ui", "Center", List.of());
+    static final Type ALIGN = new Type.ClassType("kof.ui", "Align", List.of());
+    static final Type STORE = new Type.ClassType("kof.ui", "Store", List.of());
 
     static boolean isColor(Type t) { return COLOR.equals(t); }
     static boolean isTheme(Type t) { return THEME.equals(t); }
@@ -47,6 +57,22 @@ final class KofUi {
     static boolean isImage(Type t) { return IMAGE.equals(t); }
     static boolean isIcon(Type t) { return ICON.equals(t); }
     static boolean isFont(Type t) { return FONT.equals(t); }
+    static boolean isComponent(Type t) { return COMPONENT.equals(t); }
+    static boolean isEvent(Type t) { return EVENT.equals(t); }
+    static boolean isBox(Type t) { return BOX.equals(t); }
+    static boolean isStack(Type t) { return STACK.equals(t); }
+    static boolean isSpacer(Type t) { return SPACER.equals(t); }
+    static boolean isWrap(Type t) { return WRAP.equals(t); }
+    static boolean isGrid(Type t) { return GRID.equals(t); }
+    static boolean isCenter(Type t) { return CENTER.equals(t); }
+    static boolean isAlign(Type t) { return ALIGN.equals(t); }
+    static boolean isStore(Type t) { return STORE.equals(t); }
+
+    /** Primitivas de layout da Fase 4 (docs/ui/architecture.md §2.8). */
+    static boolean isLayoutType(Type t) {
+        return isBox(t) || isStack(t) || isSpacer(t) || isWrap(t)
+                || isGrid(t) || isCenter(t) || isAlign(t);
+    }
     /** Widget que aceita .setFont(font)/.font */
     static boolean acceptsFont(Type t) {
         return isLabel(t) || isButton(t) || isInput(t) || isView(t) || isLink(t);
@@ -55,7 +81,9 @@ final class KofUi {
     static boolean isUiType(Type t) {
         return isColor(t) || isTheme(t) || isLabel(t) || isButton(t) || isInput(t)
                 || isColumn(t) || isRow(t) || isView(t) || isStyle(t) || isWindow(t)
-                || isLink(t) || isImage(t) || isIcon(t) || isFont(t);
+                || isLink(t) || isImage(t) || isIcon(t) || isFont(t)
+                || isComponent(t) || isEvent(t)
+                || isLayoutType(t) || isStore(t);
     }
 
     static boolean isConstructor(String name) {
@@ -64,7 +92,11 @@ final class KofUi {
                 || "Column".equals(name) || "Row".equals(name) || "View".equals(name)
                 || "Style".equals(name) || "Window".equals(name)
                 || "Link".equals(name) || "Image".equals(name)
-                || "Icon".equals(name) || "Font".equals(name);
+                || "Icon".equals(name) || "Font".equals(name)
+                || "Component".equals(name)
+                || "Box".equals(name) || "Stack".equals(name) || "Spacer".equals(name)
+                || "Wrap".equals(name) || "Grid".equals(name) || "Center".equals(name)
+                || "Align".equals(name) || "Store".equals(name);
     }
 
     static Type constructorType(String name) {
@@ -73,6 +105,15 @@ final class KofUi {
         if ("Image".equals(name)) return IMAGE;
         if ("Icon".equals(name)) return ICON;
         if ("Font".equals(name)) return FONT;
+        if ("Component".equals(name)) return COMPONENT;
+        if ("Box".equals(name)) return BOX;
+        if ("Stack".equals(name)) return STACK;
+        if ("Spacer".equals(name)) return SPACER;
+        if ("Wrap".equals(name)) return WRAP;
+        if ("Grid".equals(name)) return GRID;
+        if ("Center".equals(name)) return CENTER;
+        if ("Align".equals(name)) return ALIGN;
+        if ("Store".equals(name)) return STORE;
         return Type.UnknownType.UNKNOWN;
     }
 
@@ -208,6 +249,39 @@ final class KofUi {
             return switch (name) {
                 case "font" -> argCount == 0 ? new UiCall("kof_ui_widget_font", FONT, List.of()) : null;
                 case "setFont" -> argCount == 1 ? new UiCall("kof_ui_widget_set_font", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                default -> null;
+            };
+        }
+        if (isComponent(receiver)) {
+            // Component Core (docs/ui/architecture.md): estado reativo +
+            // invalidação + render + lifecycle + effects + events.
+            return switch (name) {
+                case "state" -> argCount == 0 ? new UiCall("kof_ui_component_state_get", Type.PrimitiveType.INT, List.of()) : null;
+                case "stateSet" -> argCount == 1 ? new UiCall("kof_ui_component_state_set", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "view" -> argCount == 1 ? new UiCall("kof_ui_component_view", Type.PrimitiveType.VOID, List.of(Type.UnknownType.UNKNOWN)) : null;
+                case "onMount" -> argCount == 1 ? new UiCall("kof_ui_component_on_mount", Type.PrimitiveType.VOID, List.of(Type.UnknownType.UNKNOWN)) : null;
+                case "onDispose" -> argCount == 1 ? new UiCall("kof_ui_component_on_dispose", Type.PrimitiveType.VOID, List.of(Type.UnknownType.UNKNOWN)) : null;
+                case "effect" -> argCount == 1 ? new UiCall("kof_ui_component_effect", Type.PrimitiveType.VOID, List.of(Type.UnknownType.UNKNOWN)) : null;
+                case "on" -> argCount == 2 ? new UiCall("kof_ui_component_on", Type.PrimitiveType.VOID, List.of(STR, Type.UnknownType.UNKNOWN)) : null;
+                case "bind" -> argCount == 1 ? new UiCall("kof_ui_component_bind", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "remove" -> argCount == 0 ? new UiCall("kof_ui_component_remove", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isEvent(receiver)) {
+            return switch (name) {
+                case "type" -> argCount == 0 ? new UiCall("kof_ui_event_type", STR, List.of()) : null;
+                case "stopPropagation" -> argCount == 0 ? new UiCall("kof_ui_event_stop", Type.PrimitiveType.VOID, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isStore(receiver)) {
+            // Fase 8 (docs/ui/architecture.md §2.6): shared observable state.
+            return switch (name) {
+                case "get" -> argCount == 0 ? new UiCall("kof_ui_store_get", Type.PrimitiveType.INT, List.of()) : null;
+                case "set" -> argCount == 1 ? new UiCall("kof_ui_store_set", Type.PrimitiveType.VOID, List.of(INT)) : null;
+                case "subscribe" -> argCount == 1 ? new UiCall("kof_ui_store_subscribe", Type.PrimitiveType.VOID, List.of(Type.UnknownType.UNKNOWN)) : null;
+                case "unsubscribe" -> argCount == 1 ? new UiCall("kof_ui_store_unsubscribe", Type.PrimitiveType.VOID, List.of(Type.UnknownType.UNKNOWN)) : null;
                 default -> null;
             };
         }

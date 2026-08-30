@@ -188,6 +188,101 @@ class KofConfigE2ETest {
         }
     }
 
+    @Test
+    void requiredKeyPresentAllTargets(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Config.kf");
+        Files.writeString(source, """
+                main() {
+                    println(config.required("database.url"))
+                }
+                """);
+        // JVM
+        String out = run(tempDir, Files.readString(source),
+                Map.of("KOF_DATABASE_URL", "jdbc:h2:mem:req"), null);
+        assertTrue(out.contains("jdbc:h2:mem:req"), "JVM output: " + out);
+        // Native
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
+        assertTrue(nativeResult.success(), "" + nativeResult.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("native-out/Default/Main");
+        assertTrue(Files.exists(bin), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+            pb.redirectErrorStream(true);
+            pb.environment().put("KOF_DATABASE_URL", "jdbc:h2:mem:req");
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit: " + output);
+            assertTrue(output.contains("jdbc:h2:mem:req"), "Native output: " + output);
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+        // JS: config via arquivo kof.config no diretório de trabalho
+        CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
+        assertTrue(jsResult.success(), "JS: " + jsResult.diagnostics().getDiagnostics());
+        Path workDir = tempDir.resolve("js-work");
+        Files.createDirectories(workDir);
+        Files.writeString(workDir.resolve("kof.config"), "database.url = jdbc:h2:mem:req\n");
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            Path jsEntry = findJsEntry(tempDir.resolve("js-out"));
+            String prevDir = System.getProperty("user.dir");
+            System.setProperty("user.dir", workDir.toString());
+            try {
+                int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
+                        java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+                String outJs = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+                assertEquals(0, ec, "JS exit, output: " + outJs);
+                assertTrue(outJs.contains("jdbc:h2:mem:req"), "JS output: " + outJs);
+            } finally {
+                System.setProperty("user.dir", prevDir);
+            }
+        }
+    }
+
+    @Test
+    void requiredKeyMissingFailsFast(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Config.kf");
+        Files.writeString(source, """
+                main() {
+                    println(config.required("app.missing.key"))
+                }
+                """);
+        // JVM: deve falhar com mensagem clara (não null silencioso)
+        CompilationResult result = driver.compile(source, tempDir.resolve("classes"), Target.JVM);
+        assertTrue(result.success(), "" + result.diagnostics().getDiagnostics());
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-cp",
+                    tempDir.resolve("classes").toString(), "Default.Main");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertNotEquals(0, ec, "Should fail with missing key, output: '" + output + "'");
+            assertTrue(output.contains("app.missing.key"),
+                    "Error must name the missing key, output: '" + output + "'");
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
+
+        // Native: panic no runtime asm
+        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
+        assertTrue(nativeResult.success(), "" + nativeResult.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("native-out/Default/Main");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertNotEquals(0, ec, "Native should panic on missing key, output: " + output);
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
+    }
+
     private static Path findJsEntry(Path dir) throws IOException {
         try (var s = Files.walk(dir)) {
             var opt = s.filter(p -> p.getFileName().toString().equals("Default.mjs")).findFirst();

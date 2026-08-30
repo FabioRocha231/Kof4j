@@ -886,17 +886,30 @@ private Target target = Target.JVM;
         List<KofOperation> ops = new ArrayList<>();
         List<IRLocalVariable> locals = new ArrayList<>();
         locals.add(new IRLocalVariable(0, "this", ownerType));
+        // JVM invoke(): the real parameters arrive physically at slots 1..k
+        // (after this). The captures are re-homed to slots AFTER the params:
+        // the prologue copies the incoming parameters to their final slots
+        // first, then loads each capture field into its slot. This keeps the
+        // parameter slots owned by the caller's arguments — no clobbering.
         int localIdx = 1;
+        int[] paramSlots = new int[params.size()];
+        int paramSlot = 1;
+        for (int i = 0; i < params.size(); i++) {
+            paramSlots[i] = paramSlot;
+            paramSlot += isDoubleWidth(paramTypes.get(i)) ? 2 : 1;
+        }
+        int captureBase = paramSlot;
+        int captureSlot = captureBase;
         for (IRLocalVariable cap : captures) {
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofLoadField(ownerType, cap.name(), cap.type()));
-            ops.add(new KofStoreLocal(cap.type(), localIdx));
-            locals.add(new IRLocalVariable(localIdx, cap.name(), cap.type()));
-            localIdx += isDoubleWidth(cap.type()) ? 2 : 1;
+            ops.add(new KofStoreLocal(cap.type(), captureSlot));
+            locals.add(new IRLocalVariable(captureSlot, cap.name(), cap.type()));
+            captureSlot += isDoubleWidth(cap.type()) ? 2 : 1;
         }
+        localIdx = captureSlot;
         for (int i = 0; i < params.size(); i++) {
-            locals.add(new IRLocalVariable(localIdx, params.get(i).name(), paramTypes.get(i)));
-            localIdx += isDoubleWidth(paramTypes.get(i)) ? 2 : 1;
+            locals.add(new IRLocalVariable(paramSlots[i], params.get(i).name(), paramTypes.get(i)));
         }
         java.util.Set<String> savedMutated = mutatedCapturedNames;
         mutatedCapturedNames = new java.util.HashSet<>();
@@ -2393,6 +2406,26 @@ private Target target = Target.JVM;
                             List.of(), Type.PrimitiveType.LONG, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
+                if (mc.receiver() == null && "uiNodesLive".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    // kof.ui probe (testes de leak): nº de nós vivos na árvore.
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_nodes_live", List.of(), Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "storesLive".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_stores_live", List.of(), Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "emit".equals(mc.methodName()) && mc.arguments().size() == 2) {
+                    // Fase 5: dispara um evento num componente (bubbling).
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(mc.arguments().get(1), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_emit", List.of(Type.PrimitiveType.INT, BuiltinTypes.STRING),
+                            Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 if (mc.receiver() == null && "readLine".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                     ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_line",
                             List.of(), BuiltinTypes.STRING, KofCallKind.FUNCTION));
@@ -2484,6 +2517,49 @@ private Target target = Target.JVM;
                             Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
+                // ── Fase 4: primitivas de layout (docs/ui/architecture.md §2.8)
+                if (mc.receiver() == null && ("Box".equals(mc.methodName())
+                        || "Stack".equals(mc.methodName()) || "Wrap".equals(mc.methodName())
+                        || "Center".equals(mc.methodName()))
+                        && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    String fn = switch (mc.methodName()) {
+                        case "Box" -> "kof_ui_box_new";
+                        case "Stack" -> "kof_ui_stack_new";
+                        case "Wrap" -> "kof_ui_wrap_new";
+                        default -> "kof_ui_center_new";
+                    };
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            fn, List.of(new Type.ClassType("kof", "List", List.of(Type.PrimitiveType.INT))),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Grid".equals(mc.methodName()) && mc.arguments().size() == 2) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    localIdx = emitExpression(mc.arguments().get(1), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_grid_new", List.of(Type.PrimitiveType.INT,
+                            new Type.ClassType("kof", "List", List.of(Type.PrimitiveType.INT))),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Spacer".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_spacer_new", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Align".equals(mc.methodName()) && mc.arguments().size() == 3) {
+                    for (ExpressionNode arg : mc.arguments()) {
+                        localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                    }
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_align_new", List.of(Type.PrimitiveType.INT, Type.PrimitiveType.INT,
+                            new Type.ClassType("kof", "List", List.of(Type.PrimitiveType.INT))),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 if (mc.receiver() == null && "Style".equals(mc.methodName()) && mc.arguments().size() == 4) {
                     for (ExpressionNode arg : mc.arguments()) {
                         localIdx = emitExpression(arg, ops, owner, localIdx, locals);
@@ -2558,6 +2634,26 @@ private Target target = Target.JVM;
                                 "kof_ui_button_new", List.of(BuiltinTypes.STRING),
                                 Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     }
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Component".equals(mc.methodName())
+                        && mc.arguments().size() == 1) {
+                    // Component Core (docs/ui/architecture.md): nó da árvore de
+                    // UI com estado reativo + view builder + lifecycle + effects.
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_component_new", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "Store".equals(mc.methodName())
+                        && mc.arguments().size() == 1) {
+                    // Fase 8 (docs/ui/architecture.md §2.6): estado compartilhado
+                    // observável entre componentes.
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_store_new", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
@@ -4315,6 +4411,14 @@ private Target target = Target.JVM;
                                 Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                         yield localIdx;
                     }
+                    if (KofUi.isComponent(faRecvType) && "state".equals(fa.fieldName())) {
+                        localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                        ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                                "kof_ui_component_state_set", List.of(Type.PrimitiveType.INT, Type.PrimitiveType.INT),
+                                Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     String faOp = ae.operator();
                     if ("+=".equals(faOp) || "-=".equals(faOp) || "*=".equals(faOp)
@@ -4647,6 +4751,13 @@ private Target target = Target.JVM;
                             BuiltinTypes.STRING, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
+                if (KofUi.isComponent(faType) && "state".equals(fa.fieldName())) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                            "kof_ui_component_state_get", List.of(Type.PrimitiveType.INT),
+                            Type.PrimitiveType.INT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
                 Type recvType = inferExprType(fa.receiver(), locals);
                 if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
@@ -4884,6 +4995,15 @@ private Target target = Target.JVM;
                 if ("now".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
                     yield Type.PrimitiveType.LONG;
                 }
+                if ("uiNodesLive".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
+                    yield Type.PrimitiveType.INT;
+                }
+                if ("emit".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().size() == 2) {
+                    yield Type.PrimitiveType.VOID;
+                }
+                if ("storesLive".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
+                    yield Type.PrimitiveType.INT;
+                }
                 if (mc.receiver() == null && "transaction".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     yield Type.PrimitiveType.VOID;
                 }
@@ -4924,6 +5044,14 @@ private Target target = Target.JVM;
                 }
                 if (mc.receiver() == null && "View".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     yield KofUi.VIEW;
+                }
+                if (mc.receiver() == null && KofUi.isConstructor(mc.methodName())
+                        && (mc.arguments().size() == 1 || mc.arguments().size() == 2
+                                || mc.arguments().size() == 3)) {
+                    Type ct = KofUi.constructorType(mc.methodName());
+                    if (KofUi.isLayoutType(ct) || KofUi.isStore(ct)) {
+                        yield ct;
+                    }
                 }
                 if (mc.receiver() == null && "Style".equals(mc.methodName()) && mc.arguments().size() == 4) {
                     yield KofUi.STYLE;
@@ -5330,6 +5458,9 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                 Type recvType = inferExprType(fa.receiver(), locals);
                 if (KofProcess.isResult(recvType) && KofProcess.isField(fa.fieldName())) {
                     yield KofProcess.fieldType(fa.fieldName());
+                }
+                if (KofUi.isComponent(recvType) && "state".equals(fa.fieldName())) {
+                    yield Type.PrimitiveType.INT;
                 }
                 if (KofUi.isWindow(recvType) && "title".equals(fa.fieldName())) {
                     yield BuiltinTypes.STRING;
@@ -6093,7 +6224,22 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     }
 
     private int emitUiInstance(Type recvType, MethodCallExpr mc, List<KofOperation> ops,
-                               String owner, int localIdx, List<IRLocalVariable> locals) {
+                                String owner, int localIdx, List<IRLocalVariable> locals) {
+        if (KofUi.isComponent(recvType) || KofUi.isStore(recvType)) {
+            KofUi.UiCall cc = KofUi.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
+            if (cc != null) {
+                for (ExpressionNode arg : mc.arguments()) {
+                    localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                }
+                List<Type> ccParams = new ArrayList<>();
+                ccParams.add(Type.PrimitiveType.INT);
+                ccParams.addAll(cc.parameterTypes());
+                ops.add(new KofCall(new Type.ClassType("kof.ui", "Ui", List.of()),
+                        cc.function(), ccParams, cc.returnType(), KofCallKind.FUNCTION));
+                return localIdx;
+            }
+            return localIdx;
+        }
         if (KofUi.isWindow(recvType) || KofUi.isLabel(recvType) || KofUi.isButton(recvType)
                 || KofUi.isInput(recvType) || KofUi.isView(recvType)
                 || KofUi.isLink(recvType) || KofUi.isImage(recvType) || KofUi.isIcon(recvType)) {

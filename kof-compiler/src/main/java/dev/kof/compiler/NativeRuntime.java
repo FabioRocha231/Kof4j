@@ -5070,6 +5070,25 @@ final class NativeRuntime {
             kof_config_get:
                 jmp kof_config_lookup
 
+            # kof_config_required(rdi=key) -> KofString*|panic CONF002
+            kof_config_required:
+                pushq %rbx
+                subq $8, %rsp
+                call kof_config_lookup
+                addq $8, %rsp
+                testq %rax, %rax
+                jz .Lcfg_req_missing
+                popq %rbx
+                ret
+            .Lcfg_req_missing:          # caminho sem chave: mensagem no rodata
+                leaq .Lcfg_req_msg(%rip), %rdi
+                call kof_panic
+            .Lcfg_req_missing_key:
+                movq %r12, %rsi
+                movq %rbx, %rdi
+                call kof_panic
+            .Lcfg_req_msg: .asciz "Kof config: missing required key (CONF001)"
+
             kof_config_env:
                 leaq 24(%rdi), %rdi          # nome KofString -> C-string (data NUL-terminada)
                 jmp kof_env_getc
@@ -8656,6 +8675,96 @@ final class NativeRuntime {
             kof_ui_view_bind:
                 ret
             kof_ui_view_remove:
+                ret
+            // ── Fase 4: primitivas de layout (no-ops) ──
+            kof_ui_box_new:
+                movl $1, %eax
+                ret
+            kof_ui_stack_new:
+                movl $1, %eax
+                ret
+            kof_ui_wrap_new:
+                movl $1, %eax
+                ret
+            kof_ui_grid_new:
+                movl $1, %eax
+                ret
+            kof_ui_spacer_new:
+                movl $1, %eax
+                ret
+            kof_ui_center_new:
+                movl $1, %eax
+                ret
+            kof_ui_align_new:
+                movl $1, %eax
+                ret
+            // ── Component Core (docs/ui/architecture.md) ──
+            kof_ui_component_new:
+                movl $1, %eax
+                ret
+            kof_ui_component_state_get:
+                xorl %eax, %eax
+                ret
+            kof_ui_component_state_set:
+                ret
+            kof_ui_component_view:
+                ret
+            kof_ui_component_on_mount:
+                ret
+            kof_ui_component_on_dispose:
+                ret
+            kof_ui_component_effect:
+                ret
+            kof_ui_component_on:
+                ret
+            kof_ui_component_bind:
+                ret
+            kof_ui_component_remove:
+                ret
+            kof_ui_component_mount:
+                ret
+            kof_ui_component_unmount:
+                ret
+            kof_ui_nodes_live:
+                xorl %eax, %eax
+                ret
+            kof_ui_flush_ui:
+                ret
+            kof_ui_event_type:
+                movq %rdi, %rax
+                ret
+            kof_ui_emit:
+                ret
+            kof_ui_event_stop:
+                ret
+            // e.type() / e.stopPropagation() on a kof.ui.Event receiver: the
+            // backend mangles the owner class name (Event_type), aliased to
+            // the runtime intrinsics.
+            .globl Event_type
+            Event_type:
+                jmp kof_ui_event_type
+            .globl Event_stopPropagation
+            Event_stopPropagation:
+                jmp kof_ui_event_stop
+            // ── Fase 8: Store observável (no-ops) ──
+            kof_ui_store_new:
+                movl $1, %eax
+                ret
+            kof_ui_store_get:
+                xorl %eax, %eax
+                ret
+            kof_ui_store_set:
+                ret
+            kof_ui_store_subscribe:
+                ret
+            kof_ui_store_unsubscribe:
+                ret
+            kof_ui_stores_live:
+                xorl %eax, %eax
+                ret
+            .globl Store_get
+            Store_get:
+                xorl %eax, %eax
                 ret
             """);
     }

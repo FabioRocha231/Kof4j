@@ -339,7 +339,8 @@ class JsBackend implements Backend {
         }
         List<JsIr.JsStatement> predecl = new ArrayList<>();
         int paramStart = ctx.instanceMethod ? 1 : 0;
-        int paramEnd = paramStart + ctx.paramCount;
+        int paramEnd = paramStart + ctx.paramCount
+                + (ctx.captureSlots.isEmpty() ? 0 : ctx.captureSlots.size());
         for (int slot : ctx.localNames.keySet()) {
             if (slot < paramEnd) continue;
             String name = ctx.localNames.get(slot);
@@ -389,6 +390,8 @@ class JsBackend implements Backend {
         final String methodName;
         final int paramCount;
         final boolean recordClass;
+        /** slots of lambda capture fields (come before the real parameters) */
+        final Set<Integer> captureSlots = new HashSet<>();
         int tempCounter = 0;
 
         MethodCtx(IRMethod method, IRClass clazz) {
@@ -400,11 +403,29 @@ class JsBackend implements Backend {
             this.methodName = method.name();
             this.paramCount = method.parameterTypes().size();
             this.recordClass = clazz != null && "java/lang/Record".equals(clazz.superName());
+            // lambda synthetic classes hold captured locals as private final
+            // fields at the first slots; the real parameters come after them.
+            Set<String> captureFields = new HashSet<>();
+            if (clazz != null && clazz.name() != null && clazz.name().startsWith("Lambda")) {
+                for (IRField f : clazz.fields()) {
+                    if ((f.accessFlags() & AccessFlags.PRIVATE) != 0
+                            && (f.accessFlags() & AccessFlags.FINAL) != 0) {
+                        captureFields.add(f.name());
+                    }
+                }
+            }
             for (IRLocalVariable lv : method.localVariables()) {
                 rawLocalNames.put(lv.index(), lv.name());
                 if (instanceMethod && lv.index() == 0) {
                     localNames.put(lv.index(), "this");
                     continue;
+                }
+                if (captureFields.contains(lv.name()) && lv.index() < 1 + captureFields.size()
+                        && !"<init>".equals(method.name())) {
+                    // invoke(): the captures are fields copied to locals before
+                    // the real params — they are NOT the method's parameters.
+                    // <init>() receives the captures AS its parameters.
+                    captureSlots.add(lv.index());
                 }
                 localNames.put(lv.index(), uniqueName(sanitizeName(lv.name())));
             }
@@ -2246,6 +2267,10 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_button_new") || name.equals("kof_ui_button_new_action")
                 || name.equals("kof_ui_input_new") || name.equals("kof_ui_column_new")
                 || name.equals("kof_ui_row_new") || name.equals("kof_ui_view_new")
+                || name.equals("kof_ui_box_new") || name.equals("kof_ui_stack_new")
+                || name.equals("kof_ui_wrap_new") || name.equals("kof_ui_grid_new")
+                || name.equals("kof_ui_spacer_new") || name.equals("kof_ui_center_new")
+                || name.equals("kof_ui_align_new")
                 || name.equals("kof_ui_style_new") || name.equals("kof_ui_view_bind")
                 || name.equals("kof_ui_window_set_title") || name.equals("kof_ui_window_title")
                 || name.equals("kof_ui_window_bind") || name.equals("kof_ui_window_show")
@@ -2261,7 +2286,19 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_label_set_color") || name.equals("kof_ui_label_color")
                 || name.startsWith("kof_ui_link_") || name.startsWith("kof_ui_image_")
                 || name.startsWith("kof_ui_icon_") || name.startsWith("kof_ui_widget_")
-                || name.startsWith("kof_ui_font_")) {
+                || name.startsWith("kof_ui_font_")
+                || name.equals("kof_ui_component_new") || name.equals("kof_ui_component_state_get")
+                || name.equals("kof_ui_component_state_set") || name.equals("kof_ui_component_view")
+                || name.equals("kof_ui_component_on_mount") || name.equals("kof_ui_component_on_dispose")
+                || name.equals("kof_ui_component_effect") || name.equals("kof_ui_component_on")
+                || name.equals("kof_ui_component_bind") || name.equals("kof_ui_component_remove")
+                || name.equals("kof_ui_component_mount") || name.equals("kof_ui_component_unmount")
+                || name.equals("kof_ui_nodes_live") || name.equals("kof_ui_flush_ui")
+                || name.equals("kof_ui_event_type") || name.equals("kof_ui_emit")
+                || name.equals("kof_ui_event_stop")
+                || name.equals("kof_ui_store_new") || name.equals("kof_ui_store_get")
+                || name.equals("kof_ui_store_set") || name.equals("kof_ui_store_subscribe")
+                || name.equals("kof_ui_store_unsubscribe") || name.equals("kof_ui_stores_live")) {
             registerRuntime(capitalizeUiFn(name));
             List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
             if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
@@ -2493,6 +2530,7 @@ class JsBackend implements Backend {
         List<String> names = new ArrayList<>();
         int start = ctx.instanceMethod ? 1 : 0;
         for (int i = start; i < ctx.localNames.size() && names.size() < ctx.paramCount; i++) {
+            if (ctx.captureSlots.contains(i)) continue;
             String name = ctx.localNames.get(i);
             if (name != null) {
                 names.add(name);
@@ -2619,7 +2657,7 @@ class JsBackend implements Backend {
                 return "<" + tag + attrs + ">" + content + "</" + tag + ">";
             }
 
-            export function kofUiFlush() {
+            export function kofUiSerializeHtml() {
                 const root = document.getElementById("kof-root");
                 if (!root) return "";
                 const html = "<!DOCTYPE html>\\n<html>\\n<head>\\n<meta charset=\\"utf-8\\">\\n"
@@ -2689,15 +2727,24 @@ class JsBackend implements Backend {
                 }
                 const winEl = globalThis.window && globalThis.window.__kofWindows
                         && globalThis.window.__kofWindows[win];
+                if (!winEl) return;
+                // Component Core: a component binds under the window and mounts
+                // (view + onMount) — lifecycle is automatic.
+                const comp = kofUiComponents.get(label);
+                if (comp) {
+                    if (comp.el) winEl.appendChild(comp.el);
+                    kofUiComponentMount(label);
+                    return;
+                }
                 const nodes = globalThis.window && globalThis.window.__kofNodes;
                 const node = nodes && nodes[label];
-                if (winEl && node) {
+                if (node) {
                     winEl.appendChild(node);
                 }
             }
 
             export function kofUiWindowShow(window) {
-                kofUiFlush();
+                kofUiSerializeHtml();
             }
 
             export function kofUiWindowSetSize(window, width, height) {
@@ -2745,6 +2792,344 @@ class JsBackend implements Backend {
                         : { background: 0xFFFFFFFF, text: 0x000000FF };
                 root.style.backgroundColor = kofUiColorToCss(colors.background);
                 root.style.color = kofUiColorToCss(colors.text);
+            }
+            """;
+
+    private static final String UI_COMPONENT_RUNTIME = """
+            // ── Component Core (docs/ui/architecture.md) ─────────────
+            // A UI is a tree of components. A Component node carries: identity,
+            // state (Int), a view builder, lifecycle hooks, effects (auto-cleaned)
+            // and events. Rendering is KofJS; the framework (not the widget)
+            // owns the tree, the render schedule and the lifecycle.
+            const kofUiComponents = new Map();
+            let kofUiSeq = 0;
+            let kofUiFlushing = false;
+            const kofUiDirty = [];
+            const KOF_UI_EV = {
+                click: "click", dblclick: "dblclick", mousedown: "mousedown",
+                mouseup: "mouseup", mousemove: "mousemove", mouseenter: "mouseenter",
+                mouseleave: "mouseleave", wheel: "wheel", keydown: "keydown",
+                keyup: "keyup", focus: "focus", blur: "blur", input: "input", change: "change"
+            };
+
+            function kofUiIsNode(id) {
+                return window.__kofNodes && Object.prototype.hasOwnProperty.call(window.__kofNodes, id);
+            }
+            function kofUiParentOf(id) {
+                const n = window.__kofNodes && window.__kofNodes[id];
+                return n && n.parentNode ? n : null;
+            }
+            function kofUiSubtreeIds(rootId) {
+                // all nodes reachable from rootId (BFS over the DOM tree)
+                const out = [];
+                const q = [window.__kofNodes[rootId]];
+                while (q.length > 0) {
+                    const n = q.shift();
+                    if (!n || n._kofGone) continue;
+                    out.push(n);
+                    const kids = Array.from(n.children || []);
+                    for (const k of kids) q.push(k);
+                }
+                return out;
+            }
+            function kofUiDetachDom(id) {
+                const n = window.__kofNodes && window.__kofNodes[id];
+                if (n && n.parentNode && n.parentNode.removeChild) {
+                    n.parentNode.removeChild(n);
+                }
+            }
+            function kofUiRemoveSubtree(rootId) {
+                // remove the DOM subtree of a widget id and prune the registry
+                if (!kofUiIsNode(rootId)) return;
+                for (const n of kofUiSubtreeIds(rootId)) {
+                    if (n.parentNode) n.parentNode.removeChild(n);
+                    n._kofGone = true;
+                    for (const key in window.__kofNodes) {
+                        if (window.__kofNodes[key] === n) {
+                            delete window.__kofNodes[key];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            function kofUiRunFn(fn) {
+                // a Kof lambda compiles to a class with an invoke() method;
+                // plain functions pass through.
+                return fn && typeof fn.invoke === "function" ? fn.invoke.bind(fn) : fn;
+            }
+
+            function kofUiScheduleFlush() {
+                if (kofUiFlushing) {
+                    // already rendering — batch the rest
+                    if (typeof Promise !== "undefined" && Promise.resolve) {
+                        Promise.resolve().then(() => kofUiFlushQueue());
+                    }
+                    return;
+                }
+                kofUiFlushQueue();
+            }
+
+            function kofUiFlushQueue() {
+                if (kofUiFlushing) return;
+                kofUiFlushing = true;
+                try {
+                    while (kofUiDirty.length > 0) {
+                        const id = kofUiDirty.shift();
+                        const c = kofUiComponents.get(id);
+                        if (c && c.mounted && c.view) {
+                            kofUiRender(c);
+                        }
+                    }
+                } finally {
+                    kofUiFlushing = false;
+                }
+            }
+
+            function kofUiRender(c) {
+                // rebuild the component's child subtree: run the view builder
+                // with the current state, then swap the fresh DOM in place.
+                // (handle diffing is a Phase-9 optimization)
+                let rootId = 0;
+                try {
+                    const v = kofUiRunFn(c.view);
+                    rootId = v ? v(c.state) : 0;
+                } catch (e) {
+                    rootId = 0;
+                }
+                if (c.el) {
+                    const oldEl = window.__kofNodes && window.__kofNodes[c.root];
+                    if (c.root !== rootId && oldEl
+                            && oldEl.parentNode === c.el && oldEl.parentNode.removeChild) {
+                        c.el.removeChild(oldEl);
+                    }
+                    const rootEl = window.__kofNodes && window.__kofNodes[rootId];
+                    if (rootEl && rootEl.parentNode !== c.el) {
+                        c.el.appendChild(rootEl);
+                    }
+                }
+                c.root = rootId;
+            }
+
+            export function kofUiComponentNew(state) {
+                const id = ++kofUiSeq;
+                const c = {
+                    id: id, name: "c" + id, state: state,
+                    view: null, mounted: false, disposed: false,
+                    el: null, root: null, onMountFn: null, onDisposeFn: null,
+                    effects: [], effectFns: [],
+                    parent: null, children: []
+                };
+                kofUiComponents.set(id, c);
+                if (typeof document !== "undefined") {
+                    const wrap = document.createElement("div");
+                    wrap.className = "kof-component";
+                    c.el = wrap;
+                }
+                return id;
+            }
+
+            export function kofUiComponentStateGet(c) {
+                const n = kofUiComponents.get(c);
+                return n ? n.state : 0;
+            }
+
+            export function kofUiComponentStateSet(c, value) {
+                const n = kofUiComponents.get(c);
+                if (!n) return;
+                n.state = value;
+                // state change is the invalidation point: mark ONLY this
+                // component dirty and schedule a batched re-render.
+                if (n.mounted && !kofUiDirty.includes(c)) {
+                    kofUiDirty.push(c);
+                }
+                kofUiScheduleFlush();
+            }
+
+            export function kofUiComponentView(c, builder) {
+                const n = kofUiComponents.get(c);
+                if (!n) return;
+                n.view = builder;
+                if (n.mounted) {
+                    if (!kofUiDirty.includes(c)) kofUiDirty.push(c);
+                    kofUiScheduleFlush();
+                }
+            }
+
+            export function kofUiComponentOnMount(c, fn) {
+                const n = kofUiComponents.get(c);
+                if (n) n.onMountFn = fn;
+            }
+
+            export function kofUiComponentOnDispose(c, fn) {
+                const n = kofUiComponents.get(c);
+                if (n) n.onDisposeFn = fn;
+            }
+
+            export function kofUiComponentEffect(c, fn) {
+                // effects run on mount (or immediately when the component is
+                // already mounted) and their cleanup runs on unmount, in
+                // reverse registration order — no manual leak management.
+                const n = kofUiComponents.get(c);
+                if (!n) return;
+                const f = kofUiRunFn(fn);
+                if (!f) return;
+                n.effectFns.push(f);
+                if (n.mounted) kofUiRunEffect(n, f);
+            }
+
+            function kofUiRunEffect(n, f) {
+                let result;
+                try {
+                    result = f();
+                } catch (e) {
+                    result = null;
+                }
+                n.effects.push(result);
+            }
+
+            export function kofUiComponentMount(c) {
+                const n = kofUiComponents.get(c);
+                if (!n || n.mounted) return;
+                n.mounted = true;
+                // mount: (mount view) -> onMount() -> effects — deterministic
+                if (n.view) kofUiRender(n);
+                const om = kofUiRunFn(n.onMountFn);
+                if (om) {
+                    try { om(); } catch (e) {}
+                }
+                for (const f of n.effectFns) kofUiRunEffect(n, f);
+            }
+
+            export function kofUiComponentUnmount(c) {
+                const n = kofUiComponents.get(c);
+                if (!n || !n.mounted) return;
+                n.mounted = false;
+                // unmount cascades top-down: children first (they lose their
+                // host), then this node's hooks. Detach once at the root.
+                for (const child of n.children.slice()) {
+                    const cc = kofUiComponents.get(child);
+                    if (cc && cc.mounted) kofUiComponentUnmount(child);
+                }
+                // unmount: onDispose() -> effects() in REVERSE
+                const od = kofUiRunFn(n.onDisposeFn);
+                if (od) {
+                    try { od(); } catch (e) {}
+                }
+                for (let i = n.effects.length - 1; i >= 0; i--) {
+                    try {
+                        const ef = n.effects[i];
+                        if (typeof ef === "function") ef();
+                    } catch (e) {}
+                }
+                n.effects.length = 0;
+                n.effectFns.length = 0;
+                n.disposed = true;
+            }
+
+            export function kofUiComponentBind(c, child) {
+                // compose: attach a child widget or component under this one.
+                const n = kofUiComponents.get(c);
+                if (!n || !n.el) return;
+                // a child component mounts on bind (lifecycle is automatic)
+                const childComp = kofUiComponents.get(child);
+                if (childComp) {
+                    childComp.parent = n;
+                    if (!n.children.includes(child)) n.children.push(child);
+                    if (childComp.el) n.el.appendChild(childComp.el);
+                    kofUiComponentMount(child);
+                    return;
+                }
+                const childEl = window.__kofNodes && window.__kofNodes[child];
+                if (childEl) n.el.appendChild(childEl);
+            }
+
+            export function kofUiComponentRemove(c) {
+                const n = kofUiComponents.get(c);
+                if (!n) return;
+                // detach from the parent's child list (tree is the source of truth)
+                if (n.parent) {
+                    const i = n.parent.children.indexOf(c);
+                    if (i >= 0) n.parent.children.splice(i, 1);
+                    n.parent = null;
+                }
+                if (n.mounted) {
+                    // unmount the subtree, freeing every component in it
+                    kofUiRemoveSubtreeComponents(c);
+                } else {
+                    n.disposed = true;
+                    kofUiDetachDom(c);
+                    kofUiComponents.delete(c);
+                }
+            }
+
+            function kofUiRemoveSubtreeComponents(c) {
+                const n = kofUiComponents.get(c);
+                if (!n) return;
+                for (const child of n.children.slice()) {
+                    kofUiRemoveSubtreeComponents(child);
+                }
+                if (n.mounted) {
+                    // unmount runs hooks + cleanup; skip the recursive
+                    // children walk (already freed above)
+                    n.children.length = 0;
+                    kofUiComponentUnmount(c);
+                }
+                kofUiComponents.delete(c);
+            }
+
+            export function kofUiComponentOn(c, type, handler) {
+                // centralised event dispatch on the component root element.
+                const n = kofUiComponents.get(c);
+                if (!n || !n.el || !type || !handler) return;
+                const domType = KOF_UI_EV[type] || type;
+                n.el._kofHandlers = n.el._kofHandlers || {};
+                const arr = n.el._kofHandlers[domType];
+                if (arr) arr.push(handler);
+                else n.el._kofHandlers[domType] = [handler];
+                if (typeof n.el.addEventListener === "function") {
+                    n.el.addEventListener(domType, function (ev) {
+                        kofUiDispatchEvent(c, domType, ev);
+                    });
+                }
+            }
+
+
+            // centralised event dispatch: one registry, deterministic cleanup
+            export function kofUiWidgetOn(id, type, handler) {
+                if (!type || !handler) return;
+                const node = window.__kofNodes && window.__kofNodes[id];
+                if (!node) return;
+                node._kofHandlers = node._kofHandlers || {};
+                const domType = KOF_UI_EV[type] || type;
+                const arr = node._kofHandlers[domType];
+                if (arr) arr.push(handler);
+                else node._kofHandlers[domType] = [handler];
+                if (typeof node.addEventListener === "function") {
+                    node.addEventListener(domType, function (ev) {
+                        const h = node._kofHandlers && node._kofHandlers[domType];
+                        if (!h) return;
+                        for (const fn of h) {
+                            try {
+                                if (typeof fn.invoke === "function") fn.invoke();
+                                else fn();
+                            } catch (e) {}
+                        }
+                    });
+                }
+            }
+
+            export function kofUiNodesLive() {
+                return kofUiComponents.size;
+            }
+
+            export function kofUiFlushUi() {
+                kofUiFlushQueue();
+            }
+
+            export function kofUiEventType(type) {
+                // kof.ui.Event identity: the event kind as registered.
+                return type || "";
             }
 
             // ── Link ────────────────────────────────────────────
@@ -3176,6 +3561,68 @@ class JsBackend implements Backend {
                 }
             }
 
+            // ── Layout primitives (docs/ui/architecture.md §2.8) ──────
+            // CSS-first: the framework never computes pixel positions; each
+            // primitive maps to a flex/grid CSS pattern.
+            function kofUiLayoutContainerNew(tag, className, ids, extraStyle) {
+                const id = kofUiCreateNode(tag, className);
+                if (id < 0) {
+                    return -1;
+                }
+                const node = window.__kofNodes[id];
+                if (extraStyle) {
+                    for (const k in extraStyle) node.style[k] = extraStyle[k];
+                }
+                if (ids) {
+                    for (const childId of ids) {
+                        const child = window.__kofNodes[childId];
+                        if (child) {
+                            node.appendChild(child);
+                        }
+                    }
+                }
+                return id;
+            }
+
+            export function kofUiBoxNew(ids) {
+                return kofUiLayoutContainerNew("div", "kof-box kof-view", ids);
+            }
+
+            export function kofUiStackNew(ids) {
+                // overlapping children (z-stack): all children in the same cell
+                return kofUiLayoutContainerNew("div", "kof-stack", ids,
+                        { display: "grid" });
+            }
+
+            export function kofUiWrapNew(ids) {
+                return kofUiLayoutContainerNew("div", "kof-wrap", ids,
+                        { display: "flex", flexDirection: "row", flexWrap: "wrap" });
+            }
+
+            export function kofUiGridNew(cols, ids) {
+                return kofUiLayoutContainerNew("div", "kof-grid", ids,
+                        { display: "grid",
+                          gridTemplateColumns: "repeat(" + (cols > 0 ? cols : 1) + ", 1fr)" });
+            }
+
+            export function kofUiSpacerNew(size) {
+                return kofUiLayoutContainerNew("div", "kof-spacer", null,
+                        { flex: size > 0 ? String(size) : "1" });
+            }
+
+            export function kofUiCenterNew(ids) {
+                return kofUiLayoutContainerNew("div", "kof-center", ids,
+                        { display: "flex", alignItems: "center", justifyContent: "center" });
+            }
+
+            export function kofUiAlignNew(horizontal, vertical, ids) {
+                // horizontal/vertical: 0=start, 1=center, 2=end
+                const justify = horizontal === 1 ? "center" : horizontal === 2 ? "flex-end" : "flex-start";
+                const align = vertical === 1 ? "center" : vertical === 2 ? "flex-end" : "flex-start";
+                return kofUiLayoutContainerNew("div", "kof-align", ids,
+                        { display: "flex", justifyContent: justify, alignItems: align });
+            }
+
             export function kofUiViewRemove(view) {
                 if (typeof document !== "undefined" && window.__kofNodes && window.__kofNodes[view]) {
                     const node = window.__kofNodes[view];
@@ -3490,6 +3937,14 @@ class JsBackend implements Backend {
                 return kofConfigLookup(key) != null ? 1 : 0;
             }
 
+            export function kofConfigRequired(key) {
+                const v = kofConfigLookup(key);
+                if (v == null) {
+                    throw new Error("Kof config: missing required key '" + key + "'");
+                }
+                return v;
+            }
+
             export function kofConfigStr(key, def) {
                 const v = kofConfigLookup(key);
                 return v != null ? v : def;
@@ -3532,6 +3987,25 @@ class JsBackend implements Backend {
                     if (typeof globalThis !== 'undefined' && globalThis.__kofConfig && key in globalThis.__kofConfig) {
                         return globalThis.__kofConfig[key];
                     }
+                } catch (e) {}
+                try {
+                    // arquivo kof.config no diretório de trabalho (precedência 4)
+                    if (!globalThis.__kofConfigFile) {
+                        globalThis.__kofConfigFile = {};
+                        if (typeof kof_platform !== 'undefined' && kof_platform.readFile) {
+                            const text = kof_platform.readFile('kof.config');
+                            if (text) {
+                                for (const line of String(text).split('\n')) {
+                                    const t = line.trim();
+                                    if (!t || t.startsWith('#')) continue;
+                                    const eq = t.indexOf('=');
+                                    if (eq <= 0) continue;
+                                    globalThis.__kofConfigFile[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
+                                }
+                            }
+                        }
+                    }
+                    if (key in globalThis.__kofConfigFile) return globalThis.__kofConfigFile[key];
                 } catch (e) {}
                 return null;
             }
@@ -4236,6 +4710,96 @@ class JsBackend implements Backend {
             }
             """;
 
+    private static final String UI_EVENT_RUNTIME = """
+            // Fase 5 (docs/ui/architecture.md §2.5): target -> bubbles up the
+            // component tree (child -> parent). The handler receives a Kof
+            // Event with type + stopPropagation support.
+            function kofUiDispatchEvent(targetId, domType, ev) {
+                const kofEv = {
+                    stopped: false,
+                    // Kof accesses event kind as e.type() (a method call)
+                    type() { return domType; },
+                    stopPropagation() { this.stopped = true; },
+                    // raw DOM event passthrough (null in the host mock)
+                    raw: ev || null
+                };
+                let current = targetId;
+                while (current != null) {
+                    const n = kofUiComponents.get(current);
+                    if (!n) break;
+                    const h = n.el && n.el._kofHandlers && n.el._kofHandlers[domType];
+                    if (h) {
+                        for (const fn of h) {
+                            try {
+                                const f = kofUiRunFn(fn);
+                                if (f) f(kofEv);
+                            } catch (e) {}
+                        }
+                    }
+                    if (kofEv.stopped) break;
+                    current = n.parent ? n.parent.id : null;
+                }
+            }
+
+            /** Test/entry hook: fires an event at a component (bubbles up). */
+            export function kofUiEmit(c, type) {
+                kofUiDispatchEvent(c, KOF_UI_EV[type] || type, null);
+            }
+
+            export function kofUiEventStop(ev) {
+                if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+            }
+
+            // ── Store: shared observable state (docs/ui/architecture.md §2.6)
+            // One Store, many component subscribers. set() notifies every
+            // subscriber; a component that re-renders on its own state stays
+            // with minimal invalidation — the Store only carries the value.
+            const kofUiStores = new Map();
+            let kofUiStoreSeq = 0;
+
+            export function kofUiStoreNew(initial) {
+                const id = ++kofUiStoreSeq;
+                kofUiStores.set(id, { value: initial, subs: [] });
+                return id;
+            }
+
+            export function kofUiStoreGet(s) {
+                const st = kofUiStores.get(s);
+                return st ? st.value : 0;
+            }
+
+            export function kofUiStoreSet(s, value) {
+                const st = kofUiStores.get(s);
+                if (!st) return;
+                st.value = value;
+                // notify every subscriber synchronously (ordering: subscription)
+                for (const f of st.subs.slice()) {
+                    try { f(value); } catch (e) {}
+                }
+            }
+
+            export function kofUiStoreSubscribe(s, fn) {
+                const st = kofUiStores.get(s);
+                if (!st) return;
+                const f = kofUiRunFn(fn);
+                if (!f) return;
+                st.subs.push(f);
+                // the subscriber receives the current value immediately
+                try { f(st.value); } catch (e) {}
+            }
+
+            export function kofUiStoreUnsubscribe(s, fn) {
+                const st = kofUiStores.get(s);
+                if (!st) return;
+                const i = st.subs.indexOf(fn);
+                if (i >= 0) st.subs.splice(i, 1);
+            }
+
+            export function kofUiStoresLive() {
+                return kofUiStores.size;
+            }
+            """;
+
     private static final String IO_RUNTIME = """
             // KofJS platform runtime — filesystem/console operations for the
             // KofJS target. Generated by the Kof compiler (KofJS backend).
@@ -4393,10 +4957,16 @@ class JsBackend implements Backend {
             }
             """;
 
-private void writeRuntime(Path outputDir) throws IOException {
+    private void writeRuntime(Path outputDir) throws IOException {
         Path core = outputDir.resolve("kof-runtime.mjs");
         if (!Files.exists(core)) {
+            // separate writes: a single concatenated constant would exceed the
+            // JVM's 64KiB string / constant-pool limits
             Files.writeString(core, CORE_RUNTIME);
+            Files.writeString(core, UI_COMPONENT_RUNTIME,
+                    java.nio.file.StandardOpenOption.APPEND);
+            Files.writeString(core, UI_EVENT_RUNTIME,
+                    java.nio.file.StandardOpenOption.APPEND);
         }
         Path node = outputDir.resolve("kof-runtime-io.mjs");
         if (!Files.exists(node)) {
