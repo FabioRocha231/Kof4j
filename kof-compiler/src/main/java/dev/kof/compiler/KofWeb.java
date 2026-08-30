@@ -25,6 +25,8 @@ final class KofWeb {
     private KofWeb() {}
 
     static final Type APP = new Type.ClassType("kof.web", "App", List.of());
+    static final Type SSE_CONNECTION =
+            new Type.ClassType("dev.kof.runtime", "KofRuntime$SseConnection", List.of());
 
     private static final Type STR = BuiltinTypes.STRING;
     private static final Type INT = Type.PrimitiveType.INT;
@@ -36,6 +38,25 @@ final class KofWeb {
 
     static boolean isAppType(Type t) {
         return APP.equals(t);
+    }
+
+    static boolean isSseConnectionType(Type t) {
+        return SSE_CONNECTION.equals(t);
+    }
+
+    /** Methods available on the synthetic {@code sse} handler parameter. */
+    static WebCall sseConnectionMethod(String name, List<Type> argTypes) {
+        return switch (name) {
+            case "send" -> argTypes.size() == 1
+                    ? new WebCall(name, VOID, argTypes) : null;
+            case "event" -> argTypes.size() == 2
+                    ? new WebCall(name, VOID, argTypes) : null;
+            case "close" -> argTypes.isEmpty()
+                    ? new WebCall(name, VOID, List.of()) : null;
+            case "isOpen" -> argTypes.isEmpty()
+                    ? new WebCall(name, Type.PrimitiveType.BOOL, List.of()) : null;
+            default -> null;
+        };
     }
 
     static boolean isWebNamespace(String name) {

@@ -8,6 +8,9 @@ import java.util.Map;
 
 class SemanticAnalyzer {
 
+    private static final String SSE_CONNECTION_TYPE =
+            "dev.kof.runtime.KofRuntime$SseConnection";
+
     private SymbolTable currentScope;
     private CompilationUnitNode currentUnit;
 
@@ -1193,10 +1196,24 @@ class SemanticAnalyzer {
                         yield KofWeb.APP;
                     }
                     if (KofWeb.isAppType(recvType)) {
+                        if ("sse".equals(mc.methodName()) && mc.arguments().size() == 2
+                                && mc.arguments().get(1) instanceof LambdaExpr le
+                                && le.parameters().isEmpty()) {
+                            mc.arguments().set(1, new LambdaExpr(le.position(),
+                                    List.of(new FormalParameterNode(le.position(), List.of(),
+                                            SSE_CONNECTION_TYPE, "sse")), le.body()));
+                        }
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), argTypes);
                         if (webCall != null) yield webCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (KofWeb.isSseConnectionType(recvType)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofWeb.WebCall sseCall = KofWeb.sseConnectionMethod(mc.methodName(), argTypes);
+                        if (sseCall != null) yield sseCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (recvType instanceof Type.FunctionType ft) {

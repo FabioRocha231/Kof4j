@@ -58,7 +58,7 @@ final class JvmWebRuntime {
 
                 public enum RouteKind { HTTP, SSE, WS }
 
-                record WebDispatchResult(RouteKind kind, String response) {}
+                record WebDispatchResult(RouteKind kind, String response, WebRoute route) {}
 
                 public static final class WebRoute {
                     final String method;
@@ -124,6 +124,65 @@ final class JvmWebRuntime {
 
                     String header(String name) {
                         return headers.get(name.toLowerCase());
+                    }
+                }
+
+                public static final class SseConnection {
+                    private final java.io.OutputStream out;
+                    private final byte[] nl = "\\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    private final java.util.concurrent.atomic.AtomicBoolean open =
+                            new java.util.concurrent.atomic.AtomicBoolean(true);
+                    private final java.util.concurrent.locks.ReentrantLock writeLock =
+                            new java.util.concurrent.locks.ReentrantLock();
+
+                    SseConnection(java.io.OutputStream out) {
+                        this.out = out;
+                    }
+
+                    public void send(String data) {
+                        writeData(data);
+                    }
+
+                    public void event(String name, String data) {
+                        writeFrame("event: " + name + "\\n");
+                        writeData(data);
+                    }
+
+                    public void close() {
+                        if (open.compareAndSet(true, false)) {
+                            writeLock.lock();
+                            try {
+                                out.flush();
+                                out.close();
+                            } catch (java.io.IOException ignored) {
+                            } finally {
+                                writeLock.unlock();
+                            }
+                        }
+                    }
+
+                    public boolean isOpen() {
+                        return open.get();
+                    }
+
+                    private void writeData(String data) {
+                        for (String line : data.split("\\n", -1)) {
+                            writeFrame("data: " + line + "\\n");
+                        }
+                        writeFrame("\\n");
+                    }
+
+                    private void writeFrame(String frame) {
+                        if (!open.get()) return;
+                        writeLock.lock();
+                        try {
+                            out.write(frame.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                            out.flush();
+                        } catch (java.io.IOException e) {
+                            open.set(false);
+                        } finally {
+                            writeLock.unlock();
+                        }
                     }
                 }
 

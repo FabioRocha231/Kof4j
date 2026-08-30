@@ -490,6 +490,34 @@ static boolean hasRuntimeFn(String methodName) {
                     try (client) {
                         WebRequest req = readRequest(client.getInputStream());
                         WebDispatchResult result = kof_web_dispatch(app, req);
+                        if (result.kind == RouteKind.SSE) {
+                            java.io.OutputStream out = client.getOutputStream();
+                            out.write(("HTTP/1.1 200 OK\\r\\n"
+                                    + "Content-Type: text/event-stream\\r\\n"
+                                    + "Cache-Control: no-cache\\r\\n"
+                                    + "Connection: keep-alive\\r\\n"
+                                    + "X-Accel-Buffering: no\\r\\n"
+                                    + "\\r\\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                            out.flush();
+                            SseConnection sse = new SseConnection(out);
+                            Thread handler = Thread.startVirtualThread(() -> {
+                                try {
+                                    KOF_WEB_REQUEST.set(req);
+                                    try {
+                                        kof_web_invoke(result.route.handler, sse);
+                                    } finally {
+                                        KOF_WEB_REQUEST.remove();
+                                    }
+                                } catch (Exception e) {
+                                    System.err.println("kof web sse handler error: "
+                                            + e.getMessage());
+                                } finally {
+                                    sse.close();
+                                }
+                            });
+                            handler.join();
+                            return;
+                        }
                         if (result.kind != RouteKind.HTTP) {
                             kof_web_keep_alive(client);
                             return;
@@ -536,7 +564,7 @@ static boolean hasRuntimeFn(String methodName) {
                                 String resp = kof_web_build(code, text, String.valueOf(result));
                                 KOF_WEB_STATUS.remove();
                                 KOF_WEB_HEADERS.get().clear();
-                                return new WebDispatchResult(RouteKind.HTTP, resp);
+                                return new WebDispatchResult(RouteKind.HTTP, resp, null);
                             }
                         }
                         for (WebRoute route : app.routes) {
@@ -558,7 +586,7 @@ static boolean hasRuntimeFn(String methodName) {
                             if (route.kind != RouteKind.HTTP) {
                                 KOF_WEB_STATUS.remove();
                                 KOF_WEB_HEADERS.get().clear();
-                                return new WebDispatchResult(route.kind, null);
+                                return new WebDispatchResult(route.kind, null, route);
                             }
                             KOF_WEB_STATUS.remove();
                             KOF_WEB_HEADERS.get().clear();
@@ -567,7 +595,7 @@ static boolean hasRuntimeFn(String methodName) {
                                 KOF_WEB_STATUS.remove();
                                 KOF_WEB_HEADERS.get().clear();
                                 return new WebDispatchResult(RouteKind.HTTP,
-                                        kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"));
+                                        kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"), null);
                             }
                             Integer st2 = KOF_WEB_STATUS.get();
                             int code2 = st2 != null ? st2 : 200;
@@ -575,17 +603,17 @@ static boolean hasRuntimeFn(String methodName) {
                             String resp2 = kof_web_build(code2, text2, String.valueOf(result));
                             KOF_WEB_STATUS.remove();
                             KOF_WEB_HEADERS.get().clear();
-                            return new WebDispatchResult(RouteKind.HTTP, resp2);
+                            return new WebDispatchResult(RouteKind.HTTP, resp2, null);
                         }
                         return new WebDispatchResult(RouteKind.HTTP,
-                                kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"));
+                                kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"), null);
                     } catch (Exception e) {
                         String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                         KOF_WEB_STATUS.remove();
                         KOF_WEB_HEADERS.get().clear();
                         return new WebDispatchResult(RouteKind.HTTP,
                                 kof_web_build(500, "Internal Server Error",
-                                        "{\\"error\\": \\"handler error: " + msg + "\\"}"));
+                                        "{\\"error\\": \\"handler error: " + msg + "\\"}"), null);
                     } finally {
                         KOF_WEB_REQUEST.remove();
                         KOF_LOG_REQUEST_ID.remove();
@@ -603,6 +631,11 @@ static boolean hasRuntimeFn(String methodName) {
                                         String.class, String.class)
                                 .invoke(target, req.method, req.path, req.body, req.query, req.rawHeaders);
                     }
+                }
+
+                private static Object kof_web_invoke(Object target, SseConnection sse) throws Exception {
+                    return target.getClass().getMethod("invoke", SseConnection.class)
+                            .invoke(target, sse);
                 }
 
                 private static String kof_web_build(int status, String statusText, String body) {
