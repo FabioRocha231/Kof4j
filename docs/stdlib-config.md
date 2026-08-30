@@ -25,7 +25,27 @@ var big   = config.long("app.timeoutMillis", 30000) // Long com default
 var raw   = config.get("server.port")               // String ou null
 var has   = config.has("server.port")               // Bool
 var home  = config.env("HOME")                      // variável de ambiente direta
+var need  = config.required("db.url")               // falha no startup se ausente
 ```
+
+### 2.1 Interpolação `${key}` (P2 — implementada, 30/08)
+
+Valores podem referenciar outras chaves do próprio config:
+
+```text
+# kof.config
+db.host = localhost
+db.port = 5432
+db.url  = jdbc:pg://${db.host}:${db.port}/app
+```
+
+- Resolução recursiva (referência a referência funciona), limite de 16 níveis.
+- **Ciclo** (`a=${b}`, `b=${a}`) → valor **literal inalterado** (`a` vale
+  `${b}`), nunca crash nem loop infinito.
+- Chave referenciada **inexistente** → literal inalterado.
+- Funciona igualmente para valores vindos de arquivo **e** de env
+  (`KOF_<KEY>`), nos 3 targets (JVM: `JvmConfigRuntime`; Native: asm
+  `kof_config_interpolate`; JS: `kofConfigInterpolate`).
 
 `config.int/bool/long/str` nunca falham: valor ausente ou inválido → default.
 
@@ -115,21 +135,22 @@ descoberto por reflection.
 
 ### 8.2 Roadmap (na ordem de valor)
 
-**P1 — `config.required(key)` — falhar cedo.**
+**P1 — ✅ `config.required(key)` — IMPLEMENTADO (30/08).**
 ```kof
 var url = config.required("database.url")   // erro de startup claro se ausente
 ```
-Elimina a classe inteira de bugs de deploy (" rodou na minha máquina").
-Runtime: se ausente → `KofPanic` com a chave e a precedência consultada.
-Os 3 targets; pequeno.
+Elimina a classe inteira de bugs de deploy ("rodou na minha máquina").
+JVM: `IllegalStateException` nomeando chave + precedência consultada;
+Native: panic asm; JS: throw. Testes: `requiredKeyPresentAllTargets`,
+`requiredKeyMissingFailsFast`.
 
-**P2 — Interpolação no arquivo.**
-```text
-# kof.config
-db.host = localhost
-db.url  = jdbc:h2://${db.host}/mem
-```
-Lookup recursivo com detecção de ciclo. Baixo custo, alto valor de DX.
+**P2 — ✅ Interpolação `${key}` — IMPLEMENTADA (30/08, ver §2.1).**
+Lookup recursivo com detecção de ciclo (ciclo → literal, nunca crash).
+JVM + Native (asm `kof_config_interpolate`) + JS. Funciona para valores de
+arquivo e de env. Testes: `interpolationResolvesReferences` (JVM),
+interpolação estendida em `nativeAndJsRunConfig` (Native + JS).
+Bônus: expôs e corrigiu um bug latente no asm de `kof_config_bool`
+(rsi nunca era setado antes de `.Lcb_ci_match`; funcionava por acaso).
 
 **P3 — `kof config gen` — template a partir do código.**
 O compilador JÁ conhece todas as chaves (compile-time dispatch). Um subcomando

@@ -68,7 +68,7 @@ class KofHttpResilienceE2ETest {
     private String runApp(Path tempDir, String[] args) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-                main(args) {
+                main(args: List<String>) {
                     var base = args[0]
                     var closedUrl = args[1]
                     http.retry(2)
@@ -92,7 +92,9 @@ class KofHttpResilienceE2ETest {
                     var d = http.get(base + "/ok")
                     println("recover=" + d)
                 }
-                """);
+                """
+                .replace("args[0]", "args.get(0)")
+                .replace("args[1]", "args.get(1)"));
         Path outDir = tempDir.resolve("classes");
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());

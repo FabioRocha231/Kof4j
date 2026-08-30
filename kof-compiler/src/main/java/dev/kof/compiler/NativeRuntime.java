@@ -4990,7 +4990,17 @@ final class NativeRuntime {
                 ret
 
             # kof_config_lookup(rdi=key KofString*) -> KofString*|0
+            # público: raw + interpolação ${key} (P2)
             kof_config_lookup:
+                call kof_config_lookup_raw
+                testq %rax, %rax
+                jz .Lkcl_null
+                movq %rax, %rdi
+                call kof_config_interpolate
+            .Lkcl_null:
+                ret
+
+            kof_config_lookup_raw:
                 pushq %rbx
                 pushq %r12
                 pushq %r13
@@ -5068,7 +5078,7 @@ final class NativeRuntime {
             # ---- wrappers publicos ----
 
             kof_config_get:
-                jmp kof_config_interpolate
+                jmp kof_config_lookup
 
             # P2 (docs/stdlib-config.md §8.2): interpolação ${key}.
             # rdi = valor KofString* -> resolve referências a outras chaves.
@@ -5081,7 +5091,9 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $24, %rsp               # spills: [0]=start [8]=end [16]=sufixo
+                subq $32, %rsp               # spills: [0]=start [8]=end [16]=sufixo
+                                             # push x5 (40) + 32 = 72 -> rsp%16==8
+                                             # na entrada de calls: OK (padrao SysV)
                 testq %rdi, %rdi
                 jz .Lkci_ret
                 movq %rdi, %r12
@@ -5162,7 +5174,7 @@ final class NativeRuntime {
             .Lkci_done:
                 movq %r12, %rax
             .Lkci_ret:
-                addq $24, %rsp
+                addq $32, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -5290,6 +5302,8 @@ final class NativeRuntime {
                 jmp .Lcb_tle_loop
             .Lcb_dispatch:
                 subq %r9, %r10               # len aparado
+                leaq (%rdx), %rsi            # rsi = data do valor (contrato ci_match)
+                addq %r9, %rsi               # + trim esquerdo
                 # true / yes / 1 -> 1
                 cmpq $4, %r10
                 jne .Lcb_chk3
