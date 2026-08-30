@@ -522,7 +522,19 @@ class JvmBackend implements Backend {
         tryCatches.clear();
         tryStack.clear();
 
-        mv.visitMaxs(maxStack, maxLocals);
+        try {
+            mv.visitMaxs(maxStack, maxLocals);
+        } catch (RuntimeException e) {
+            if (Boolean.getBoolean("kof.trace.ir")) {
+                System.err.println("=== IR ops de " + className + "." + method.name() + " ===");
+                for (IRBasicBlock block : method.basicBlocks()) {
+                    for (KofOperation op : block.operations()) {
+                        System.err.println("  " + op);
+                    }
+                }
+            }
+            throw e;
+        }
         mv.visitEnd();
     }
 
