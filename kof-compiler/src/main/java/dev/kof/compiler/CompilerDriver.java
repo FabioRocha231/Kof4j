@@ -4952,6 +4952,16 @@ private Target target = Target.JVM;
                         leftType = Type.PrimitiveType.BOOL;
                         continue;
                     }
+                    // aritmética promove: int/long → long etc. (o lowering
+                    // usa commonNumericType; a inferência precisa casar)
+                    Type rType = inferExprType(be.right(), locals);
+                    if (switch (be.operator()) {
+                        case "+", "-", "*", "/", "%" -> true;
+                        default -> false;
+                    } && isNumeric(leftType) && isNumeric(rType)) {
+                        leftType = commonNumericType(leftType, rType);
+                        continue;
+                    }
                     leftType = leftType;
                 }
                 yield leftType;
@@ -7006,6 +7016,12 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
             }
             body = List.of(new IRBasicBlock(0, ops));
             locals = localVars;
+        } else if (!isInterface && !isAbstractMethod(method)) {
+            // corpo vazio em classe concreta: sem Code attribute o JVM rejeita
+            // a classe (Absent Code attribute) — emite corpo com return default
+            List<KofOperation> ops = new ArrayList<>(List.of(Type.isVoid(returnType)
+                    ? new KofReturnVoid() : new KofReturn(returnType)));
+            body = List.of(new IRBasicBlock(0, ops));
         }
         KofDebugInfo debugInfo = currentDebugPositions.isEmpty()
                 ? KofDebugInfo.EMPTY
@@ -7310,7 +7326,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     }
 
     private boolean isAbstractMethod(MethodDeclarationNode method) {
-        return method.body() == null || method.body().isEmpty();
+        return method.body() == null;
     }
 
     /**

@@ -1431,6 +1431,14 @@ class SemanticAnalyzer {
                                 List<Type> paramTypes = new ArrayList<>();
                                 for (FormalParameterNode p : fn.parameters()) paramTypes.add(resolveType(p.type(), scope));
                                 checkArgTypes(mc.methodName(), argTypes, paramTypes);
+                                // registra o tipo de retorno da função top-level
+                                // para o var local inferir (evita Unknown que
+                                // quebra a resolução de métodos do receiver)
+                                Type fnRet = resolveType(fn.returnType(), scope);
+                                if (!Type.isVoid(fnRet)) {
+                                    expressionTypes.put(mc, fnRet);
+                                    yield fnRet;
+                                }
                             }
                             break;
                         }
