@@ -3186,6 +3186,19 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
                     if (procCall != null && "kof_process_spawn".equals(procCall.function())) {
+                        if (target.isNative()) {
+                            // F10: pipes vivos no native exigem fork/exec com
+                            // descriptors no runtime asm — gap explícito por ora
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        "process.spawn: interactive stdin/stdout not supported on the Native target yet (JVM/JS support it)",
+                                        "PROC001");
+                            }
+                            yield localIdx;
+                        }
                         // F10: process.spawn(program, args...) → monta List<String>
                         // e chama kof_process_spawn (stdin/stdout vivos)
                         localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
