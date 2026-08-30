@@ -4125,7 +4125,7 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                         SymbolTable.ConstructorSymbol ctor = null;
                         SymbolTable.Symbol ctorSym = cs.members().resolve("<init>");
-                        if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
+                        if (ctorSym instanceof SymbolTable.ConstructorSymbol ctorSingle) ctor = ctorSingle;
                         ops.add(new KofNewObject(cs.type(), argTypes));
                         ops.add(new KofDup());
                         List<Type> ctorParamTypes = (ctor != null
@@ -4456,6 +4456,44 @@ private Target target = Target.JVM;
                 List<Type> argTypes = new ArrayList<>();
                 for (ExpressionNode arg : ne.arguments()) argTypes.add(inferExprType(arg, locals));
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
+                if (resolvedCtor == null && type instanceof Type.ClassType ct
+                        && semanticAnalyzer != null) {
+                    // fallback: resolver por assignability quando o registro
+                    // por identidade falhou (ex.: node recriado no desugar)
+                    SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(ct.name());
+                    if (cs != null) {
+                        SymbolTable.Symbol anyInit = cs.members().resolve("<init>");
+                        if (anyInit instanceof SymbolTable.ConstructorSet set) {
+                            for (SymbolTable.ConstructorSymbol c : set.constructors()) {
+                                if (c.parameterTypes().size() == argTypes.size()) {
+                                    boolean compatible = true;
+                                    for (int ai = 0; ai < argTypes.size(); ai++) {
+                                        if (!ctorCompatible(c.parameterTypes().get(ai), argTypes.get(ai))) {
+                                            compatible = false;
+                                            break;
+                                        }
+                                    }
+                                    if (compatible) { resolvedCtor = c; break; }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (resolvedCtor == null && type instanceof Type.ClassType ct
+                        && semanticAnalyzer != null) {
+                    SymbolTable.ClassSymbol cs2 = semanticAnalyzer.getClass(ct.name());
+                    if (cs2 != null) {
+                        SymbolTable.Symbol anyInit2 = cs2.members().resolve("<init>");
+                        if (anyInit2 instanceof SymbolTable.ConstructorSet set2) {
+                            for (SymbolTable.ConstructorSymbol c : set2.constructors()) {
+                                if (c.parameterTypes().size() == argTypes.size()) {
+                                    resolvedCtor = c;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
                 ops.add(new KofNewObject(type, argTypes));
                 ops.add(new KofDup());
                 List<Type> ctorParamTypes;
@@ -5471,6 +5509,48 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
             return Type.PrimitiveType.LONG;
         }
         return a instanceof Type.PrimitiveType ? a : Type.PrimitiveType.INT;
+    }
+
+    /** Compatibilidade largura para fallback de resolução de construtor:
+     *  primitivos por largura, tipos de referência por hierarquia, Unknown aceita tudo. */
+    private int primWidth(Type.PrimitiveType pt) {
+        return switch (pt.name()) {
+            case "bool", "Bool" -> 0;
+            case "char", "Char" -> 1;
+            case "int", "Int", "byte", "short" -> 2;
+            case "long", "Long" -> 3;
+            case "float", "Float" -> 4;
+            case "double", "Double" -> 5;
+            default -> 2;
+        };
+    }
+
+    private boolean ctorCompatible(Type formal, Type arg) {
+        if (formal == null || arg == null) return true;
+        if (Type.isUnknown(formal) || Type.isUnknown(arg)) return true;
+        if (formal.equals(arg)) return true;
+        if (formal instanceof Type.PrimitiveType fp && arg instanceof Type.PrimitiveType ap) {
+            return primWidth(ap) <= primWidth(fp);
+        }
+        if (formal instanceof Type.ClassType fc && arg instanceof Type.ClassType ac
+                && semanticAnalyzer != null) {
+            java.util.Set<String> visited = new java.util.HashSet<>();
+            java.util.Queue<String> queue = new java.util.LinkedList<>();
+            queue.add(ac.name());
+            visited.add(ac.name());
+            while (!queue.isEmpty()) {
+                String current = queue.poll();
+                if (current.equals(fc.name())) return true;
+                SymbolTable.ClassSymbol cur = semanticAnalyzer.getClass(current);
+                if (cur == null) continue;
+                if (cur.superClass() != null && !cur.superClass().equals("java/lang/Object")
+                        && visited.add(cur.superClass())) queue.add(cur.superClass());
+                for (String i : cur.interfaces()) {
+                    if (visited.add(i)) queue.add(i);
+                }
+            }
+        }
+        return true;
     }
 
     private void emitWideningIfNeeded(List<KofOperation> ops, Type from, Type to) {
