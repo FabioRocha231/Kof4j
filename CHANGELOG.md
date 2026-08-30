@@ -1613,6 +1613,21 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - string concat null -> anull, if null, List and subclass parity (4 bugs)
 
+## [0.2.4-beta] - 2026-08-30
+
+### Features
+
+  - F10 spawn com stdin vivo + fix(native): forward reference
+
+### Bugfixes
+
+  - PROC001 explícito para process.spawn no Native
+  - marcação transitiva + sweep no-op conservador + cdq em idivl Int — fecha N22 e SIGFPE do scheduler
+  - String API no SemanticAnalyzer/inferExprType + lastIndexOf + null-compare no KofBinary
+  - aritmetica Int trunca 32 bits — fecha N21/N10-family
+  - comparisonOperandType refinado — null-literal decide ref; Unknown volta a ser int
+  - R2 mapOf(k,v) pares + R3 null-safety narrowing + R4 Box<T> genérico na JVM
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
