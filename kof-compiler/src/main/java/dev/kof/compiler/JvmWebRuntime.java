@@ -407,9 +407,52 @@ final class JvmWebRuntime {
                 // ── kof.http — HTTP client (JDK java.net.http) ───────────
                 private static final java.util.concurrent.atomic.AtomicInteger KOF_HTTP_TIMEOUT =
                         new java.util.concurrent.atomic.AtomicInteger(15);
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_HTTP_RETRIES =
+                        new java.util.concurrent.atomic.AtomicInteger(0);
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_HTTP_CIRCUIT_TRIPS =
+                        new java.util.concurrent.atomic.AtomicInteger(0);
+                private static final java.util.concurrent.atomic.AtomicInteger KOF_HTTP_CIRCUIT_FAILURES =
+                        new java.util.concurrent.atomic.AtomicInteger(0);
+                private static volatile long KOF_HTTP_CIRCUIT_OPEN_UNTIL = 0L;
+                private static final long KOF_HTTP_CIRCUIT_WINDOW_MS = 30_000L;
 
                 public static void kof_http_timeout_set(int seconds) {
                     KOF_HTTP_TIMEOUT.set(seconds);
+                }
+
+                public static void kof_http_retry_set(int n) {
+                    KOF_HTTP_RETRIES.set(Math.max(0, n));
+                }
+
+                public static void kof_http_circuit_set(int trips) {
+                    KOF_HTTP_CIRCUIT_TRIPS.set(Math.max(0, trips));
+                    if (trips <= 0) {
+                        KOF_HTTP_CIRCUIT_FAILURES.set(0);
+                        KOF_HTTP_CIRCUIT_OPEN_UNTIL = 0L;
+                    }
+                }
+
+                private static boolean kof_http_circuit_open() {
+                    long openUntil = KOF_HTTP_CIRCUIT_OPEN_UNTIL;
+                    if (openUntil == 0L) return false;
+                    if (System.currentTimeMillis() >= openUntil) {
+                        KOF_HTTP_CIRCUIT_OPEN_UNTIL = 0L;
+                        return false;
+                    }
+                    return true;
+                }
+
+                private static void kof_http_circuit_record_failure() {
+                    int trips = KOF_HTTP_CIRCUIT_TRIPS.get();
+                    if (trips <= 0) return;
+                    if (KOF_HTTP_CIRCUIT_FAILURES.incrementAndGet() >= trips) {
+                        KOF_HTTP_CIRCUIT_OPEN_UNTIL = System.currentTimeMillis() + KOF_HTTP_CIRCUIT_WINDOW_MS;
+                    }
+                }
+
+                private static void kof_http_circuit_record_success() {
+                    KOF_HTTP_CIRCUIT_FAILURES.set(0);
+                    KOF_HTTP_CIRCUIT_OPEN_UNTIL = 0L;
                 }
 
                 public static String kof_http_get(String url) throws Exception {
@@ -496,27 +539,42 @@ final class JvmWebRuntime {
 
                 private static String kof_http_request(String url, String method, String headers, String body)
                         throws Exception {
-                    java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
-                            java.net.URI.create(url))
-                            .timeout(java.time.Duration.ofSeconds(KOF_HTTP_TIMEOUT.get()));
-                    if (headers != null && !headers.isBlank()) {
-                        for (String line : headers.split("\\n")) {
-                            int c = line.indexOf(':');
-                            if (c > 0) {
-                                b.header(line.substring(0, c).trim(), line.substring(c + 1).trim());
+                    if (kof_http_circuit_open()) {
+                        throw new java.io.IOException("kof.http circuit open (fail fast): " + url);
+                    }
+                    Exception last = null;
+                    int attempts = KOF_HTTP_RETRIES.get() + 1;
+                    for (int attempt = 0; attempt < attempts; attempt++) {
+                        try {
+                            java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                                    java.net.URI.create(url))
+                                    .timeout(java.time.Duration.ofSeconds(KOF_HTTP_TIMEOUT.get()));
+                            if (headers != null && !headers.isBlank()) {
+                                for (String line : headers.split("\\n")) {
+                                    int c = line.indexOf(':');
+                                    if (c > 0) {
+                                        b.header(line.substring(0, c).trim(), line.substring(c + 1).trim());
+                                    }
+                                }
                             }
+                            if (body != null) {
+                                b.method(method, java.net.http.HttpRequest.BodyPublishers.ofString(body));
+                            } else {
+                                b.method(method, java.net.http.HttpRequest.BodyPublishers.noBody());
+                            }
+                            boolean isHttps2 = url != null && url.toLowerCase().startsWith("https://");
+                            java.net.http.HttpClient client2 = isHttps2 ? KOF_HTTP_CLIENT_INSECURE : java.net.http.HttpClient.newHttpClient();
+                            java.net.http.HttpResponse<String> r = client2
+                                    .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                            kof_http_circuit_record_success();
+                            return r.body();
+                        } catch (Exception e) {
+                            last = e;
+                            kof_http_circuit_record_failure();
                         }
                     }
-                    if (body != null) {
-                        b.method(method, java.net.http.HttpRequest.BodyPublishers.ofString(body));
-                    } else {
-                        b.method(method, java.net.http.HttpRequest.BodyPublishers.noBody());
-                    }
-                    boolean isHttps2 = url != null && url.toLowerCase().startsWith("https://");
-                    java.net.http.HttpClient client2 = isHttps2 ? KOF_HTTP_CLIENT_INSECURE : java.net.http.HttpClient.newHttpClient();
-                    java.net.http.HttpResponse<String> r = client2
-                            .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
-                    return r.body();
+                    if (last == null) last = new java.io.IOException("request failed: " + url);
+                    throw last;
                 }
 
                 // ── kof.mq — messageria em memória (pub/sub + filas) ─────

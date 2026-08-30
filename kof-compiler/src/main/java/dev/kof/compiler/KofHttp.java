@@ -39,7 +39,8 @@ final class KofHttp {
 
     static boolean isHttpMethod(String name) {
         return switch (name) {
-            case "get", "post", "put", "delete", "patch", "options", "status", "timeout" -> true;
+            case "get", "post", "put", "delete", "patch", "options", "status", "timeout",
+                    "retry", "circuit" -> true;
             default -> false;
         };
     }
@@ -74,6 +75,12 @@ final class KofHttp {
                     : null;
             case "timeout" -> argTypes.size() == 1
                     ? new HttpCall("kof_http_timeout_set", VOID, List.of(INT))
+                    : null;
+            case "retry" -> argTypes.size() == 1
+                    ? new HttpCall("kof_http_retry_set", VOID, List.of(INT))
+                    : null;
+            case "circuit" -> argTypes.size() == 1
+                    ? new HttpCall("kof_http_circuit_set", VOID, List.of(INT))
                     : null;
             default -> null;
         };

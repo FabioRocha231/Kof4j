@@ -281,6 +281,38 @@ class KofConfigE2ETest {
         }
     }
 
+    @Test
+    void interpolationResolvesReferences(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Config.kf");
+        Files.writeString(source, """
+                main() {
+                    println(config.str("db.url", "MISS"))
+                    println(config.str("a", "MISS"))
+                    println(config.str("cyclic", "MISS"))
+                }
+                """);
+        Path cfg = tempDir.resolve("work/kof.config");
+        Files.createDirectories(cfg.getParent());
+        Files.writeString(cfg, """
+                # P2: interpolação ${key}
+                db.host = localhost
+                db.port = 5432
+                db.url = jdbc:pg://${db.host}:${db.port}/app
+                a = ${db.host}
+                b = x
+                c = ${b}
+                cyclic = ${cyclic}
+                missing = ${no.such.key}
+                """);
+        // JVM
+        String out = run(tempDir, Files.readString(source), Map.of(), tempDir.resolve("work"));
+        assertTrue(out.contains("jdbc:pg:localhost:5432/app"),
+                "JVM interpolação composta, out: " + out);
+        assertTrue(out.contains("localhost"), "JVM ref simples, out: " + out);
+        assertTrue(out.contains("MISS"), "JVM ciclo -> literal inalterado "
+                + "(default MISSING nunca aparece; valor cyclic=${cyclic} literal), out: " + out);
+    }
+
     private static Path findJsEntry(Path dir) throws IOException {
         try (var s = Files.walk(dir)) {
             var opt = s.filter(p -> p.getFileName().toString().equals("Default.mjs")).findFirst();

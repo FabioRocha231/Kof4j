@@ -21,6 +21,46 @@ final class JvmConfigRuntime {
                     return kof_config_lookup(key);
                 }
 
+                // P2 (docs/stdlib-config.md §8.2): interpolação ${key} —
+                // resolve referências entre chaves do próprio arquivo.
+                // Ciclo → valor literal; chave inexistente → literal inalterado.
+                // O set de chaves "em resolução" vive no lookup (ThreadLocal),
+                // porque um ciclo entra por kof_config_lookup → interpolate →
+                // lookup... e não dentro de um único interpolate.
+                private static final ThreadLocal<java.util.Set<String>> KOF_CFG_RESOLVING =
+                        ThreadLocal.withInitial(java.util.HashSet::new);
+
+                private static String kof_config_interpolate(String value) {
+                    if (value == null || !value.contains("${")) return value;
+                    String current = value;
+                    for (int depth = 0; depth < 16; depth++) {
+                        int start = current.indexOf("${");
+                        if (start < 0) break;
+                        int end = current.indexOf('}', start + 2);
+                        if (end < 0) break;
+                        String ref = current.substring(start + 2, end);
+                        java.util.Set<String> resolving = KOF_CFG_RESOLVING.get();
+                        if (resolving.contains(ref)) {
+                            // ciclo: mantém o valor literal original
+                            return value;
+                        }
+                        resolving.add(ref);
+                        String resolved;
+                        try {
+                            resolved = kof_config_lookup(ref);
+                        } finally {
+                            resolving.remove(ref);
+                        }
+                        if (resolved == null) {
+                            // referência desconhecida: mantém literal
+                            return value;
+                        }
+                        current = current.substring(0, start) + resolved
+                                + current.substring(end + 1);
+                    }
+                    return current;
+                }
+
                 public static String kof_config_required(String key) {
                     String v = kof_config_lookup(key);
                     if (v == null) {
@@ -72,6 +112,10 @@ final class JvmConfigRuntime {
                 }
 
                 private static String kof_config_lookup(String key) {
+                    String v = kof_config_lookup_raw(key);
+                    return v != null ? kof_config_interpolate(v) : null;
+                }
+                private static String kof_config_lookup_raw(String key) {
                     String file = System.getenv("KOF_CONFIG");
                     if (file != null && !file.isBlank()) {
                         String v = kof_config_read_key(java.nio.file.Path.of(file), key);

@@ -3973,6 +3973,26 @@ class JsBackend implements Backend {
                 return def ? 1 : 0;
             }
 
+            // P2 (docs/stdlib-config.md §8.2): interpolação ${key} —
+            // resolve referências entre chaves; ciclo/missing → literal.
+            function kofConfigInterpolate(value) {
+                if (!value || !value.includes('${')) return value;
+                const seen = new Set();
+                let current = value;
+                for (let depth = 0; depth < 16; depth++) {
+                    const start = current.indexOf('${');
+                    if (start < 0) break;
+                    const end = current.indexOf('}', start + 2);
+                    if (end < 0) break;
+                    const ref = current.slice(start + 2, end);
+                    const resolved = kofConfigLookup(ref);
+                    if (resolved == null || seen.has(ref)) return value;
+                    seen.add(ref);
+                    current = current.slice(0, start) + resolved + current.slice(end + 1);
+                }
+                return current;
+            }
+
             function kofConfigLookup(key) {
                 try {
                     if (typeof process !== 'undefined' && process.env) {
@@ -4005,11 +4025,14 @@ class JsBackend implements Backend {
                             }
                         }
                     }
-                    if (key in globalThis.__kofConfigFile) return globalThis.__kofConfigFile[key];
+                    if (key in globalThis.__kofConfigFile) return kofConfigInterpolate(globalThis.__kofConfigFile[key]);
                 } catch (e) {}
                 return null;
             }
 
+            """;
+
+    private static final String UI_SUPPORT_RUNTIME = """
             export const kofMqSubs = new Map();
             export const kofMqQueues = new Map();
             export let kofMqSeq = 0;
@@ -4964,6 +4987,8 @@ class JsBackend implements Backend {
             // JVM's 64KiB string / constant-pool limits
             Files.writeString(core, CORE_RUNTIME);
             Files.writeString(core, UI_COMPONENT_RUNTIME,
+                    java.nio.file.StandardOpenOption.APPEND);
+            Files.writeString(core, UI_SUPPORT_RUNTIME,
                     java.nio.file.StandardOpenOption.APPEND);
             Files.writeString(core, UI_EVENT_RUNTIME,
                     java.nio.file.StandardOpenOption.APPEND);

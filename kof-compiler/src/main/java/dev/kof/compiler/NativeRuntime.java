@@ -5068,7 +5068,111 @@ final class NativeRuntime {
             # ---- wrappers publicos ----
 
             kof_config_get:
-                jmp kof_config_lookup
+                jmp kof_config_interpolate
+
+            # P2 (docs/stdlib-config.md §8.2): interpolação ${key}.
+            # rdi = valor KofString* -> resolve referências a outras chaves.
+            # Ref inexistente ou "${" sem "}" -> valor literal inalterado.
+            # Profundidade máxima 16 (quebra ciclos).
+            # callee-saved: r12=valor corrente, r13=depth, rbx/r14/r15=temps
+            kof_config_interpolate:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $24, %rsp               # spills: [0]=start [8]=end [16]=sufixo
+                testq %rdi, %rdi
+                jz .Lkci_ret
+                movq %rdi, %r12
+                xorl %r13d, %r13d            # depth = 0
+            .Lkci_loop:
+                cmpl $16, %r13d
+                jge .Lkci_done
+                # achou "${" no valor corrente?
+                leaq .Lkci_dollar(%rip), %rdi
+                movl $2, %esi
+                call kof_string_from_literal
+                movq %rax, %r14              # r14 = "${"
+                movq %r12, %rdi
+                movq %r14, %rsi
+                call kof_string_index_of
+                cmpl $-1, %eax
+                je .Lkci_done                # sem "${": pronto
+                movl %eax, 0(%rsp)           # spill: start
+                # tail = value[start+2 .. len]
+                movq %r12, %rdi
+                movl 0(%rsp), %esi
+                addl $2, %esi
+                movl 16(%r12), %edx
+                call kof_string_substring
+                testq %rax, %rax
+                jz .Lkci_done
+                movq %rax, %rbx              # rbx = tail
+                # rel = index_of(tail, "}")
+                leaq .Lkci_close(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %r14              # r14 = "}"
+                movq %rbx, %rdi
+                movq %r14, %rsi
+                call kof_string_index_of
+                cmpl $-1, %eax
+                je .Lkci_done                # sem "}" -> literal
+                leal 2(%rax), %r9d           # r9 = end (relativo ao start+2... ver: 2+rel == start+2+rel - start) 
+                addl 0(%rsp), %r9d           # r9 = end absoluto
+                movl %r9d, 4(%rsp)           # spill end
+                # ref = value[start+2 .. end]
+                movq %r12, %rdi
+                movl 0(%rsp), %esi
+                addl $2, %esi
+                movl %r9d, %edx
+                call kof_string_substring
+                movq %rax, %r14              # r14 = ref KofString
+                movq %r14, %rdi
+                call kof_config_lookup       # resolve referência
+                testq %rax, %rax
+                jz .Lkci_done                # ref inexistente -> literal
+                movq %rax, %r15              # r15 = resolved
+                # prefixo = value[0..start]
+                movq %r12, %rdi
+                xorl %esi, %esi
+                movl 0(%rsp), %edx
+                call kof_string_substring
+                movq %rax, %rbx              # rbx = prefixo
+                # sufixo = value[end+1 .. len]
+                movq %r12, %rdi
+                movl 4(%rsp), %esi
+                addl $1, %esi
+                movl 16(%r12), %edx
+                call kof_string_substring
+                movq %rax, 8(%rsp)           # spill sufixo
+                # tmp = resolved + sufixo
+                movq %r15, %rdi
+                movq 8(%rsp), %rsi
+                call kof_string_concat
+                movq %rax, %r15              # r15 = (resolved+sufixo)
+                # result = prefixo + tmp
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %r12              # novo valor corrente
+                incl %r13d
+                jmp .Lkci_loop
+            .Lkci_done:
+                movq %r12, %rax
+            .Lkci_ret:
+                addq $24, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkci_dollar: .asciz "${"
+            .Lkci_close:  .asciz "}"
+
+            # kof_config_required(rdi=key) -> KofString*|panic CONF002
 
             # kof_config_required(rdi=key) -> KofString*|panic CONF002
             kof_config_required:
