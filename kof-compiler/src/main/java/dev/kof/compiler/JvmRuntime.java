@@ -196,6 +196,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
             case "kof_web_status" -> "(ILjava/lang/String;)Ljava/lang/String;";
             case "kof_web_header_set" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_web_sse_send" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_web_ws_message" -> "()Ljava/lang/String;";
+            case "kof_web_ws_send" -> "(Ljava/lang/String;)V";
             case "kof_config_get", "kof_config_env", "kof_config_required" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_http_get", "kof_http_delete", "kof_http_options" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_http_get_headers", "kof_http_delete_headers", "kof_http_options_headers"
@@ -347,6 +350,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
                     "kof_web_body", "kof_web_method", "kof_web_path",
                     "kof_web_status", "kof_web_header_set",
+                    "kof_web_sse_send", "kof_web_ws_message",
                     "kof_scheduler_every", "kof_scheduler_at" -> "Ljava/lang/String;";
             case "kof_config_get", "kof_config_env", "kof_config_str", "kof_config_required" -> "Ljava/lang/String;";
             case "kof_cache_get" -> "Ljava/lang/String;";
@@ -361,7 +365,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_mq_pop" -> "Ljava/lang/Object;";
             case "kof_web_sse_route", "kof_web_ws_route", "kof_http_timeout_set",
                     "kof_mq_publish", "kof_mq_subscribe", "kof_mq_unsubscribe",
-                    "kof_mq_push", "kof_time_sleep", "kof_time_cancel", "kof_scheduler_cancel" -> "V";
+                    "kof_mq_push", "kof_time_sleep", "kof_time_cancel", "kof_scheduler_cancel",
+                    "kof_web_ws_send" -> "V";
             case "kof_time_now" -> "J";
             case "kof_time_interval" -> "Ljava/lang/String;";
             case "kof_config_int", "kof_config_bool", "kof_config_has" -> "I";
@@ -542,9 +547,11 @@ static boolean hasRuntimeFn(String methodName) {
                             Thread handler = Thread.startVirtualThread(() -> {
                                 try {
                                     KOF_WEB_REQUEST.set(req);
+                                    KOF_SSE_CONNECTION.set(sse);
                                     try {
                                         kof_web_invoke(result.route.handler, sse);
                                     } finally {
+                                        KOF_SSE_CONNECTION.remove();
                                         KOF_WEB_REQUEST.remove();
                                     }
                                 } catch (Exception e) {
@@ -558,7 +565,7 @@ static boolean hasRuntimeFn(String methodName) {
                             return;
                         }
                         if (result.kind == RouteKind.WS) {
-                            kof_web_ws_handshake(req, client);
+                            kof_web_ws_handshake(req, client, result.route.handler);
                             return;
                         }
                         client.getOutputStream().write(result.response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -572,7 +579,8 @@ static boolean hasRuntimeFn(String methodName) {
                 // loop with a frame codec and per-connection timeout handling.
                 private static final int KEEPALIVE_IDLE_MS = 300_000;
 
-                private static void kof_web_ws_handshake(WebRequest req, java.net.Socket client)
+                private static void kof_web_ws_handshake(
+                        WebRequest req, java.net.Socket client, Object handler)
                         throws java.io.IOException {
                     String upgradeVal = req.headers.get("upgrade");
                     String connectionVal = req.headers.get("connection");
@@ -604,10 +612,10 @@ static boolean hasRuntimeFn(String methodName) {
                     out.flush();
 
                     // Frame loop (PR4): handles RFC 6455 frame codec.
-                    // PING -> PONG; CLOSE -> ack CLOSE; oversize -> CLOSE 1009.
-                    // TEXT/BINARY frames are discarded for now (PR5 wires the
-                    // Kof handler).
+                    // PING -> PONG; CLOSE -> ack CLOSE; oversize -> CLOSE 1009;
+                    // TEXT -> invokes the Kof handler once per message.
                     client.setSoTimeout(KEEPALIVE_IDLE_MS);
+                    WsConnection conn = new WsConnection(client.getOutputStream());
                     try {
                         frameLoop: while (true) {
                             // 1) Read until we have at least 2 bytes for the header
@@ -633,7 +641,6 @@ static boolean hasRuntimeFn(String methodName) {
                                 plen = 0;
                                 for (int i = 0; i < 8; i++) plen = (plen << 8) | (ext[i] & 0xFF);
                             }
-                            WsConnection conn = new WsConnection(client.getOutputStream());
                             if (!fin) {
                                 conn.close(WsFrame.CLOSE_UNSUPPORTED, "fragmented frames not supported");
                                 break frameLoop;
@@ -660,7 +667,23 @@ static boolean hasRuntimeFn(String methodName) {
                             if (op == 0x9 /* PING */) { conn.pong(payload); }
                             else if (op == 0xA /* PONG */) { /* ignore */ }
                             else if (op == 0x8 /* CLOSE */) { conn.close(1000, ""); break frameLoop; }
-                            // TEXT/BINARY/CONT: discard for now (PR5)
+                            else if (op == 0x1 /* TEXT */) {
+                                String text = new String(payload,
+                                        java.nio.charset.StandardCharsets.UTF_8);
+                                KOF_WEB_REQUEST.set(req);
+                                KOF_WS_CONNECTION.set(conn);
+                                KOF_WS_MESSAGE.set(text);
+                                try {
+                                    handler.getClass().getMethod("invoke").invoke(handler);
+                                } catch (Exception e) {
+                                    System.err.println("kof web ws handler error: " + e.getMessage());
+                                } finally {
+                                    KOF_WS_MESSAGE.remove();
+                                    KOF_WS_CONNECTION.remove();
+                                    KOF_WEB_REQUEST.remove();
+                                }
+                            }
+                            // BINARY/CONT: discard for now
                         }
                     } catch (java.net.SocketTimeoutException idle) {
                         // graceful close after KEEPALIVE_IDLE_MS
