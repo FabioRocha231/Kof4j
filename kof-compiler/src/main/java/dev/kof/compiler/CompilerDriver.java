@@ -6677,6 +6677,16 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
+            // cache.* primeiro: cache.delete é void e o nome colide com o
+            // File.delete do Io (que o check genérico abaixo não sabe tipar
+            // com receiver Unknown) — sem isto o Pop extra diverge o frame
+            if (mc.receiver() instanceof IdentifierExpr rid && KofCache.isCacheNamespace(rid.name())) {
+                List<Type> cacheArgTypes = new ArrayList<>();
+                for (ExpressionNode arg : mc.arguments()) cacheArgTypes.add(inferExprType(arg, locals));
+                KofCache.CacheCall cc = KofCache.staticCall(mc.methodName(), cacheArgTypes);
+                if (cc == null) return true;
+                return !(cc.returnType() instanceof Type.PrimitiveType pt && "void".equals(pt.name()));
+            }
             if (mc.receiver() != null && KofIo.instanceMethod(Type.UnknownType.UNKNOWN,
                     mc.methodName(), mc.arguments().size()) != null) {
                 return true;
