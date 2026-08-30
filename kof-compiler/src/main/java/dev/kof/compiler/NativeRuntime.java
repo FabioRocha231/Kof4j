@@ -6740,7 +6740,7 @@ final class NativeRuntime {
                 syscall
                 testq %rax, %rax
                 je .Lio_rmdir_ok
-                movq $-1, %rax
+                xorl %eax, %eax
                 popq %rbx
                 ret
             .Lio_rmdir_ok:

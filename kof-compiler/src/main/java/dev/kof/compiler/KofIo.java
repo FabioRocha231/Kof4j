@@ -54,7 +54,9 @@ final class KofIo {
             case "readBytes" -> argCount == 0 ? new IoCall("kof_io_read_bytes", INT_ARRAY, List.of()) : null;
             case "writeBytes" -> argCount == 1 ? new IoCall("kof_io_write_bytes", BOOL, List.of(INT_ARRAY)) : null;
             case "appendBytes" -> argCount == 1 ? new IoCall("kof_io_append_bytes", BOOL, List.of(INT_ARRAY)) : null;
-            case "delete" -> argCount == 0 ? new IoCall("kof_io_delete", BOOL, List.of()) : null;
+            case "delete" -> isDirectory(receiver)
+                    ? new IoCall("kof_io_dir_delete", BOOL, List.of())  // recursivo
+                    : new IoCall("kof_io_delete", BOOL, List.of());
             case "size" -> argCount == 0 ? new IoCall("kof_io_file_size", LONG, List.of()) : null;
             case "name" -> argCount == 0 ? new IoCall("kof_io_file_name", STR, List.of()) : null;
             case "resolve" -> argCount == 1 ? new IoCall("kof_io_path_resolve", PATH, List.of(STR)) : null;
