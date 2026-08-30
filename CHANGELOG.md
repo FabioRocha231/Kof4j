@@ -1628,6 +1628,21 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
   - comparisonOperandType refinado — null-literal decide ref; Unknown volta a ser int
   - R2 mapOf(k,v) pares + R3 null-safety narrowing + R4 Box<T> genérico na JVM
 
+## [0.2.5-beta] - 2026-08-30
+
+### Features
+
+  - kof fmt via parser real (KofFormatter) + idempotente
+
+### Bugfixes
+
+  - kof.cache ttl/get clobber de registradores + println(null) segfault; feat: KofCacheE2ETest (5 casos x3 targets)
+  - String.length via toString type inference + remove auto-GC hang (alloc path)
+
+### Documentation
+
+  - status 0.2.3-beta + kof.cache fechado (fix nativo + E2E)
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
