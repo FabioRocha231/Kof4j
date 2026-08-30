@@ -915,14 +915,14 @@ public class NativeBackend implements Backend {
             case MUL -> sb.append("    imul").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
             case DIV -> {
                 if (int32) {
-                    sb.append("    idivl %ecx\n");
+                    sb.append("    cdq\n    idivl %ecx\n");
                 } else {
                     sb.append("    cqo\n    idivq %rcx\n");
                 }
             }
             case MOD -> {
                 if (int32) {
-                    sb.append("    idivl %ecx\n    movl %edx, %eax\n");
+                    sb.append("    cdq\n    idivl %ecx\n    movl %edx, %eax\n");
                 } else {
                     sb.append("    cqo\n    idivq %rcx\n    movq %rdx, %rax\n");
                 }
