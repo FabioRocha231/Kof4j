@@ -306,11 +306,11 @@ class KofConfigE2ETest {
                 """);
         // JVM
         String out = run(tempDir, Files.readString(source), Map.of(), tempDir.resolve("work"));
-        assertTrue(out.contains("jdbc:pg:localhost:5432/app"),
+        assertTrue(out.contains("jdbc:pg://localhost:5432/app"),
                 "JVM interpolação composta, out: " + out);
         assertTrue(out.contains("localhost"), "JVM ref simples, out: " + out);
-        assertTrue(out.contains("MISS"), "JVM ciclo -> literal inalterado "
-                + "(default MISSING nunca aparece; valor cyclic=${cyclic} literal), out: " + out);
+        assertTrue(out.contains("${cyclic}"),
+                "JVM ciclo -> valor literal inalterado, out: " + out);
     }
 
     private static Path findJsEntry(Path dir) throws IOException {

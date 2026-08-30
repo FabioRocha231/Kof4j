@@ -38,7 +38,7 @@ futura).
 | 1 | Alpha | ✅ usada (fase inicial) |
 | 2 | Beta | ✅ usada (fase atual) |
 | 3 | Chevette | primeira release pós-Beta |
-| 4 | Diplomat | |
+| 4 | Diplomata | |
 | 5 | Escort | |
 | 6 | F-1000 | |
 | 7 | Gol | |
