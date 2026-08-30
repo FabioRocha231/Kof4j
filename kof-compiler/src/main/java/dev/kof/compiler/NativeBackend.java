@@ -1403,9 +1403,6 @@ public class NativeBackend implements Backend {
             }
             String ctorLabel = resolveCalleeName(kc);
             sb.append("    call ").append(ctorLabel).append("\n");
-            if (stackArgs > 0) {
-                sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
-            }
             return;
         }
 
