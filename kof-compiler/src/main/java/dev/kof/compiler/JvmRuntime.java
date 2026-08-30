@@ -161,6 +161,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_dir_list" -> "(Ljava/lang/String;)Ljava/util/ArrayList;";
             case "kof_web_app_new" -> "()Ljava/lang/String;";
             case "kof_web_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
+            case "kof_web_sse_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
+            case "kof_web_ws_route" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V";
             case "kof_web_use" -> "(Ljava/lang/String;Ljava/lang/Object;)V";
             case "kof_web_listen" -> "(Ljava/lang/String;I)V";
             case "kof_web_listen_secure" -> "(Ljava/lang/String;I)V";
@@ -334,7 +336,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_http_status", "kof_mq_queue_size" -> "I";
             case "kof_mq_queue" -> "Ljava/lang/String;";
             case "kof_mq_pop" -> "Ljava/lang/Object;";
-            case "kof_http_timeout_set", "kof_mq_publish", "kof_mq_subscribe", "kof_mq_unsubscribe",
+            case "kof_web_sse_route", "kof_web_ws_route", "kof_http_timeout_set",
+                    "kof_mq_publish", "kof_mq_subscribe", "kof_mq_unsubscribe",
                     "kof_mq_push", "kof_time_sleep", "kof_time_cancel", "kof_scheduler_cancel" -> "V";
             case "kof_time_now" -> "J";
             case "kof_time_interval" -> "Ljava/lang/String;";
@@ -428,6 +431,9 @@ static boolean hasRuntimeFn(String methodName) {
                     while (app.running) {
                         try {
                             java.net.Socket client = app.serverSocket.accept();
+                            // 15s default protects HTTP `readRequest` against
+                            // client half-open sockets. SSE/WS override this
+                            // higher inside `kof_web_keep_alive`.
                             client.setSoTimeout(15000);
                             Thread.startVirtualThread(() -> kof_web_handle(app, client));
                         } catch (java.io.IOException e) {
@@ -491,15 +497,39 @@ static boolean hasRuntimeFn(String methodName) {
                 private static void kof_web_handle(WebApp app, java.net.Socket client) {
                     try (client) {
                         WebRequest req = readRequest(client.getInputStream());
-                        String response = kof_web_dispatch(app, req);
-                        client.getOutputStream().write(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        WebDispatchResult result = kof_web_dispatch(app, req);
+                        if (result.kind != RouteKind.HTTP) {
+                            kof_web_keep_alive(client);
+                            return;
+                        }
+                        client.getOutputStream().write(result.response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                         client.getOutputStream().flush();
                     } catch (Exception e) {
                         System.err.println("kof web connection error: " + e.getMessage());
                     }
                 }
 
-                private static String kof_web_dispatch(WebApp app, WebRequest req) {
+                // Idle timeout for persistent connections (SSE/WS in PR2/PR3).
+                // Without this, a client that opens the socket and never sends
+                // data would pin a virtual thread indefinitely. PR6 may move
+                // this to a configurable `web.configure(...)` knob.
+                private static final int KEEPALIVE_IDLE_MS = 300_000;
+
+                private static void kof_web_keep_alive(java.net.Socket client) throws java.io.IOException {
+                    client.setSoTimeout(KEEPALIVE_IDLE_MS);
+                    byte[] buffer = new byte[8192];
+                    try {
+                        while (client.getInputStream().read(buffer) != -1) {
+                            // PR1: no SSE/WS protocol yet; PR2/PR3 replace this with real loops.
+                            // Until then, any bytes from the client are discarded.
+                        }
+                    } catch (java.net.SocketTimeoutException idle) {
+                        // Idle socket — close cleanly. PR2 will replace this body with
+                        // real SSE/WS loops that respect the same per-read budget.
+                    }
+                }
+
+                private static WebDispatchResult kof_web_dispatch(WebApp app, WebRequest req) {
                     KOF_WEB_REQUEST.set(req);
                     KOF_WEB_STATUS.remove();
                     KOF_WEB_HEADERS.get().clear();
@@ -514,11 +544,11 @@ static boolean hasRuntimeFn(String methodName) {
                                 String resp = kof_web_build(code, text, String.valueOf(result));
                                 KOF_WEB_STATUS.remove();
                                 KOF_WEB_HEADERS.get().clear();
-                                return resp;
+                                return new WebDispatchResult(RouteKind.HTTP, resp);
                             }
                         }
                         for (WebRoute route : app.routes) {
-                            if (!route.method.equals(req.method)) continue;
+                            if (route.kind == RouteKind.HTTP && !route.method.equals(req.method)) continue;
                             String[] pathSegs = req.path.split("/");
                             if (pathSegs.length != route.segments.length) continue;
                             boolean match = true;
@@ -533,13 +563,19 @@ static boolean hasRuntimeFn(String methodName) {
                             }
                             if (!match) continue;
                             req.params.putAll(params);
+                            if (route.kind != RouteKind.HTTP) {
+                                KOF_WEB_STATUS.remove();
+                                KOF_WEB_HEADERS.get().clear();
+                                return new WebDispatchResult(route.kind, null);
+                            }
                             KOF_WEB_STATUS.remove();
                             KOF_WEB_HEADERS.get().clear();
                             Object result = kof_web_invoke(route.handler, req);
                             if (result == null) {
                                 KOF_WEB_STATUS.remove();
                                 KOF_WEB_HEADERS.get().clear();
-                                return kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}");
+                                return new WebDispatchResult(RouteKind.HTTP,
+                                        kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"));
                             }
                             Integer st2 = KOF_WEB_STATUS.get();
                             int code2 = st2 != null ? st2 : 200;
@@ -547,15 +583,17 @@ static boolean hasRuntimeFn(String methodName) {
                             String resp2 = kof_web_build(code2, text2, String.valueOf(result));
                             KOF_WEB_STATUS.remove();
                             KOF_WEB_HEADERS.get().clear();
-                            return resp2;
+                            return new WebDispatchResult(RouteKind.HTTP, resp2);
                         }
-                        return kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}");
+                        return new WebDispatchResult(RouteKind.HTTP,
+                                kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"));
                     } catch (Exception e) {
                         String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                         KOF_WEB_STATUS.remove();
                         KOF_WEB_HEADERS.get().clear();
-                        return kof_web_build(500, "Internal Server Error",
-                                "{\\"error\\": \\"handler error: " + msg + "\\"}");
+                        return new WebDispatchResult(RouteKind.HTTP,
+                                kof_web_build(500, "Internal Server Error",
+                                        "{\\"error\\": \\"handler error: " + msg + "\\"}"));
                     } finally {
                         KOF_WEB_REQUEST.remove();
                         KOF_LOG_REQUEST_ID.remove();

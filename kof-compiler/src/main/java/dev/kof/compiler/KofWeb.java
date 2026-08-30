@@ -68,6 +68,12 @@ final class KofWeb {
     /** Instance methods on {@code kof.web.App} receivers. */
     static WebCall instanceMethod(String name, List<Type> argTypes) {
         if (ROUTE_METHODS.contains(name)) {
+            if ("sse".equals(name)) {
+                return instanceSseMethod(name, argTypes);
+            }
+            if ("ws".equals(name)) {
+                return instanceWsMethod(name, argTypes);
+            }
             if (argTypes.size() == 2) {
                 return new WebCall("kof_web_route", VOID,
                         List.of(STR, STR, STR, argTypes.get(1)));
@@ -91,6 +97,34 @@ final class KofWeb {
                     ? new WebCall("kof_web_close", VOID, List.of(STR))
                     : null;
             default -> null;
+        };
+    }
+
+
+    /** {@code app.sse(path, handler)} — route kind SSE, protocol comes later. */
+    static WebCall instanceSseMethod(String name, List<Type> argTypes) {
+        return "sse".equals(name) && argTypes.size() == 2
+                ? new WebCall("kof_web_sse_route", VOID,
+                        List.of(STR, STR, STR, argTypes.get(1)))
+                : null;
+    }
+
+
+    /** {@code app.ws(path, handler)} — route kind WS, protocol comes later. */
+    static WebCall instanceWsMethod(String name, List<Type> argTypes) {
+        return "ws".equals(name) && argTypes.size() == 2
+                ? new WebCall("kof_web_ws_route", VOID,
+                        List.of(STR, STR, argTypes.get(1)))
+                : null;
+    }
+
+
+    static String gapCode(String function) {
+        return switch (function) {
+            case "kof_web_sse_route" -> "WEB003";
+            case "kof_web_ws_route" -> "WEB004";
+            case "kof_web_listen_secure" -> "WEB002";
+            default -> "WEB001";
         };
     }
 
