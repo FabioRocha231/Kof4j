@@ -197,6 +197,146 @@ final class JvmWebRuntime {
                     }
                 }
 
+                public static final class WsFrame {
+                    public final boolean fin;
+                    public final int opcode;        // 0x1=TEXT, 0x2=BINARY, 0x8=CLOSE, 0x9=PING, 0xA=PONG, 0x0=continuation
+                    public final byte[] payload;
+
+                    WsFrame(boolean fin, int opcode, byte[] payload) {
+                        this.fin = fin;
+                        this.opcode = opcode;
+                        this.payload = payload;
+                    }
+
+                    /**
+                     * Encode a frame WITHOUT masking (server -> client per RFC 6455).
+                     * FIN=1 by default; use overload for FIN=0.
+                     */
+                    public static byte[] encode(int opcode, byte[] payload, boolean fin) {
+                        // Header byte 1: FIN(1) RSV(3) OPCODE(4)
+                        int b1 = (fin ? 0x80 : 0x00) | (opcode & 0x0F);
+                        // Header byte 2: MASK(1) + LEN(7)
+                        long len = payload.length;
+                        byte[] header;
+                        int headerLen;
+                        if (len <= 125) {
+                            header = new byte[2];
+                            header[1] = (byte) len;       // MASK=0
+                            headerLen = 2;
+                        } else if (len <= 0xFFFF) {
+                            header = new byte[4];
+                            header[1] = (byte) 126;       // MASK=0
+                            header[2] = (byte) ((len >> 8) & 0xFF);
+                            header[3] = (byte) (len & 0xFF);
+                            headerLen = 4;
+                        } else {
+                            header = new byte[10];
+                            header[1] = (byte) 127;       // MASK=0
+                            for (int i = 0; i < 8; i++) {
+                                header[2 + i] = (byte) ((len >> (56 - i * 8)) & 0xFF);
+                            }
+                            headerLen = 10;
+                        }
+                        header[0] = (byte) b1;
+                        byte[] out = new byte[headerLen + (int) len];
+                        System.arraycopy(header, 0, out, 0, headerLen);
+                        System.arraycopy(payload, 0, out, headerLen, (int) len);
+                        return out;
+                    }
+
+                    /**
+                     * Decode a server-received (client -> server) frame. Payload is UNMASKED in
+                     * the returned WsFrame. RFC 6455 requires client->server masking; we reject
+                     * (close 1002) frames missing the mask bit.
+                     */
+                    public static WsFrame decodeClient(byte[] buf) throws java.io.IOException {
+                        if (buf.length < 2) throw new java.io.IOException("frame too short: " + buf.length);
+                        boolean fin = (buf[0] & 0x80) != 0;
+                        int opcode = buf[0] & 0x0F;
+                        boolean masked = (buf[1] & 0x80) != 0;
+                        if (!masked) throw new java.io.IOException("client frame must be masked (RFC 6455 §5.1)");
+                        long len = buf[1] & 0x7F;
+                        int idx = 2;
+                        if (len == 126) {
+                            if (buf.length < 4) throw new java.io.IOException("frame truncated on extended length");
+                            len = ((long)(buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
+                            idx = 4;
+                        } else if (len == 127) {
+                            if (buf.length < 10) throw new java.io.IOException("frame truncated on extended length");
+                            len = 0;
+                            for (int i = 0; i < 8; i++) {
+                                len = (len << 8) | (buf[2 + i] & 0xFF);
+                            }
+                            idx = 10;
+                        }
+                        if (len > MAX_FRAME_BYTES) {
+                            throw new java.io.IOException("frame too large: " + len + " > " + MAX_FRAME_BYTES);
+                        }
+                        if (buf.length < idx + 4 + len) throw new java.io.IOException("frame truncated (payload)");
+                        byte[] mask = new byte[4];
+                        System.arraycopy(buf, idx, mask, 0, 4);
+                        idx += 4;
+                        byte[] payload = new byte[(int) len];
+                        for (long i = 0; i < len; i++) {
+                            payload[(int) i] = (byte) (buf[idx + (int) i] ^ mask[(int) (i % 4)]);
+                        }
+                        return new WsFrame(fin, opcode, payload);
+                    }
+
+                    public static final long MAX_FRAME_BYTES = 1L << 20;        // 1 MiB
+                    public static final long MAX_MESSAGE_BYTES = 8L << 20;     // 8 MiB
+                    public static final int CLOSE_TOO_BIG = 1009;
+                    public static final int CLOSE_PROTOCOL_ERROR = 1002;
+                    public static final int CLOSE_UNSUPPORTED = 1003;
+                }
+
+                public static final class WsConnection {
+                    private final java.io.OutputStream out;
+                    private final java.util.concurrent.locks.ReentrantLock writeLock =
+                            new java.util.concurrent.locks.ReentrantLock();
+
+                    WsConnection(java.io.OutputStream out) {
+                        this.out = out;
+                    }
+
+                    public void sendText(String s) {
+                        send(WsFrame.encode(0x1, s.getBytes(java.nio.charset.StandardCharsets.UTF_8), true));
+                    }
+                    public void sendBinary(byte[] payload) {
+                        send(WsFrame.encode(0x2, payload, true));
+                    }
+                    public void ping(byte[] payload) {
+                        if (payload.length > 125) throw new IllegalArgumentException("ping payload > 125");
+                        send(WsFrame.encode(0x9, payload, true));
+                    }
+                    public void pong(byte[] payload) {
+                        if (payload.length > 125) throw new IllegalArgumentException("pong payload > 125");
+                        send(WsFrame.encode(0xA, payload, true));
+                    }
+                    public void close(int code, String reason) {
+                        byte[] body = new byte[2 + (reason == null ? 0 : reason.length())];
+                        body[0] = (byte) ((code >> 8) & 0xFF);
+                        body[1] = (byte) (code & 0xFF);
+                        if (reason != null) {
+                            byte[] rb = reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                            System.arraycopy(rb, 0, body, 2, rb.length);
+                        }
+                        send(WsFrame.encode(0x8, body, true));
+                    }
+
+                    private void send(byte[] frame) {
+                        writeLock.lock();
+                        try {
+                            out.write(frame);
+                            out.flush();
+                        } catch (java.io.IOException e) {
+                            // close silently
+                        } finally {
+                            writeLock.unlock();
+                        }
+                    }
+                }
+
                 public static final class WebApp {
                     final String id;
                     final java.util.List<WebRoute> routes = new java.util.ArrayList<>();

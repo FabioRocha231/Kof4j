@@ -564,26 +564,93 @@ static boolean hasRuntimeFn(String methodName) {
                             + "\\r\\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     out.flush();
 
-                    // Stub frame loop (PR4 substitui). Lê bytes até EOF ou timeout.
+                    // Frame loop (PR4): handles RFC 6455 frame codec.
+                    // PING -> PONG; CLOSE -> ack CLOSE; oversize -> CLOSE 1009.
+                    // TEXT/BINARY frames are discarded for now (PR5 wires the
+                    // Kof handler).
                     client.setSoTimeout(KEEPALIVE_IDLE_MS);
-                    byte[] buf = new byte[8192];
                     try {
-                        while (client.getInputStream().read(buf) != -1) { /* discard */ }
-                    } catch (java.net.SocketTimeoutException ignored) { /* idle */ }
+                        frameLoop: while (true) {
+                            // 1) Read until we have at least 2 bytes for the header
+                            int headerBytes = 0;
+                            byte[] headerBuf = new byte[2];
+                            while (headerBytes < 2) {
+                                int n = client.getInputStream().read(headerBuf, headerBytes, 2 - headerBytes);
+                                if (n < 0) break frameLoop;
+                                headerBytes += n;
+                            }
+                            boolean fin = (headerBuf[0] & 0x80) != 0;
+                            int op = headerBuf[0] & 0x0F;
+                            boolean masked = (headerBuf[1] & 0x80) != 0;
+                            long plen = headerBuf[1] & 0x7F;
+                            // 2) Extended length
+                            if (plen == 126) {
+                                byte[] ext = new byte[2];
+                                readFully(client.getInputStream(), ext);
+                                plen = ((long)(ext[0] & 0xFF) << 8) | (ext[1] & 0xFF);
+                            } else if (plen == 127) {
+                                byte[] ext = new byte[8];
+                                readFully(client.getInputStream(), ext);
+                                plen = 0;
+                                for (int i = 0; i < 8; i++) plen = (plen << 8) | (ext[i] & 0xFF);
+                            }
+                            WsConnection conn = new WsConnection(client.getOutputStream());
+                            if (!fin) {
+                                conn.close(WsFrame.CLOSE_UNSUPPORTED, "fragmented frames not supported");
+                                break frameLoop;
+                            }
+                            // 3) Mask key (must be present on client->server)
+                            byte[] mask = new byte[4];
+                            if (masked) {
+                                readFully(client.getInputStream(), mask);
+                            } else {
+                                conn.close(WsFrame.CLOSE_PROTOCOL_ERROR, "client frame must be masked");
+                                break frameLoop;
+                            }
+                            // 4) Payload (with size cap)
+                            if (plen > WsFrame.MAX_FRAME_BYTES) {
+                                conn.close(WsFrame.CLOSE_TOO_BIG, "frame too large");
+                                break frameLoop;
+                            }
+                            byte[] payload = new byte[(int) plen];
+                            if (plen > 0) {
+                                readFully(client.getInputStream(), payload);
+                                if (masked) for (int i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
+                            }
+                            // 5) React
+                            if (op == 0x9 /* PING */) { conn.pong(payload); }
+                            else if (op == 0xA /* PONG */) { /* ignore */ }
+                            else if (op == 0x8 /* CLOSE */) { conn.close(1000, ""); break frameLoop; }
+                            // TEXT/BINARY/CONT: discard for now (PR5)
+                        }
+                    } catch (java.net.SocketTimeoutException idle) {
+                        // graceful close after KEEPALIVE_IDLE_MS
+                    } catch (java.io.IOException eof) {
+                        // client closed
+                    }
                 }
 
-                    // Splits a comma-separated header value (RFC 7230 §3.2.2) into
-                    // trimmed tokens, returning true when any token equals the
-                    // expected name case-insensitively. Null/empty header -> false.
-                    // Used by WS handshake to validate Upgrade/Connection tokens
-                    // even when the same line carries unrelated tokens.
-                    private static boolean containsToken(String headerValue, String expected) {
-                        if (headerValue == null) return false;
-                        for (String token : headerValue.split(",")) {
-                            if (token.trim().equalsIgnoreCase(expected)) return true;
-                        }
-                        return false;
+                private static void readFully(java.io.InputStream in, byte[] buf) throws java.io.IOException {
+                    int off = 0;
+                    while (off < buf.length) {
+                        int n = in.read(buf, off, buf.length - off);
+                        if (n < 0) throw new java.io.IOException("EOF reading " + buf.length + " bytes (got " + off + ")");
+                        off += n;
                     }
+                }
+
+                // Splits a comma-separated header value (RFC 7230 §3.2.2) into
+                // trimmed tokens, returning true when any token equals the
+                // expected name case-insensitively. Null/empty header -> false.
+                // Used by WS handshake to validate Upgrade/Connection tokens
+                // even when the same line carries unrelated tokens.
+                private static boolean containsToken(String headerValue, String expected) {
+                    if (headerValue == null) return false;
+                    for (String token : headerValue.split(",")) {
+                        if (token.trim().equalsIgnoreCase(expected)) return true;
+                    }
+                    return false;
+                }
 
                 private static WebDispatchResult kof_web_dispatch(WebApp app, WebRequest req) {
                     KOF_WEB_REQUEST.set(req);
