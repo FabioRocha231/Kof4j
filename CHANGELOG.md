@@ -1643,6 +1643,15 @@ Primeira release estável da plataforma base — P0 (ecossistema) e P1
 
   - status 0.2.3-beta + kof.cache fechado (fix nativo + E2E)
 
+## [0.2.6-beta] - 2026-08-30
+
+### Features
+
+  - RFC 6455 WebSocket frame codec
+  - RFC 6455 WebSocket handshake
+  - JVM native SSE + trailing-block sugar
+  - persistent connection + route kinds + diagnostics (WEB003/WEB004)
+
 <!-- NEXT-RELEASE -->
 
 ## Versionamento
