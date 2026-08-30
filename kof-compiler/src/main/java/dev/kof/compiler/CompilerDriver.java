@@ -4871,6 +4871,10 @@ private Target target = Target.JVM;
                         && semanticAnalyzer.getClass(mc.methodName()) != null) {
                     yield semanticAnalyzer.getClass(mc.methodName()).type();
                 }
+                if (mc.receiver() != null && "toString".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                    Type rv = inferExprType(mc.receiver(), locals);
+                    if (isPrimitiveType(rv) || rv instanceof Type.ArrayType) yield BuiltinTypes.STRING;
+                }
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
                 if ("now".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
                     yield Type.PrimitiveType.LONG;

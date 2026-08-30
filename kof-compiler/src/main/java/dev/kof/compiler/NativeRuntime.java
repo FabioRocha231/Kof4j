@@ -475,6 +475,8 @@ final class NativeRuntime {
             kof_heap_high: .quad 0
             .section .data
             .Lstr_alloc_fail: .asciz "Runtime error: out of memory"
+            .section .rodata
+            .Lkof_alloc_dbg: .ascii "."
             .section .text
             .globl kof_alloc
             .type kof_alloc, @function
@@ -490,8 +492,11 @@ final class NativeRuntime {
                 addq $32, %r12
                 movq kof_free_head(%rip), %r13
                 xorq %r14, %r14
+                movq $1048576, %r11
             .Lkof_alloc_search:
                 testq %r13, %r13
+                je .Lkof_alloc_mmap
+                decq %r11
                 je .Lkof_alloc_mmap
                 movq 0(%r13), %r15
                 cmpq %r12, %r15
@@ -521,10 +526,6 @@ final class NativeRuntime {
                 movq 8(%r13), %r13
                 jmp .Lkof_alloc_search
             .Lkof_alloc_mmap:
-                call kof_gc_collect
-                movq kof_free_head(%rip), %r13
-                testq %r13, %r13
-                jne .Lkof_alloc_search
                 movq $0, %rdi
                 movq %r12, %rsi
                 movq $3, %rdx
