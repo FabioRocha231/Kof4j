@@ -1,5 +1,6 @@
 package dev.kof.cli;
 
+import dev.kof.compiler.*;
 import java.nio.file.*;
 import java.util.*;
 
@@ -35,10 +36,11 @@ final class Fmt {
             try {
                 String in = Files.readString(f);
                 String out = format(in);
-                if (!out.equals(in)) {
-                    changed++;
-                    if (write) Files.writeString(f, out);
-                    else System.out.print(out);
+                if (!out.equals(in)) changed++;
+                if (write) {
+                    if (!out.equals(in)) Files.writeString(f, out);
+                } else {
+                    System.out.print(out);
                 }
             } catch (Exception e) {
                 System.err.println("fmt " + f + ": " + e.getMessage());
@@ -48,8 +50,10 @@ final class Fmt {
         return 0;
     }
 
-    /** Reindenta: monta linhas a partir dos tokens, controlando depth. */
+    /** Formata via parser real (KofFormatter); fallback token-based se falhar. */
     static String format(String src) {
+        String viaAst = dev.kof.compiler.KofFormatter.format(src, "Main.kf");
+        if (viaAst != null) return viaAst;
         List<String> tokens = tokenize(src);
         StringBuilder out = new StringBuilder();
         int indent = 0;
