@@ -743,6 +743,9 @@ public class NativeBackend implements Backend {
     private static boolean isDoubleType(Type t) {
         return t instanceof Type.PrimitiveType pt && "double".equals(Type.canonicalPrimitiveName(pt.name()));
     }
+    private static boolean isInt32Type(Type t) {
+        return t instanceof Type.PrimitiveType pt && "int".equals(Type.canonicalPrimitiveName(pt.name()));
+    }
 
     private void emitBinary(StringBuilder sb, KofBinary kb) {
         Type opTy = kb.operandType();
@@ -903,24 +906,39 @@ public class NativeBackend implements Backend {
         }
         sb.append("    popq %rcx\n");
         sb.append("    popq %rax\n");
+        boolean int32 = isInt32Type(opTy);
+        String suf = int32 ? "l" : "q";
+        String a32 = int32 ? "e" : "r";
         switch (kb.op()) {
-            case ADD -> sb.append("    addq %rcx, %rax\n");
-            case SUB -> sb.append("    subq %rcx, %rax\n");
-            case MUL -> sb.append("    imulq %rcx, %rax\n");
-            case DIV -> sb.append("    cqo\n    idivq %rcx\n");
-            case MOD -> sb.append("    cqo\n    idivq %rcx\n    movq %rdx, %rax\n");
-            case EQ -> sb.append("    cmpq %rcx, %rax\n    sete %al\n    movzbl %al, %eax\n");
-            case NE -> sb.append("    cmpq %rcx, %rax\n    setne %al\n    movzbl %al, %eax\n");
-            case LT -> sb.append("    cmpq %rcx, %rax\n    setl %al\n    movzbl %al, %eax\n");
-            case LE -> sb.append("    cmpq %rcx, %rax\n    setle %al\n    movzbl %al, %eax\n");
-            case GT -> sb.append("    cmpq %rcx, %rax\n    setg %al\n    movzbl %al, %eax\n");
-            case GE -> sb.append("    cmpq %rcx, %rax\n    setge %al\n    movzbl %al, %eax\n");
-            case AND -> sb.append("    andq %rcx, %rax\n");
-            case OR -> sb.append("    orq %rcx, %rax\n");
-            case XOR -> sb.append("    xorq %rcx, %rax\n");
-            case SHL -> sb.append("    shlq %cl, %rax\n");
-            case SHR -> sb.append("    sarq %cl, %rax\n");
-            case USHR -> sb.append("    shrq %cl, %rax\n");
+            case ADD -> sb.append("    add").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
+            case SUB -> sb.append("    sub").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
+            case MUL -> sb.append("    imul").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
+            case DIV -> {
+                if (int32) {
+                    sb.append("    idivl %ecx\n");
+                } else {
+                    sb.append("    cqo\n    idivq %rcx\n");
+                }
+            }
+            case MOD -> {
+                if (int32) {
+                    sb.append("    idivl %ecx\n    movl %edx, %eax\n");
+                } else {
+                    sb.append("    cqo\n    idivq %rcx\n    movq %rdx, %rax\n");
+                }
+            }
+            case EQ -> sb.append("    cmp").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n    sete %al\n    movzbl %al, %eax\n");
+            case NE -> sb.append("    cmp").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n    setne %al\n    movzbl %al, %eax\n");
+            case LT -> sb.append("    cmp").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n    setl %al\n    movzbl %al, %eax\n");
+            case LE -> sb.append("    cmp").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n    setle %al\n    movzbl %al, %eax\n");
+            case GT -> sb.append("    cmp").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n    setg %al\n    movzbl %al, %eax\n");
+            case GE -> sb.append("    cmp").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n    setge %al\n    movzbl %al, %eax\n");
+            case AND -> sb.append("    and").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
+            case OR -> sb.append("    or").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
+            case XOR -> sb.append("    xor").append(suf).append(" %").append(a32).append("cx, %").append(a32).append("ax\n");
+            case SHL -> sb.append("    shl").append(suf).append(" %cl, %").append(a32).append("ax\n");
+            case SHR -> sb.append("    sar").append(suf).append(" %cl, %").append(a32).append("ax\n");
+            case USHR -> sb.append("    shr").append(suf).append(" %cl, %").append(a32).append("ax\n");
         }
         sb.append("    pushq %rax\n");
     }
@@ -998,10 +1016,13 @@ public class NativeBackend implements Backend {
             return;
         }
         sb.append("    popq %rax\n");
+        boolean int32u = isInt32Type(ku.operandType());
+        String suf = int32u ? "l" : "q";
+        String reg = int32u ? "%eax" : "%rax";
         if (ku.op() == KofUnaryOp.NEG) {
-            sb.append("    negq %rax\n");
+            sb.append("    neg").append(suf).append(" ").append(reg).append("\n");
         } else if (ku.op() == KofUnaryOp.NOT) {
-            sb.append("    cmpq $0, %rax\n");
+            sb.append("    cmp").append(suf).append(" $0, ").append(reg).append("\n");
             sb.append("    sete %al\n");
             sb.append("    movzbl %al, %eax\n");
         }
@@ -1080,7 +1101,11 @@ public class NativeBackend implements Backend {
             case GT -> "jg";
             case GE -> "jge";
         };
-        sb.append("    cmpq %rax, %rcx\n");
+        if (opTy != null && isInt32Type(opTy)) {
+            sb.append("    cmpl %eax, %ecx\n");
+        } else {
+            sb.append("    cmpq %rax, %rcx\n");
+        }
         sb.append("    ").append(cond).append(" ").append(resolveLabel(kc.trueLabel())).append("\n");
         sb.append("    jmp ").append(resolveLabel(kc.falseLabel())).append("\n");
     }
