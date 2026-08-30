@@ -14,10 +14,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -169,6 +171,108 @@ class KofWebWsE2ETest {
                 """;
     }
 
+    private static final byte[] MASK = {0x12, 0x34, 0x56, 0x78};
+
+    private static void writeMaskedFrame(OutputStream out, int opcode, byte[] payload) throws IOException {
+        int len = payload.length;
+        byte[] frame;
+        int headerLen;
+        if (len <= 125) {
+            frame = new byte[2 + 4 + len];
+            frame[1] = (byte) (0x80 | len);
+            headerLen = 2;
+        } else if (len <= 0xFFFF) {
+            frame = new byte[4 + 4 + len];
+            frame[1] = (byte) (0x80 | 126);
+            frame[2] = (byte) ((len >> 8) & 0xFF);
+            frame[3] = (byte) (len & 0xFF);
+            headerLen = 4;
+        } else {
+            frame = new byte[10 + 4 + len];
+            frame[1] = (byte) (0x80 | 127);
+            for (int i = 0; i < 8; i++) {
+                frame[2 + i] = (byte) ((len >> (56 - i * 8)) & 0xFF);
+            }
+            headerLen = 10;
+        }
+        frame[0] = (byte) (0x80 | opcode);
+        System.arraycopy(MASK, 0, frame, headerLen, 4);
+        for (int i = 0; i < len; i++) {
+            frame[headerLen + 4 + i] = (byte) (payload[i] ^ MASK[i % 4]);
+        }
+        out.write(frame);
+        out.flush();
+    }
+
+    private static void writeOversizedFrameHeader(OutputStream out) throws IOException {
+        byte[] frame = new byte[14];
+        frame[0] = (byte) 0x82;
+        frame[1] = (byte) (0x80 | 127);
+        long len = (1L << 20) + 1;
+        for (int i = 0; i < 8; i++) {
+            frame[2 + i] = (byte) ((len >> (56 - i * 8)) & 0xFF);
+        }
+        System.arraycopy(MASK, 0, frame, 10, 4);
+        out.write(frame);
+        out.flush();
+    }
+
+    private static byte[] readServerFrame(java.io.InputStream in) throws IOException {
+        byte[] header = new byte[10];
+        readFully(in, header, 0, 2);
+        long len = header[1] & 0x7F;
+        int headerLen = 2;
+        if (len == 126) {
+            readFully(in, header, 2, 2);
+            len = ((header[2] & 0xFF) << 8) | (header[3] & 0xFF);
+            headerLen = 4;
+        } else if (len == 127) {
+            readFully(in, header, 2, 8);
+            len = 0;
+            for (int i = 0; i < 8; i++) {
+                len = (len << 8) | (header[2 + i] & 0xFF);
+            }
+            headerLen = 10;
+        }
+        byte[] payload = new byte[(int) len];
+        readFully(in, payload, 0, payload.length);
+        byte[] frame = new byte[headerLen + payload.length];
+        System.arraycopy(header, 0, frame, 0, headerLen);
+        System.arraycopy(payload, 0, frame, headerLen, payload.length);
+        return frame;
+    }
+
+    private static byte[] framePayload(byte[] frame) {
+        long len = frame[1] & 0x7F;
+        int offset;
+        if (len == 126) {
+            len = ((frame[2] & 0xFF) << 8) | (frame[3] & 0xFF);
+            offset = 4;
+        } else if (len == 127) {
+            len = 0;
+            for (int i = 0; i < 8; i++) {
+                len = (len << 8) | (frame[2 + i] & 0xFF);
+            }
+            offset = 10;
+        } else {
+            offset = 2;
+        }
+        return Arrays.copyOfRange(frame, offset, offset + (int) len);
+    }
+
+    private static int closeCode(byte[] payload) {
+        return ((payload[0] & 0xFF) << 8) | (payload[1] & 0xFF);
+    }
+
+    private static void readFully(java.io.InputStream in, byte[] buf, int off, int len) throws IOException {
+        while (len > 0) {
+            int n = in.read(buf, off, len);
+            if (n < 0) throw new IOException("EOF reading frame");
+            off += n;
+            len -= n;
+        }
+    }
+
     @Test
     void handshake_101_with_correct_accept(@TempDir Path tempDir) throws Exception {
         int port = startServer(tempDir, wsApp());
@@ -275,6 +379,45 @@ class KofWebWsE2ETest {
             assertEquals("HTTP/1.1 101 Switching Protocols", ws.status);
             assertEquals("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
                     ws.header("Sec-WebSocket-Accept"));
+        }
+    }
+
+    @Test
+    void ws_ping_pong_e2e(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            byte[] payload = "pong-me".getBytes(StandardCharsets.UTF_8);
+            writeMaskedFrame(response.socket.getOutputStream(), 0x9, payload);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x8A, frame[0] & 0xFF);
+            assertEquals(0, frame[1] & 0x80);
+            assertArrayEquals(payload, framePayload(frame));
+        }
+    }
+
+    @Test
+    void ws_close_e2e(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            byte[] close = {0x03, (byte) 0xE8};
+            writeMaskedFrame(response.socket.getOutputStream(), 0x8, close);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(0, frame[1] & 0x80);
+            assertEquals(1000, closeCode(framePayload(frame)));
+            assertEquals(-1, response.socket.getInputStream().read());
+        }
+    }
+
+    @Test
+    void ws_rejects_oversized_frame_e2e(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeOversizedFrameHeader(response.socket.getOutputStream());
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(0, frame[1] & 0x80);
+            assertEquals(1009, closeCode(framePayload(frame)));
         }
     }
 }
