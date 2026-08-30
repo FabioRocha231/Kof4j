@@ -149,9 +149,13 @@ class SemanticAnalyzer {
         SymbolTable.ClassSymbol classSym = knownClasses.get(rec.name());
         SymbolTable classScope = classSym.members().enterScope();
         classMemberScopes.put(rec.name(), classScope);
+        List<String> typeParams = rec.typeParameters() == null ? List.of() : rec.typeParameters();
+        for (String tp : typeParams) {
+            classScope.define(new SymbolTable.TypeParameterSymbol(tp));
+        }
         List<Type> compTypes = new ArrayList<>();
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = Type.of(comp.type());
+            Type compType = resolveType(comp.type(), classScope);
             compTypes.add(compType);
             SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(comp.name(), compType, 0, rec.name());
             classSym.members().define(fs);
@@ -161,7 +165,7 @@ class SemanticAnalyzer {
         classSym.members().define(ctorSym);
         classScope.define(ctorSym);
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = Type.of(comp.type());
+            Type compType = resolveType(comp.type(), classScope);
             SymbolTable.MethodSymbol ms = new SymbolTable.MethodSymbol(comp.name(), rec.name(),
                     compType, List.of(), 1, SymbolTable.DispatchKind.INSTANCE);
             classSym.members().define(ms);

@@ -1503,6 +1503,11 @@ private Target target = Target.JVM;
             }
             case VarDeclStmt vds -> {
                 Type varType = toType(vds.type());
+                // nullable é constraint de compile-time: o storage é o inner
+                // (a referência já pode ser null na JVM/Native/JS)
+                if (varType instanceof Type.NullableType nt) {
+                    varType = nt.inner();
+                }
                 if (mutatedCapturedNames.contains(vds.name())) {
                     Type initType = vds.initializer() == null ? Type.PrimitiveType.INT
                             : inferExprType(vds.initializer(), locals);
@@ -2716,11 +2721,25 @@ private Target target = Target.JVM;
                     Type keyType = Type.UnknownType.UNKNOWN;
                     Type valueType = Type.UnknownType.UNKNOWN;
                     if (!mc.arguments().isEmpty()) {
-                        // Infer from first argument if it is a Pair or two values? For now, use Unknown
-                        // mapOf() with no args creates empty Map<Unknown, Unknown>
+                        // mapOf(k1, v1, k2, v2, ...): pinning do tipo no primeiro par
+                        keyType = inferExprType(mc.arguments().get(0), locals);
+                        if (mc.arguments().size() > 1) {
+                            valueType = inferExprType(mc.arguments().get(1), locals);
+                        }
                     }
                     Type mapType = new Type.ClassType("kof", "Map", List.of(keyType, valueType));
                     ops.add(new KofCall(mapType, "kof_map_new", List.of(), mapType, KofCallKind.FUNCTION));
+                    // pares: (k0,v0), (k1,v1), ...
+                    for (int ai = 0; ai + 1 < mc.arguments().size(); ai += 2) {
+                        ops.add(new KofDup());
+                        Type kType = inferExprType(mc.arguments().get(ai), locals);
+                        Type vType = inferExprType(mc.arguments().get(ai + 1), locals);
+                        localIdx = emitExpression(mc.arguments().get(ai), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(mc.arguments().get(ai + 1), ops, owner, localIdx, locals);
+                        // VOID no put: o map duplicado continua na pilha para o próximo par
+                        ops.add(new KofCall(mapType, "kof_map_put", List.of(kType, vType),
+                                Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                    }
                     yield localIdx;
                 }
                 if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
@@ -6240,6 +6259,17 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         if (isNumeric(left) && isNumeric(right)) {
             return commonNumericType(left, right);
         }
+        // referências (incl. nullable vs null): preserva o tipo para o
+        // backend emitir if_acmp* em vez de if_icmp* sobre referência
+        if (left instanceof Type.ClassType || left instanceof Type.ArrayType
+                || left instanceof Type.TypeVariable || left instanceof Type.NullableType
+                || left instanceof Type.UnknownType
+                || right instanceof Type.ClassType || right instanceof Type.ArrayType
+                || right instanceof Type.TypeVariable || right instanceof Type.NullableType
+                || right instanceof Type.UnknownType) {
+            return left instanceof Type.ClassType || left instanceof Type.ArrayType
+                    || left instanceof Type.TypeVariable || left instanceof Type.NullableType ? left : right;
+        }
         return Type.PrimitiveType.INT;
     }
 
@@ -6412,15 +6442,17 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         int access = computeAccess(rec.modifiers()) | AccessFlags.FINAL | AccessFlags.PUBLIC;
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
+        List<String> typeParams = rec.typeParameters() == null ? List.of() : rec.typeParameters();
         for (RecordComponentNode comp : rec.components()) {
-            fields.add(new IRField(comp.name(), toType(comp.type()), AccessFlags.PRIVATE | AccessFlags.FINAL,
+            fields.add(new IRField(comp.name(), resolveWithTypeParams(comp.type(), typeParams),
+                    AccessFlags.PRIVATE | AccessFlags.FINAL,
                     null, lowerAnnotations(comp.annotations())));
         }
         methods.add(0, generateRecordConstructor(rec, internalName));
         methods.addAll(generateRecordDefaultOverloads(rec, internalName));
         Type ownerType = ownerTypeFromInternal(internalName);
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = toType(comp.type());
+            Type compType = resolveWithTypeParams(comp.type(), typeParams);
             List<KofOperation> body = new ArrayList<>();
             body.add(new KofLoadLocal(ownerType, 0));
             body.add(new KofLoadField(ownerType, comp.name(), compType));
@@ -6431,10 +6463,10 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         }
         for (AstNode member : rec.members()) {
             if (member instanceof MethodDeclarationNode method) {
-                methods.add(lowerMethod(method, internalName, false, List.of()));
+                methods.add(lowerMethod(method, internalName, false, typeParams));
             } else if (member instanceof ConstructorDeclarationNode ctor) {
                 methods.add(lowerConstructor(ctor, internalName, "java/lang/Record",
-                        List.of(), fields, java.util.Map.of()));
+                        typeParams, fields, java.util.Map.of()));
             }
         }
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
@@ -6831,7 +6863,8 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     }
 
     private IRMethod generateRecordConstructor(RecordDeclarationNode rec, String owner) {
-        List<Type> compTypes = rec.components().stream().map(c -> toType(c.type())).toList();
+        List<String> typeParams = rec.typeParameters() == null ? List.of() : rec.typeParameters();
+        List<Type> compTypes = rec.components().stream().map(c -> resolveWithTypeParams(c.type(), typeParams)).toList();
         List<KofOperation> ops = new ArrayList<>();
         List<IRLocalVariable> locals = new ArrayList<>();
         Type ownerType = ownerTypeFromInternal(owner);
@@ -6845,7 +6878,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         }
         int localIdx = 1;
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = toType(comp.type());
+            Type compType = resolveWithTypeParams(comp.type(), typeParams);
             locals.add(new IRLocalVariable(localIdx, comp.name(), compType));
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofLoadLocal(compType, localIdx));

@@ -751,6 +751,10 @@ class JvmBackend implements Backend {
             boolean isLong = isPrimitiveOf(kc.operandType(), "long");
             boolean isFloat = isPrimitiveOf(kc.operandType(), "float");
             boolean isDouble = isPrimitiveOf(kc.operandType(), "double");
+            boolean isRef = kc.operandType() instanceof Type.ClassType
+                    || kc.operandType() instanceof Type.ArrayType
+                    || kc.operandType() instanceof Type.TypeVariable
+                    || kc.operandType() instanceof Type.UnknownType;
             if (isLong) {
                 mv.visitInsn(LCMP);
             } else if (isFloat) {
@@ -759,7 +763,14 @@ class JvmBackend implements Backend {
                 mv.visitInsn(DCMPL);
             }
             int opcode;
-            if (isLong || isFloat || isDouble) {
+            if (isRef) {
+                // referências (incl. String? vs null): if_acmp*
+                opcode = switch (kc.comparison()) {
+                    case EQ -> IF_ACMPEQ;
+                    case NE -> IF_ACMPNE;
+                    default -> IF_ACMPEQ;
+                };
+            } else if (isLong || isFloat || isDouble) {
                 // LCMP/FCMPL/DCMPL leave a single int; use 1-operand jumps.
                 opcode = switch (kc.comparison()) {
                     case EQ -> IFEQ;
@@ -913,8 +924,10 @@ class JvmBackend implements Backend {
                         mv.visitInsn(SWAP);                     // [m,K,V]
                     }
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
-                    // POP is handled by hasReturnValue/KofPop at statement level; do not pop here
-                    // to keep expression value when used (e.g., var x = m.put(...))
+                    // VOID no call-site (ex.: pares do mapOf): o valor anterior é descartado
+                    if (Type.isVoid(kc.returnType())) {
+                        mv.visitInsn(POP);
+                    }
                 }
                 case "kof_map_get" -> {
                     emitBoxIfPrimitive(mv, keyType);
