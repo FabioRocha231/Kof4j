@@ -70,13 +70,14 @@ class KofHttpResilienceE2ETest {
         Files.writeString(source, """
                 main(args) {
                     var base = args[0]
+                    var closedUrl = args[1]
                     http.retry(2)
                     var a = http.get(base + "/flaky")
                     println("retry=" + a)
                     http.retry(0)
                     http.circuit(1)
                     try {
-                        var b = http.get(base + "/closed")
+                        var b = http.get(closedUrl)
                         println("fail=" + b)
                     } catch (Exception e) {
                         println("fail=caught")

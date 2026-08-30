@@ -14,7 +14,7 @@ MAJOR.MINOR.PATCH-<estágio>
 
 - `MAJOR.MINOR.PATCH` — semver padrão (`pom.xml` + arquivo `VERSION`).
 - **Estágio** — a **fase** (Alpha, Beta, RC, Stable) é sufixo; o **codinome** da
-  release vem da lista abaixo (futuro: `0.3.0-beta-chevette`).
+  release vem da lista abaixo (futuro: `1.0.0-chevette`).
 
 ## Estágios
 
