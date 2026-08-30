@@ -139,6 +139,29 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_ui_window_set_theme", "kof_ui_label_set_font_size", "kof_ui_label_set_bold",
                     "kof_ui_label_set_color" -> "(II)V";
             case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "(I)I";
+            case "kof_ui_box_new", "kof_ui_stack_new",
+                    "kof_ui_wrap_new", "kof_ui_center_new" -> "(Ljava/util/ArrayList;)I";
+            case "kof_ui_grid_new", "kof_ui_align_new" -> "(ILjava/util/ArrayList;)I";
+            case "kof_ui_spacer_new" -> "(I)I";
+            // ── Component Core (docs/ui/architecture.md) ──
+            case "kof_ui_component_new" -> "(I)I";
+            case "kof_ui_component_state_get" -> "(I)I";
+            case "kof_ui_component_state_set" -> "(II)V";
+            case "kof_ui_component_view", "kof_ui_component_on_mount",
+                    "kof_ui_component_on_dispose", "kof_ui_component_effect" -> "(ILjava/lang/Object;)V";
+            case "kof_ui_component_on" -> "(ILjava/lang/String;Ljava/lang/Object;)V";
+            case "kof_ui_component_bind" -> "(II)V";
+            case "kof_ui_component_remove", "kof_ui_component_mount",
+                    "kof_ui_component_unmount", "kof_ui_flush_ui" -> "(I)V";
+            case "kof_ui_nodes_live" -> "()I";
+            case "kof_ui_event_type" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_ui_emit" -> "(ILjava/lang/String;)V";
+            case "kof_ui_event_stop" -> "(Ljava/lang/Object;)V";
+            case "kof_ui_store_new" -> "(I)I";
+            case "kof_ui_store_get" -> "(I)I";
+            case "kof_ui_store_set" -> "(II)V";
+            case "kof_ui_store_subscribe", "kof_ui_store_unsubscribe" -> "(ILjava/lang/Object;)V";
+            case "kof_ui_stores_live" -> "()I";
             case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
                     -> "(I)Ljava/lang/String;";
             case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
@@ -173,7 +196,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
             case "kof_web_status" -> "(ILjava/lang/String;)Ljava/lang/String;";
             case "kof_web_header_set" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
-            case "kof_config_get", "kof_config_env" -> "(Ljava/lang/String;)Ljava/lang/String;";
+            case "kof_config_get", "kof_config_env", "kof_config_required" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_http_get", "kof_http_delete", "kof_http_options" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_http_get_headers", "kof_http_delete_headers", "kof_http_options_headers"
                     -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
@@ -325,7 +348,7 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_web_body", "kof_web_method", "kof_web_path",
                     "kof_web_status", "kof_web_header_set",
                     "kof_scheduler_every", "kof_scheduler_at" -> "Ljava/lang/String;";
-            case "kof_config_get", "kof_config_env", "kof_config_str" -> "Ljava/lang/String;";
+            case "kof_config_get", "kof_config_env", "kof_config_str", "kof_config_required" -> "Ljava/lang/String;";
             case "kof_cache_get" -> "Ljava/lang/String;";
             case "kof_cache_set", "kof_cache_set_ttl", "kof_cache_delete", "kof_cache_clear" -> "V";
             case "kof_cache_ttl" -> "I";
@@ -358,6 +381,14 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_orm_count" -> "J";
              case "kof_web_port" -> "I";
              case "kof_ui_label_font_size", "kof_ui_label_bold", "kof_ui_label_color" -> "I";
+             case "kof_ui_component_state_get", "kof_ui_component_new", "kof_ui_nodes_live" -> "I";
+             case "kof_ui_component_state_set", "kof_ui_component_view", "kof_ui_component_on_mount",
+                     "kof_ui_component_on_dispose", "kof_ui_component_effect", "kof_ui_component_on",
+                     "kof_ui_component_bind", "kof_ui_component_remove", "kof_ui_component_mount",
+                     "kof_ui_component_unmount", "kof_ui_flush_ui", "kof_ui_emit",
+                     "kof_ui_event_stop", "kof_ui_store_set", "kof_ui_store_subscribe",
+                     "kof_ui_store_unsubscribe" -> "V";
+             case "kof_ui_store_get", "kof_ui_store_new", "kof_ui_stores_live" -> "I";
              case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
                      "kof_ui_window_set_theme" -> "V";
             // ── kof.security (docs/security.md §5) ───────────────────
@@ -1404,6 +1435,142 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 public static void kof_ui_widget_set_font(int widget, int font) {
+                }
+
+                // ── Component Core (docs/ui/architecture.md) ──
+                // JVM/Native: kof.ui é KofJS — os handles de componente são
+                // no-ops (a renderização/lifecycle/estado rodam no alvo JS).
+                private static int kofUiCompSeq = 0;
+                private static final java.util.Set<Integer> kofUiCompLive = new java.util.HashSet<>();
+                private static final java.util.Map<Integer, Integer> kofUiCompParent = new java.util.HashMap<>();
+                public static int kof_ui_component_new(int state) {
+                    int id = ++kofUiCompSeq;
+                    kofUiCompLive.add(id);
+                    return id;
+                }
+
+                public static int kof_ui_component_state_get(int c) {
+                    return 0;
+                }
+
+                public static void kof_ui_component_state_set(int c, int value) {
+                }
+
+                public static void kof_ui_component_view(int c, Object builder) {
+                }
+
+                public static void kof_ui_component_on_mount(int c, Object fn) {
+                }
+
+                public static void kof_ui_component_on_dispose(int c, Object fn) {
+                }
+
+                public static void kof_ui_component_effect(int c, Object fn) {
+                }
+
+                public static void kof_ui_component_on(int c, String type, Object handler) {
+                }
+
+                public static void kof_ui_component_bind(int c, int child) {
+                    // JVM mirrors the component tree (no rendering): bind
+                    // records the child under the parent so remove() can
+                    // free the whole subtree like the KofJS target does.
+                    kofUiCompParent.put(child, c);
+                }
+
+                public static void kof_ui_component_remove(int c) {
+                    kofUiCompRemoveTree(c);
+                }
+
+                private static void kofUiCompRemoveTree(int c) {
+                    for (var it = kofUiCompParent.entrySet().iterator(); it.hasNext(); ) {
+                        var e = it.next();
+                        if (e.getValue() == c) {
+                            kofUiCompRemoveTree(e.getKey());
+                            it.remove();
+                        }
+                    }
+                    kofUiCompLive.remove(c);
+                }
+
+                public static void kof_ui_component_mount(int c) {
+                }
+
+                public static void kof_ui_component_unmount(int c) {
+                    kofUiCompLive.remove(c);
+                }
+
+                public static int kof_ui_nodes_live() {
+                    return kofUiCompLive.size();
+                }
+
+                public static void kof_ui_flush_ui() {
+                }
+
+                public static String kof_ui_event_type(String type) {
+                    return type == null ? "" : type;
+                }
+
+                public static void kof_ui_emit(int c, String type) {
+                }
+
+                public static void kof_ui_event_stop(Object ev) {
+                }
+
+                // ── Fase 8: Store observável (no-ops) ──
+                private static int kofUiStoreSeq = 0;
+                private static final java.util.Set<Integer> kofUiStoreLive = new java.util.HashSet<>();
+
+                public static int kof_ui_store_new(int initial) {
+                    int id = ++kofUiStoreSeq;
+                    kofUiStoreLive.add(id);
+                    return id;
+                }
+
+                public static int kof_ui_store_get(int s) {
+                    return 0;
+                }
+
+                public static void kof_ui_store_set(int s, int value) {
+                }
+
+                public static void kof_ui_store_subscribe(int s, Object fn) {
+                }
+
+                public static void kof_ui_store_unsubscribe(int s, Object fn) {
+                }
+
+                public static int kof_ui_stores_live() {
+                    return kofUiStoreLive.size();
+                }
+
+                // ── Fase 4: primitivas de layout (no-ops) ──
+                public static int kof_ui_box_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_stack_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_wrap_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_grid_new(int cols, java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_spacer_new(int size) {
+                    return 1;
+                }
+
+                public static int kof_ui_center_new(java.util.ArrayList ids) {
+                    return 1;
+                }
+
+                public static int kof_ui_align_new(int horizontal, int vertical, java.util.ArrayList ids) {
+                    return 1;
                 }
 
                 public static int kof_ui_widget_font(int widget) {
