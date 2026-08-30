@@ -460,9 +460,20 @@ class JvmBackend implements Backend {
                 .collect(Collectors.toList());
         if ("<init>".equals(method.name())) {
             String superName = classSuperName != null ? classSuperName : "java/lang/Object";
-            boolean hasSuperCall = ops.stream().anyMatch(op -> op instanceof KofCall kc
-                    && kc.kind() == KofCallKind.CONSTRUCTOR);
-            if (!hasSuperCall) {
+            // Only a super(...) or this(...) as the constructor's own super
+            // invocation suppresses the implicit super(); a CONSTRUCTOR call
+            // to any other class (e.g. FixedClock(0) in a field assignment)
+            // must NOT count — otherwise Object.<init> is never called and
+            // the verifier rejects the class.
+            boolean hasSuperOrThisCall = ops.stream().anyMatch(op -> {
+                if (!(op instanceof KofCall kc) || kc.kind() != KofCallKind.CONSTRUCTOR) return false;
+                if (kc.ownerType() instanceof Type.ClassType ct) {
+                    String internal = JvmTypeMapper.toInternalName(ct.packageName(), ct.name());
+                    return internal.equals(superName) || internal.equals(className);
+                }
+                return false;
+            });
+            if (!hasSuperOrThisCall) {
 
                 Type thisType = classTypeFromInternal(className);
                 ops.add(0, new KofCall(classTypeFromInternal(superName),
@@ -674,10 +685,10 @@ class JvmBackend implements Backend {
                     boolean isLong = isPrimitiveOf(kb.operandType(), "long");
                     boolean isFloat = isPrimitiveOf(kb.operandType(), "float");
                     boolean isDouble = isPrimitiveOf(kb.operandType(), "double");
+                    // Unknown NÃO é referência (int não-inferido também infere Unknown)
                     boolean isRef = kb.operandType() instanceof Type.ClassType
                             || kb.operandType() instanceof Type.ArrayType
-                            || kb.operandType() instanceof Type.TypeVariable
-                            || kb.operandType() instanceof Type.UnknownType;
+                            || kb.operandType() instanceof Type.TypeVariable;
                     int cmpOpcode;
                     if (isRef) {
                         cmpOpcode = switch (kb.op()) {
@@ -751,6 +762,11 @@ class JvmBackend implements Backend {
             boolean isLong = isPrimitiveOf(kc.operandType(), "long");
             boolean isFloat = isPrimitiveOf(kc.operandType(), "float");
             boolean isDouble = isPrimitiveOf(kc.operandType(), "double");
+            // Unknown NÃO é referência: int não-inferido (r.exitCode != 0)
+            // também infere Unknown — if_acmp sobre int = VerifyError
+            boolean isRef = kc.operandType() instanceof Type.ClassType
+                    || kc.operandType() instanceof Type.ArrayType
+                    || kc.operandType() instanceof Type.TypeVariable;
             if (isLong) {
                 mv.visitInsn(LCMP);
             } else if (isFloat) {
@@ -759,7 +775,14 @@ class JvmBackend implements Backend {
                 mv.visitInsn(DCMPL);
             }
             int opcode;
-            if (isLong || isFloat || isDouble) {
+            if (isRef) {
+                // referências (incl. String? vs null): if_acmp*
+                opcode = switch (kc.comparison()) {
+                    case EQ -> IF_ACMPEQ;
+                    case NE -> IF_ACMPNE;
+                    default -> IF_ACMPEQ;
+                };
+            } else if (isLong || isFloat || isDouble) {
                 // LCMP/FCMPL/DCMPL leave a single int; use 1-operand jumps.
                 opcode = switch (kc.comparison()) {
                     case EQ -> IFEQ;
@@ -856,9 +879,14 @@ class JvmBackend implements Backend {
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
                     if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType)) {
-                        mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(
-                                elemType instanceof Type.ClassType ct ? ct.packageName() : "",
-                                elemType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object"));
+                        if (elemType instanceof Type.ArrayType at) {
+                            // elemento é array: cast pro tipo JVM real ([I etc)
+                            // — callers esperam o componente, não Object
+                            mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toDescriptor(at));
+                        } else if (elemType instanceof Type.ClassType ct) {
+                            mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+                        }
+                        // Unknown/other: sem cast — a lista guarda Object
                     }
                     emitUnboxIfPrimitive(mv, elemType);
                 }
@@ -913,8 +941,10 @@ class JvmBackend implements Backend {
                         mv.visitInsn(SWAP);                     // [m,K,V]
                     }
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
-                    // POP is handled by hasReturnValue/KofPop at statement level; do not pop here
-                    // to keep expression value when used (e.g., var x = m.put(...))
+                    // VOID no call-site (ex.: pares do mapOf): o valor anterior é descartado
+                    if (Type.isVoid(kc.returnType())) {
+                        mv.visitInsn(POP);
+                    }
                 }
                 case "kof_map_get" -> {
                     emitBoxIfPrimitive(mv, keyType);

@@ -520,7 +520,7 @@ class Parser {
         List<String> ifaces = parseImplementedInterfaces();
         RecordDeclarationNode rec = parseRecordBody(name, mods, superClass, ifaces, typeParams);
         return new RecordDeclarationNode(rec.position(), rec.name(), rec.modifiers(), rec.superClass(),
-                rec.interfaces(), rec.components(), rec.members(), annos);
+                rec.interfaces(), typeParams, rec.components(), rec.members(), annos);
     }
 
     private RecordDeclarationNode parseRecordBody(String name, List<String> mods, String superClass,
@@ -546,7 +546,7 @@ class Parser {
             expect(TokenType.RBRACE, "Expected '}' after record body", "PARSE014");
         }
         return new RecordDeclarationNode(pos(), name, mods, superClass, ifaces,
-                List.copyOf(components), List.copyOf(members));
+                typeParams, List.copyOf(components), List.copyOf(members), List.of());
     }
 
     private List<String> parseImplementedInterfaces() {

@@ -149,9 +149,13 @@ class SemanticAnalyzer {
         SymbolTable.ClassSymbol classSym = knownClasses.get(rec.name());
         SymbolTable classScope = classSym.members().enterScope();
         classMemberScopes.put(rec.name(), classScope);
+        List<String> typeParams = rec.typeParameters() == null ? List.of() : rec.typeParameters();
+        for (String tp : typeParams) {
+            classScope.define(new SymbolTable.TypeParameterSymbol(tp));
+        }
         List<Type> compTypes = new ArrayList<>();
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = Type.of(comp.type());
+            Type compType = resolveType(comp.type(), classScope);
             compTypes.add(compType);
             SymbolTable.FieldSymbol fs = new SymbolTable.FieldSymbol(comp.name(), compType, 0, rec.name());
             classSym.members().define(fs);
@@ -161,7 +165,7 @@ class SemanticAnalyzer {
         classSym.members().define(ctorSym);
         classScope.define(ctorSym);
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = Type.of(comp.type());
+            Type compType = resolveType(comp.type(), classScope);
             SymbolTable.MethodSymbol ms = new SymbolTable.MethodSymbol(comp.name(), rec.name(),
                     compType, List.of(), 1, SymbolTable.DispatchKind.INSTANCE);
             classSym.members().define(ms);
@@ -868,6 +872,16 @@ class SemanticAnalyzer {
                 yield operandType;
             }
             case MethodCallExpr mc -> {
+                // F10: métodos de instância do handle de process.spawn
+                if (mc.receiver() != null) {
+                    Type recv = inferType(mc.receiver(), scope);
+                    if (KofProcess.isHandle(recv)) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(), argTypes);
+                        if (hm != null) yield hm.returnType();
+                    }
+                }
                 if (mc.receiver() == null && "listOf".equals(mc.methodName())) {
                     // listOf(...) keeps its element type: List<T> must survive
                     // the whole pipeline (for-in, get, method resolution).
@@ -1117,7 +1131,7 @@ class SemanticAnalyzer {
                             && !isLocalName(rid.name(), scope)) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
-                        KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                        KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
                         if (procCall != null) yield procCall.returnType();
                         KofProcess.ProcessCall exitCall = KofProcess.exitCall(argTypes);
                         if (exitCall != null) yield exitCall.returnType();
@@ -1389,6 +1403,20 @@ class SemanticAnalyzer {
                     yield new Type.ClassType(ctorClass.packageName(), ctorClass.name(), List.of());
                 }
                 for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                // String API: métodos que devolvem Int (indexOf, lastIndexOf,
+                // length, compareTo...) — sem isso o var local infere Unknown
+                // e o backend emite aload+if_icmp* (VerifyError)
+                if (mc.receiver() != null) {
+                    Type recv = inferType(mc.receiver(), scope);
+                    if (Type.isString(recv) || recv instanceof Type.NullableType nt && Type.isString(nt.inner())) {
+                        yield switch (mc.methodName()) {
+                            case "indexOf", "lastIndexOf", "length", "size", "count",
+                                 "compareTo", "compareToIgnoreCase", "hashCode" -> Type.PrimitiveType.INT;
+                            case "isEmpty" -> Type.PrimitiveType.BOOL;
+                            default -> Type.UnknownType.UNKNOWN;
+                        };
+                    }
+                }
                 yield Type.UnknownType.UNKNOWN;
             }
             case NewExpr ne -> {

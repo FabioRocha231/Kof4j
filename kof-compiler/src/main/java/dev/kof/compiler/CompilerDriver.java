@@ -1477,6 +1477,7 @@ private Target target = Target.JVM;
             case ReturnStmt ret -> {
                 if (ret.value() != null) {
                     localIdx = emitExpression(ret.value(), ops, owner, localIdx, locals);
+                    emitWideningIfNeeded(ops, inferExprType(ret.value(), locals), returnType);
                     ops.add(new KofReturn(returnType));
                 } else if (Type.isVoid(returnType)) {
                     ops.add(new KofReturnVoid());
@@ -1503,6 +1504,11 @@ private Target target = Target.JVM;
             }
             case VarDeclStmt vds -> {
                 Type varType = toType(vds.type());
+                // nullable é constraint de compile-time: o storage é o inner
+                // (a referência já pode ser null na JVM/Native/JS)
+                if (varType instanceof Type.NullableType nt) {
+                    varType = nt.inner();
+                }
                 if (mutatedCapturedNames.contains(vds.name())) {
                     Type initType = vds.initializer() == null ? Type.PrimitiveType.INT
                             : inferExprType(vds.initializer(), locals);
@@ -2280,6 +2286,15 @@ private Target target = Target.JVM;
                     } else {
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
                         Type operandType = accType;
+                        // comparação contra null é referência (if_acmp*):
+                        // usa o tipo do lado não-null, ou Object se Unknown
+                        if (("==".equals(be.operator()) || "!=".equals(be.operator()))
+                                && (isNullLiteral(be.left()) || isNullLiteral(be.right()))) {
+                            Type other = isNullLiteral(be.left()) ? rightType : accType;
+                            operandType = (other instanceof Type.ClassType || other instanceof Type.ArrayType
+                                    || other instanceof Type.TypeVariable || other instanceof Type.NullableType)
+                                    ? other : new Type.ClassType("java.lang", "Object", List.of());
+                        }
                         switch (be.operator()) {
                             case "+" -> ops.add(new KofBinary(KofBinaryOp.ADD, operandType));
                             case "-" -> ops.add(new KofBinary(KofBinaryOp.SUB, operandType));
@@ -2334,12 +2349,40 @@ private Target target = Target.JVM;
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                     SymbolTable.ConstructorSymbol ctor = null;
                     SymbolTable.Symbol ctorSym = userCtor.members().resolve("<init>");
-                    if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
-                    ops.add(new KofNewObject(userCtor.type(), argTypes));
-                    ops.add(new KofDup());
+                    if (ctorSym instanceof SymbolTable.ConstructorSymbol ctorSingle) ctor = ctorSingle;
                     List<Type> ctorParamTypes = (ctor != null
                             && ctor.parameterTypes().size() == mc.arguments().size())
-                            ? ctor.parameterTypes() : argTypes;
+                            ? ctor.parameterTypes() : null;
+                    if (ctorParamTypes == null && ctorSym instanceof SymbolTable.ConstructorSet set) {
+                        // resolve por assignability: arg pode ser subtipo do
+                        // formal (ex.: FixedClock onde TimeSource esperado)
+                        for (SymbolTable.ConstructorSymbol c : set.constructors()) {
+                            if (c.parameterTypes().size() != argTypes.size()) continue;
+                            boolean compatible = true;
+                            for (int ai = 0; ai < argTypes.size(); ai++) {
+                                Type formalP = c.parameterTypes().get(ai);
+                                Type argP = argTypes.get(ai);
+                                if (!(formalP.equals(argP) || Type.isUnknown(argP)
+                                        || (formalP instanceof Type.ClassType
+                                            && argP instanceof Type.ClassType))) {
+                                    compatible = false;
+                                    break;
+                                }
+                            }
+                            if (compatible) { ctorParamTypes = c.parameterTypes(); break; }
+                        }
+                        if (ctorParamTypes == null) {
+                            for (SymbolTable.ConstructorSymbol c2 : set.constructors()) {
+                                if (c2.parameterTypes().size() == argTypes.size()) {
+                                    ctorParamTypes = c2.parameterTypes();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (ctorParamTypes == null) ctorParamTypes = argTypes;
+                    ops.add(new KofNewObject(userCtor.type(), argTypes));
+                    ops.add(new KofDup());
                     localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ctorParamTypes, ops, owner, localIdx, locals);
                     ops.add(new KofCall(userCtor.type(), "<init>", ctorParamTypes,
                             Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
@@ -2716,11 +2759,25 @@ private Target target = Target.JVM;
                     Type keyType = Type.UnknownType.UNKNOWN;
                     Type valueType = Type.UnknownType.UNKNOWN;
                     if (!mc.arguments().isEmpty()) {
-                        // Infer from first argument if it is a Pair or two values? For now, use Unknown
-                        // mapOf() with no args creates empty Map<Unknown, Unknown>
+                        // mapOf(k1, v1, k2, v2, ...): pinning do tipo no primeiro par
+                        keyType = inferExprType(mc.arguments().get(0), locals);
+                        if (mc.arguments().size() > 1) {
+                            valueType = inferExprType(mc.arguments().get(1), locals);
+                        }
                     }
                     Type mapType = new Type.ClassType("kof", "Map", List.of(keyType, valueType));
                     ops.add(new KofCall(mapType, "kof_map_new", List.of(), mapType, KofCallKind.FUNCTION));
+                    // pares: (k0,v0), (k1,v1), ...
+                    for (int ai = 0; ai + 1 < mc.arguments().size(); ai += 2) {
+                        ops.add(new KofDup());
+                        Type kType = inferExprType(mc.arguments().get(ai), locals);
+                        Type vType = inferExprType(mc.arguments().get(ai + 1), locals);
+                        localIdx = emitExpression(mc.arguments().get(ai), ops, owner, localIdx, locals);
+                        localIdx = emitExpression(mc.arguments().get(ai + 1), ops, owner, localIdx, locals);
+                        // VOID no put: o map duplicado continua na pilha para o próximo par
+                        ops.add(new KofCall(mapType, "kof_map_put", List.of(kType, vType),
+                                Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                    }
                     yield localIdx;
                 }
                 if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
@@ -3127,7 +3184,38 @@ private Target target = Target.JVM;
                         && findLocalVar(rid.name(), locals) == null) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                    KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                    KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
+                    if (procCall != null && "kof_process_spawn".equals(procCall.function())) {
+                        if (target.isNative()) {
+                            // F10: pipes vivos no native exigem fork/exec com
+                            // descriptors no runtime asm — gap explícito por ora
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        "process.spawn: interactive stdin/stdout not supported on the Native target yet (JVM/JS support it)",
+                                        "PROC001");
+                            }
+                            yield localIdx;
+                        }
+                        // F10: process.spawn(program, args...) → monta List<String>
+                        // e chama kof_process_spawn (stdin/stdout vivos)
+                        localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                        Type listType = KofProcess.STRING_LIST;
+                        ops.add(new KofCall(listType, "kof_list_new", List.of(), listType, KofCallKind.FUNCTION));
+                        for (int i = 1; i < mc.arguments().size(); i++) {
+                            ops.add(new KofDup());
+                            localIdx = emitExpression(mc.arguments().get(i), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(listType, "kof_list_add",
+                                    List.of(BuiltinTypes.STRING), Type.PrimitiveType.VOID,
+                                    KofCallKind.INSTANCE));
+                        }
+                        ops.add(new KofCall(KofProcess.HANDLE, "kof_process_spawn",
+                                List.of(BuiltinTypes.STRING, KofProcess.STRING_LIST),
+                                KofProcess.HANDLE, KofCallKind.FUNCTION));
+                        yield localIdx;
+                    }
                     if (procCall != null) {
                         if (target.isNative()) {
                             if (currentDiagnostics != null) {
@@ -3723,6 +3811,25 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                         yield localIdx;
                     }
+                    if (KofProcess.isHandle(recvType)) {
+                        // F10: h.write/readLine/exitCode/kill/alive — o handle
+                        // empilhado entra como 1º parâmetro do call estático
+                        KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(),
+                                mc.arguments().stream().map(a -> inferExprType(a, locals)).toList());
+                        if (hm != null) {
+                            List<Type> params = new ArrayList<>();
+                            params.add(KofProcess.HANDLE);
+                            for (int pi = 1; pi < hm.parameterTypes().size(); pi++) {
+                                params.add(hm.parameterTypes().get(pi));
+                            }
+                            for (ExpressionNode arg : mc.arguments()) {
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
+                            ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                    hm.function(), params, hm.returnType(), KofCallKind.FUNCTION));
+                            yield localIdx;
+                        }
+                    }
                     if (BuiltinTypes.isList(recvType)) {
                         String listFn = switch (mc.methodName()) {
                             case "add", "push", "append" -> "kof_list_add";
@@ -3876,7 +3983,7 @@ private Target target = Target.JVM;
                     if (resolvedMethod != null) {
                         recvType = ownerTypeFromInternal(resolvedMethod.ownerClass());
                         methodReturnType = resolvedMethod.returnType();
-                        methodParamTypes = resolvedMethod.parameterTypes();
+                        methodParamTypes = new ArrayList<>(resolvedMethod.parameterTypes());
                     } else if (BuiltinTypes.isString(recvType)) {
                         StringMethodSig sig = stringMethodSignature(mc.methodName(), mc.arguments().size(),
                                 methodParamTypes);
@@ -4031,7 +4138,7 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                         SymbolTable.ConstructorSymbol ctor = null;
                         SymbolTable.Symbol ctorSym = cs.members().resolve("<init>");
-                        if (ctorSym instanceof SymbolTable.ConstructorSymbol c) ctor = c;
+                        if (ctorSym instanceof SymbolTable.ConstructorSymbol ctorSingle) ctor = ctorSingle;
                         ops.add(new KofNewObject(cs.type(), argTypes));
                         ops.add(new KofDup());
                         List<Type> ctorParamTypes = (ctor != null
@@ -4362,6 +4469,44 @@ private Target target = Target.JVM;
                 List<Type> argTypes = new ArrayList<>();
                 for (ExpressionNode arg : ne.arguments()) argTypes.add(inferExprType(arg, locals));
                 SymbolTable.ConstructorSymbol resolvedCtor = semanticAnalyzer.getResolvedConstructor(ne);
+                if (resolvedCtor == null && type instanceof Type.ClassType ct
+                        && semanticAnalyzer != null) {
+                    // fallback: resolver por assignability quando o registro
+                    // por identidade falhou (ex.: node recriado no desugar)
+                    SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(ct.name());
+                    if (cs != null) {
+                        SymbolTable.Symbol anyInit = cs.members().resolve("<init>");
+                        if (anyInit instanceof SymbolTable.ConstructorSet set) {
+                            for (SymbolTable.ConstructorSymbol c : set.constructors()) {
+                                if (c.parameterTypes().size() == argTypes.size()) {
+                                    boolean compatible = true;
+                                    for (int ai = 0; ai < argTypes.size(); ai++) {
+                                        if (!ctorCompatible(c.parameterTypes().get(ai), argTypes.get(ai))) {
+                                            compatible = false;
+                                            break;
+                                        }
+                                    }
+                                    if (compatible) { resolvedCtor = c; break; }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (resolvedCtor == null && type instanceof Type.ClassType ct
+                        && semanticAnalyzer != null) {
+                    SymbolTable.ClassSymbol cs2 = semanticAnalyzer.getClass(ct.name());
+                    if (cs2 != null) {
+                        SymbolTable.Symbol anyInit2 = cs2.members().resolve("<init>");
+                        if (anyInit2 instanceof SymbolTable.ConstructorSet set2) {
+                            for (SymbolTable.ConstructorSymbol c : set2.constructors()) {
+                                if (c.parameterTypes().size() == argTypes.size()) {
+                                    resolvedCtor = c;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
                 ops.add(new KofNewObject(type, argTypes));
                 ops.add(new KofDup());
                 List<Type> ctorParamTypes;
@@ -4947,7 +5092,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                         && findLocalVar(rid.name(), locals) == null) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
-                    KofProcess.ProcessCall procCall = KofProcess.runCall(argTypes);
+                    KofProcess.ProcessCall procCall = KofProcess.entryCall(mc.methodName(), argTypes);
                     if (procCall != null) yield procCall.returnType();
                     yield Type.UnknownType.UNKNOWN;
                 }
@@ -4970,6 +5115,12 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    if (KofProcess.isHandle(recvType)) {
+                        List<Type> hArgs = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) hArgs.add(inferExprType(arg, locals));
+                        KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(), hArgs);
+                        if (hm != null) yield hm.returnType();
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && KofSecurity.isSecurityNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -5073,7 +5224,11 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                         if ("toLong".equals(mn)) yield Type.PrimitiveType.LONG;
                         if ("toDouble".equals(mn)) yield Type.PrimitiveType.DOUBLE;
                         if ("toFloat".equals(mn)) yield Type.PrimitiveType.FLOAT;
-                        if ("length".equals(mn) || "indexOf".equals(mn) || "compareTo".equals(mn)) yield Type.PrimitiveType.INT;
+                        if ("length".equals(mn) || "indexOf".equals(mn) || "lastIndexOf".equals(mn)
+                                || "compareTo".equals(mn) || "compareToIgnoreCase".equals(mn)
+                                || "hashCode".equals(mn) || "size".equals(mn) || "count".equals(mn)) {
+                            yield Type.PrimitiveType.INT;
+                        }
                         if ("contains".equals(mn) || "startsWith".equals(mn) || "endsWith".equals(mn)
                                 || "equals".equals(mn) || "equalsIgnoreCase".equals(mn)) {
                             yield Type.PrimitiveType.BOOL;
@@ -5369,6 +5524,48 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         return a instanceof Type.PrimitiveType ? a : Type.PrimitiveType.INT;
     }
 
+    /** Compatibilidade largura para fallback de resolução de construtor:
+     *  primitivos por largura, tipos de referência por hierarquia, Unknown aceita tudo. */
+    private int primWidth(Type.PrimitiveType pt) {
+        return switch (pt.name()) {
+            case "bool", "Bool" -> 0;
+            case "char", "Char" -> 1;
+            case "int", "Int", "byte", "short" -> 2;
+            case "long", "Long" -> 3;
+            case "float", "Float" -> 4;
+            case "double", "Double" -> 5;
+            default -> 2;
+        };
+    }
+
+    private boolean ctorCompatible(Type formal, Type arg) {
+        if (formal == null || arg == null) return true;
+        if (Type.isUnknown(formal) || Type.isUnknown(arg)) return true;
+        if (formal.equals(arg)) return true;
+        if (formal instanceof Type.PrimitiveType fp && arg instanceof Type.PrimitiveType ap) {
+            return primWidth(ap) <= primWidth(fp);
+        }
+        if (formal instanceof Type.ClassType fc && arg instanceof Type.ClassType ac
+                && semanticAnalyzer != null) {
+            java.util.Set<String> visited = new java.util.HashSet<>();
+            java.util.Queue<String> queue = new java.util.LinkedList<>();
+            queue.add(ac.name());
+            visited.add(ac.name());
+            while (!queue.isEmpty()) {
+                String current = queue.poll();
+                if (current.equals(fc.name())) return true;
+                SymbolTable.ClassSymbol cur = semanticAnalyzer.getClass(current);
+                if (cur == null) continue;
+                if (cur.superClass() != null && !cur.superClass().equals("java/lang/Object")
+                        && visited.add(cur.superClass())) queue.add(cur.superClass());
+                for (String i : cur.interfaces()) {
+                    if (visited.add(i)) queue.add(i);
+                }
+            }
+        }
+        return true;
+    }
+
     private void emitWideningIfNeeded(List<KofOperation> ops, Type from, Type to) {
         if (from.equals(to)) return;
         String fn = primitiveName(from);
@@ -5660,6 +5857,8 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
             case "equals" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(object)) : null;
             case "equalsIgnoreCase" -> argCount == 1 ? new StringMethodSig(BOOL, List.of(str)) : null;
             case "indexOf" -> argCount == 1 ? new StringMethodSig(INT, List.of(str))
+                    : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
+            case "lastIndexOf" -> argCount == 1 ? new StringMethodSig(INT, List.of(str))
                     : argCount == 2 ? new StringMethodSig(INT, List.of(str, INT)) : null;
             case "concat" -> argCount == 1 ? new StringMethodSig(str, List.of(str)) : null;
             case "trim" -> argCount == 0 ? new StringMethodSig(str, List.of()) : null;
@@ -6240,7 +6439,31 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         if (isNumeric(left) && isNumeric(right)) {
             return commonNumericType(left, right);
         }
+        // comparação contra literal null é sempre referência (if_acmp*);
+        // quando o outro lado é Unknown (get de Map, etc.) marca como Object
+        if (isNullLiteral(bin.left()) || isNullLiteral(bin.right())) {
+            Type other = isNullLiteral(bin.left()) ? right : left;
+            if (other instanceof Type.ClassType || other instanceof Type.ArrayType
+                    || other instanceof Type.TypeVariable || other instanceof Type.NullableType) {
+                return other;
+            }
+            return new Type.ClassType("java.lang", "Object", List.of());
+        }
+        // referências conhecidas (String vs String, record vs record):
+        // preserva o tipo para o backend emitir if_acmp*
+        if (left instanceof Type.ClassType || left instanceof Type.ArrayType
+                || left instanceof Type.TypeVariable || left instanceof Type.NullableType) {
+            return left;
+        }
+        if (right instanceof Type.ClassType || right instanceof Type.ArrayType
+                || right instanceof Type.TypeVariable || right instanceof Type.NullableType) {
+            return right;
+        }
         return Type.PrimitiveType.INT;
+    }
+
+    private boolean isNullLiteral(ExpressionNode e) {
+        return e instanceof LiteralExpr le && le.kind() == ConcreteLiteralKind.NULL;
     }
 
     /**
@@ -6412,15 +6635,17 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         int access = computeAccess(rec.modifiers()) | AccessFlags.FINAL | AccessFlags.PUBLIC;
         List<IRField> fields = new ArrayList<>();
         List<IRMethod> methods = new ArrayList<>();
+        List<String> typeParams = rec.typeParameters() == null ? List.of() : rec.typeParameters();
         for (RecordComponentNode comp : rec.components()) {
-            fields.add(new IRField(comp.name(), toType(comp.type()), AccessFlags.PRIVATE | AccessFlags.FINAL,
+            fields.add(new IRField(comp.name(), resolveWithTypeParams(comp.type(), typeParams),
+                    AccessFlags.PRIVATE | AccessFlags.FINAL,
                     null, lowerAnnotations(comp.annotations())));
         }
         methods.add(0, generateRecordConstructor(rec, internalName));
         methods.addAll(generateRecordDefaultOverloads(rec, internalName));
         Type ownerType = ownerTypeFromInternal(internalName);
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = toType(comp.type());
+            Type compType = resolveWithTypeParams(comp.type(), typeParams);
             List<KofOperation> body = new ArrayList<>();
             body.add(new KofLoadLocal(ownerType, 0));
             body.add(new KofLoadField(ownerType, comp.name(), compType));
@@ -6431,10 +6656,10 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         }
         for (AstNode member : rec.members()) {
             if (member instanceof MethodDeclarationNode method) {
-                methods.add(lowerMethod(method, internalName, false, List.of()));
+                methods.add(lowerMethod(method, internalName, false, typeParams));
             } else if (member instanceof ConstructorDeclarationNode ctor) {
                 methods.add(lowerConstructor(ctor, internalName, "java/lang/Record",
-                        List.of(), fields, java.util.Map.of()));
+                        typeParams, fields, java.util.Map.of()));
             }
         }
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
@@ -6831,7 +7056,8 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     }
 
     private IRMethod generateRecordConstructor(RecordDeclarationNode rec, String owner) {
-        List<Type> compTypes = rec.components().stream().map(c -> toType(c.type())).toList();
+        List<String> typeParams = rec.typeParameters() == null ? List.of() : rec.typeParameters();
+        List<Type> compTypes = rec.components().stream().map(c -> resolveWithTypeParams(c.type(), typeParams)).toList();
         List<KofOperation> ops = new ArrayList<>();
         List<IRLocalVariable> locals = new ArrayList<>();
         Type ownerType = ownerTypeFromInternal(owner);
@@ -6845,7 +7071,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         }
         int localIdx = 1;
         for (RecordComponentNode comp : rec.components()) {
-            Type compType = toType(comp.type());
+            Type compType = resolveWithTypeParams(comp.type(), typeParams);
             locals.add(new IRLocalVariable(localIdx, comp.name(), compType));
             ops.add(new KofLoadLocal(ownerType, 0));
             ops.add(new KofLoadLocal(compType, localIdx));

@@ -622,7 +622,7 @@ final class NativeRuntime {
                 cmpq %r13, %r12
                 jge .Lgc_mark_stack_done
                 movq (%r12), %rdi
-                call kof_gc_try_mark
+                call kof_gc_mark_transitive
                 addq $8, %r12
                 jmp .Lgc_mark_stack
             .Lgc_mark_stack_done:
@@ -632,7 +632,7 @@ final class NativeRuntime {
                 cmpq %r13, %r12
                 jge .Lgc_mark_bss_done
                 movq (%r12), %rdi
-                call kof_gc_try_mark
+                call kof_gc_mark_transitive
                 addq $8, %r12
                 jmp .Lgc_mark_bss
             .Lgc_mark_bss_done:
@@ -702,56 +702,87 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
-            .globl kof_gc_sweep
-            .type kof_gc_sweep, @function
-            kof_gc_sweep:
-                pushq %rbp
-                movq %rsp, %rbp
+            .globl kof_gc_mark_transitive
+            .type kof_gc_mark_transitive, @function
+            kof_gc_mark_transitive:
                 pushq %rbx
+                pushq %rbp
                 pushq %r12
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $8, %rsp
-                movq kof_gc_head(%rip), %rbx
-                xorq %r14, %r14
-                movq $10000, %r10
-            .Lsweep_loop:
+                movq %rdi, %r12
+                cmpq $0x1000, %r12
+                jb .Lmtrans_ret
+                testq $7, %r12
+                jne .Lmtrans_ret
+                movq kof_heap_low(%rip), %rbx
                 testq %rbx, %rbx
-                je .Lsweep_done
+                je .Lmtrans_heap_ok
+                cmpq %rbx, %r12
+                jb .Lmtrans_ret
+                movq kof_heap_high(%rip), %rbx
+                cmpq %rbx, %r12
+                jae .Lmtrans_ret
+            .Lmtrans_heap_ok:
+                movq kof_gc_head(%rip), %rbx
+                movq $10000, %r10
+            .Lmtrans_loop:
+                testq %rbx, %rbx
+                je .Lmtrans_ret
                 decq %r10
-                je .Lsweep_done
-                movq 16(%rbx), %r15
+                je .Lmtrans_ret
+                leaq 32(%rbx), %rax
+                cmpq %rax, %r12
+                je .Lmtrans_found
+                movq 0(%rbx), %rcx
+                subq $32, %rcx
+                leaq 32(%rbx), %rdx
+                cmpq %rdx, %r12
+                jb .Lmtrans_next
+                addq %rcx, %rdx
+                cmpq %rdx, %r12
+                jae .Lmtrans_next
+            .Lmtrans_found:
                 cmpb $0, 24(%rbx)
-                jne .Lsweep_marked
-                cmpq $0, %r14
-                je .Lsweep_remove_head
-                movq %r15, 16(%r14)
-                jmp .Lsweep_push_free
-            .Lsweep_remove_head:
-                movq %r15, kof_gc_head(%rip)
-            .Lsweep_push_free:
-                movq kof_free_head(%rip), %rax
-                movq %rax, 8(%rbx)
-                movq %rbx, kof_free_head(%rip)
-                incq .Lkof_free_count(%rip)
-                movq 0(%rbx), %rax
-                addq %rax, .Lkof_free_bytes(%rip)
-                movq %r15, %rbx
-                jmp .Lsweep_loop
-            .Lsweep_marked:
-                movb $0, 24(%rbx)
-                movq %rbx, %r14
-                movq %r15, %rbx
-                jmp .Lsweep_loop
-            .Lsweep_done:
-                addq $8, %rsp
+                jne .Lmtrans_ret
+                movb $1, 24(%rbx)
+                movq 0(%rbx), %rcx
+                testq %rcx, %rcx
+                je .Lmtrans_ret
+                leaq 32(%rbx), %r13
+                leaq 32(%rbx), %r14
+                addq %rcx, %r14
+            .Lmtrans_fields:
+                cmpq %r14, %r13
+                jae .Lmtrans_ret
+                movq (%r13), %rdi
+                testq %rdi, %rdi
+                je .Lmtrans_field_next
+                pushq %r13
+                pushq %r14
+                call kof_gc_mark_transitive
+                popq %r14
+                popq %r13
+                jmp .Lmtrans_field_next
+            .Lmtrans_field_next:
+                addq $8, %r13
+                jmp .Lmtrans_fields
+            .Lmtrans_next:
+                movq 16(%rbx), %rbx
+                jmp .Lmtrans_loop
+            .Lmtrans_ret:
                 popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
-                popq %rbx
                 popq %rbp
+                popq %rbx
+                ret
+
+            .globl kof_gc_sweep
+            .type kof_gc_sweep, @function
+            kof_gc_sweep:
                 ret
 
             .globl kof_gc_collect

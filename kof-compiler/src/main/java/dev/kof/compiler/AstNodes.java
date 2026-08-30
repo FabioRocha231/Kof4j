@@ -102,8 +102,9 @@ record InterfaceDeclarationNode(SourcePosition position, String name, List<Strin
     }
 }
 
-record RecordDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+ record RecordDeclarationNode(SourcePosition position, String name, List<String> modifiers,
                              String superClass, List<String> interfaces,
+                             List<String> typeParameters,
                              List<RecordComponentNode> components,
                              List<? extends AstNode> members,
                              List<AnnotationNode> annotations) implements TypeDeclarationNode {
@@ -112,7 +113,15 @@ record RecordDeclarationNode(SourcePosition position, String name, List<String> 
                                  String superClass, List<String> interfaces,
                                  List<RecordComponentNode> components,
                                  List<? extends AstNode> members) {
-        this(position, name, modifiers, superClass, interfaces, components, members, List.of());
+        this(position, name, modifiers, superClass, interfaces, List.of(), components, members, List.of());
+    }
+
+    public RecordDeclarationNode(SourcePosition position, String name, List<String> modifiers,
+                                 String superClass, List<String> interfaces,
+                                 List<RecordComponentNode> components,
+                                 List<? extends AstNode> members,
+                                 List<AnnotationNode> annotations) {
+        this(position, name, modifiers, superClass, interfaces, List.of(), components, members, annotations);
     }
 }
 
