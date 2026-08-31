@@ -4,11 +4,11 @@
 > plataforma moderna (checklist derivado do ecossistema Spring, usado como
 > **matriz de capacidades**, não como especificação de API).
 >
-> **Data:** 27 de agosto de 2026 · **Versão:** 0.2.0-beta
+> **Data:** 27 de agosto de 2026 · **Versão:** 0.2.6-beta
 > **Método:** auditoria do repositório (código + testes + docs) — ver §2.
-> **Build:** `mvn clean package` PASS, `mvn test` 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.0-beta, `release.yml` single job JDK 21 fix, Windows SIGPIPE fix.
+> **Build:** `mvn clean package` PASS, `mvn test` 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.6-beta, `release.yml` single job JDK 21 fix, Windows SIGPIPE fix.
 > **Resultado:** nenhuma implementação nova foi feita neste documento —
-> apenas inventário, matriz, gaps, prioridade e estratégia (0.2.0-beta acrescenta targets `native.riscv64`/`native.aarch64`, free-list GC, pattern matching, `String?`, `KofScriptGlobals`, `KofCcompiler`).
+> apenas inventário, matriz, gaps, prioridade e estratégia (0.2.6-beta acrescenta targets `native.riscv64`/`native.aarch64`, free-list GC, pattern matching, `String?`, `KofScriptGlobals`, `KofCcompiler`).
 
 ---
 

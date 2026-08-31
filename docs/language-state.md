@@ -1,15 +1,15 @@
 # Estado Atual da Linguagem Kof
 
 **Data:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
+**Versão:** 0.2.6-beta
 **Testes:** 658 JUnit (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4; inclui JSON, exceptions, web, db/orm, UI, security G9, generics `Box<T>` fix, pattern matching e null safety básica
-**Status:** Compilador funcional com backends JVM, Native (x86_64 + riscv64 + aarch64 placeholder), KofJS (alpha, GraalJS), KofScript e KofC; web server, distribuição e tooling oficiais (0.2.0-beta, 27/08)
+**Status:** Compilador funcional com backends JVM, Native (x86_64 + riscv64 + aarch64 placeholder), KofJS (alpha, GraalJS), KofScript e KofC; web server, distribuição e tooling oficiais (0.2.6-beta, 27/08)
 
 ---
 
-## Novidades 0.1.0 → 0.2.0-beta (27/08)
+## Novidades 0.1.0 → 0.2.6-beta (27/08)
 
-### 0.2.0-beta — linguagem e plataforma
+### 0.2.6-beta — linguagem e plataforma
 
 - **Pattern matching** `switch (x) { case String s: ... }` + record destructuring `Point(x,y)` em JVM/Native/JS (`Parser.java:1`, `SemanticAnalyzer.java:1`, `CompilerDriver.java:1`)
 - **Null safety** `String?` básica (`Type?` nullable, `?`-check em compile-time)
@@ -271,7 +271,7 @@ Fields:
 
 ---
 
-## Backends (0.2.0-beta)
+## Backends (0.2.6-beta)
 
 | Feature | JVM | Native x86_64 | Native riscv64 | Native aarch64 | JS (GraalJS) | KofC | KofScript |
 |---------|-----|---------------|----------------|----------------|--------------|------|-----------|
@@ -330,7 +330,7 @@ Fields:
 
 ---
 
-## O que NÃO existe (residual 0.2.0-beta)
+## O que NÃO existe (residual 0.2.6-beta)
 
 - Reflection, Macros; annotations de enum/Classe em valores (`ANNOT001`) — planned
 - Formatter (`kof fmt` planned, P5)
@@ -339,7 +339,7 @@ Fields:
 - `spawn` no Native (CONC001) — gap documentado
 - GC mark-sweep completo (free-list + `kof_gc_collect` done, sweep pending)
 
-## O que existe desde 0.0.5 → 0.2.0-beta
+## O que existe desde 0.0.5 → 0.2.6-beta
 
 - Generics (erasure) — 25/08 `Box<T>` `T` primitivo fixo (`Box<Int>` + `println` nativo `kof_int_to_string` `CompilerDriver.java:2257`)
 - `List<T>` (JVM + Native + JS), `listOf` + `map/filter/reduce` (0.2.0), for-in
@@ -357,4 +357,4 @@ Fields:
 - Native riscv64/aarch64 targets (`Target.NATIVE_RISCV64/AARCH64`)
 - Language Server (`kof lsp` — frontend real do compilador, hover/completion)
 - `kof check`, `kof info`, `kof install`, `kof bench`/`profile`/`inspect`/`debug`, `kof script`/`repl`/`c`
-- Distribuição oficial com JDK 21 embutido, versionamento `VERSION` 0.2.0-beta e releases single-job (`release.yml`) — `scripts/package.sh` PASS
+- Distribuição oficial com JDK 21 embutido, versionamento `VERSION` 0.2.6-beta e releases single-job (`release.yml`) — `scripts/package.sh` PASS

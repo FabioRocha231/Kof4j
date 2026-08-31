@@ -1,7 +1,7 @@
 # Licenciamento do Kof
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64)
+**Versão:** 0.2.6-beta (658 testes; 6 targets; free-list + riscv64)
 
 ---
 
@@ -15,7 +15,7 @@ O arquivo `LICENSE` na raiz do repositório contém o texto completo da GPLv3.
 
 ---
 
-## 2. JDK embutido na distribuição oficial (0.2.0-beta, JDK 21)
+## 2. JDK embutido na distribuição oficial (0.2.6-beta, JDK 21)
 
 O pacote oficial do Kof embarca um **OpenJDK Eclipse Temurin 21** (binários da
 Adoptium, Tooling API Level 21), distribuído sob a **GPLv2 com Classpath Exception**. O JDK
@@ -27,9 +27,9 @@ e executa. `scripts/package.sh` gera layout dist + tar.gz/zip + SHA256SUMS, `rel
 
 ---
 
-## 2.1 Compilador (0.2.0-beta)
+## 2.1 Compilador (0.2.6-beta)
 
-O compilador Kof (módulos `kof-compiler` 650 testes + `kof-script` 8 + `kof-c-compiler` 5 = 658, `VERSION` 0.2.0-beta) é GPLv3.
+O compilador Kof (módulos `kof-compiler` 650 testes + `kof-script` 8 + `kof-c-compiler` 5 = 658, `VERSION` 0.2.6-beta) é GPLv3.
 
 Ele contém:
 - Lexer / Parser (`case String s` + `Point(x,y)` + `String?`)
@@ -54,7 +54,7 @@ O backend JVM delega para as facilities da JVM (java.lang.String, arrays nativos
 
 ### Runtime Nativo
 
-O backend Nativo gera funções de runtime em assembly durante a compilação (0.2.0-beta: `kof_free_head` free-list + `kof_gc_collect`). Essas funções são:
+O backend Nativo gera funções de runtime em assembly durante a compilação (0.2.6-beta: `kof_free_head` free-list + `kof_gc_collect`). Essas funções são:
 
 - `kof_alloc` / `kof_free_head` / `kof_gc_collect` — alocação com reuso `mmap`
 - `kof_print`, `kof_println`, `kof_print_int`, `kof_int_to_string` — saída

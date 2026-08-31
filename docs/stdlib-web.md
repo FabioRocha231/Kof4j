@@ -1,7 +1,7 @@
 # stdlib web — Stack Web Nativa do Kof
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; `kof.http` JVM+JS)
+**Versão:** 0.2.6-beta (658 testes; `kof.http` JVM+JS)
 **Status:** implementado (Fase 1 do plano de independência do Spring) — `kof serve` + `kof.http` JVM+JS
 
 ---
@@ -128,7 +128,7 @@ concorrentes sem estado compartilhado.
 Cada conexão é tratada em uma virtual thread (JVM). O programador escreve
 handlers síncronos; o runtime decide a estratégia.
 
-## 5. Limitações atuais (Fase 1, 0.2.0-beta)
+## 5. Limitações atuais (Fase 1, 0.2.6-beta)
 
 - Status codes customizados ainda não (200/404/500 automáticos).
 - Headers de resposta customizados ainda não.
@@ -137,7 +137,7 @@ handlers síncronos; o runtime decide a estratégia.
 - `kof.http` client — ✅ JVM+JS (27/08), Native `HTTP002` pendente.
 - Middleware/rotas de outros métodos HTTP além dos listados: futuramente.
 
-## 6. Testes (0.2.0-beta)
+## 6. Testes (0.2.6-beta)
 
 `KofWebE2ETest` 9 + `KofHttpServerTest` 8 + `KofHttpE2ETest` 4 (JVM+JS, 27/08) + `KofWebTlsTest` 5 — cada teste compila um programa Kof, executa o
 bytecode/JS como subprocesso e exercita o servidor/cliente com sockets reais

@@ -1,12 +1,12 @@
 # Database Vision — Persistência como Parte da Linguagem
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
-**Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`, 0.2.0-beta):
+**Versão:** 0.2.6-beta
+**Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`, 0.2.6-beta):
 `entity` (schema na linguagem), `orm.create/save/saveAll/find/all/where/
 where-op/delete/deleteAll/count/count-filtrado/page/migrate` (JDBC no JVM:
 H2, MySQL, MariaDB, PostgreSQL, SQLite; mappings de records; migrations
-versionadas); SQLite nativo via `libsqlite3` direto; MySQL/MariaDB handshake via `kof_db_mysql_scramble` (27/08) — wire protocol sobre sockets nativos em progresso; `VERSION` 0.2.0-beta; build 658 testes.
+versionadas); SQLite nativo via `libsqlite3` direto; MySQL/MariaDB handshake via `kof_db_mysql_scramble` (27/08) — wire protocol sobre sockets nativos em progresso; `VERSION` 0.2.6-beta; build 658 testes.
 
 ---
 

@@ -1,7 +1,7 @@
 # Kof — Roadmap de Longo Prazo
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
+**Versão:** 0.2.6-beta
 
 ---
 
@@ -120,7 +120,7 @@ kof run arquivo.kf
 
 A implementação interna poderá evoluir para interpretação, compilação incremental, JIT ou execução híbrida, mas a decisão será tomada posteriormente com base em benchmarks.
 
-Estado atual: ✅ implementado (0.2.0-beta): `kof script app.kf [--watch]` + `kof repl` (top-level `let` → `KofScriptGlobals`; Windows SIGPIPE fix). `KofCcompiler` (`kof c`) compila C subset → ELF x86_64 nativo (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`).
+Estado atual: ✅ implementado (0.2.6-beta): `kof script app.kf [--watch]` + `kof repl` (top-level `let` → `KofScriptGlobals`; Windows SIGPIPE fix). `KofCcompiler` (`kof c`) compila C subset → ELF x86_64 nativo (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`).
 
 ---
 
@@ -192,14 +192,14 @@ api "/users" {
 
 Estado atual: 🟡 parcial — HTTP/rotas (`kof.web` + TLS `listenSecure`),
 JSON, configuração (`kof.config` free-list Native), logging (`kof.log` Native), segurança
-(`kof.security` + G9), concorrência (`spawn` + `await`/`Handle<T>`), `kof.http` (JVM+JS), `List map/filter/reduce`, `Box<T>`, pattern matching e `String?` implementados (0.2.0-beta).
+(`kof.security` + G9), concorrência (`spawn` + `await`/`Handle<T>`), `kof.http` (JVM+JS), `List map/filter/reduce`, `Box<T>`, pattern matching e `String?` implementados (0.2.6-beta).
 Faltam: WebSocket/SSE, HTTP client no Native (HTTP002), RPC,
 eventos/filas/pub-sub fora do JVM, cache, tracing, scheduling/cron, Native aarch64 codegen.
 Ver `docs/plan-spring-independence.md` (Fases 5-14).
 
-### Concorrência — fila residual (0.2.0-beta)
+### Concorrência — fila residual (0.2.6-beta)
 
-Estado 0.2.0-beta: concorrência real **JVM** (virtual threads) + **JS** sequencial; Native é
+Estado 0.2.6-beta: concorrência real **JVM** (virtual threads) + **JS** sequencial; Native é
 CONC001 e JS `spawn` é CONC003 — ambos explícitos em compile-time.
 
 | Item | Descrição | Prioridade |
@@ -216,14 +216,14 @@ CONC001 e JS `spawn` é CONC003 — ambos explícitos em compile-time.
 Critério de "100%": os três targets executando os mesmos programas
 concorrentes com golden diff vazio (mesmo padrão da métrica 1 do plano).
 
-### Linguagem — fila residual (P1/P2, 0.2.0-beta)
+### Linguagem — fila residual (P1/P2, 0.2.6-beta)
 
 | Item | Status | Plano |
 |------|--------|-------|
-| pattern matching | ✅ 0.2.0-beta — `switch (x) { case String s: ... }` + `case Point(x,y)` em JVM/Native/JS | guards e destructuring aninhado pendentes |
-| null safety | ✅ 0.2.0-beta — `String?` básica com `?`-check em compile-time; **sem Option no core** | checks avançados pendentes |
-| higher-order em coleções | ✅ 0.2.0-beta — `List map/filter/reduce` em JVM/Native/JS | `Map/Set` já ✅ 0.1.0 |
-| módulos multi-arquivo | ✅ 0.2.0-beta — `import a.b.C` file handling fix (`CompilerDriver.java:243`) para projetos grandes (`a/b/C.kf`) | semântica unificada de visibilidade/import residual |
+| pattern matching | ✅ 0.2.6-beta — `switch (x) { case String s: ... }` + `case Point(x,y)` em JVM/Native/JS | guards e destructuring aninhado pendentes |
+| null safety | ✅ 0.2.6-beta — `String?` básica com `?`-check em compile-time; **sem Option no core** | checks avançados pendentes |
+| higher-order em coleções | ✅ 0.2.6-beta — `List map/filter/reduce` em JVM/Native/JS | `Map/Set` já ✅ 0.1.0 |
+| módulos multi-arquivo | ✅ 0.2.6-beta — `import a.b.C` file handling fix (`CompilerDriver.java:243`) para projetos grandes (`a/b/C.kf`) | semântica unificada de visibilidade/import residual |
 
 ---
 
@@ -253,7 +253,7 @@ security {
 
 Estado atual: ✅ implementado (v1, docs/security.md)
 
-**Implementado (0.2.0-beta, inclui 0.0.5):**
+**Implementado (0.2.6-beta, inclui 0.0.5):**
 - `kof.security` com API idiomática: `passwords`, `crypto`, `jwt`,
   `secrets`, `security`, `auth` + G9 (`rateLimit`, `sessionCreate`, `apiKeyGenerate`).
 - Password hashing PBKDF2-HMAC-SHA256 (600k iterações, salt, constant-time,
@@ -472,7 +472,7 @@ kof-security / kof-concurrency / kof-io / kof-ui
 
 Mas NÃO criar dezenas de módulos prematuramente. Primeiro definir contratos, tipos e arquitetura.
 
-Estado atual: 🟡 em progresso — já existem como namespaces da stdlib (0.2.0-beta):
+Estado atual: 🟡 em progresso — já existem como namespaces da stdlib (0.2.6-beta):
 `kof.web` (JVM, `kof.http` JVM+JS), `kof.io`, `kof.time`, `kof.config` (JVM+Native free-list), `kof.log` (JVM+Native),
 `kof.security` (3 targets, G9), `kof.db` + `kof.orm` (JVM; SQLite native + `kof_db_mysql_scramble`), `kof.validation`/`kof.observability`/`kof.mq` (3 targets),
 `kof.process`, `kof.ui` + `KofScript`/`KofCcompiler`. A organização em módulos separados virá depois dos
@@ -564,7 +564,7 @@ contratos estabilizarem.
   - kof_free (no-op, documentado) ✅
   - kof_memstats para debug ✅
   - MEMORY_MODEL.md documentado ✅
-> **Atualizado (0.2.0-beta):** interfaces (F.5), exceptions reais (F.6, JVM +
+> **Atualizado (0.2.6-beta):** interfaces (F.5), exceptions reais (F.6, JVM +
 > Native unwinding) e memory management (free-list `kof_free_head` + `kof_gc_collect` 27/08; `mmap` + reuso) estão implementados.
 
 ### Fase 1 — Core
@@ -649,13 +649,13 @@ contratos estabilizarem.
 
 ---
 
-## 17. Distribuição e Tooling (0.2.0-beta)
+## 17. Distribuição e Tooling (0.2.6-beta)
 
 O Kof é uma plataforma distribuível, não apenas um JAR:
 
 - distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
-- versionamento centralizado (`VERSION` 0.2.0-beta → pom/properties via `scripts/bump-version.sh`);
+- versionamento centralizado (`VERSION` 0.2.6-beta → pom/properties via `scripts/bump-version.sh`);
 - releases single-job (`release.yml` package+release, JDK 21 fix 27/08) por push na `main` (testes 658 → package 3 plataformas → GitHub Release);
 - `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
 - editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);

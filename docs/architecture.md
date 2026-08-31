@@ -5,7 +5,7 @@
 ## Status: Accepted
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
+**Versão:** 0.2.6-beta
 
 ## Context
 
@@ -103,7 +103,7 @@ CLI: `kof build/run --target jvm|native|native.riscv64|native.aarch64|js` (`Comp
 
 ## Type System
 
-The type system supports (0.2.0-beta, 27/08/2026):
+The type system supports (0.2.6-beta, 27/08/2026):
 
 - Primitive types: `bool`, `byte`, `short`, `int`, `long`, `float`, `double`, `char`
 - Reference types: classes, interfaces, enums (with `values()/valueOf` + exhaustiveness), records
@@ -111,8 +111,8 @@ The type system supports (0.2.0-beta, 27/08/2026):
 - Type parameters: `<T>` (implemented, erasure); bounds (future)
 - Wildcards: `?`, `? extends T`, `? super T` (future)
 - Arrays: `int[]`, `String[]`
-- Null safety: `String?` basic (`Type?` nullable, compile-time `?`-check) — 0.2.0-beta
-- Pattern matching: `switch` with `case String s` + record destructuring `Point(x,y)` — JVM/Native/JS (0.2.0-beta)
+- Null safety: `String?` basic (`Type?` nullable, compile-time `?`-check) — 0.2.6-beta
+- Pattern matching: `switch` with `case String s` + record destructuring `Point(x,y)` — JVM/Native/JS (0.2.6-beta)
 - Void type
 - Function types: `FunctionType` (lambdas with captures via `BoxN`, implemented)
 
@@ -191,7 +191,7 @@ The backend produces:
 
 ## Native Backend
 
-The native backend generates ELF binaries (0.2.0-beta).
+The native backend generates ELF binaries (0.2.6-beta).
 
 ```text
 Kof IR
@@ -207,7 +207,7 @@ ld (linker)
 ELF binary
 ```
 
-Targets (0.2.0-beta):
+Targets (0.2.6-beta):
 - `native` (x86_64) **stable**: ELF x86_64, syscalls, free-list allocator (`kof_free_head`) + `kof_gc_collect` (mark-sweep pending, `munmap` fallback), strings/lists/JSON, exceptions with unwinding, `kof_db_mysql_scramble` for MySQL handshake
 - `native.riscv64` **stable toolchain**: `.option arch,rv64g`, syscalls via `li a7 214/64/93` (riscv64 Linux ABI), `riscv64-linux-gnu-as/ld` + qemu, codegen riscv64 implemented
 - `native.aarch64` **placeholder**: `Target.NATIVE_AARCH64` + `aarch64-linux-gnu-as/ld` + qemu skip, codegen still x86_64 placeholder (target separation done)
@@ -229,7 +229,7 @@ Runtime functions (x86-64, `NativeRuntime.java:1`):
 
 - Generates ES Modules, executed by embedded GraalJS (`KofJsRunner`) — no Node.js required
 - Supports pattern matching (`case String s` + `Point(x,y)` via `typeof` + destructuring), `String?` basic, `kof.http` via `Java HttpClient` interop, `List map/filter/reduce`, `Box<T>` via `substituteTypeVariable`
-- Status alpha (0.2.0-beta)
+- Status alpha (0.2.6-beta)
 
 ## KofCcompiler
 
@@ -237,7 +237,7 @@ Runtime functions (x86-64, `NativeRuntime.java:1`):
 
 ## KofScript Runtime
 
-KofScript enables direct execution of Kof programs (0.2.0-beta: top-level `let` → `KofScriptGlobals`).
+KofScript enables direct execution of Kof programs (0.2.6-beta: top-level `let` → `KofScriptGlobals`).
 
 ```bash
 kof run program.kf
@@ -271,7 +271,7 @@ CompilerDriver     → lowering para KofCall(kof_*)
 Gaps de target produzem **diagnósticos claros em compile-time** (SECN00x,
 CONC001, JSN00x, DB001, CONF001, LOG001) — nunca comportamento silenciosamente diferente.
 
-Módulos (0.2.0-beta, 27/08/2026): `kof.core`, `kof.collections` (`List map/filter/reduce`, `Map/Set`, `Box<T>`), `kof.io`, `kof.time`, `kof.json` (pattern-aware), `kof.http` (JVM+JS via HttpClient), `kof.web`, `kof.security`, `kof.concurrent` (`spawn`), `kof.test`, `kof.cli` (`build/run/serve/check/test/bench/debug/info/lsp/install/script/repl/c`), `kof.db`/`kof.orm` (SQLite native + MySQL scramble), `kof.config`/`kof.log`. Estado completo em docs/stdlib.md e docs/status.md:12-26 (658 testes, 16/16 golden, 9/9 integration).
+Módulos (0.2.6-beta, 27/08/2026): `kof.core`, `kof.collections` (`List map/filter/reduce`, `Map/Set`, `Box<T>`), `kof.io`, `kof.time`, `kof.json` (pattern-aware), `kof.http` (JVM+JS via HttpClient), `kof.web`, `kof.security`, `kof.concurrent` (`spawn`), `kof.test`, `kof.cli` (`build/run/serve/check/test/bench/debug/info/lsp/install/script/repl/c`), `kof.db`/`kof.orm` (SQLite native + MySQL scramble), `kof.config`/`kof.log`. Estado completo em docs/stdlib.md e docs/status.md:12-26 (658 testes, 16/16 golden, 9/9 integration).
 
 ## Diagnostics
 

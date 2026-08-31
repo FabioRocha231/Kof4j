@@ -1,7 +1,7 @@
 # Auditoria de Complexidade
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list GC; `VERSION` 0.2.0-beta)
+**Versão:** 0.2.6-beta (658 testes; 6 targets; free-list GC; `VERSION` 0.2.6-beta)
 
 ---
 
@@ -35,7 +35,7 @@ Não queremos acumular features até virar outro Java.
 | ClassLayout.java | ~140 | Layout de memória |
 | Outros | ~600 | Utilidades + Optimizer |
 
-**Total:** ~14.500 linhas de código do compilador (0.2.0-beta, 27/08)
+**Total:** ~14.500 linhas de código do compilador (0.2.6-beta, 27/08)
 
 ### O que é necessariamente complexo
 

@@ -1,7 +1,7 @@
 # stdlib database — Banco de Dados Nativo do Kof
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes)
+**Versão:** 0.2.6-beta (658 testes)
 **Status:** implementado (Fase 5 do plano de independência do Spring) — JVM + SQLite native + MySQL handshake 27/08
 
 ---
@@ -86,7 +86,7 @@ funciona (H2, SQLite, PostgreSQL, MySQL) no JVM. O driver é resolvido pelo
 `ServiceLoader` do JDK; nenhum acoplamento de biblioteca no runtime Kof.
 Native: SQLite via link direto `libsqlite3.so.0` (sem JDBC) + MySQL/MariaDB via wire protocol (`kof_db_mysql_scramble` 27/08).
 
-## 6. Targets (0.2.0-beta)
+## 6. Targets (0.2.6-beta)
 
 | Target | Estado | Notas |
 |--------|--------|-------|
@@ -95,7 +95,7 @@ Native: SQLite via link direto `libsqlite3.so.0` (sem JDBC) + MySQL/MariaDB via 
 | Native riscv64 | ✅ SQLite (riscv64) | `li a7` syscalls |
 | JS | DB001 (gap documentado) | reporta `DB001`/`ORM001` em compile-time |
 
-## 7. Testes (0.2.0-beta)
+## 7. Testes (0.2.6-beta)
 
 `KofDbE2ETest` 8 + `KofOrmE2ETest` 16 (inclui MariaDB/PostgreSQL/MongoDB com skip condicional + SQLite native) — execute + query JSON,
 query tipada com bind, transação com commit, rollback em exceção,

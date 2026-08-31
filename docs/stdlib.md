@@ -1,7 +1,7 @@
 # Kof Standard Library — Arquitetura
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes: 650 kof-compiler +8 kof-script +5 kof-c-compiler; golden 16/16, integration 9/9)
+**Versão:** 0.2.6-beta (658 testes: 650 kof-compiler +8 kof-script +5 kof-c-compiler; golden 16/16, integration 9/9)
 
 > A Standard Library do Kof é a plataforma: HTTP, REST, auth, autorização,
 > validação, serialização, database, messaging, observabilidade e testing
@@ -94,7 +94,7 @@ arquitetura, prioridade e estratégia) vive em **`docs/ecosystem-coverage.md`**
 plataforma moderna (checklist derivado do ecossistema Spring, usado como
 matriz de capacidades, não como especificação de API).
 
-Resumo executivo (0.2.0-beta, 27/08):
+Resumo executivo (0.2.6-beta, 27/08):
 
 | Categoria | Estado |
 |-----------|--------|
@@ -106,7 +106,7 @@ Resumo executivo (0.2.0-beta, 27/08):
 | observability | DONE (kof.observability: health/metrics/request IDs — JVM/Native/JS) |
 | `KofScript` / `KofCcompiler` / targets riscv64/aarch64 | DONE (KofScript 8, KofC 5, riscv64 toolchain estável) |
 | messaging, scheduling (interval done), sessions, rate limiting, TLS | DONE (0.1.0) |
-| GC Native free-list | DONE (0.2.0-beta `kof_free_head` + `kof_gc_collect`) |
+| GC Native free-list | DONE (0.2.6-beta `kof_free_head` + `kof_gc_collect`) |
 
 # 6. PRÓXIMAS ETAPAS (residual pós-0.2.0)
 

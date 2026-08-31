@@ -1,7 +1,7 @@
 # stdlib config — Configuração Nativa do Kof
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes)
+**Versão:** 0.2.6-beta (658 testes)
 **Status:** implementado (Fase 3 do plano de independência do Spring) — JVM+Native (Native asm próprio `/proc/self/environ` + free-list, 27/08)
 
 ---
@@ -78,7 +78,7 @@ main() {
 }
 ```
 
-## 5. Targets (0.2.0-beta)
+## 5. Targets (0.2.6-beta)
 
 | Target | Estado | Notas |
 |--------|--------|-------|
@@ -89,7 +89,7 @@ main() {
 
 ## 6. Testes
 
-`KofConfigE2ETest` — 8 testes E2E (27/08, 0.2.0-beta): env por convenção, defaults, arquivo
+`KofConfigE2ETest` — 8 testes E2E (27/08, 0.2.6-beta): env por convenção, defaults, arquivo
 explícito, profiles, arquivo padrão no diretório de trabalho, `env()`,
 precedência completa e CONF001 no JS (Native agora ✅).
 

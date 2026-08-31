@@ -1,12 +1,12 @@
 # CONCURRENCY.md — Modelo de Concorrência Kof
 
-**Status:** Implementado (JVM + JS sequencial) — Native `CONC001` gap documentado — 0.2.0-beta 27/08 (658 testes)
-**Versão:** 0.2.0-beta
+**Status:** Implementado (JVM + JS sequencial) — Native `CONC001` gap documentado — 0.2.6-beta 27/08 (658 testes)
+**Versão:** 0.2.6-beta
 **Data:** 27 de agosto de 2026
 
 ---
 
-## 0. Implementado (0.2.0-beta)
+## 0. Implementado (0.2.6-beta)
 
 ### `spawn` — statement
 
@@ -29,9 +29,9 @@ Semântica implementada:
 - isolamento por valor: a tarefa recebe os argumentos; sem estado
   compartilhado primitivo na linguagem.
 
-### Implementado 0.1.0 → 0.2.0-beta
+### Implementado 0.1.0 → 0.2.6-beta
 
-- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial (`CONC003` para `spawn` nativo futuro); Native `CONC001`
+- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial completo (stmt + spawn-expr, `CONC003` restante = async event-loop real); Native `CONC001`
 - Lambdas com captura via `BoxN` já suportam `spawn { println(x) }`
 - `kof.mq` publish/subscribe/queue — JVM+JS (MQ001 Native); `kof.time interval/cancel` — JVM
 
@@ -116,7 +116,7 @@ Troca de valores entre tarefas através de:
 
 ---
 
-## 3. Sintaxe (escolhida: `spawn` — 0.2.0-beta)
+## 3. Sintaxe (escolhida: `spawn` — 0.2.6-beta)
 
 **Implementada (JVM + JS sequencial):**
 
@@ -140,7 +140,7 @@ Decisões pendentes:
 
 ---
 
-## 4. Mapeamento por Target (0.2.0-beta)
+## 4. Mapeamento por Target (0.2.6-beta)
 
 A mesma semântica Kof utiliza implementações diferentes:
 
@@ -181,7 +181,7 @@ Essa decisão pertence ao target/runtime.
 
 ---
 
-## 6. Dependências (0.2.0-beta)
+## 6. Dependências (0.2.6-beta)
 
 - ✅ Lambdas com captura via `BoxN` — implementado (necessário para `spawn { ... }` idiomático);
 - filas na stdlib (`kof.concurrent.Queue` — planned, `kof.mq` já fornece pub/sub);

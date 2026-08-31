@@ -1,8 +1,8 @@
 # KOF SECURITY — ARQUITETURA + PLANO DE IMPLEMENTAÇÃO
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; `VERSION` 0.2.0-beta)
-> Estado baseado em auditoria real do repositório (27/ago/2026, 0.2.0-beta — free-list + riscv64 + pattern matching + `String?` + `kof.http` JS).
+**Versão:** 0.2.6-beta (658 testes; `VERSION` 0.2.6-beta)
+> Estado baseado em auditoria real do repositório (27/ago/2026, 0.2.6-beta — free-list + riscv64 + pattern matching + `String?` + `kof.http` JS).
 > Obrigações do módulo: **não copiar Spring**, **security by default**,
 > **zero ceremony**, **multi-target honesto** (JVM/Native/JS) e **nunca
 > divergência silenciosa** (gap → diagnóstico em compile-time SECN00x).
@@ -33,7 +33,7 @@ Dois planos ortogonais:
   `kof.web` + `kof.http`. Já existe a base (`auth.*`, `csrf/cors/headers`) no
   JVM via ThreadLocal por request; falta o middleware integrado e o estado.
 
-## 1.1 Superfície atual (auditoria — 31 funções, 6 namespaces — 0.2.0-beta 27/08)
+## 1.1 Superfície atual (auditoria — 31 funções, 6 namespaces — 0.2.6-beta 27/08)
 
 | Namespace | Funções | JVM | Native x86_64 (free-list 27/08) | JS |
 |-----------|---------|-----|-------------------------------|----|

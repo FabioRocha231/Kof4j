@@ -66,7 +66,7 @@
 | Gap | Diagnostic | Status |
 |-----|-----------|--------|
 | spawn/await no Native | `CONC001` | planned (virtual threads é JVM-only) |
-| spawn/await no JS | `CONC003` | planned (modelo event-loop) |
+| spawn/await no JS | ✅ sequencial (stmt + spawn-expr + await/poll/cancel/selectAny) | event-loop async real é evolução futura |
 | web TLS no Native/JS | `WEB002` | planned |
 | kof.http no Native | `HTTP002` | planned (JS now ✅) |
 | JSON Float/Double | ✅ 31/08 (JSN001 fechado) | |
