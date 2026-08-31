@@ -152,10 +152,27 @@ interpolação estendida em `nativeAndJsRunConfig` (Native + JS).
 Bônus: expôs e corrigiu um bug latente no asm de `kof_config_bool`
 (rsi nunca era setado antes de `.Lcb_ci_match`; funcionava por acaso).
 
-**P3 — `kof config gen` — template a partir do código.**
-O compilador JÁ conhece todas as chaves (compile-time dispatch). Um subcomando
-lista as chaves usadas + defaults e gera um `kof.config` de exemplo para
-deploy. Nenhum concorrente faz isso sem rodar a aplicação.
+**P3 — ✅ `kof config gen` — IMPLEMENTADO (30/08).**
+O compilador conhece todas as chaves literais (compile-time dispatch, sem
+reflection). Subcomando:
+
+```bash
+kof config gen src/                    # imprime o template no stdout
+kof config gen src/ --output kof.config  # escreve o arquivo
+kof config gen app.kf --target native    # qualquer target (só análise)
+```
+
+Regras do template: chave com default vira **comentário** (o programa já
+tem valor; descomente para sobrescrever); `required`/`get` sem default
+viram **linha ativa** preencher-ou-falhar; chave computada (não literal)
+não aparece — nada é inferido em runtime. Chaves repetidas são dedup
+por (método, chave, default). Testes: `ConfigGenTest` (3 casos).
+
+> **Gap conhecido (COMP002, pré-existente):** uma chamada `config.*` com
+> chave **não-literal** (`config.str(userInput(), "x")`) derruba o frame
+> do backend JVM ("frame crash ... Index -1", ASM `Frame.merge`). Não é
+> do config gen (reproduz sem as mudanças de P3) — fica registrado como
+> dívida do backend de tipos do ASM com receivers dinâmicos.
 
 **P3 — Config declarativa tipada (a visão do KOF_VS_SPRING §2).**
 ```kof

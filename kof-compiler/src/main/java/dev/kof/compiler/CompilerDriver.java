@@ -386,6 +386,7 @@ private Target target = Target.JVM;
             if (d instanceof EnumDeclarationNode en) BuiltinTypes.registerEnum(en.name());
         }
             unit = desugarTests(unit);
+            discoveredConfigKeys.clear();
             if (target == Target.ANDROID) {
                 unit = appendAndroidHostIfNeeded(unit);
             }
@@ -847,6 +848,100 @@ private Target target = Target.JVM;
     private final java.util.List<TestInfo> discoveredTests = new java.util.ArrayList<>();
     private boolean testHarnessMode = false;
     private int lambdaCounter = 0;
+
+    /** Uma chave de config descoberta em compile-time (kof config gen). */
+    public record ConfigKeyInfo(String method, String key, String defaultLiteral,
+                                String file, int line) {
+        /** Tipo declarado do valor, para o template gerado. */
+        public String typeHint() {
+            return switch (method) {
+                case "int" -> "Int";
+                case "long" -> "Long";
+                case "bool" -> "Bool";
+                case "str", "required", "get" -> "String";
+                default -> "String";
+            };
+        }
+
+        public boolean hasDefault() {
+            return defaultLiteral != null;
+        }
+
+        public ConfigKeyInfo {
+            // "..." no source vira conteúdo sem aspas aqui (vem da AST);
+            // null = sem default (required/get)
+            defaultLiteral = normalizeDefault(defaultLiteral);
+        }
+        private static String normalizeDefault(String d) {
+            if (d == null) return null;
+            return d.replaceFirst("^\"", "").replaceFirst("\"$", "");
+        }
+    }
+
+    private final java.util.List<ConfigKeyInfo> discoveredConfigKeys = new java.util.ArrayList<>();
+    private final java.util.Set<String> discoveredConfigKeySet = new java.util.LinkedHashSet<>();
+
+    /** Chaves de config descobertas na última compilação (ordem de uso). */
+    public java.util.List<ConfigKeyInfo> discoveredConfigKeys() {
+        return List.copyOf(discoveredConfigKeys);
+    }
+
+    /**
+     * Registra `config.method("chave"[, default])` em compile-time (P3 —
+     * kof config gen). Só aceita chave como literal de string; chave
+     * computada não aparece no template (nada é inferido em runtime).
+     */
+    private void recordConfigKey(MethodCallExpr mc) {
+        List<ExpressionNode> args = mc.arguments();
+        if (args.isEmpty()) return;
+        if (!(args.get(0) instanceof LiteralExpr le)
+                || le.kind() != ConcreteLiteralKind.STRING) {
+            return;
+        }
+        String key = le.value();
+        String def = null;
+        if (args.size() >= 2 && args.get(1) instanceof LiteralExpr dl) {
+            def = switch (dl.kind()) {
+                case ConcreteLiteralKind.STRING -> "\"" + dl.value() + "\"";
+                case ConcreteLiteralKind.INT, ConcreteLiteralKind.LONG,
+                        ConcreteLiteralKind.BOOLEAN, ConcreteLiteralKind.FLOAT,
+                        ConcreteLiteralKind.DOUBLE -> dl.value();
+                default -> null;
+            };
+        }
+        String method = "required".equals(mc.methodName()) || "get".equals(mc.methodName())
+                ? "required" : mc.methodName();
+        String dedupe = method + "|" + key + "|" + def;
+        if (discoveredConfigKeySet.add(dedupe)) {
+            SourcePosition pos = mc.position();
+            discoveredConfigKeys.add(new ConfigKeyInfo(method, key, def,
+                    pos != null ? pos.file() : "", pos != null ? pos.line() : 0));
+        }
+    }
+
+    /**
+     * Gera um template `kof.config` a partir das chaves descobertas na
+     * última compilação — para deploy (docs/stdlib-config.md §8.2 P3).
+     * Chaves com default viram comentário (o programa já tem valor);
+     * required/get sem default viram linha ativa.
+     */
+    public String generateConfigTemplate() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# kof.config — gerado por kof config gen\n");
+        sb.append("# Chaves usadas pelo programa (em ordem de primeiro uso).\n");
+        sb.append("# Chaves com default estão comentadas — descomente para sobrescrever.\n\n");
+        for (ConfigKeyInfo k : discoveredConfigKeys) {
+            if (k.hasDefault()) {
+                sb.append("# ").append(k.key()).append(" = ")
+                  .append(k.defaultLiteral().isEmpty() ? "" : k.defaultLiteral())
+                  .append("\n");
+            } else {
+                sb.append("# REQUIRED (sem default no código):\n")
+                  .append(k.key()).append(" = \n");
+            }
+        }
+        return sb.toString();
+    }
 
     /**
      * Synthetic lambda class. Captured outer locals become private final
@@ -3502,6 +3597,7 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) {
                             localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                         }
+                        recordConfigKey(mc);
                         ops.add(new KofCall(KofConfig.CONFIG, cfgCall.function(), cfgCall.parameterTypes(),
                                 cfgCall.returnType(), KofCallKind.FUNCTION));
                     }

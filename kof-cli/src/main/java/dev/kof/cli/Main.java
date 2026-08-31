@@ -33,6 +33,7 @@ public final class Main {
             case "init" -> System.exit(init(args));
             case "c" -> c(args);
             case "fmt" -> System.exit(Fmt.run(args));
+            case "config" -> config(args);
             case "version" -> System.out.println("kof " + KofVersion.version());
             default -> { System.err.println("unknown: " + args[0]); printUsage(); }
         }
@@ -408,6 +409,8 @@ private static void build(String[] args) {
         System.out.println("                          compile, run, validate output, collect metrics, compare baseline");
         System.out.println("  profile <file.kf> [--target jvm|native|js|android] [args...]   run + execution metrics (CPU, RSS, GC)");
         System.out.println("  inspect <file.kf> [--json]   IR statistics: ops before/after optimization");
+        System.out.println("  config gen <file.kf|dir> [--target jvm|native|js] [--output <arquivo>]");
+        System.out.println("                          gera template kof.config a partir das chaves config.* do código");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");
@@ -481,6 +484,67 @@ private static void build(String[] args) {
         } catch (IOException e) {
             System.err.println("lsp: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    /**
+     * kof config gen <file.kf|dir> [--target jvm|native|js] [--output <arquivo>]
+     * (docs/stdlib-config.md §8.2 P3): compila (JVM, só análise) e gera um
+     * template kof.config com as chaves descobertas em compile-time.
+     * Defaults viram comentário; required sem default vira linha ativa.
+     */
+    private static void config(String[] args) {
+        if (args.length < 3 || !"gen".equals(args[1])) {
+            System.err.println("usage: kof config gen <file.kf|dir> [--target jvm|native|js] [--output <arquivo>]");
+            System.exit(1);
+            return;
+        }
+        Path src = Path.of(args[2]);
+        if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
+        Target target = Target.JVM;
+        Path output = null;
+        for (int i = 3; i < args.length; i++) {
+            if ("--target".equals(args[i]) && i + 1 < args.length) {
+                target = parseTarget(args[++i]);
+            } else if ("--output".equals(args[i]) && i + 1 < args.length) {
+                output = Path.of(args[++i]);
+            }
+        }
+        // compile-only: chaves são coletadas em compile-time, nada é executado
+        Path tmp;
+        try { tmp = Files.createTempDirectory("kof-config-gen-"); }
+        catch (IOException e) { System.err.println("temp dir: " + e.getMessage()); System.exit(1); return; }
+        try {
+            CompilerDriver driver = new CompilerDriver();
+            List<Path> files = Files.isDirectory(src) ? collect(src) : List.of(src);
+            if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
+            // multi-arquivo: um módulo só (chaves são do programa inteiro)
+            CompilationResult result = files.size() == 1
+                    ? driver.compile(files.get(0), tmp, target)
+                    : driver.compileSources(files, tmp, target, Files.isDirectory(src) ? src : src.getParent());
+            if (!result.success()) {
+                System.err.println("compilation failed:");
+                for (var d : result.diagnostics().getDiagnostics()) {
+                    System.err.println("  " + d);
+                }
+                System.exit(1);
+                return;
+            }
+            String template = driver.generateConfigTemplate();
+            if (output != null) {
+                Files.writeString(output, template);
+                System.out.println("wrote " + output);
+            } else {
+                System.out.print(template);
+            }
+            if (driver.discoveredConfigKeys().isEmpty()) {
+                System.err.println("(nenhuma chave config.* literal encontrada no código)");
+            }
+        } catch (IOException e) {
+            System.err.println("error: " + e.getMessage());
+            System.exit(1);
+        } finally {
+            cleanup(tmp);
         }
     }
 

@@ -2348,6 +2348,8 @@ class JsBackend implements Backend {
                 case "kof_http_patch_headers" -> "kofHttpPatchHeaders";
                 case "kof_http_status" -> "kofHttpStatus";
                 case "kof_http_timeout_set" -> "kofHttpTimeoutSet";
+                case "kof_http_retry_set" -> "kofHttpRetrySet";
+                case "kof_http_circuit_set" -> "kofHttpCircuitSet";
                 default -> "kofWebStub";
             };
             registerRuntime(jsFn);
@@ -3823,7 +3825,32 @@ class JsBackend implements Backend {
             }
 
             let kofHttpTimeoutSec = 10;
+            let kofHttpRetries = 0;
+            let kofHttpCircuitTrips = 0;
+            let kofHttpCircuitFailures = 0;
+            let kofHttpCircuitOpenUntil = 0;
+            const KOF_HTTP_CIRCUIT_WINDOW_MS = 30000;
             export function kofHttpTimeoutSet(sec) { kofHttpTimeoutSec = sec; }
+            export function kofHttpRetrySet(n) { kofHttpRetries = Math.max(0, n | 0); }
+            export function kofHttpCircuitSet(trips) {
+                kofHttpCircuitTrips = Math.max(0, trips | 0);
+                if (kofHttpCircuitTrips <= 0) { kofHttpCircuitFailures = 0; kofHttpCircuitOpenUntil = 0; }
+            }
+            function kofHttpCircuitOpen() {
+                if (kofHttpCircuitOpenUntil === 0) return false;
+                if (Date.now() >= kofHttpCircuitOpenUntil) { kofHttpCircuitOpenUntil = 0; return false; }
+                return true;
+            }
+            function kofHttpCircuitRecordFailure() {
+                if (kofHttpCircuitTrips <= 0) return;
+                if (++kofHttpCircuitFailures >= kofHttpCircuitTrips) {
+                    kofHttpCircuitOpenUntil = Date.now() + KOF_HTTP_CIRCUIT_WINDOW_MS;
+                }
+            }
+            function kofHttpCircuitRecordSuccess() {
+                kofHttpCircuitFailures = 0;
+                kofHttpCircuitOpenUntil = 0;
+            }
             export function kofHttpGet(url) { return kofHttpRequest(url, "GET", null, null); }
             export function kofHttpGetHeaders(url, headers) { return kofHttpRequest(url, "GET", headers, null); }
             export function kofHttpDelete(url) { return kofHttpRequest(url, "DELETE", null, null); }
@@ -3850,36 +3877,56 @@ class JsBackend implements Backend {
                 } catch(e) { return 0; }
             }
             function kofHttpRequest(url, method, headers, body) {
-                try {
-                    // Prefer Java HttpClient via GraalJS interop (synchronous, works in KofJsRunner)
-                    if (typeof Java !== 'undefined' && Java.type) {
-                        const HttpClient = Java.type('java.net.http.HttpClient');
-                        const HttpRequest = Java.type('java.net.http.HttpRequest');
-                        const URI = Java.type('java.net.URI');
-                        const Duration = Java.type('java.time.Duration');
-                        let client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(kofHttpTimeoutSec)).build();
-                        let builder = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(kofHttpTimeoutSec));
-                        if (headers) {
-                            let lines = headers.split("\\n");
-                            for (let line of lines) {
-                                let idx = line.indexOf(":");
-                                if (idx > 0) builder.header(line.substring(0, idx).trim(), line.substring(idx+1).trim());
+                if (kofHttpCircuitOpen()) {
+                    throw new Error("kof.http circuit open (fail fast): " + url);
+                }
+                let lastErr = null;
+                const attempts = kofHttpRetries + 1;
+                for (let attempt = 0; attempt < attempts; attempt++) {
+                    try {
+                        // Prefer Java HttpClient via GraalJS interop (synchronous, works in KofJsRunner)
+                        if (typeof Java !== 'undefined' && Java.type) {
+                            const HttpClient = Java.type('java.net.http.HttpClient');
+                            const HttpRequest = Java.type('java.net.http.HttpRequest');
+                            const URI = Java.type('java.net.URI');
+                            const Duration = Java.type('java.time.Duration');
+                            let client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(kofHttpTimeoutSec)).build();
+                            let builder = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(kofHttpTimeoutSec));
+                            if (headers) {
+                                let lines = headers.split("\\n");
+                                for (let line of lines) {
+                                    let idx = line.indexOf(":");
+                                    if (idx > 0) builder.header(line.substring(0, idx).trim(), line.substring(idx+1).trim());
+                                }
                             }
+                            let publisher = body != null ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody();
+                            builder.method(method, publisher);
+                            let req = builder.build();
+                            let resp = client.send(req, Java.type('java.net.http.HttpResponse$BodyHandlers').ofString());
+                            if (resp.statusCode() >= 500) {
+                                lastErr = new Error("HTTP " + resp.statusCode() + " from " + url);
+                                kofHttpCircuitRecordFailure();
+                                continue;
+                            }
+                            kofHttpCircuitRecordSuccess();
+                            return resp.body() != null ? resp.body() : "";
                         }
-                        let publisher = body != null ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody();
-                        builder.method(method, publisher);
-                        let req = builder.build();
-                        let resp = client.send(req, Java.type('java.net.http.HttpResponse$BodyHandlers').ofString());
-                        return resp.body() != null ? resp.body() : "";
-                    }
-                    // Fallback to fetch if Java interop not available (Node/Browser)
-                    if (typeof fetch !== 'undefined') {
-                        // synchronous fallback not possible - use deasync via Atomics if available
-                        // For MVP, do blocking via fetch sync is not supported; return empty
+                        // Fallback to fetch if Java interop not available (Node/Browser)
+                        if (typeof fetch !== 'undefined') {
+                            // synchronous fallback not possible - use deasync via Atomics if available
+                            // For MVP, do blocking via fetch sync is not supported; return empty
+                            kofHttpCircuitRecordSuccess();
+                            return "";
+                        }
+                        kofHttpCircuitRecordSuccess();
                         return "";
+                    } catch(e) {
+                        lastErr = e;
+                        kofHttpCircuitRecordFailure();
                     }
-                    return "";
-                } catch(e) { return ""; }
+                }
+                if (lastErr == null) lastErr = new Error("request failed: " + url);
+                throw lastErr;
             }
 
             export function kofSchedulerEvery(ms, fn) {
