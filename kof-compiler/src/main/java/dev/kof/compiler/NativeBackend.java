@@ -1474,8 +1474,9 @@ public class NativeBackend implements Backend {
                 // Pop this
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
-                // Push stack args back
-                for (int s = 0; s < stackArgs; s++) {
+                // Push stack args back (arg6 por último → fica no topo da
+                // stack → 16(%rbp) no callee; SysV exige essa ordem)
+                for (int s = stackArgs - 1; s >= 0; s--) {
                     int off = 256 + s * 8;
                     sb.append("    pushq -").append(off).append("(%rbp)\n");
                 }
@@ -1540,8 +1541,11 @@ public class NativeBackend implements Backend {
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 int stackArgs = Math.max(0, argCount - 5);
                 if (stackArgs > 0) {
+                    // salva stack args em slots do frame (ordem: argN no slot alto)
                     for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
                         sb.append("    popq %r10\n");
+                        sb.append("    movq %r10, -").append(off).append("(%rbp)\n");
                     }
                 }
                 for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
@@ -1550,8 +1554,10 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 if (stackArgs > 0) {
-                    for (int s = 0; s < stackArgs; s++) {
-                        sb.append("    pushq %r10\n");
+                    // arg6 por último → topo → 16(%rbp) no callee
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
+                        sb.append("    pushq -").append(off).append("(%rbp)\n");
                     }
                 }
                 sb.append("    movq 8(%rax), %rbx\n");
@@ -1574,8 +1580,11 @@ public class NativeBackend implements Backend {
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 int stackArgs = Math.max(0, argCount - 5);
                 if (stackArgs > 0) {
+                    // salva stack args em slots do frame (ordem: argN no slot alto)
                     for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
                         sb.append("    popq %r10\n");
+                        sb.append("    movq %r10, -").append(off).append("(%rbp)\n");
                     }
                 }
                 for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
@@ -1584,8 +1593,10 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 if (stackArgs > 0) {
-                    for (int s = 0; s < stackArgs; s++) {
-                        sb.append("    pushq %r10\n");
+                    // arg6 por último → topo → 16(%rbp) no callee
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
+                        sb.append("    pushq -").append(off).append("(%rbp)\n");
                     }
                 }
                 sb.append("    movq 8(%rax), %rbx\n");
