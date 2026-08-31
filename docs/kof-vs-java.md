@@ -1,7 +1,7 @@
 # Kof vs Java — Comparação Técnica
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (658 testes; 6 targets; pattern matching + `String?`)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (658 testes; 7 targets; pattern matching + `String?` + spawn Native)
 
 ---
 
@@ -12,8 +12,8 @@
 | Tipagem | Forte, estática | Forte, estática (0.2.6-beta) |
 | OO | Classes, interfaces, records | Classes, interfaces, records + `enum` + pattern matching `case String s`/`Point(x,y)` |
 | Herança | Simples + interfaces | Simples + interfaces (3 níveis) |
-| GC | Automático | JVM: automático / Native: free-list + `kof_gc_collect` (x86_64, 27/08) |
-| Compilação | javac → bytecode | Kof → IR → JVM/Native (x86_64 + riscv64 + aarch64) / JS (GraalJS) / KofC / KofScript |
+| GC | Automático | JVM: automático / Native: free-list `kof_free_head` (mark-sweep pendente; auto-GC desativado — `munmap` fallback, 27-31/08) |
+| Compilação | javac → bytecode | Kof → IR → JVM/Native (x86_64; `native.risc`/`native.arm` placeholder) / JS (GraalJS) / KofC / KofScript / Android (Fase 1) |
 | Sintaxe | Verbosa | Concisa (`String?`, `map/filter/reduce`, `let` → `KofScriptGlobals`) |
 
 ---
@@ -134,11 +134,12 @@ String s = null;
 s.length(); // NPE
 ```
 
-### Kof (PROPOSTA)
+### Kof
 
-Kof atualmente NÃO tem null safety. Nulls são permitidos.
+Kof tem null safety **básica** (`String?`/`Int?`, 27/08): tipos nullable com
+`Type?` e `?`-check em compile-time (`var s: String? = null`, `s == null`).
 
-**Proposta futura:** Tipos não-nulos por padrão, `?` para nullable.
+**Proposta futura:** checks avançados (smart casts, Option no core).
 
 ---
 
@@ -214,7 +215,7 @@ try {
 }
 ```
 
-**Diferença:** Kof atualmente trata erros como fatais (kof_panic). Try/catch é parseado mas não funciona completamente no Native.
+**Diferença:** Kof tem try/catch/finally reais nos 3 targets (JVM exception table; Native unwinding pela cadeia de frames).
 
 ---
 
@@ -229,7 +230,10 @@ Future<String> future = executor.submit(() -> "result");
 
 ### Kof
 
-Não implementado.
+Implementado: `spawn` com join implícito (JVM: virtual threads; Native:
+`pthread_create` + trampoline + `pthread_join` com allocator thread-safe
+(futex), 31/08; JS: sequencial). `await`/handles tipados. Zero API de
+plataforma exposta (`Thread`/`Executor` são internos do runtime).
 
 ---
 
@@ -271,15 +275,22 @@ public class UserController {
 }
 ```
 
-### Kof (PROPOSTA)
+### Kof
 
-```kof
-route GET "/users/{id}" {
-    return users.find(id)
+```kf
+var app = web.app()
+app.get("/users/:id") {
+    return User(param("id"))
 }
+app.post("/user") {
+    return json.encode(json.decode<User>(body()))
+}
+app.ws("/chat") { ... }          // WebSocket (JVM, 30/08)
+app.listen(8080)
 ```
 
-**Status:** Proposta apenas.
+**Status:** Implementado (JVM) — stack web nativa `web.app()` (rotas,
+middleware, JSON, WebSocket/SSE, `status`/`headerSet`); `kof serve` executa.
 
 ---
 
@@ -293,20 +304,19 @@ server.port=8080
 spring.datasource.url=jdbc:mysql://localhost/mydb
 ```
 
-### Kof (PROPOSTA)
+### Kof
 
-```kof
-config {
-    port = 8080
-    database.url = "jdbc:mysql://localhost/mydb"
-}
+```kf
+var port = config.int("server.port", 8080)
+var url = config.str("database.url", "jdbc:h2:mem")
 ```
 
-**Status:** Proposta apenas.
+**Status:** Implementado — `kof.config` tipado (JVM/Native; precedência
+arquivo > env > profile > default; JS reporta CONF001).
 
 ---
 
-## Resumo (0.2.6-beta, 27/08/2026 — `VERSION` 0.2.6-beta, `mvn test` 658, 6 targets)
+## Resumo (0.2.6-beta, 31/08/2026 — `VERSION` 0.2.6-beta, `mvn test` 658, 7 targets)
 
 | Feature | Java | Kof 0.2.6-beta | Kof Futuro |
 |---------|------|---------------|------------|
@@ -323,4 +333,4 @@ config {
 | Database `kof.db`/`kof.orm` | Framework | ✅ JDBC + SQLite native + MySQL `kof_db_mysql_scramble` | query DSL |
 | DI | Framework | ❌ (planned `service`) | proposta |
 | KofScript / KofC | — | ✅ `KofScript` `let`→`KofScriptGlobals` + `KofCcompiler` `kof c` | — |
-| Targets | — | JVM stable, native x86_64 stable (free-list), native.riscv64 riscv64, native.aarch64 placeholder, js alpha, kofc | — |
+| Targets | — | JVM stable (ws/sse), native x86_64 stable (free-list + pthread spawn), native.risc/native.arm (placeholder via qemu), js alpha, kofc, android Fase 1 | — |

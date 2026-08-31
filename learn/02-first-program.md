@@ -32,17 +32,16 @@ Int y       → segundo componente: tipo Int, nome y
 
 ## Criando instâncias
 
-Em Java, para criar uma instância você escreve:
+Em Java, para criar uma instância você escreve `new User("Mel", ...)`. Em Kof,
+a construção é `Classe(args)` **sem o `new`** (a forma idiomática); `new`
+continua aceito por retrocompatibilidade, com a mesma semântica:
 
-```java
-new User("Mel", "mel@example.com")
+```kf
+var p = Ponto(3, 7)      // forma idiomática (recomendada)
+var old = new Ponto(3, 7) // forma explícita (retrocompatível)
 ```
 
-Em Kof, a sintaxe para records é a mesma do Java, mas o compilador gera tudo automaticamente:
-
-```java
-new Ponto(3, 7)
-```
+O compilador gera o construtor e os accessors automaticamente.
 
 ## Acessando valores
 

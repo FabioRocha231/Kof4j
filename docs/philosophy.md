@@ -1,7 +1,7 @@
 # Filosofia do Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (658 testes; 6 targets; `VERSION` 0.2.6-beta)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (658 testes; 7 targets; `VERSION` 0.2.6-beta)
 
 ---
 
@@ -246,11 +246,15 @@ Kof é uma linguagem de programação geral, compilada, com múltiplos backends.
 
 Kof não é "um projeto Java que você monta" — é **uma linguagem que você
 instala**. O pacote oficial inclui compilador, CLI, runtime, stdlib,
-tooling, editor support e um OpenJDK 21 embutido (Temurin 21, `release.yml` single job 27/08, `scripts/package.sh` PASS). A instalação não depende de
-Java externo, `JAVA_HOME` ou SDKMAN. Build `mvn test` 658 (650+8+5), golden 16/16, integration 9/9.
+tooling, editor support e um OpenJDK 21 embutido (Temurin 21, `release.yml`
+com 2 jobs — `test-and-bump` → `package-and-release` — por plataforma
+linux-x86_64/macos-arm64/windows-x86_64, `scripts/package.sh` PASS). A
+instalação não depende de Java externo, `JAVA_HOME` ou SDKMAN. Build
+`mvn test` 658 (650+8+5), golden 16/16, integration 9/9.
 
 O usuário que instala o Kof recebe tudo o que precisa para desenvolver,
-compilar, executar e usar o tooling da linguagem (`kof build/run/serve/check/test/bench/debug/info/lsp/install/script/repl/c`).
+compilar, executar e usar o tooling da linguagem (18 comandos:
+`kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version`).
 
 ---
 

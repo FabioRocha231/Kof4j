@@ -78,12 +78,13 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 - **JVM**: PBKDF2-HMAC-SHA256 (600k iterações), SHA-256/512, HMAC, AES-GCM,
   SecureRandom, JWT HS256 (sig/exp/iss/aud), env secrets, constant-time,
   redaction, contexto web `auth.*` (Bearer JWT).
-- **Native**: SHA-256 e HMAC em assembly puro (x86-64, sem libc, FIPS 180-4 /
-  RFC 2104 — valores idênticos ao JVM), random via `getrandom`, secrets via
-  `/proc/self/environ`, constant-time, redaction.
+- **Native**: SHA-256, SHA-512 e HMAC em assembly puro (x86-64, sem libc,
+  FIPS 180-4 / RFC 2104 — valores idênticos ao JVM), PBKDF2-HMAC-SHA256,
+  AES-GCM (round-trip E2E `aesGcmNativeRoundTrip`), JWT HS256, random via
+  `getrandom`, secrets via `/proc/self/environ`, constant-time, redaction.
 - **JS**: SHA-256/512 e HMAC em JS puro, PBKDF2 com delegação ao platform
-  (runner embarcado), JWT, secrets, constant-time.
-- **Testes**: `KofSecurityTest` — 22 testes (unit + E2E nos 3 targets +
+  (runner embarcado), JWT, secrets, constant-time; AES-GCM no JS = SECN002.
+- **Testes**: `KofSecurityTest` — 25 testes (unit + E2E nos 3 targets +
   adversariais: tamper, expiração, confusão de algoritmo, token malformado,
   chave errada, issuer/audience).
 - **Benchmarks**: `benchmarks/security/` (password-hash, jwt, hash-speed,
@@ -164,11 +165,12 @@ main() {
 
 ---
 
-## Infraestrutura 0.0.5 (distribuição)
+## Infraestrutura de distribuição
 
 - `VERSION` como fonte única; `<revision>` no Maven; `KofVersion` com
   `version.properties`; `scripts/bump-version.sh`.
-- CLI: `build, run, serve, check, test, info, lsp, install, version`.
+- CLI: `build, run, serve, check, test, script, repl, c, fmt, config gen,
+  bench, profile, inspect, debug, info, lsp, install, version, init`.
 - `kof lsp` — Language Server via stdio (initialize, didOpen/didChange/
   didClose → publishDiagnostics do frontend real).
 - Launchers `bin/kof` (Unix) e `bin/kof.bat` (Windows) com JDK embutido
@@ -404,8 +406,8 @@ main() { /* ignorado pelo kof test */ }
 | KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofDbE2ETest | 8 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
-| KofConfigE2ETest | 8 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
-| KofSecurityTest | 22 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
+| KofConfigE2ETest | 11 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
+| KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
 | JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |

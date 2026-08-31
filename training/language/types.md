@@ -1,6 +1,6 @@
 # Kof Types
 
-**Version:** 0.2.6-beta (30 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## Primitive Types
 

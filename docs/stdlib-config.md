@@ -1,8 +1,8 @@
 # stdlib config — Configuração Nativa do Kof
 
-**Última atualização:** 27 de agosto de 2026
+**Última atualização:** 31 de agosto de 2026
 **Versão:** 0.2.6-beta (658 testes)
-**Status:** implementado (Fase 3 do plano de independência do Spring) — JVM+Native (Native asm próprio `/proc/self/environ` + free-list, 27/08)
+**Status:** implementado (Fase 3 do plano de independência do Spring) — 3 targets (JVM / Native asm próprio `/proc/self/environ` + free-list / JS `kof_platform`) + `required`/interpolação `${key}`/`kof config gen` (30/08)
 
 ---
 
@@ -83,15 +83,16 @@ main() {
 | Target | Estado | Notas |
 |--------|--------|-------|
 | JVM | ✅ completo | `KofRuntime` gerado |
-| Native x86_64 | ✅ completo (asm próprio, 27/08) | `/proc/self/environ` scan, trim, comentários, free-list `kof_free_head` |
+| Native x86_64 | ✅ completo (asm próprio, 27/08) | `/proc/self/environ` scan, trim, comentários, free-list `kof_free_head`, interpolação `kof_config_interpolate` |
 | Native riscv64/aarch64 | ✅/placeholder | riscv64 `li a7` syscalls; aarch64 placeholder |
-| JS | CONF001 (gap documentado) | `config.*` reporta `CONF001` em compile-time; `secrets.get` funciona |
+| JS | ✅ completo | `kof_platform` (`kofConfigLookup`/`kofConfigStr/Int/Bool/Long/Required` + `kofConfigInterpolate`); `KofConfig.supportedOn` = todos os targets (CONF001 fechado) |
 
 ## 6. Testes
 
-`KofConfigE2ETest` — 8 testes E2E (27/08, 0.2.6-beta): env por convenção, defaults, arquivo
-explícito, profiles, arquivo padrão no diretório de trabalho, `env()`,
-precedência completa e CONF001 no JS (Native agora ✅).
+`KofConfigE2ETest` — 11 testes E2E (0.2.6-beta): env por convenção, defaults,
+arquivo explícito, profiles, arquivo padrão no diretório de trabalho, `env()`,
+precedência completa, `required` (presente em todos os targets + falha rápida
+se ausente) e interpolação `${key}` (JVM/Native/JS).
 
 ## 7. Arquitetura
 
@@ -114,10 +115,10 @@ descoberto por reflection.
 | Profiles | `KOF_PROFILE` → `kof.prod.config` | `spring.profiles.active` | ✅ equivalente |
 | Env por convenção | `server.port` → `KOF_SERVER_PORT` | `SERVER_PORT` (relaxed binding) | ✅ equivalente |
 | Typed com default | `config.int/str/bool/long` | `@Value` / `@ConfigurationProperties` | ✅ equivalente |
-| Falhar cedo (required) | ❌ `null` silencioso | falha no boot | ❌ **gaps** |
-| Config declarativa tipada | ❌ | ❌ (reflection em runtime) | 🎯 vantagem planejada |
-| Interpolação | ❌ | `${key}` | ❌ gap |
-| Descoberta de chaves | ❌ | Actuator `/env` | ❌ gap (mas há alternativa melhor: o compilador já conhece as chaves) |
+| Falhar cedo (required) | `config.required(key)` falha no startup | falha no boot | ✅ equivalente (P1, 30/08) |
+| Config declarativa tipada | ❌ (P3 planejado) | ❌ (reflection em runtime) | 🎯 vantagem planejada |
+| Interpolação | `${key}` nos 3 targets (P2, 30/08) | `${key}` | ✅ equivalente |
+| Descoberta de chaves | `kof config gen` gera template a partir das chaves do código | Actuator `/env` | ✅ equivalente (P3, 30/08) |
 | Secrets | separados (`kof.security.secrets.get`, env-only) | `Environment` mistura tudo | ✅ Kof é mais seguro |
 
 ### 8.1 Decisões de projeto (firmes)
@@ -188,8 +189,9 @@ config vira erro de compilação — nada no mercado faz isso (Spring resolve
 em runtime por reflection; Quarkus usa anotações + APT).
 Depende: parser de blocos nomeados, codegen. Fase própria, grande.
 
-**P4 — JS:** fechar o gap CONF001 (via `kof_platform` — o host já expõe
-`getenv`).
+**P4 — ✅ JS: CONF001 fechado (30/08).** `config.*` funciona no JS via
+`kof_platform` (`kofConfigLookup` lê `kof.config`/env; `kof_platform` expõe
+`getenv`); `KofConfig.supportedOn` agora retorna `true` para todos os targets.
 
 ### 8.3 O que NÃO faremos
 

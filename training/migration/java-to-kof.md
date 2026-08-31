@@ -1,6 +1,6 @@
 # Java to Kof Migration
 
-**Version:** 0.2.6-beta (30 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## Classes
 
@@ -171,13 +171,21 @@ public class UserController {
 ### Kof (0.2.6-beta)
 ```kof
 // kof.http client — JVM + JS (Java HttpClient interop), Native HTTP002
+// verbos: get/post/put/delete/patch/options
 var html = http.get("https://example.com")
 var resp = http.post(api, json.encode(user), "Content-Type: application/json")
 if (http.status(url) == 404) { println("not found") }
+http.timeout(30)    // resiliência (30/08): timeout/retry/circuit
+http.retry(3)
+http.circuit(5)
 
-// web server
+// web server (JVM; Native/JS WEB001)
 var app = web.app()
 app.get("/users/:id") { return "user " + param("id") }
+return status(201, body())       // status customizado por handler
+headerSet("X-App", "kof")        // headers customizados
+app.ws("/chat") { wsSend(wsMessage()) }  // WebSocket
+app.sse("/events") { sse.send("tick") }  // SSE
 app.listen(8080)
 ```
 

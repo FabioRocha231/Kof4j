@@ -1,6 +1,6 @@
 # Kof Target Reference
 
-**Version:** 0.2.6-beta (30 Aug 2026) — 658 tests
+**Version:** 0.2.6-beta (31 Aug 2026) — 658 tests
 
 ## JVM Target
 
@@ -33,7 +33,10 @@ kof c app.c            # KofC C subset → ELF x86_64
 - Uses KofArray for arrays
 - Uses vtable for virtual dispatch
 - Uses mmap for memory allocation
-- **GC:** free-list `kof_free_head` first-fit + `kof_gc_collect` mark-sweep conservador (stack+heap scan) + `kof_gc_tick` automático em `kof_alloc` quando free-list vazia (27/08). `kof_free` push onto free-list, não munmap.
+- **GC:** free-list `kof_free_head` first-fit + `kof_gc_collect` mark-sweep conservador (stack+heap scan). Auto-GC desligado (27/08: `.Lgc_tick` = 0) — memória só é devolvida no `munmap` fallback; `kof_free` push onto free-list, não munmap.
+- **Ponto flutuante:** FP real em XMM — `vcvtsi2sd`/`mulsd` + dtoa via snprintf (FLT001 fechado 31/08).
+- **JSON:** encode/decode completo de objetos/records/arrays (Int/Long/Bool/String/Double) em composição compile-time (JSN001/002/003 fechados 31/08).
+- **Concorrência:** `spawn`/`await` via pthread — `pthread_create` + trampoline + `pthread_join` + allocator thread-safe com lock futex (CONC001 fechado 31/08).
 - SQLite via link direto `.so`; MySQL wire protocol handshake com auth scramble SHA-1 (`kof_db_mysql_scramble`) implementado 27/08 (query/prepared pendente)
 
 ## Native RISC-V / ARM (placeholder)
@@ -51,10 +54,14 @@ kof build --target native.arm    # aarch64 via aarch64-linux-gnu-as/ld + qemu
 
 | Function | Purpose |
 |----------|---------|
-| `kof_alloc(size)` | Heap allocation (free-list first-fit,GC antes de mmap se vazio) |
+| `kof_alloc(size)` | Heap allocation (free-list first-fit; lock futex thread-safe; mmap se free-list vazia) |
 | `kof_free(ptr)` | Push onto `kof_free_head` (reuse, no syscall) |
 | `kof_gc_collect()` | Mark-sweep (kof_gc_mark + kof_gc_sweep) |
-| `kof_gc_tick()` | GC periódico coalesce |
+| `kof_gc_tick()` | Contador de ciclo (auto-GC desligado: `.Lgc_tick` = 0) |
+| `kof_spawn_trampoline` | Trampoline da tarefa em pthread (spawn nativo, CONC001) |
+| `kof_spawn_handle_new` | Cria handle + `pthread_create` |
+| `kof_await` | `pthread_join` do handle (resultado + unboxing) |
+| `kof_spawn_join_all` | Join implícito no fim do main |
 | `kof_panic(msg)` | Fatal error |
 | `kof_print(ptr)` | Print string |
 | `kof_println(ptr)` | Print string + newline |
@@ -84,6 +91,17 @@ kof build --target native.arm    # aarch64 via aarch64-linux-gnu-as/ld + qemu
 | `kof_db_mysql_scramble(out, seed, len, pass)` | MySQL auth SHA-1 scramble |
 | `kof_http_*` | Não disponível (HTTP002) — use JVM/JS |
 
+## Android (target `android`)
+
+```bash
+kof build --target=android [--apk]
+```
+
+- **Fase 1 (implementada)**: `AndroidProjectWriter` transforma a saída do backend JVM num APK de debug (pipeline Maven aapt2/d8/apksigner; zero Java/Kotlin/Gradle no projeto gerado).
+- Host Activity em Kof (`dev/kof/android-host.kf`) compilada pelo próprio frontend; `kof.ui` via WebView (mesma camada KofJS do desktop); interop `android.*` via ExternalClasspath.
+- Gaps de target em compile-time: `AND001` (spawn/await — ART sem virtual threads), `AND002` (kof.web), `AND003` (reflexão dinâmica), `AND004` (android.jar ausente).
+- Ver `docs/targets/KOFANDROID.md`.
+
 ## KofJS (target `js`)
 
 ```bash
@@ -99,7 +117,8 @@ kof script app.ks --target js
 - **kof.ui**: widgets (Window/Label/Button/Input, Column/Row, View+Style) com
   renderização em webview nativo (WebKitGTK) ou browser; ações por lambda;
   fechar a janela encerra o programa. JVM/Native: handles no-ops.
-- Não suporta: `spawn` Native (CONC001); Native/JS gap codes via diagnostic.
+- `spawn` no JS é sequencial: statement e expressão cobrem; async real de event-loop = CONC003 parcial.
+- Gap codes de target (HTTP002, DB001, WEB001/002/003/004, SCHED001, AND001, SECN00x) reportados via diagnostic em compile-time.
 
 ## KofScript (`kof script`)
 

@@ -24,7 +24,12 @@
 
 ## D
 
-**Desugaring** — transformação de syntactic sugar em construtos mais básicos. Exemplo: `for-each` virando `while`.
+**Debug Adapter Protocol (DAP)** — protocolo de debugging que o `kof debug`
+implementa (MVP, target JVM): breakpoints por linha Kof, stack trace com
+funções/linhas Kof, continue, disconnect — o programador depura código Kof,
+nunca o artefato do backend.
+
+**Desugaring** — transformação de syntactic sugar em construtos mais básicos. Exemplo: `test "nome" { }` vira função + runner sintetizado.
 
 **Diagnostic** — mensagem de erro ou aviso gerada pelo compilador.
 
@@ -52,6 +57,29 @@ KofJS (`kof run --target=js`) sem depender de Node.js.
 **Kof IR** — representação intermediária única da Kof: o mesmo frontend gera a
 IR e os backends (JVM, Native x86-64/riscv64/aarch64, KofJS, KofC) a consomem — `intention->Kof->frontend->IR->backend->runtime` (0.2.6-beta, 658 testes, Target separation).
 
+**KofFormatter** — formatter do `kof fmt` (31/08): formatação via parser real
+(`KofFormatter`), idempotente.
+
+**kof.web** — stack web nativa (0.2.6-beta): `web.app()` + rotas
+(`get/post/put/delete/patch/options` + `ws` WebSocket + `sse` SSE — 30/08),
+middleware `app.use { }`, `status(código, body)` + `headerSet`, engine HTTP
+gerada dentro do runtime do programa (sem container). JVM; `WEB002` no Native.
+
+**kof.http** — HTTP client (JVM+JS, via `Java HttpClient` interop no JS):
+`http.get/post/put/delete/patch/options` + `timeout`/`retry`/`circuit`
+(30/08). Native reporta `HTTP002`.
+
+**kof.security** — camada de segurança da stdlib (JVM/Native/JS, 31/08):
+`passwords` (PBKDF2-HMAC-SHA256 600k), `crypto` (SHA-256/512, HMAC, AES-GCM),
+`jwt` (HS256, sig/exp/iss/aud), `secrets`, `security` (constant-time,
+rateLimit, session, apiKey), `auth` (contexto web). Gaps `SECN00x`
+documentados (ex.: AES-GCM no JS).
+
+**kof.db / kof.orm** — persistência (JVM: JDBC H2/MySQL/PostgreSQL + SQLite;
+Native: SQLite via `.so` + MySQL WIP; JS: `DB001`): `db.connect/execute/query`
++ `transaction {}`; ORM com `entity` declarativo (CRUD, `where`, `page`,
+`migrate`, MongoDB; nativo/JS `ORM001`).
+
 **KofC** — `kof c <file.c>` : compilador de subset C (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → ELF x86-64 nativo-only (0.2.6-beta, Target separation).
 
 **KofJS** — target `js` da Kof: gera ES Modules (ECMAScript 2022+) a partir da
@@ -70,9 +98,11 @@ Kof IR (JVM+JS para `kof.http`, HTTP002 Native). Ver `learn/37-kofjs.md`.
 **Target separation** — `Target {JVM,NATIVE,NATIVE_RISCV64,NATIVE_AARCH64,JS,ANDROID}` + `parseTarget native.risc/arm` (0.2.6-beta, `Target.nativeArch()`).
 
 **kof.ui** — plataforma de UI: `Color`, `Theme`, `Palette`, `Window`, `Label`,
-`Button`, `Input`, `Column`/`Row`, `View`+`Style`. Renderização é KofJS
-(webview nativo `kof-webview` com WebKitGTK ou browser); nos alvos JVM/Native
-os handles são no-ops. Ver `learn/35-kof-ui.md`.
+`Button`, `Input`, `Column`/`Row`, `View`+`Style`, `Component` (lifecycle
+`onMount`/`onDispose`) e **Router** (Fase 7, 31/08: `route/go/replace/
+back/forward/current/param/depth`). Renderização é KofJS (webview nativo
+`kof-webview` com WebKitGTK ou browser); nos alvos JVM/Native os handles são
+no-ops. Ver `learn/35-kof-ui.md`.
 
 **kof-webview** — shell nativo (WebKitGTK embutido, Linux) que abre a
 aplicação KofJS interativa; `kof run --target=js` aguarda a janela fechar.

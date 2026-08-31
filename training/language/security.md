@@ -43,7 +43,7 @@ app.use {
 | passwords (PBKDF2 600k) | ✅ | ✅ (asm SHA-256 + hmac) | ✅ (via platform) |
 | sha256 / hmacSha256 | ✅ | ✅ | ✅ |
 | sha512 | ✅ | ✅ (asm FIPS 180-4) | ✅ |
-| aesGcm | ✅ | ❌ SECN002 | ❌ SECN002 |
+| aesGcm | ✅ | ✅ (asm; SECN002 fechado 30/08) | ❌ SECN002 |
 | jwt HS256 | ✅ | ✅ (asm, iat/exp/iss/aud) | ✅ |
 | secrets | ✅ | ✅ (/proc/self/environ) | ✅ |
 | constantTimeEquals | ✅ | ✅ | ✅ |

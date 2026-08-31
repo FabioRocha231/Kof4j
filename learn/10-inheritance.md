@@ -2,9 +2,10 @@
 
 > **Status: implementado (JVM / JS — Native SUP001) — 0.2.6-beta — Target separation `native.risc/arm` preserva dispatch**
 >
-> `extends`, virtual dispatch, sobrescrita e chamadas `super(...)` /
-> `super.metodo()` funcionam nos targets JVM e KofJS. No Native,
-> `super.metodo()` reporta o gap `SUP001` (free-list GC não afeta dispatch).
+> `extends`, virtual dispatch, sobrescrita, construtor `super(...)` e
+> `super.metodo()` funcionam nos targets JVM e KofJS; no Native, herança e
+> `super(...)` funcionam, mas `super.metodo()` reporta o gap `SUP001`
+> (o compilador ainda não emite a chamada não-virtual sobre a vtable).
 
 ## Extends
 
@@ -82,7 +83,10 @@ class Retangulo(Double largura, Double altura) extends Forma {
 }
 ```
 
-## sealed classes (planejado)
+## sealed classes (planejado — ainda não implementado)
+
+A palavra-chave existe no lexer, mas o parser ainda não consome `sealed ...
+permits` numa declaração de classe. Exemplo ilustrativo do que se pretende:
 
 ```kf
 sealed class Resultado<T> permits Sucesso<T>, Erro<T> {}

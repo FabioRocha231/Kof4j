@@ -110,7 +110,7 @@ constantes ou ter `default` — senão vira erro `SEM031` listando os casos
 faltantes:
 
 ```kf
-fn nome(Color c) -> String {
+String nome(Color c) {
     var r = ""
     switch (c) {
         case Color.Red:   { r = "vermelho" }
@@ -174,8 +174,8 @@ if (s != null) { println(s.length()) }
 ✅ Inferência de tipos funciona
 ✅ Records funcionam
 ✅ Classes com campos funcionam
-⚠️ Type checking completo ainda em desenvolvimento
-⚠️ Conversões automáticas ainda em desenvolvimento
+✅ Type checking (análise semântica, erros `SEM` em compile-time)
+✅ Conversões automáticas (widening: `Int→Long`, `Int→Double`)
 
 ## Exercício 1
 

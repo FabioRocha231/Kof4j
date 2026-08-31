@@ -1,8 +1,8 @@
 # Kof Overview
 
-Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86_64, riscv64, aarch64) and KofJS (ES Modules), plus KofScript and KofC.
+Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86_64, riscv64, aarch64) and KofJS (ES Modules), plus Android (Fase 1, APK via backend JVM), KofScript and KofC.
 
-**Version:** 0.2.6-beta (30 Aug 2026) — 658 tests (650 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
+**Version:** 0.2.6-beta (31 Aug 2026) — 658 tests (650 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
 
 ## Key Characteristics
 
@@ -15,11 +15,11 @@ Kof is a compiled, statically-typed, object-oriented programming language target
   `intent → Kof → compiler → backend`. Mechanisms never leak into user code:
   `spawn f()` (not Thread), `app.get(...)` (not a servlet container),
   `Window`/`Button("+1", () -> ...)` (not WebView), `json.decode<User>(body)`
-  (not a manual parser), `Palette.red` (not hex). Gaps are reported at
-  compile time with codes (`CONC001`, `JSN002`) — never silently.
+  (not a manual parser),   `Palette.red` (not hex). Gaps are reported at
+  compile time with codes (`HTTP002`, `DB001`, `SCHED001`) — never silently.
   See `docs/philosophy.md`.
 - **Minimal boilerplate** — intent over ceremony (records, primary constructors, top-level functions)
-- **Memory managed** — free-list GC with mark-sweep (Native `kof_free_head` + `kof_gc_collect` since 27/08)
+- **Memory managed** — free-list (thread-safe, futex) + `kof_gc_collect` mark-sweep conservador (Native, 27/08); auto-GC desligado — GC mark-sweep automático pendente
 - **No `fun` keyword** — functions are declared by name (`main()`, `String f()`, `f(): String`)
 
 ## Compilation Pipeline
@@ -61,18 +61,18 @@ Kof IR (backend-agnostic, KofOperation)
 | Null safety `String?` / `Int?` + narrowing `if (x != null)` | ✅ | ✅ | ✅ | 0.2.6-beta |
 | Pattern matching `case String s` + `instanceof`/`as` | ✅ | ✅ | ✅ | 0.2.6-beta |
 | Record destructuring `case Point(x, y)` | ✅ | ✅ | ✅ | Parser fieldVars |
-| Concorrência: `spawn` / `Handle<T>` / `await` | ✅ | CONC001 | ✅ | virtual threads |
+| Concorrência: `spawn` / `Handle<T>` / `await` | ✅ | ✅ (pthread, 31/08) | ✅ (sequencial) | CONC001 fechado; JS CONC003 parcial |
 | Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | Exceptions `throw "msg"` / try/catch/finally | ✅ | ✅ | ✅ | Native unwinding |
 | Generics (erasure) | ✅ | ✅ | ✅ | |
-| JSON `json.encode` / `json.decode<T>` | ✅ | ✅* | ✅ | * objetos JSN002 no Native |
+| JSON `json.encode` / `json.decode<T>` (objetos/records/arrays, FP) | ✅ | ✅ | ✅ | JSN001/002/003 fechados 31/08 |
 | kof.io: `readFile`, `writeFile`, `readLine`, `File/Path/Directory` | ✅ | ✅ | ✅ | |
 | kof.time: `now()` / `sleep()` | ✅ | ✅ | ✅ | |
-| kof.http: `http.get/post/put/delete/status/timeout` | ✅ | HTTP002 | ✅ | JS via Java HttpClient 27/08 |
+| kof.http: `http.get/post/put/delete/patch/options/status` + `timeout/retry/circuit` | ✅ | HTTP002 | ✅ | JS via Java HttpClient 27/08; retry/circuit 30/08 |
 | kof.cache: `cache.get/set/set_ttl/ttl/delete/clear` | ✅ | ✅ | ✅ | ConcurrentHashMap/Js Map |
 | switch, instanceof, `as` | ✅ | ✅ | ✅ | |
-| Web server (`web.app()` rotas/middleware/TLS `listenSecure` + ws/sse) | ✅ | WEB002 | — | |
+| Web server (`web.app()` rotas/middleware/`status`/`headerSet` + `listenSecure` TLS + `app.ws` + `app.sse`) | ✅ | WEB001 | — | ws/sse 30/08 |
 | kof.validation (13 predicados) | ✅ | ✅ | ✅ | |
 | kof.security (passwords/crypto/jwt/secrets/auth + rateLimit/sessions/apiKeys) | ✅ | ✅ | ✅ | |
 | kof.observability (health/readiness/liveness/counter/increment/gauge/requestId) | ✅ | ✅ | ✅ | |
@@ -85,11 +85,13 @@ Kof IR (backend-agnostic, KofOperation)
 | Feature | Status |
 |---------|--------|
 | `Option<T>` genérico | Planned — use `String?` |
-| `kof fmt` / `kof init` | Planned (P5) |
-| Native `spawn` | Planned CONC001 |
 | `Array literals {1, 2, 3}` | Unavailable — use `new Int[n]` / `listOf` |
 | MySQL query/prepared completo no Native | In progress (handshake done 27/08) |
 | RISC-V/ARM codegen real | Placeholder (target separation done, as/ld+qemu) |
+| Scheduler `every`/`at` no Native | SCHED001 (JVM/JS ✅) |
+| GC mark-sweep automático no Native | Pendente (free-list + `kof_gc_collect` manuais; auto-GC desligado) |
+| HTTP/2 no `kof.http` | Planned (HTTP002 no Native) |
+| Web stack no Native/JS (`web.app`) | WEB001 (JVM ✅) |
 
 ## What Kof Is NOT
 

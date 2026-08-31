@@ -40,18 +40,33 @@ Nunca edite versões espalhadas por arquivos — a pipeline cuida disso.
 
 ## Release automático
 
-Cada commit na `main` gera a próxima versão:
+Cada commit na `main` gera a próxima versão, em dois jobs
+(`.github/workflows/release.yml`):
 
 ```text
-commit → CI (658 testes) → version bump → package (jvm/native/risc/arm/js/kofc) → GitHub Release
+commit → CI (658 testes)
+       → test-and-bump (Ubuntu)
+            ├─ mvn clean package (gate) + golden + integração
+            ├─ version bump (scripts/bump-version.sh)
+            ├─ seção do changelog → CHANGELOG.md
+            └─ commit + push do bump ([skip ci]) — exporta o SHA
+       → package-and-release (matriz: 3 runners)
+            ├─ checkout do COMMIT DE BUMP (não o do trigger)
+            ├─ sanity check: VERSION do checkout == versão da release
+            ├─ scripts/package.sh --jdk
+            └─ GitHub Release por plataforma
 ```
 
+- uma release **por plataforma**: `kof-<v>-linux-x86_64`,
+  `kof-<v>-macos-arm64` (Apple Silicon), `kof-<v>-windows-x86_64`
+  (não existe `macos-x86_64`);
 - a `main` nunca aponta para um estado que não compila;
 - release quebrada nunca é publicada;
-- artefatos: `kof-<versão>-<os>-<arch>.tar.gz`/`.zip` + `SHA256SUMS`;
+- artefatos: `kof-<versão>-<os>-<arch>.tar.gz`/`.zip` + `SHA256SUMS` +
+  `kof-cli-<versão>.jar`;
 - changelog gerado por `scripts/changelog.sh` a partir da convenção de
   commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `build:`,
-  `tooling:`).
+  `tooling:`), inserido em `CHANGELOG.md` no marcador `NEXT-RELEASE`.
 - Native free-list GC e MySQL via `kof_db` entraram no changelog de 0.2.0 como features de runtime, não de linguagem.
 
 ## Referências

@@ -28,6 +28,9 @@ class Registry {
 
 Workaround histórico (removido 27/08): `List.get` manual com bounds check — agora `l.get(i)` já faz via `kof_list_get`.
 
+Outros workarounds manuais que existiam por gaps de target e hoje estão obsoletos:
+parser JSON manual no Native (JSN001/002/003 fechados 31/08 — `json.encode`/`json.decode<T>` de objetos/records/arrays nos 3 targets) e aritmética/formatação FP manual no Native (FLT001 fechado 31/08 — float/double real em XMM).
+
 ## Why it is bad
 
 A implementação manual carrega: alocação, encadeamento, contagem, bounds,

@@ -2,7 +2,7 @@
 
 **Status:** MVP implementado e validado (JVM; JDWP cru, sem jdk.jdi)
 **Data:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (658 testes; 6 targets; free-list + riscv64)
+**Versão:** 0.2.6-beta (658 testes; 7 targets; free-list + pthread spawn + FP XMM)
 
 ---
 

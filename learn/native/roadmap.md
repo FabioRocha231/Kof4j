@@ -22,20 +22,24 @@ O backend nativo já está funcional. Aqui está o que já foi implementado:
 - **Milestone 4 — Primitive Values**: Int, Long, Float, Double, Bool, Char
 - **Milestone 5 — Functions**: Declaração e chamada de funções
 - **Milestone 6 — Strings**: String literals e operações básicas
-
-### 🔄 Em desenvolvimento
-
 - **Milestone 7 — Control Flow**: If/else, while, for ✅
 - **Milestone 8 — Arrays**: Arrays nativos ✅
 - **Milestone 9 — Value Types / Structs**: Records como structs nativos ✅
 - **Milestone 10 — Objects**: Classes com herança e dispatch ✅
 - **Milestone 11 — Exceptions**: Try/catch nativo (unwinding) ✅
-- **Milestone 12 — Generics**: Monomorphization/erasure ✅
+- **Milestone 12 — Generics**: Erasure (como JVM; `Box<T>` com `T` primitivo) ✅
 - **Milestone 13 — Target separation**: `NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm` ✅
 - **Milestone 14 — Free-list GC**: `kof_free_head` reuso `mmap` ✅
-- **Milestone 15 — kof_db MySQL**: SQLite via `.so` + MySQL wire auth SHA-1 ✅ WIP
+- **Milestone 15 — kof_db**: SQLite via `.so` ✅
+- **Milestone 16 — `spawn`/`await` via pthread** (31/08 — CONC001 fechado): trampoline + join implícito + allocator thread-safe (futex) ✅
+- **Milestone 17 — FP real (XMM)** (31/08 — FLT001/JSN001 fechados): `vcvtsi2sd`/`mulsd`, dtoa via snprintf ✅
+- **Milestone 18 — JSON completo**: objetos/records + arrays (JSN002/JSN003/JSN001 fechados) ✅
 
-### ✅ Concluídos (0.2.6-beta) — 9-12 já implementados; ver acima
+### 🔄 Em desenvolvimento
+
+- **MySQL/MariaDB nativo**: wire protocol sobre sockets (auth scramble SHA-1 feito; falta handshake completo, query e prepared statements)
+- **GC mark-sweep**: pendente (memória devolvida hoje só no `munmap` fallback)
+- **riscv64/aarch64**: codegen ainda x86_64 (placeholders via qemu)
 
 ## Milestones detalhados
 
@@ -256,15 +260,15 @@ main() {
 
 ---
 
-### Milestone 7 — Control Flow (em desenvolvimento)
+### Milestone 7 — Control Flow ✅
 
 **Objetivo:** Suportar if/else, while, for.
 
 **Features:**
-- [ ] If/else com branching
-- [ ] While loop
-- [ ] For loop
-- [ ] Comparisons
+- [x] If/else com branching
+- [x] While loop
+- [x] For loop
+- [x] Comparisons (incluindo long/float/double)
 
 **Exemplo:**
 ```kof
@@ -281,7 +285,7 @@ main() {
 
 ---
 
-### Milestone 8 — Arrays (planejado)
+### Milestone 8 — Arrays ✅
 
 **Objetivo:** Suportar arrays nativos.
 
@@ -294,14 +298,14 @@ struct Array {
 ```
 
 **Testes:**
-- [ ] Criação de array
-- [ ] Acesso por índice
-- [ ] Array length
-- [ ] JVM regressão
+- [x] Criação de array
+- [x] Acesso por índice
+- [x] Array length
+- [x] JVM regressão
 
 ---
 
-### Milestone 9 — Value Types / Structs (planejado)
+### Milestone 9 — Value Types / Structs ✅
 
 **Objetivo:** Records como structs nativos.
 
@@ -323,22 +327,22 @@ struct Point {
 - Heap allocation via runtime
 
 **Testes:**
-- [ ] Criação de struct
-- [ ] Acesso a campos
-- [ ] Passagem por valor
-- [ ] JVM regressão
+- [x] Criação de struct
+- [x] Acesso a campos
+- [x] Passagem por valor
+- [x] JVM regressão
 
 ---
 
-### Milestone 10 — Objects (planejado)
+### Milestone 10 — Objects ✅
 
 **Objetivo:** Classes com herança e dispatch.
 
 **Features:**
-- [ ] Object layout (vtable)
-- [ ] Method dispatch
-- [ ] Field access
-- [ ] Constructors
+- [x] Object layout + virtual dispatch
+- [x] Field access
+- [x] Constructors
+- [ ] `super.metodo()` contra classes do classpath (SUP001)
 
 **Exemplo:**
 ```kof
@@ -361,32 +365,27 @@ class Cachorro(String raca) extends Animal {
 
 ---
 
-### Milestone 11 — Exceptions (planejado)
+### Milestone 11 — Exceptions ✅
 
 **Objetivo:** Suportar try/catch nativo.
 
-**Estratégia:** zero-cost exceptions (como C++ e Rust).
-
-**Mecanismo:**
-- Tabelas de eh_frame para unwind
-- Personality routine para catch
-- Cleanup para finally
-
-**Dependência:** Nenhuma — implementação manual.
+**Mecanismo:** implementação manual (sem LLVM) — unwinding próprio,
+`try/catch/finally` com cleanup.
 
 **Testes:**
-- [ ] Throw/catch
-- [ ] Finally
-- [ ] Stack unwinding
-- [ ] JVM regressão
+- [x] Throw/catch
+- [x] Finally
+- [x] Stack unwinding
+- [x] JVM regressão
 
 ---
 
-### Milestone 12 — Generics (planejado)
+### Milestone 12 — Generics ✅
 
 **Objetivo:** Suportar generics nativos.
 
-**Estratégia:** monomorphization.
+**Estratégia:** erasure (idêntica ao JVM), com `T` primitivo/Boxed
+substituído em compile-time (`Box<Int>` → `Int`).
 
 ```kof
 class Box<T>(T value) {
@@ -394,16 +393,11 @@ class Box<T>(T value) {
 }
 ```
 
-Gera:
-```
-class Box_Int { Int value; }
-class Box_String { String value; }
-```
-
 **Testes:**
-- [ ] Tipos genéricos básicos
-- [ ] Múltiplas instanciações
-- [ ] JVM regressão
+- [x] Tipos genéricos básicos
+- [x] Múltiplas instanciações
+- [x] `Box<T>` com `T` primitivo (`Box<Int>` + `println` nativo)
+- [x] JVM regressão
 
 ---
 
@@ -471,16 +465,20 @@ tests/
 | 4 — Primitives | ✅ Concluído | 2-3 dias |
 | 5 — Functions | ✅ Concluído | 3-5 dias |
 | 6 — Strings | ✅ Concluído | 3-5 dias |
-| 7 — Control Flow | 🔄 Em desenvolvimento | 3-5 dias |
-| 8 — Arrays | ❌ Planejado | 2-3 dias |
-| 9 — Value Types | ❌ Planejado | 5-7 dias |
-| 10 — Objects | ❌ Planejado | 7-10 dias |
-| 11 — Exceptions | ❌ Planejado | 5-7 dias |
-| 12 — Generics | ❌ Planejado | 5-7 dias |
+| 7 — Control Flow | ✅ Concluído | 3-5 dias |
+| 8 — Arrays | ✅ Concluído | 2-3 dias |
+| 9 — Value Types | ✅ Concluído | 5-7 dias |
+| 10 — Objects | ✅ Concluído | 7-10 dias |
+| 11 — Exceptions | ✅ Concluído | 5-7 dias |
+| 12 — Generics | ✅ Concluído | 5-7 dias |
+| 13 — Target separation | ✅ Concluído | — |
+| 14 — Free-list GC | ✅ Concluído | — |
+| 15 — kof_db SQLite | ✅ Concluído | — |
+| 16 — spawn/await pthread | ✅ Concluído (31/08) | — |
+| 17 — FP real (XMM) | ✅ Concluído (31/08) | — |
+| 18 — JSON completo | ✅ Concluído (31/08) | — |
 
-**Total estimado:** 40-60 dias de desenvolvimento
-
-**Backend nativo funcional:** Milestone 6 (já concluído)
+**Em desenvolvimento:** MySQL nativo completo, GC mark-sweep, riscv64/aarch64 (codegen).
 
 ---
 

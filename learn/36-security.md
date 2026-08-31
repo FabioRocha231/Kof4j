@@ -1,6 +1,6 @@
 # 36 — Segurança (kof.security)
 
-> **Kof 0.2.6-beta — 658 testes — `kof_db` MySQL + free-list GC Native**
+> **Kof 0.2.6-beta — 31 ago 2026 — 658 testes — completo nos 3 targets (gaps SECN00x documentados)**
 
 `kof.security` é a camada de segurança da Standard Library: senhas, criptografia,
 JWT, segredos e autenticação para aplicações web — com **secure by default**.
@@ -86,15 +86,23 @@ sensíveis.
 
 ## Suporte por target
 
+`kof.security` é completo nos 3 targets — Native em asm puro (sem libc),
+valores idênticos ao JVM (FIPS 180-4 / RFC 2104):
+
 | Área | JVM | Native | JS |
 |------|-----|--------|----|
-| passwords | ✅ | ❌ (SECN001) | ✅ |
-| sha256/hmac | ✅ | ✅ | ✅ |
-| aes-gcm | ✅ | ❌ (SECN002) | ❌ (SECN002) |
-| sha512 | ✅ | ❌ (SECN003) | ✅ |
-| jwt | ✅ | ❌ | ✅ |
-| secrets | ✅ | ✅ | ✅ |
-| constant-time | ✅ | ✅ | ✅ |
-| auth web | ✅ | ❌ | ❌ |
+| passwords (PBKDF2-HMAC-SHA256, 600k) | ✅ | ✅ (asm) | ✅ (delegação ao platform) |
+| sha256 / hmacSha256 | ✅ | ✅ (asm) | ✅ (JS puro) |
+| sha512 | ✅ | ✅ (asm) | ✅ (JS puro) |
+| aes-gcm | ✅ | ✅ (asm) | ❌ (SECN002) |
+| jwt HS256 (sig/exp/iss/aud) | ✅ | ✅ (asm) | ✅ |
+| secrets (env) | ✅ | ✅ (`/proc/self/environ`) | ✅ |
+| constant-time / redact | ✅ | ✅ | ✅ |
+| rateLimit / session / apiKey (G9) | ✅ | ✅ | ✅ |
+| auth web (`auth.*`, Bearer JWT) | ✅ | ❌ | ❌ |
+| csrf / cors / security headers | ✅ | ❌ | ❌ |
 
-Referência completa: `docs/security.md`.
+Gaps remanescentes (`SECN00x`, diagnóstico em compile-time): AES-GCM no JS
+(SECN002) e o contexto web de auth/headers (só JVM — web server é JVM,
+`WEB002` no Native). Testes: `KofSecurityTest` (22; unit + E2E nos 3
+targets + adversariais). Referência completa: `docs/security.md`.

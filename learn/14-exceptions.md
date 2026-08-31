@@ -1,60 +1,76 @@
 # 14 — Exceptions
 
-> **Status: implementado (JVM + Native unwinding) — 0.2.6-beta**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — unwinding real nos 3 targets**
 >
-> `throw`/`try`/`catch`/`finally` com unwinding real em JVM e Native; a cadeia `intention->Kof->frontend->IR->backend->runtime` mantém a mesma semântica nos dois runtimes.
+> `throw`/`try`/`catch`/`finally` com unwinding real em JVM, Native e KofJS.
+> Kof lança **valores** (`throw "mensagem"` / `catch (String e)`), não
+> instâncias de classe de exceção. A cadeia
+> `intention->Kof->frontend->IR->backend->runtime` mantém a mesma semântica
+> nos três runtimes.
 
 ## throw
 
+Kof lança um **valor** (a mensagem vai direto para o `catch`), não uma
+instância de classe de exceção:
+
 ```kf
-throw new IllegalArgumentException("valor inválido");
+throw "valor inválido"
 ```
 
 ## try/catch
 
 ```kf
 try {
-    var conexao = abrirConexao();
+    var conexao = abrirConexao()
     // usar conexão
-} catch (IOException e) {
-    print("erro: " + e.getMessage());
+} catch (String e) {
+    print("erro: " + e)
 } finally {
     // limpar recursos
 }
 ```
 
-## Exceptions checked vs unchecked
-
-Kof segue o modelo Java:
-
-- **Unchecked** (extends `RuntimeException`): não precisa declarar
-- **Checked** (extends `Exception`): precisa declarar no método
+Vários `catch` podem filtrar pelo tipo do valor lançado:
 
 ```kf
-void lerArquivo(String caminho) throws IOException {
-    // código que pode lançar IOException
+try {
+    processar()
+} catch (String e) {
+    print("erro de texto: " + e)
+} catch (Int e) {
+    print("código de erro: " + e)
 }
 ```
 
-## Exceptions personalizadas
+## Modelo de exceção (valores)
+
+Kof usa um modelo próprio, mais simples que o de classes de exceção do Java:
+
+- lança-se um **valor** (`String`, `Int`, ...) com `throw`;
+- `catch (Tipo e)` filtra pelo tipo do valor;
+- não há enforcement de "checked/unchecked" em compile-time.
+
+A cláusula `throws` é aceita na sintaxe, mas ainda não é verificada
+(planejado). O modelo de classes de exceção do Java (`extends Exception`,
+`getMessage()`) serve à interoperabilidade e é a direção planejada.
+
+## Lançando valores contextualizados
+
+Como a exceção é um valor, a "identidade" da falha vem da própria mensagem:
 
 ```kf
-class UserNotFound extends Exception {
-    UserNotFound(String id) {
-        super("user not found: " + id);
-    }
-}
+throw "user not found: " + id
 ```
 
 ## Uso prático
 
 ```kf
-User findUser(UUID id) {
-    var user = repository.find(id);
+User findUser(Int id) {
+    var user = repository.find(id)
     if (user == null) {
-        throw new UserNotFound(id.toString());
+        throw "user not found: " + id
     }
-    return user;
+    return user
 }
 ```
 

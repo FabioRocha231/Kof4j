@@ -50,7 +50,7 @@ for (var nome in nomes) {
 }
 ```
 
-Funciona sobre `List<T>` e arrays.
+Funciona sobre `List<T>` e arrays (sintaxe `for (var x in colecao)`).
 
 ## switch
 
@@ -58,17 +58,19 @@ Funciona sobre `List<T>` e arrays.
 switch (dia) {
     case 1:
         println("segunda")
-        break
     case 5:
         println("sexta")
-        break
     default:
         println("meio")
 }
 ```
 
-> Nota: switch usa `case N:` com `break` (estilo C). If-expr é a forma
-> preferida para valores condicionais: `var x = if (c) a else b`.
+> Nota: cada `case` termina sozinho (não há *fallthrough* entre casos — o
+> compilador salta para o fim do `switch` ao concluir o corpo), então `break`
+> **não é necessário** dentro de `switch`. Use `break`/`continue` apenas em
+> loops. If-expr é a forma preferida para valores condicionais:
+> `var x = if (c) a else b`. Switch com padrões (type pattern /
+> destructuring) ver capítulo 15.
 
 ## break e continue
 

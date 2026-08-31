@@ -1,8 +1,8 @@
 # KOF SECURITY — ARQUITETURA + PLANO DE IMPLEMENTAÇÃO
 
-**Última atualização:** 27 de agosto de 2026
+**Última atualização:** 31 de agosto de 2026
 **Versão:** 0.2.6-beta (658 testes; `VERSION` 0.2.6-beta)
-> Estado baseado em auditoria real do repositório (27/ago/2026, 0.2.6-beta — free-list + riscv64 + pattern matching + `String?` + `kof.http` JS).
+> Estado baseado em auditoria real do repositório (31/ago/2026, 0.2.6-beta — free-list + riscv64 + pattern matching + `String?` + `kof.http` JVM+JS + retry/circuit + `kof.security` native crypto completo: PBKDF2/SHA-512/AES-GCM/JWT em asm).
 > Obrigações do módulo: **não copiar Spring**, **security by default**,
 > **zero ceremony**, **multi-target honesto** (JVM/Native/JS) e **nunca
 > divergência silenciosa** (gap → diagnóstico em compile-time SECN00x).
@@ -26,23 +26,24 @@ Kof (intenção) → SemanticAnalyzer → KofSecurity.dispatch → kof_sec_*
 Dois planos ortogonais:
 
 - **Plano 1 — primitivas** (`passwords`, `crypto`, `secrets`, `security`):
-  funções puras, sem estado, sem web. Já implementado (JVM + asm + JS), com
-  gaps de target pontuais (SECN001/002/003).
+  funções puras, sem estado, sem web. Implementado nos 3 targets (JVM + asm +
+  JS) — `passwords`/`sha512`/`aesgcm`/`jwt` fechados no Native asm; gap
+  restante: AES-GCM no JS (`SECN002`).
 - **Plano 2 — web security** (`auth`, `sessions`, `cookies`, `csrf`, `cors`,
   `headers`, `ratelimit`, `middleware`): camada de request/response sobre
   `kof.web` + `kof.http`. Já existe a base (`auth.*`, `csrf/cors/headers`) no
   JVM via ThreadLocal por request; falta o middleware integrado e o estado.
 
-## 1.1 Superfície atual (auditoria — 31 funções, 6 namespaces — 0.2.6-beta 27/08)
+## 1.1 Superfície atual (auditoria — 6 namespaces — 0.2.6-beta 31/08)
 
-| Namespace | Funções | JVM | Native x86_64 (free-list 27/08) | JS |
-|-----------|---------|-----|-------------------------------|----|
-| `passwords` | `hash/verify/needsRehash` (PBKDF2-HMAC-SHA256 600k) | ✅ | ✅ (asm HMAC + free-list) | ✅ |
-| `crypto` | `sha256` `sha512` `hmacSha256` `encryptAesGcm` `decryptAesGcm` `randomHex` `randomInt` | ✅ | ✅ sha256/hmac/sha512/random (SECN002 AES-GCM only) | ✅ |
+| Namespace | Funções | JVM | Native x86_64 | JS |
+|-----------|---------|-----|---------------|----|
+| `passwords` | `hash/verify/needsRehash` (PBKDF2-HMAC-SHA256 600k) | ✅ | ✅ (asm PBKDF2 + getrandom) | ✅ (platform) |
+| `crypto` | `sha256` `sha512` `hmacSha256` `encryptAesGcm` `decryptAesGcm` `randomHex` `randomInt` | ✅ | ✅ sha256/sha512/hmac/aesgcm/random | ✅ (SECN002 AES-GCM) |
 | `jwt` | `create(claims, secret[, ttl])` `verify(token, secret[, iss, aud])` `secret()` | ✅ | ✅ (asm base64url + HMAC) | ✅ |
 | `secrets` | `get(name[, fallback])` (env `KOF_*`) `redact` | ✅ | ✅ `/proc/self/environ` | ✅ |
-| `security` | `constantTimeEquals` `randomHex` `randomInt` `redact` `csrfToken` `csrfValid` `corsAllowed` `cspHeader` `hstsHeader` `contentTypeOptionsHeader` `frameHeader` `referrerHeader` | ✅ | ✅ ct/redact/random; ❌ csrf/cors/headers | ✅ ct/redact/random; ❌ csrf/cors/headers |
-| `auth` (web) | `secret(token)` `token()` `authenticated()` `claims()` `user()` `hasRole(r)` `hasPermission(p)` | ✅ (Bearer JWT + ThreadLocal) | ❌ | ❌ |
+| `security` | `constantTimeEquals` `randomHex` `randomInt` `redact` `csrfToken` `csrfValid` `corsAllowed` `cspHeader` `hstsHeader` `contentTypeOptionsHeader` `frameHeader` `referrerHeader` `rateLimit` `session*` `apiKey*` | ✅ | ✅ ct/redact/random/rateLimit/session/apiKey; ❌ csrf/cors/headers (JVM-only) | ✅ ct/redact/random/rateLimit/session/apiKey; ❌ csrf/cors/headers |
+| `auth` (web) | `secret(token)` `token()` `authenticated()` `claims()` `user()` `hasRole(r)` `hasPermission(p)` | ✅ (Bearer JWT + ThreadLocal) | ❌ (JVM-only) | ❌ (JVM-only) |
 
 Formatos versionados: `pbkdf2$sha256$<iter>$<saltB64>$<hashB64>`; AES-GCM
 `aesgcm$<ivB64>$<ctB64>` (key 32B, IV 12B); JWT RFC 7519 HS256 fixo
@@ -61,10 +62,10 @@ adversariais + benchmark + security review + docs.
 | # | Capacidade | Estado | Ação |
 |---|-----------|--------|------|
 | 1 | **secure random** | ✅ `randomHex`/`randomInt` nos 3 targets (SecureRandom / getrandom / platform) | manter; adicionar `randomBytes` e vetores de teste + adversarial |
-| 2 | **hashing** | ✅ `sha256`/`sha512` (FIPS 180-4; sha512 ❌ Native SECN003) | implementar `sha512` no asm (FIPS 180-4, alinhado com sha256 já existente) |
-| 3 | **password hashing** | ✅ PBKDF2-HMAC-SHA256 600k (JVM/JS); ❌ Native SECN001 | implementar `kof_sec_password_*` no asm (PBKDF2 sobre o HMAC já existente; constante de tempo na verificação) |
+| 2 | **hashing** | ✅ `sha256`/`sha512` nos 3 targets (FIPS 180-4; `sha512NativeVectors`) | manter; vetores FIPS + tamanhos variados (SECN003 fechado) |
+| 3 | **password hashing** | ✅ PBKDF2-HMAC-SHA256 600k nos 3 targets (Native asm `kof_sec_password_*`) | manter; vetores + constante de tempo na verificação (SECN001 fechado) |
 | 4 | **HMAC** | ✅ `hmacSha256` (RFC 2104) nos 3 targets | manter; vetores + tamanhos de chave variados |
-| 5 | **AES-GCM / ChaCha20-Poly1305** | ✅ AES-GCM JVM; ❌ SECN002 Native/JS | Native: AES-GCM asm (constante de tempo) ou primitiva via `kof_sec_aesgcm_*`; **ChaCha20-Poly1305** como segunda cifra (RFC 8439) — decidir formato `chacha20$...` |
+| 5 | **AES-GCM / ChaCha20-Poly1305** | ✅ AES-GCM JVM+Native (asm GCM); ❌ JS SECN002 | JS: AES-GCM (SECN002); **ChaCha20-Poly1305** como segunda cifra (RFC 8439) — decidir formato `chacha20$...` |
 | 6 | **key management** | ✅ parcial: env `KOF_*`, `secrets.get`, `jwt.secret()` | camada `kof.security.keys`: geração, rotação, armazenamento (arquivo com permissão 0600, env, variante `keychain`/platform no JS); `secrets.redact` por padrão em logs |
 
 ## Camada B — identidade
@@ -79,12 +80,12 @@ adversariais + benchmark + security review + docs.
 
 | # | Capacidade | Estado | Ação |
 |---|-----------|--------|------|
-| 10 | **sessions** | ❌ | `kof.security.sessions`: sessão com id seguro (random 32B), armazenamento em memória (JVM) + plugável; assinatura de cookie; expiração; sem estado fixo (token assinado) como opção |
+| 10 | **sessions** | ✅ `security.sessionCreate/sessionGet/sessionDestroy` (G9; JVM/Native/JS) | plugável/assinatura de cookie; expiração; token assinado como opção |
 | 11 | **cookies** | ❌ | `kof.security.cookies`: helper de cookie seguro (HttpOnly, Secure, SameSite, Max-Age, domain/path); parse/set no servidor web |
 | 12 | **CSRF** | ✅ `csrfToken`/`csrfValid` JVM | integrar ao middleware: validar automaticamente mutações quando sessão por cookie; token por sessão |
 | 13 | **CORS** | ✅ `corsAllowed` JVM | middleware `app.cors { origin allow list, methods, headers, credentials }`; pré-flight automático |
 | 14 | **security headers** | ✅ helpers JVM (`cspHeader`/`hstsHeader`/...) | middleware `app.securityHeaders()` aplicando por padrão (CSP/HSTS/nosniff/X-Frame/Referrer) — security by default |
-| 15 | **rate limiting** | ❌ | `kof.security.ratelimit`: janela fixa/sliding, por IP/rota/token; contadores em memória (JVM); middleware `app.rateLimit(60, "1m")`; resposta 429 + Retry-After |
+| 15 | **rate limiting** | ✅ `security.rateLimit` (G9; JVM/Native/JS, fixed-window per-key) | sliding window, por IP/rota; middleware `app.rateLimit(60, "1m")`; resposta 429 + Retry-After |
 | 18 | **security middleware** | ❌ | orquestra 10–15 em `app.use`; ordem fixa: rate limit → cors → headers → cookies/session → csrf → auth → authorization → rota |
 
 ## Camada D — identidade federada e transporte
@@ -92,7 +93,7 @@ adversariais + benchmark + security review + docs.
 | # | Capacidade | Estado | Ação |
 |---|-----------|--------|------|
 | 16 | **OAuth2 / OIDC** | ❌ | client (authorization code + PKCE), resource server (validação de JWT de terceiros), provider (P2); via `kof.http` client |
-| 17 | **TLS / certificates / HTTPS** | ❌ (servidor HTTP plano) | `kof.web` + certs: gerar/ler PEM (PKCS#8/PKCS#12), `app.listenTls(port, cert, key)`; TLS por padrão quando certificado presente |
+| 17 | **TLS / certificates / HTTPS** | ✅ parcial: `app.listenSecure(port)` JVM (self-signed via keytool + `SSLServerSocket`); Native/JS `WEB002` | ler/generar PEM (PKCS#8/PKCS#12); `app.listenSecure(port, cert, key)` com certificado próprio; TLS por padrão quando certificado presente |
 
 ---
 

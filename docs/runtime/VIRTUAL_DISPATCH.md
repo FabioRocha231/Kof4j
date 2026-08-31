@@ -111,9 +111,14 @@ O construtor depois inicializa os fields.
 
 ---
 
+> **Atualizado (0.2.6-beta, 31/08):** o item 1 abaixo foi superado —
+> dispatch para interfaces (F.5) usa a mesma vtable. O dispatch é
+> thread-safe com o `spawn` em threads (pthread, 31/08): a vtable é
+> somente-leitura após a compilação.
+
 ## 6. Limitações Conhecidas
 
-1. Sem virtual dispatch para interfaces (F.5)
+1. ~~Sem virtual dispatch para interfaces~~ — ✅ F.5 (mesma vtable)
 2. Sem vtable para records, strings, arrays (usam header fixo)
 3. Sem cache de vtable em runtime
 4. Sem invalidation de vtable (futuro: sealed classes)

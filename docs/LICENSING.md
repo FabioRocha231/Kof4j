@@ -1,7 +1,7 @@
 # Licenciamento do Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (658 testes; 6 targets; free-list + riscv64)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (658 testes; 7 targets; free-list + pthread spawn + FP XMM)
 
 ---
 
@@ -23,7 +23,7 @@ embutido é um componente separado do código-fonte do Kof, empacotado apenas
 na distribuição (não no repositório), e mantém sua própria licença.
 
 O Kof não modifica o JDK embutido; o launcher (`bin/kof`/`bin/kof.bat`, Windows SIGPIPE fix 27/08) apenas o localiza
-e executa. `scripts/package.sh` gera layout dist + tar.gz/zip + SHA256SUMS, `release.yml` usa single job `package+release` com JDK 21 fix.
+e executa. `scripts/package.sh` gera layout dist + tar.gz/zip + SHA256SUMS, `release.yml` usa 2 jobs (`test-and-bump` exporta o SHA do commit de bump → `package-and-release` checkeia o commit de bump + sanity check de versão) com releases por plataforma (linux-x86_64/macos-arm64/windows-x86_64).
 
 ---
 
@@ -37,7 +37,7 @@ Ele contém:
 - Sistema de tipos / SymbolTable
 - Análise semântica (`CompilerDriver.java:243` import `a.b.C` fix)
 - IR (backend-agnóstica + `KofDebugInfo`)
-- Backends: `JvmBackend` (ASM V21), `NativeBackend` (x86_64 free-list + riscv64 `.option arch,rv64g` + aarch64 placeholder), `JsBackend` (GraalJS + `Java HttpClient` interop), `KofScript` (`let`→`KofScriptGlobals`), `KofCcompiler` (`kof_c`)
+- Backends: `JvmBackend` (ASM V21 + web ws/sse + cache + http retry/circuit), `NativeBackend` (x86_64 free-list + pthread spawn + FP XMM; `native.risc`/`native.arm` toolchain + qemu), `JsBackend` (GraalJS + `Java HttpClient` interop), `KofScript` (`let`→`KofScriptGlobals`), `KofCcompiler` (`kof_c`), `KofFormatter` (`kof fmt`)
 - Geração de código + `Optimizer` (constant folding etc.)
 
 Usar o compilador Kof para compilar seu código NÃO torna seu código GPLv3.
@@ -54,12 +54,15 @@ O backend JVM delega para as facilities da JVM (java.lang.String, arrays nativos
 
 ### Runtime Nativo
 
-O backend Nativo gera funções de runtime em assembly durante a compilação (0.2.6-beta: `kof_free_head` free-list + `kof_gc_collect`). Essas funções são:
+O backend Nativo gera funções de runtime em assembly durante a compilação (0.2.6-beta: free-list `kof_free_head` com reuso `mmap` + `spawn`/`await` via `pthread_create`/`pthread_join` com allocator thread-safe (futex) + FP real em XMM + JSON objetos/arrays). Essas funções são:
 
-- `kof_alloc` / `kof_free_head` / `kof_gc_collect` — alocação com reuso `mmap`
+- `kof_alloc` / `kof_free_head` — alocação com reuso `mmap` (GC mark-sweep pendente)
 - `kof_print`, `kof_println`, `kof_print_int`, `kof_int_to_string` — saída
 - `kof_string_*`, `kof_array_*`, `kof_list_*` (`map/filter/reduce`), `kof_map_*` — coleções
-- `kof_db_mysql_scramble` — MySQL handshake SHA-1 (27/08)
+- JSON objetos/records + arrays `Int/Long/Bool/String/Double` (31/08)
+- trampoline de `pthread_create` + `pthread_join` (spawn/await, 31/08)
+- `kof_cache_*` (get/set/ttl/delete/clear, 30/08)
+- `kof_db_mysql_scramble` — MySQL auth scramble SHA-1 (wire protocol WIP, 31/08)
 - `kof_panic`, `kof_null_error`, `kof_bounds_error` — tratamento de erros
 
 **Importante:** Essas funções são **geradas pelo compilador** durante o processo de compilação. Elas não são distribuídas como uma biblioteca pré-compilada. São incorporadas ao executável final como parte do processo de compilação.

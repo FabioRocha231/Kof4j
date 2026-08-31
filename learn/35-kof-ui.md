@@ -120,6 +120,37 @@ w.bind(view)
 `Style(background, foreground, padding, radius)` — cores via `Color`,
 `padding`/`radius` em px.
 
+## Router (Fase 7, 31/08)
+
+Navegação por troca de componente raiz (unmount do antigo + mount do novo):
+
+```kf
+var home = Component(0)
+var detail = Component(0)
+home.view((s: Int) -> { return Label("home") })
+detail.view((s: Int) -> { return Label("detail:" + Router.param()) })
+
+var w = Window("App")
+w.bind(home)
+Router.route("home", home)
+Router.route("detail", detail)
+Router.go("detail", "42")   // navega com parâmetro
+```
+
+| Operação | Descrição |
+|----------|-----------|
+| `Router.route("nome", component)` | registra a rota |
+| `Router.go("nome")` / `Router.go("nome", "param")` | navega (`false` se a rota não existe) |
+| `Router.replace("nome"[, "param"])` | navega sem empilhar no histórico |
+| `Router.back()` / `Router.forward()` | histórico (stacks) |
+| `Router.current()` | rota ativa |
+| `Router.param()` | parâmetro da navegação atual |
+| `Router.depth()` | profundidade do histórico |
+
+`Component` (`.view`, `.onMount`, `.onDispose`) é a unidade montável —
+o router desmonta o componente antigo e monta o novo. JS real; nos alvos
+JVM/Native o router é no-op (como o resto do `kof.ui`).
+
 ## Execução
 
 `kof run --target=js`:

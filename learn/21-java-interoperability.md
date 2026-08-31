@@ -8,7 +8,9 @@
 
 Kof não precisa reimplementar o ecossistema Java para utilizá-lo.
 
-O bytecode gerado por Kof é bytecode JVM padrão. Isso significa que qualquer biblioteca Java funciona automaticamente.
+O bytecode gerado por Kof é bytecode JVM padrão — **V21**, com exception
+table real (try/catch no `.class`) e virtual threads para `spawn`. Isso
+significa que qualquer biblioteca Java funciona automaticamente.
 
 ## Usando Java Collections
 

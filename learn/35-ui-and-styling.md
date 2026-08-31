@@ -110,7 +110,9 @@ View homeView() {
 Esta visão está **implementada** como `kof.ui` (renderização KofJS):
 `Window`, `Label` (text/fontSize/bold/color), `Button` (ação por lambda com
 capturas), `Input`, `Column`/`Row`, `View`+`Style(background, foreground,
-padding, radius)`, `w.theme = Theme.dark()`. A execução abre o webview
+padding, radius)`, `w.theme = Theme.dark()`, e o **Router** (Fase 7, 31/08:
+`Router.route/go/replace/back/forward/current/param/depth` + `Component` com
+lifecycle `onMount`/`onDispose`). A execução abre o webview
 nativo (WebKitGTK) e fechar a janela encerra o programa. Ver
 [`learn/35-kof-ui.md`](35-kof-ui.md) e [`learn/37-kofjs.md`](37-kofjs.md).
 

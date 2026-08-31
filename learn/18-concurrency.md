@@ -1,21 +1,23 @@
 # 18 — Concorrência
 
-> **Status: implementado (JVM, virtual threads) — 0.2.6-beta**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — `spawn`/`await` nos 3 targets**
 >
 > Kof não expõe `Thread`, `Runnable` nem `CompletableFuture`: a intenção é
-> `spawn` (rode em paralelo) e `await` (espere o resultado). No Native e
-> no JS os mesmos programas reportam gap claro em compile-time — nunca
-> comportamento silenciosamente diferente. Chain: `intention->Kof->frontend->IR->backend->runtime`.
+> `spawn` (rode em paralelo) e `await` (espere o resultado). JVM usa virtual
+> threads; Native roda em pthread (CONC001 fechado em 31/08); JS executa
+> sequencialmente (async de event-loop real ainda é o gap CONC003). Os gaps
+> restantes são documentados, nunca silenciosos. Chain:
+> `intention->Kof->frontend->IR->backend->runtime`.
 
 ## spawn — dispare e esqueça
 
 ```kf
-fn baixar(url: String) {
+baixar(String url) {
     // trabalho lento...
 }
 
 main() {
-    spawn baixar("https://example.com")   // roda em virtual thread
+    spawn baixar("https://example.com")   // roda em paralelo
     println("seguindo o fluxo principal")
 }
 ```
@@ -25,8 +27,10 @@ sintética:
 
 ```kf
 spawn {
-    for (var i in 1..100) {
+    var i = 0
+    while (i < 100) {
         processar(i)
+        i++
     }
 }
 ```
@@ -73,8 +77,9 @@ if (done(r)) {
   primitivos não-prontos, `null` para referências. Use `done()` para
   distinguir "não pronto" de um valor default.
 - `done(r)` → `Bool`.
-- JS: execução é sequencial, então `poll` sempre tem o valor e `done` é
-  `true`. Native reporta CONC001.
+- `poll`/`done` funcionam em JVM e JS (no JS a execução é sequencial, então
+  `poll` sempre tem o valor e `done` é `true`); no Native ainda reportam
+  `CONC001` (ver a tabela de gaps abaixo).
 
 ## Exceções atravessam await
 
@@ -129,11 +134,14 @@ println(selectAny(a, b))   // valor da rapida
 ```
 
 Bloqueia até **qualquer** handle completar e devolve o valor dele. No JS
-(sequencial) devolve o primeiro argumento.
+(sequencial) devolve o primeiro argumento; no Native reporta `CONC001`.
 
 ## Semântica
 
-- Cada `spawn` roda numa **virtual thread** (JDK 21+) — barato para milhares de tarefas.
+- JVM: cada `spawn` roda numa **virtual thread** (JDK 21+) — barato para
+  milhares de tarefas. Native: a tarefa roda numa **pthread** criada pelo
+  trampoline do runtime. JS: o corpo roda sequencialmente (sem paralelo).
+- O programa espera as tarefas antes de sair (join implícito no runtime).
 - Exceção dentro da tarefa é re-lançada no ponto do `await`.
 - `await` num handle duas vezes devolve o mesmo valor (o resultado é memoizado pelo runtime).
 
@@ -141,17 +149,26 @@ Bloqueia até **qualquer** handle completar e devolve o valor dele. No JS
 
 | Construto | JVM | Native | JS |
 |-----------|-----|--------|----|
-| `spawn stmt` | ✅ | CONC001 | CONC003 |
-| `val r = spawn expr` | ✅ | CONC001 | CONC003 |
-| `await r` | ✅ | CONC001 | CONC003 |
+| `spawn stmt` | ✅ | ✅ (pthread) | ✅ (sequencial) |
+| `val r = spawn expr` | ✅ | ✅ (pthread) | ✅ (sequencial) |
+| `await r` | ✅ | ✅ | ✅ |
+| `poll` / `done` | ✅ | `CONC001` | ✅ |
+| `cancel` / `cancelled` | ✅ | `CONC001` | ✅ (no-op) |
+| `selectAny` | ✅ | `CONC001` | ✅ |
 
-O diagnóstico vem em compile-time, com código — o programa não compila.
-No JS o modelo é single-threaded/event-loop; um port futuro seguirá o
-mesmo par spawn/await.
+`spawn`/`await` fecharam o `CONC001` no Native em 31/08 (pthread_create +
+trampoline + `pthread_join` + allocator thread-safe via futex); os
+construtos auxiliares (`poll`/`done`/`cancel`/`cancelled`/`selectAny`)
+ainda reportam `CONC001` em compile-time no Native. No JS o modelo é
+single-threaded/event-loop: `spawn`/`await` cobrem o programa de forma
+sequencial e o async real de event-loop é o gap `CONC003`.
 
 ## Target separation (0.2.0)
 
-`Target` enum agora separa `NATIVE` (x86-64) de `NATIVE_RISCV64` e `NATIVE_AARCH64`. `spawn` continua com gap `CONC001` em todos os Natives — a separação vale para codegen/linker (`as`/`ld` por arch), não muda a semântica de concorrência. Native ainda usa free-list `kof_free_head` para reuso de `mmap`, sem `spawn`.
+`Target` enum separa `NATIVE` (x86-64) de `NATIVE_RISCV64` e `NATIVE_AARCH64`.
+`spawn`/`await` funcionam no Native (pthread) — a separação vale para
+codegen/linker (`as`/`ld` por arch), não muda a semântica de concorrência.
+Native usa free-list `kof_free_head` para reuso de `mmap`.
 
 ## Próximo passo
 

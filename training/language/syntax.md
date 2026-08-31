@@ -1,6 +1,6 @@
 # Kof Syntax Reference
 
-**Version:** 0.2.6-beta (30 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## Declarations
 
@@ -116,12 +116,12 @@ if (p instanceof Point) {
 ### Spawn / Await
 
 ```kof
-spawn expr();            // fire-and-forget (virtual thread, JVM)
+spawn expr();            // fire-and-forget (JVM virtual thread / Native pthread / JS sequencial)
 val r = spawn expr();    // Handle<T> typed handle
 val v = await r;         // blocks; T (primitives unboxed)
 ```
 
-Gaps: Native CONC001 · JS OK (desde 0.2.6-beta) · Android AND001.
+3 targets: JVM virtual threads, Native pthread (CONC001 fechado 31/08), JS sequencial (CONC003 parcial). Android: AND001.
 
 ### kof.http (0.2.6-beta)
 
@@ -129,10 +129,12 @@ Gaps: Native CONC001 · JS OK (desde 0.2.6-beta) · Android AND001.
 var html = http.get("https://example.com")
 var resp = http.post(api, json.encode(body), "Content-Type: application/json")
 if (http.status(url) == 404) { }
-http.timeout(30)
+http.timeout(30)         // timeout global (ms)
+http.retry(3)            // repete em exceção + HTTP 5xx
+http.circuit(5)          // abre circuito após N falhas por 30s; circuit(0) recupera
 ```
 
-JVM + JS (Java HttpClient interop); Native HTTP002.
+Métodos: `get/post/put/delete/patch/options/status` + resiliência `timeout/retry/circuit`. JVM + JS (Java HttpClient interop); Native HTTP002.
 
 ## Statements
 

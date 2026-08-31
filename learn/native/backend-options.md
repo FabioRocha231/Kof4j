@@ -117,19 +117,21 @@ ld → Executável (ELF)
 
 ### Já implementado
 
-1. **Instruções básicas** — mov, add, sub, mul, div, cmp
+1. **Instruções básicas** — mov, add, sub, mul, div, cmp (+ FP XMM: `vcvtsi2sd`, `mulsd` — FLT001 fechado)
 2. **Chamadas de função** — calling convention System V AMD64
-3. **Strings** — string literals e impressão
+3. **Strings** — string literals e operações
 4. **Records** — structs com campos
 5. **Funções** — declaração e chamada
-6. **Syscalls Linux** — write, exit
+6. **Syscalls Linux** — write, exit, open, read, close...
+7. **Controle de fluxo, classes (herança/dispatch), exceptions (unwinding), generics (erasure)**
+8. **`spawn`/`await` via pthread** (31/08 — CONC001 fechado), allocator thread-safe (futex)
+9. **JSON completo** (objetos/records/arrays — JSN001/002/003 fechados) + **SQLite nativo**
 
 ### Em desenvolvimento
 
-1. **Controle de fluxo** — if/else, while, for
-2. **Classes** — herança e dispatch
-3. **Exceptions** — try/catch nativo
-4. **Generics** — monomorphization
+1. **MySQL/MariaDB nativo** — wire protocol sobre sockets (auth scramble SHA-1 feito)
+2. **GC mark-sweep** — hoje free-list `kof_free_head`
+3. **riscv64/aarch64** — codegen ainda x86_64 (placeholders via qemu)
 
 ## Exemplo de implementação
 

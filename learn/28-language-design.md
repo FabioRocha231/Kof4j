@@ -22,7 +22,7 @@ convenção. O mecanismo nunca sobe para o código do usuário:
 
 | Intenção | Você escreve | O mecanismo fica com |
 |----------|--------------|----------------------|
-| paralelismo | `spawn tarefa()` | virtual threads (JVM) / CONC001 Native |
+| paralelismo | `spawn tarefa()` | virtual threads (JVM) / pthread (Native, 31/08) |
 | HTTP | `app.get("/users/:id") { ... }` | servidor próprio, sem container |
 | HTTP client | `http.get(url)` | `kof.http` JVM+JS (HTTP002 Native) |
 | UI | `Window(...)`, `Button("+1", () -> ...)` | KofJS + webview nativo |
@@ -33,7 +33,7 @@ convenção. O mecanismo nunca sobe para o código do usuário:
 | script | `let x = 5` no topo | `KofScriptGlobals` (repl --watch) |
 
 A intenção compila em todos os alvos; o alvo que não consegue realizá-la
-reporta em compile-time com código de gap (`CONC001`, `JSN002`) — nunca
+reporta em compile-time com código de gap (`HTTP002`, `DB001`, `WEB002`) — nunca
 silenciosamente. Detalhes em `docs/philosophy.md`.
 
 ## A visão multiplatform
@@ -100,7 +100,7 @@ Para o backend nativo, Kof usa:
 
 ### Native runtime (0.2.0)
 
-Native usa **free-list GC** (`kof_free_head`, reuso `mmap`, mark-sweep pendente) e `kof_db` com **MySQL via `kof_db`** (wire protocol, auth scramble SHA-1 pronto). Nada disso vaza para o código Kof — é `intention->Kof->frontend->IR->backend->runtime`.
+Native usa **free-list GC** (`kof_free_head`, reuso `mmap`, mark-sweep pendente), `spawn` via **pthread** (31/08 — `CONC001` fechado), ponto flutuante **XMM real** (`vcvtsi2sd`/`mulsd`, `FLT001` fechado) e JSON completo (objetos/records/arrays — `JSN001/002/003` fechados). `kof_db` traz **SQLite nativo** e MySQL em progresso (wire protocol, auth scramble SHA-1). Nada disso vaza para o código Kof — é `intention->Kof->frontend->IR->backend->runtime`.
 
 ### Compile-time > runtime
 

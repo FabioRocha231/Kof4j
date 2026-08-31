@@ -224,7 +224,8 @@ parâmetro do backend — não um segundo backend.
 
 1. `Target.ANDROID` no enum + dispatch no CLI (`--target android`) com as
    validações `AND*` antes da emissão (reuso do JvmBackend).
-2. Gerador do projeto Gradle + manifesto + assets (`AndroidProjectWriter`).
+2. Gerador do projeto Maven (pom.xml, zero Gradle) + manifesto + assets
+   (`AndroidProjectWriter`).
 3. Host Activity + bridge WebView ↔ handles do `kof.ui` (reusar runtime.mjs).
 4. E2E: build → assembleDebug em CI com emulator smoke test.
 5. Fase 2: standalone aapt2/d8/apksigner.

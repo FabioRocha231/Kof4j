@@ -135,6 +135,11 @@ Erros de runtime são fatais em ambos os backends:
 
 ---
 
+> **Atualizado (0.2.6-beta, 31/08):** o `spawn` em threads (pthread) roda o
+> código do programa de forma concorrente; o mecanismo de exceção (frame de
+> 32 bytes + cadeia `kof_exc_chain`) é inalterado. Exceções continuam fatais
+> quando não capturadas.
+
 ## 6. Limitações
 
 1. No Native, o primeiro catch de um try captura (múltiplos catches não fazem dispatch por tipo)

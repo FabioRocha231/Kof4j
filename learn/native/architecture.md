@@ -202,10 +202,17 @@ O backend nativo usa a System V AMD64 ABI:
 - [x] Funções main funcionam
 - [x] Strings funcionam
 - [x] println funciona
-- [ ] Controle de fluxo
-- [ ] Classes com herança
-- [ ] Exceptions
-- [ ] Generics
+- [x] Controle de fluxo
+- [x] Classes com herança (virtual dispatch; `super.metodo()` = SUP001)
+- [x] Exceptions (try/catch/finally + unwinding)
+- [x] Generics (erasure; `Box<T>` com `T` primitivo/Boxed)
+- [x] `spawn`/`await` via pthread (31/08 — CONC001 fechado)
+- [x] Ponto flutuante XMM real (`vcvtsi2sd`/`mulsd`, dtoa via snprintf — FLT001/JSN001 fechados)
+- [x] JSON objetos/records + arrays completos (JSN002/JSN003/JSN001 fechados)
+- [x] SQLite nativo (link direto da `.so`)
+- [ ] MySQL/MariaDB nativo (wire protocol: auth scramble SHA-1 feito; WIP)
+- [ ] GC mark-sweep (hoje free-list `kof_free_head`)
+- [ ] riscv64/aarch64 (codegen ainda x86_64 — placeholder via qemu)
 
 ## Próximo passo
 

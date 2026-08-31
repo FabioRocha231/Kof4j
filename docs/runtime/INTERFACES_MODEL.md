@@ -122,6 +122,10 @@ Métodos herdados de interfaces são incluídos na vtable da classe implementado
 
 ---
 
+> **Atualizado (0.2.6-beta, 31/08):** dispatch via vtable para interfaces é
+> thread-safe com o `spawn` em threads (pthread, 31/08). As limitações de
+> default/static methods continuam válidas.
+
 ## 7. Limitações
 
 1. Sem default methods (métodos com corpo na interface)

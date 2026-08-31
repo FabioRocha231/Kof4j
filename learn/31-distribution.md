@@ -1,6 +1,6 @@
 # 31 — Distribuição
 
-> **Kof 0.2.6-beta — 30 ago 2026 — targets jvm/native/native.risc/native.arm/js/android + kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — targets jvm/native/native.risc/native.arm/js/android + kofc**
 
 ## Kof é uma plataforma, não apenas um JAR
 
@@ -9,7 +9,8 @@ A partir do 0.2.x-beta, o Kof se comporta como uma linguagem distribuível:
 ```text
 Kof 0.2.6-beta
         ├── Compiler
-        ├── CLI (build/run/serve/script/c/test/bench/profile/inspect/config/debug/fmt/info/lsp/install)
+        ├── CLI (build/run/serve/check/test/script/repl/c/fmt/config gen/bench/
+        │    profile/inspect/debug/info/lsp/install/version)
         ├── Runtime (JVM + Native free-list + JS + KofScript + KofC)
         ├── Standard Library (kof.io, kof.http, kof.db, kof.orm, kof.security,
         │    kof.web, kof.cache, kof.scheduler, kof.config, kof.mq, kof.log...)

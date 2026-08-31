@@ -120,7 +120,8 @@ var j = json.encode(p)                 // {"x":3,"y":4}
 var d = json.decode<Point>("{\"x\": 10, \"y\": 20}")
 ```
 
-**Limitação:** JSON de objetos/records no target Native não é suportado (diagnostic JSN002).
+**Native:** JSN002/JSN001/JSN003 fechados 31/08 — `json.encode`/`json.decode<T>` de
+objetos/records/arrays funciona também no Native (composição compile-time; FP em XMM).
 
 ## Null safety com records (0.2.6-beta)
 

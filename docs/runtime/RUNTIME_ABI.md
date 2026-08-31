@@ -289,10 +289,16 @@ TypeTable:
 > **Atualizado (0.0.5):** virtual dispatch (vtable), exceptions reais
 > (JVM table + Native frame chain), generics por erasure e `spawn` (JVM)
 > foram implementados. Ainda fora: GC (Native), reflection, serialization.
+>
+> **Atualizado (0.2.6-beta, 31/08):** `spawn`/`await` no Native foi
+> implementado (CONC001 fechado — `pthread_create` + trampoline +
+> `pthread_join` + allocator thread-safe com futex). GC automático continua
+> fora (mark-sweep pendente; free-list `kof_free_head` reusa `mmap`,
+> auto-GC desativado após hang).
 
 ## 8. NÃO incluído nesta ABI
 
-- Garbage collection (Native — memória devolvida ao SO no exit)
+- Garbage collection automática (Native — free-list `kof_free_head` com
+  reuso `mmap`; memória devolvida ao SO no `munmap` fallback/exit)
 - Reflection
 - Serialization
-- `spawn` no Native (CONC001 — planned)

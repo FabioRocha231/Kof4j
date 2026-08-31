@@ -15,7 +15,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 * **kof.ui**: Window, Label, Button (ações), Input, Column/Row, View+Style —
   renderização em webview nativo (WebKitGTK)
 * Distribuição oficial (JDK embutido, tooling, editor support)
-* CLI: build, run, serve, check, test, bench, debug, info, lsp, install, script, c, version — `kof script` (`let`→`KofScriptGlobals`, repl, --watch), `kof c` (C subset nativo-only)
+* CLI (18 comandos): build, run, serve, check, test, script, repl, c, fmt, config gen, bench, profile, inspect, debug, info, lsp, install, version — `kof script` (`let`→`KofScriptGlobals`, repl, --watch), `kof c` (C subset nativo-only), `kof fmt` (parser real, idempotente — 31/08)
 * kof.io: File, Path, Directory (JVM + Native) + kof.http (JVM+JS, HTTP002 Native)
 * 658 testes
 
@@ -83,8 +83,10 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 | 33 | [Versionamento e Releases](33-versioning-releases.md) |
 | 34 | [Filesystem (kof.io)](34-file-system.md) |
 | 35 | [kof.ui — Cores, Widgets e Janelas](35-kof-ui.md) |
+| 35 | [UI e Estilização](35-ui-and-styling.md) |
 | 36 | [Segurança (kof.security)](36-security.md) |
 | 37 | [KofJS — o caminho da Web](37-kofjs.md) |
+| — | [Native — Multiplatform](native/README.md) |
 
 ## Ordem recomendada
 
@@ -120,15 +122,15 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 15 | Pattern Matching | ✅ (`case String s` + `Point(x,y)`) |
 | 16 | Lambdas | ✅ (com capturas) |
 | 17 | Programação Funcional | ✅ (`map/filter/reduce`) |
-| 18 | Concorrência (spawn) | ✅ (JVM; Native CONC001) |
+| 18 | Concorrência (spawn) | ✅ (JVM virtual threads; Native pthread 31/08; JS sequencial) |
 | 19 | Packages e Módulos | ✅ (`a.b.C` fix) |
 | 20 | Annotations | Implementado (JVM/KofJS) |
-| 21 | Java Interop | Planejado |
+| 21 | Java Interop | Parcial (bytecode JVM compatível; chamada Java direta funcional) |
 | 22 | JVM | ✅ |
-| 23 | Testes (kof test + assert) | ✅ |
-| 24 | Build Tools | ✅ |
-| 25 | Spring | Planejado |
-| 26 | Aplicação Real | Planejado |
+| 23 | Testes (kof test + assert + suíte estruturada) | ✅ |
+| 24 | Build Tools | Parcial (`kof build`/`kof test` nativos; Maven/Gradle plugin planejado) |
+| 25 | Spring | Planejado (`kof.web` + `kof_db` já cobrem o caso sem Spring) |
+| 26 | Aplicação Real | Planejado com Spring; caminho sem Spring via `kof.web`/`kof.orm` |
 | 27 | Boas Práticas | ✅ |
 | 28 | Design da Linguagem | ✅ |
 | 29 | Internals do Compilador | ✅ |
@@ -149,19 +151,20 @@ Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 65
 - Seis targets: JVM (ASM), Native x86-64 (free-list GC), Native.risc, Native.arm, KofJS (GraalJS) e KofC (C subset nativo-only)
 - Classes, records, herança, interfaces, virtual dispatch, generics (erasure), imports `a.b.C` fix (largeproj)
 - Funções (sem `fun`), lambdas com capturas, if-expr, switch com `case String s` + `Point(x,y)` destructuring, `String?`, for-in
-- Exceptions reais (JVM + Native unwinding), `assert`, `spawn` (JVM, CONC001 Native)
+- Exceptions reais (JVM + Native unwinding), `assert`, `spawn` (JVM virtual threads, Native pthread — 31/08; JS sequencial)
 - Strings (API completa), arrays, `List<T>` + `map/filter/reduce`, `Map<K,V>`/`Set<T>`, JSON, kof.io, kof.time, `kof.http` (JVM+JS), `kof_db` (SQLite+MySQL WIP)
 - `KofScript` (`let`/`const` no topo → `KofScriptGlobals`, `kof script --repl`, `--watch`), `KofC` (`kof c <file.c>` nativo-only)
-- CLI: `build, run, serve, check, test, bench, debug, info, lsp, install, script, c, version` + `--target=jvm|native|native.risc|native.arm|js`
-- `kof serve` (KofHttpServer com thread pool), `kof test` (PASS/FAIL por `test "nome" {}`), `kof bench`/`kof debug`
+- CLI (18 comandos): `build, run, serve, check, test, script, repl, c, fmt, config gen, bench, profile, inspect, debug, info, lsp, install, version` + `--target=jvm|native|native.risc|native.arm|js|android`
+- `kof serve` (`web.app()` nativa + API legada `handle()`; cada conexão em virtual thread), `kof test` (suíte `test "nome" {}` nos 3 targets), `kof bench`/`kof profile`/`kof inspect`/`kof debug`
 - Distribuição oficial (Temurin 21 embutido, package, CI/release) — Target separation (`Target.NATIVE_RISCV64/AARCH64`)
 
 
-**O que está planejado (pós 0.2.0):**
-- `kof fmt`, `spawn` no Native, JSON de objetos/records no Native (JSN002)
-- GC mark-sweep completo (hoje free-list), MySQL wire completo, floating-point SSE nativo
+**O que está planejado / gaps reais:**
+- Gaps de target: HTTP002 (HTTP client Native), CONC003 (async real no JS), SCHED001 (scheduler Native), PROC001 (process.spawn Native), DB001 (db no JS), ORM001 (ORM nativo/JS), WEB002 (web server nativo), AND00x (Android Fase 2+)
+- GC mark-sweep completo no Native (hoje free-list)
+- MySQL/MariaDB nativo completo (wire protocol: auth scramble SHA-1 feito; falta handshake, query e prepared statements)
 - `when` guards em pattern matching, flow analysis profundo para `String?`
-- Hover/completion completos no LSP, `kof_db` ORM MongoDB já OK em JVM
+- Hover/completion completos no LSP, Debugger nativo (DWARF) e JS (source maps)
 
 ## Arquivos
 
@@ -185,16 +188,16 @@ Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 65
 | Pattern Matching | `15-pattern-matching.md` | ✅ (`case String s` + `Point(x,y)`) |
 | Lambdas | `16-lambdas.md` | ✅ (com capturas) |
 | Programação Funcional | `17-functional-programming.md` | ✅ (`map/filter/reduce`) |
-| Concorrência | `18-concurrency.md` | Planejado |
+| Concorrência | `18-concurrency.md` | ✅ (JVM + Native pthread; JS sequencial) |
 | Packages e Módulos | `19-packages-and-modules.md` | ✅ (`a.b.C` fix) |
 | Annotations | `20-annotations.md` | Implementado (JVM/KofJS) |
-| Java Interop | `21-java-interoperability.md` | Planejado |
-| JVM | `22-jvm.md` | Planejado |
+| Java Interop | `21-java-interoperability.md` | Parcial (chamada Java direta funcional) |
+| JVM | `22-jvm.md` | ✅ |
 | Testes | `23-testing.md` | ✅ |
 | Build Tools | `24-build-tools.md` | ✅ |
-| Spring | `25-spring.md` | Planejado |
-| Aplicação Real | `26-real-world-application.md` | Planejado |
-| Boas Práticas | `27-best-practices.md` | Planejado |
+| Spring | `25-spring.md` | Planejado (visão; `kof.web` cobre hoje) |
+| Aplicação Real | `26-real-world-application.md` | Planejado com Spring; `kof.web`/`kof.orm` hoje |
+| Boas Práticas | `27-best-practices.md` | ✅ |
 | Design da Linguagem | `28-language-design.md` | ✅ |
 | Internals do Compilador | `29-compiler-internals.md` | ✅ |
 | Contribuindo | `30-contributing.md` | ✅ |

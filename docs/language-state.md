@@ -1,15 +1,41 @@
 # Estado Atual da Linguagem Kof
 
-**Data:** 27 de agosto de 2026
+**Data:** 31 de agosto de 2026
 **Versão:** 0.2.6-beta
-**Testes:** 658 JUnit (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4; inclui JSON, exceptions, web, db/orm, UI, security G9, generics `Box<T>` fix, pattern matching e null safety básica
-**Status:** Compilador funcional com backends JVM, Native (x86_64 + riscv64 + aarch64 placeholder), KofJS (alpha, GraalJS), KofScript e KofC; web server, distribuição e tooling oficiais (0.2.6-beta, 27/08)
+**Testes:** 658 JUnit (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4, `KofCacheE2ETest` 5/5 (x3 targets), `KofWebWsE2ETest` 11/11, `KofWebSseE2ETest` 7/7; inclui JSON (completo nos 3 targets, 31/08), exceptions, web (ws/sse 30/08), db/orm, UI, security G9, generics `Box<T>` fix, pattern matching e null safety básica
+**Status:** Compilador funcional com backends JVM, Native (x86_64 stable + `native.risc`/`native.arm` placeholder via qemu), KofJS (alpha, GraalJS), KofScript, KofC e Android (Fase 1); web server (ws/sse), distribuição e tooling oficiais (0.2.6-beta, 31/08)
 
 ---
 
-## Novidades 0.1.0 → 0.2.6-beta (27/08)
+## Novidades 0.1.0 → 0.2.6-beta (31/08)
 
-### 0.2.6-beta — linguagem e plataforma
+### 0.2.6-beta — plataforma (30-31/08)
+
+- **spawn/await no Native** (CONC001 fechado): `pthread_create` + trampoline +
+  `pthread_join` + allocator thread-safe (futex) — join implícito
+- **FP real no Native** (FLT001): aritmética em XMM (`vcvtsi2sd`/`mulsd`),
+  dtoa via `snprintf`, parse completo (fração+expoente)
+- **JSON completo no Native** (JSN001/JSN002/JSN003): objetos/records por
+  composição em compile-time + arrays `Int/Long/Bool/String/Double`
+- **SQLite nativo** via link direto da `.so`; MySQL wire protocol em progresso
+  (auth scramble SHA-1 + parse `user:pass@`)
+- **JVM**: WebSocket (`app.ws`, handshake RFC 6455 + frame codec com máscara)
+  e SSE (`sse.send/event/close`) via `kof.web`; `kof.http` retry/circuit
+  breaker (`KOF_HTTP_RETRIES`/`TRIPS`/`FAILURES`/`OPEN_UNTIL`, janela 30s,
+  fail-fast); `kof.cache` corrigido (clobber de registradores);
+  `KofRuntime.close` + descritores ws
+- **JVM+JS**: `kof.http` retry/circuit em paridade (30/08)
+- **JS**: scheduler `kof.time` via `setInterval`; retry/circuit de `kof.http`
+- **UI Fase 7**: Router (`go/replace/back/forward/param/current/depth`) — real
+  no JS, no-op no JVM
+- **CLI**: `kof fmt` (parser real, idempotente) e `kof config gen` implementados
+- **Android Fase 1**: `kof build --target android` → projeto Maven + APK com
+  host Activity em Kof
+- **Pipeline de release**: 2 jobs (`test-and-bump` exporta `bump_sha` →
+  `package-and-release` checkeia o commit de bump + sanity de versão) ×
+  3 plataformas (linux-x86_64/macos-arm64/windows-x86_64)
+
+### 0.2.6-beta — linguagem e plataforma (27/08)
 
 - **Pattern matching** `switch (x) { case String s: ... }` + record destructuring `Point(x,y)` em JVM/Native/JS (`Parser.java:1`, `SemanticAnalyzer.java:1`, `CompilerDriver.java:1`)
 - **Null safety** `String?` básica (`Type?` nullable, `?`-check em compile-time)
@@ -245,8 +271,12 @@ record Point(Int x, Int y)
 
 - Assembly x86-64 System V AMD64 ABI
 - Sem dependência de libc
-- Alocação via mmap
-- Sem GC (memória reclaim pelo SO no exit)
+- Alocação via mmap (free-list `kof_free_head` com reuso, 27/08)
+- GC: mark-sweep pendente; auto-GC desativado após hang — memória
+  devolvida só no `munmap` fallback (reclaim pelo SO no exit)
+- Concorrência: `spawn`/`await` via `pthread_create` + trampoline +
+  `pthread_join` + allocator thread-safe (futex) — 31/08 (CONC001)
+- FP real em XMM (`vcvtsi2sd`/`mulsd`), dtoa via `snprintf` — 31/08 (FLT001)
 - Strings: KofString (header + UTF-8)
 - Arrays: KofArray (header + elementos)
 - Objetos, herança, virtual dispatch e instanceof com hierarquia:
@@ -254,6 +284,7 @@ record Point(Int x, Int y)
 - String methods nativos: length, charAt, substring, contains, startsWith,
   endsWith, concat
 - valueOf (int/char/bool → KofString) implementado no runtime
+- JSON: objetos/records + arrays `Int/Long/Bool/String/Double` (31/08)
 
 ### Object Model
 
@@ -271,20 +302,20 @@ Fields:
 
 ---
 
-## Backends (0.2.6-beta)
+## Backends (0.2.6-beta, 31/08)
 
-| Feature | JVM | Native x86_64 | Native riscv64 | Native aarch64 | JS (GraalJS) | KofC | KofScript |
+| Feature | JVM | Native x86_64 | native.risc (riscv64) | native.arm (aarch64) | JS (GraalJS) | KofC | Android (Fase 1) |
 |---------|-----|---------------|----------------|----------------|--------------|------|-----------|
-| Target | .class / .jar | ELF x86_64 | ELF riscv64 | ELF aarch64 (placeholder) | ES Modules (.mjs) | ELF x86_64 (C subset) | JVM via KofScriptGlobals |
-| Runtime | JVM (virtual threads) | Assembly x86-64 (free-list + kof_gc_collect) | Assembly riscv64 (`.option arch,rv64g`, `li a7 214/64/93`) | placeholder | GraalJS embedded + `Java HttpClient` interop | Native only (`kof_c`) | JVM temp dir |
-| GC | JVM GC | free-list `kof_free_head` + `kof_gc_collect` (mark-sweep pending) | same | placeholder | GC JS | none | JVM GC |
-| Strings | java.lang.String | KofString | KofString riscv64 | — | JS string | C char* | KofString |
-| Arrays | arrays nativos | KofArray | KofArray riscv64 | — | JS Array | C array | arrays nativos |
-| Virtual dispatch | INVOKEVIRTUAL | vtable | vtable riscv64 | — | prototype | — | INVOKEVIRTUAL |
-| Interfaces | INVOKEINTERFACE | vtable | vtable riscv64 | — | — | — | INVOKEINTERFACE |
-| Exceptions | Exceções JVM | unwinding próprio | unwinding riscv64 | — | JS throw | — | Exceções JVM |
-| print/println | System.out | Syscalls Linux (`write` 1) | Syscalls riscv64 (`li a7 64`) | — | `kof_platform` | `write` | System.out |
-| Pattern matching | ✅ `case String s` + `Point(x,y)` | ✅ | ✅ | placeholder | ✅ (`typeof`) | — | ✅ |
+| Target | .class / .jar | ELF x86_64 | ELF riscv64 via qemu (codegen x86_64 placeholder) | ELF aarch64 via qemu (codegen x86_64 placeholder) | ES Modules (.mjs) | ELF x86_64 (C subset) | projeto Maven + APK (bytecode JVM) |
+| Runtime | JVM (virtual threads, web ws/sse, cache, http retry/circuit) | Assembly x86-64 (free-list, pthread spawn, FP XMM) | toolchain + qemu | toolchain + qemu | GraalJS embedded + `Java HttpClient` interop | Native only (`kof_c`) | ART (dex via d8) |
+| GC | JVM GC | free-list `kof_free_head` (mark-sweep pendente; auto-GC desativado — `munmap` fallback) | same | placeholder | GC JS | none | GC da ART |
+| Strings | java.lang.String | KofString | via qemu (x86_64) | via qemu (x86_64) | JS string | C char* | KofString (dex) |
+| Arrays | arrays nativos | KofArray | via qemu (x86_64) | via qemu (x86_64) | JS Array | C array | arrays nativos |
+| Virtual dispatch | INVOKEVIRTUAL | vtable | via qemu (x86_64) | via qemu (x86_64) | prototype | — | INVOKEVIRTUAL |
+| Interfaces | INVOKEINTERFACE | vtable | via qemu (x86_64) | via qemu (x86_64) | — | — | INVOKEINTERFACE |
+| Exceptions | Exceções JVM | unwinding próprio | via qemu (x86_64) | via qemu (x86_64) | JS throw | — | Exceções JVM |
+| print/println | System.out | Syscalls Linux (`write` 1) | Syscalls riscv64 (`li a7 64`) | Syscalls aarch64 | `kof_platform` | `write` | System.out |
+| Pattern matching | ✅ `case String s` + `Point(x,y)` | ✅ | via qemu (x86_64) | placeholder | ✅ (`typeof`) | — | ✅ |
 
 ---
 
@@ -321,23 +352,24 @@ Fields:
 
 ### Gargalos arquiteturais conhecidos
 
-1. **kof_alloc** usa mmap (lento para alocações pequenas)
+1. **kof_alloc** usa mmap (lento para alocações pequenas; free-list com reuso `mmap` mitigou — 27/08)
 2. **kof_string_concat** copia byte a byte
 3. **kof_memcpy** copia byte a byte
 4. **kof_print_int** usa divisão em loop
-5. **Sem GC** — memória nunca é liberada durante execução
-6. **Sem otimizações** — constant folding, dead code elimination
+5. **GC mark-sweep pendente** — free-list reusa memória; devolução ao SO só no `munmap` fallback (auto-GC desativado após hang)
+6. **Otimizador de IR ativo** (constant folding, branch simplification, DCE, dead stack effects) — mas sem escape analysis/loop optimization
 
 ---
 
-## O que NÃO existe (residual 0.2.6-beta)
+## O que NÃO existe (residual 0.2.6-beta, 31/08)
 
 - Reflection, Macros; annotations de enum/Classe em valores (`ANNOT001`) — planned
-- Formatter (`kof fmt` planned, P5)
-- Database nível 3 (query DSL tipada `User.query { where ... }`) — `kof.db` nível 0 e `kof.orm` nível 2/4 já DONE; MySQL handshake `kof_db_mysql_scramble` feito
-- Native aarch64 codegen completo (placeholder, target separation done)
-- `spawn` no Native (CONC001) — gap documentado
-- GC mark-sweep completo (free-list + `kof_gc_collect` done, sweep pending)
+- `kof init` (P5); LSP rename + Debugger Native DWARF/JS source maps (P5)
+- Database nível 3 (query DSL tipada `User.query { where ... }`) — `kof.db` nível 0 e `kof.orm` nível 2/4 já DONE; MySQL wire protocol WIP (scramble SHA-1 + parse `user:pass@`, 31/08)
+- Native riscv64/aarch64 codegen completo (toolchain + qemu prontos; codegen ainda x86_64 placeholder)
+- GC mark-sweep completo (free-list `kof_free_head` done; auto-GC desativado após hang; memória devolvida só no `munmap` fallback)
+- `spawn` async real no JS (CONC003 — statement/expressão cobrem)
+- Scheduler no Native (SCHED001); `kof.http` no Native (HTTP002); web no Native/JS (WEB002/WEB001)
 
 ## O que existe desde 0.0.5 → 0.2.6-beta
 
@@ -346,15 +378,16 @@ Fields:
 - Pattern matching `switch case String s` + record destructuring `Point(x,y)` (JVM/Native/JS, 27/08)
 - Null safety `String?` básica (`Type?` nullable, 27/08)
 - Lambdas `(x: Int) -> expr` + if-expr + capturas (box `BoxN`) em 3 targets
-- JSON encode/decode (JVM + Native + JS; objetos/records no JVM/JS; arrays nativos `JSN003`)
+- JSON encode/decode completo (JVM + Native + JS; objetos/records + arrays `Int/Long/Bool/String/Double` nos 3 targets — 31/08)
 - Exceptions reais (JVM table + Native unwinding)
 - `assert` + `kof test` estruturado (`test "nome" {}`) + `process.exit`
-- `spawn` (concorrência — JVM, virtual threads; JS sequencial)
-- kof.io (File/Path/Directory, readFile/writeFile), kof.time (`now()`, `sleep`, `interval`)
-- HTTP (`kof serve` — KofHttpServer com thread pool), `kof.http` client (JVM+JS via `Java HttpClient`), `kof.mq`
-- `kof.validation`, `kof.observability` (health/metrics), `kof.security` (PBKDF2/SHA/JWT/AES-GCM + G9 rateLimit/session/apiKey em 3 targets), `kof.db`/`kof.orm` + `kof.config`/`kof.log` (asm Native, free-list)
+- `spawn` (concorrência — JVM virtual threads, Native pthread 31/08, JS sequencial CONC003)
+- kof.io (File/Path/Directory, readFile/writeFile), kof.time (`now()`, `sleep`; `interval`/`every` JVM+JS)
+- HTTP (`kof serve` — web stack nativa com WebSocket/SSE JVM 30/08), `kof.http` client (JVM+JS via `Java HttpClient`, retry/circuit 30/08), `kof.cache` (3 targets, 30/08), `kof.mq`
+- `kof.validation`, `kof.observability` (health/metrics), `kof.security` (PBKDF2/SHA/JWT/AES-GCM + G9 rateLimit/session/apiKey em 3 targets), `kof.db` (JVM + SQLite nativo `.so` + MySQL WIP) / `kof.orm` + `kof.config`/`kof.log` (asm Native)
 - KofJS (target `js` — GraalJS embutido, `kof.http` JS), TLS `web.listenSecure` (JVM), `KofScript` (`let` → `KofScriptGlobals`), `KofCcompiler` (`kof c`)
-- Native riscv64/aarch64 targets (`Target.NATIVE_RISCV64/AARCH64`)
+- `native.risc`/`native.arm` targets (`Target.NATIVE_RISCV64/AARCH64` — toolchain + qemu; codegen x86_64 placeholder)
+- Android Fase 1 (`Target.ANDROID` — `kof build --target android` → projeto Maven + APK, host Activity em Kof)
 - Language Server (`kof lsp` — frontend real do compilador, hover/completion)
-- `kof check`, `kof info`, `kof install`, `kof bench`/`profile`/`inspect`/`debug`, `kof script`/`repl`/`c`
-- Distribuição oficial com JDK 21 embutido, versionamento `VERSION` 0.2.6-beta e releases single-job (`release.yml`) — `scripts/package.sh` PASS
+- `kof check`, `kof info`, `kof install`, `kof bench`/`profile`/`inspect`/`debug`, `kof script`/`repl`/`c`, `kof fmt` (31/08), `kof config gen` (31/08)
+- Distribuição oficial com JDK 21 embutido, versionamento `VERSION` 0.2.6-beta e releases por 2 jobs (`test-and-bump` → `package-and-release`) × 3 plataformas (`release.yml`) — `scripts/package.sh` PASS

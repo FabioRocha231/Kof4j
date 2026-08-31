@@ -1,6 +1,6 @@
 # Composição visual por objetos
 
-**Updated:** 0.2.6-beta (30 Aug 2026)
+**Updated:** 0.2.6-beta (31 Aug 2026)
 
 > O visual é um grafo de objetos. Nada de templates, XML ou strings mágicas:
 > a interface é código Kof tipado, compilado e verificado como qualquer outro.

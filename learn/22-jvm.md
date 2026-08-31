@@ -2,6 +2,18 @@
 
 > **Kof 0.2.6-beta — 658 testes — `intention->Kof->frontend->IR->backend->runtime`**
 
+## O que o compilador gera
+
+O backend JVM (`JvmBackend`, via ASM) gera **bytecode V21** (Tooling API
+Level 21):
+
+- **exception table real** — `try/catch/finally` com handlers no `.class`
+  (não exceções lançadas à mão);
+- **virtual threads** — `spawn` usa virtual threads; o programa espera as
+  tarefas (join implícito);
+- `SourceFile` + `LineNumberTable` (e `LocalVariableTable` quando há
+  metadata de debug) — `kof debug` consome isso (DAP MVP, target JVM).
+
 ## Como Kof roda (JVM é um dos backends — ver Target separation `native.risc/arm` em cap. 31)
 
 ```

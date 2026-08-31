@@ -1,6 +1,6 @@
 # Kof Common Patterns
 
-**Version:** 0.2.6-beta (30 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## CRUD Entity (record + primary constructor)
 
@@ -41,13 +41,23 @@ handle(String method, String path, String body): String {
     return "Not found"
 }
 
-// Nativa (idiomática 0.2.6-beta)
+// Nativa (idiomática 0.2.6-beta) — JVM
 var app = web.app()
 app.get("/users") { return json.encode(users) }
 app.get("/users/:id") { return param("id") }
 app.post("/users") { var u = json.decode<User>(body()); return json.encode(u) }
+return status(201, json.encode(u))   // status code customizado
+headerSet("X-Custom", "value")       // header customizado
+app.use { ... }                      // middleware
+app.ws("/chat") { wsSend("echo: " + wsMessage()) }        // WebSocket
+app.sse("/events") { sse.send("tick"); sse.event("ev", "dados"); sse.close() }  // SSE
 app.listen(8080)
+app.listenSecure(8443)               // TLS
 ```
+
+`web.app()` completo no JVM (rotas `get/post/put/delete/patch/options`, `status(201, body)`,
+`headerSet`, `app.use`, WebSocket `app.ws`, SSE `app.sse` com `sse.send/event/close`,
+`listenSecure` TLS) — 30/08. Native/JS: WEB001.
 
 ## HTTP client (0.2.6-beta)
 
@@ -55,7 +65,10 @@ app.listen(8080)
 var html = http.get("https://example.com")
 var resp = http.post(api, json.encode(body), "Content-Type: application/json")
 if (http.status(url) == 200) { println(resp) }
-http.timeout(30)
+http.timeout(30)    // ms
+http.retry(3)       // repete em exceção + HTTP 5xx
+http.circuit(5)     // abre circuito após N falhas por 30s; circuit(0) recupera
+// verbos: get/post/put/delete/patch/options
 // JVM + JS (Java HttpClient interop); Native HTTP002
 ```
 
