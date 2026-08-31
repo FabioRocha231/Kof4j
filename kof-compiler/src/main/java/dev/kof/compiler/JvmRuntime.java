@@ -204,6 +204,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_param", "kof_web_query", "kof_web_header"
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
+            case "kof_web_ws_message" -> "()Ljava/lang/String;";
+            case "kof_web_ws_send" -> "(Ljava/lang/String;)V";
+            case "kof_web_sse_send" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_status" -> "(ILjava/lang/String;)Ljava/lang/String;";
             case "kof_web_header_set" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_config_get", "kof_config_env", "kof_config_required" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -562,9 +565,11 @@ static boolean hasRuntimeFn(String methodName) {
                             Thread handler = Thread.startVirtualThread(() -> {
                                 try {
                                     KOF_WEB_REQUEST.set(req);
+                                    KOF_SSE_SENDER.set(sse);
                                     try {
                                         kof_web_invoke(result.route.handler, sse);
                                     } finally {
+                                        KOF_SSE_SENDER.remove();
                                         KOF_WEB_REQUEST.remove();
                                     }
                                 } catch (Exception e) {
@@ -578,7 +583,7 @@ static boolean hasRuntimeFn(String methodName) {
                             return;
                         }
                         if (result.kind == RouteKind.WS) {
-                            kof_web_ws_handshake(req, client);
+                            kof_web_ws_handshake(result, req, client);
                             return;
                         }
                         client.getOutputStream().write(result.response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -592,7 +597,8 @@ static boolean hasRuntimeFn(String methodName) {
                 // loop with a frame codec and per-connection timeout handling.
                 private static final int KEEPALIVE_IDLE_MS = 300_000;
 
-                private static void kof_web_ws_handshake(WebRequest req, java.net.Socket client)
+                private static void kof_web_ws_handshake(WebDispatchResult result, WebRequest req,
+                        java.net.Socket client)
                         throws java.io.IOException {
                     String upgradeVal = req.headers.get("upgrade");
                     String connectionVal = req.headers.get("connection");
@@ -680,7 +686,20 @@ static boolean hasRuntimeFn(String methodName) {
                             if (op == 0x9 /* PING */) { conn.pong(payload); }
                             else if (op == 0xA /* PONG */) { /* ignore */ }
                             else if (op == 0x8 /* CLOSE */) { conn.close(1000, ""); break frameLoop; }
-                            // TEXT/BINARY/CONT: discard for now (PR5)
+                            else if (op == 0x1 /* TEXT */) {
+                                // PR5 fechado: a mensagem vira o contexto do handler Kof
+                                String text = new String(payload, java.nio.charset.StandardCharsets.UTF_8);
+                                KOF_WS_CONNECTION.set(conn);
+                                KOF_WS_MESSAGE.set(text);
+                                try {
+                                    kof_web_invoke(result.route.handler, req);
+                                } catch (Exception he) {
+                                    System.err.println("kof web ws handler error: " + he.getMessage());
+                                } finally {
+                                    KOF_WS_CONNECTION.remove();
+                                    KOF_WS_MESSAGE.remove();
+                                }
+                            }
                         }
                     } catch (java.net.SocketTimeoutException idle) {
                         // graceful close after KEEPALIVE_IDLE_MS
@@ -798,6 +817,33 @@ static boolean hasRuntimeFn(String methodName) {
                 private static Object kof_web_invoke(Object target, SseConnection sse) throws Exception {
                     return target.getClass().getMethod("invoke", SseConnection.class)
                             .invoke(target, sse);
+                }
+
+                // ── WS/SSE context (kof_web_ws_message/wsSend/sse) ──
+                private static final ThreadLocal<Object> KOF_WS_CONNECTION = new ThreadLocal<>();
+                private static final ThreadLocal<String> KOF_WS_MESSAGE = new ThreadLocal<>();
+                private static final ThreadLocal<Object> KOF_SSE_SENDER = new ThreadLocal<>();
+
+                /** wsMessage() — mensagem TEXT corrente da conexão WebSocket. */
+                public static String kof_web_ws_message() {
+                    return KOF_WS_MESSAGE.get();
+                }
+
+                /** wsSend(text) — envia TEXT pela conexão WebSocket corrente. */
+                public static void kof_web_ws_send(String text) {
+                    Object conn = KOF_WS_CONNECTION.get();
+                    if (conn instanceof WsSender ws) {
+                        ws.sendText(text);
+                    }
+                }
+
+                /** sse(text) — envia um evento SSE pela conexão corrente. */
+                public static String kof_web_sse_send(String text) {
+                    Object sender = KOF_SSE_SENDER.get();
+                    if (sender instanceof SseSender s) {
+                        s.send(text);
+                    }
+                    return text;
                 }
 
                 private static String kof_web_build(int status, String statusText, String body) {

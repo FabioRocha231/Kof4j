@@ -138,7 +138,7 @@ final class JvmWebRuntime {
                     }
                 }
 
-                public static final class SseConnection {
+                public static final class SseConnection implements SseSender {
                     private final java.io.OutputStream out;
                     private final byte[] nl = "\\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                     private final java.util.concurrent.atomic.AtomicBoolean open =
@@ -290,7 +290,17 @@ final class JvmWebRuntime {
                     public static final int CLOSE_UNSUPPORTED = 1003;
                 }
 
-                public static final class WsConnection {
+                /** Interface para o KofRuntime acessar o envio WS sem ciclo de import. */
+                public interface WsSender {
+                    void sendText(String s);
+                }
+
+                /** Interface para o KofRuntime acessar o envio SSE sem ciclo de import. */
+                public interface SseSender {
+                    void send(String event);
+                }
+
+                public static final class WsConnection implements WsSender {
                     private final java.io.OutputStream out;
                     private final java.util.concurrent.locks.ReentrantLock writeLock =
                             new java.util.concurrent.locks.ReentrantLock();
