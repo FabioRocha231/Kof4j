@@ -168,11 +168,11 @@ viram **linha ativa** preencher-ou-falhar; chave computada (não literal)
 não aparece — nada é inferido em runtime. Chaves repetidas são dedup
 por (método, chave, default). Testes: `ConfigGenTest` (3 casos).
 
-> **Gap conhecido (COMP002, pré-existente):** uma chamada `config.*` com
-> chave **não-literal** (`config.str(userInput(), "x")`) derruba o frame
-> do backend JVM ("frame crash ... Index -1", ASM `Frame.merge`). Não é
-> do config gen (reproduz sem as mudanças de P3) — fica registrado como
-> dívida do backend de tipos do ASM com receivers dinâmicos.
+> **~~Gap conhecido (COMP002, pré-existente)~~ — fechado 31/08:** a causa
+> real eram descritores JVM faltando para funções de contexto web
+> (`kof_web_ws_message` caindo no default `(String)->Object` com 0 args —
+> underflow de pilha no `COMPUTE_FRAMES` do ASM). `config.*` com chave
+> não-literal compila e roda.
 
 **P3 — Config declarativa tipada (a visão do KOF_VS_SPRING §2).**
 ```kof
