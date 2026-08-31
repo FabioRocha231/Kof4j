@@ -50,6 +50,7 @@ final class NativeRuntime {
         emitStringStartsWith(sb);
         emitStringEndsWith(sb);
         emitStringIndexOf(sb);
+        emitStringLastIndexOf(sb);
         emitStringTrim(sb);
         emitStringCase(sb);
         emitStringReplace(sb);
@@ -3169,6 +3170,72 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_idx_notfound:
+                movl $-1, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                 popq %r12
+                 popq %rbx
+                 ret
+             """);
+     }
+
+    /** lastIndexOf: varre do fim para o início; retorna -1 se não achar. */
+    private static void emitStringLastIndexOf(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_last_index_of
+            .type kof_string_last_index_of, @function
+            kof_string_last_index_of:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                movl 16(%r12), %r14d
+                testl %r14d, %r14d
+                jz .Lkof_lidx_found_end
+                cmpl %r13d, %r14d
+                jg .Lkof_lidx_notfound
+                movl %r13d, %r15d
+                subl %r14d, %r15d
+            .Lkof_lidx_outer:
+                testl %r15d, %r15d
+                js .Lkof_lidx_notfound
+                xorl %ecx, %ecx
+            .Lkof_lidx_inner:
+                cmpl %r14d, %ecx
+                jge .Lkof_lidx_found
+                movl %r15d, %eax
+                addl %ecx, %eax
+                movzbl 24(%rbx,%rax), %eax
+                movzbl 24(%r12,%rcx), %edx
+                cmpl %edx, %eax
+                jne .Lkof_lidx_next
+                incq %rcx
+                jmp .Lkof_lidx_inner
+            .Lkof_lidx_next:
+                decl %r15d
+                jmp .Lkof_lidx_outer
+            .Lkof_lidx_found:
+                movl %r15d, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_lidx_found_end:
+                movl %r13d, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_lidx_notfound:
                 movl $-1, %eax
                 popq %r15
                 popq %r14
