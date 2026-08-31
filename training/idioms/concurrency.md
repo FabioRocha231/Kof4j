@@ -27,7 +27,7 @@ main() {
 }
 ```
 
-## Semântica real (verificada — 0.2.6-beta, 741 testes)
+## Semântica real (verificada — 0.2.6-beta, 746 testes)
 
 - a tarefa roda em paralelo: JVM virtual threads; **Native `pthread_create` + trampoline + `pthread_join` (CONC001 fechado 31/08)**; JS sequencial (statement e expressão cobrem; async real = CONC003 parcial);
 - o programa **espera as tarefas antes de sair** (join implícito: `kof_spawn_join_all` no fim do main no Native);

@@ -198,6 +198,84 @@ class KofConcurrency2Test {
     }
 
     @Test
+    void channelJvm(@TempDir Path tmp) throws Exception {
+        // Canais tipados (G8): channel<Int>() FIFO; send/receive. JVM:
+        // LinkedBlockingQueue (put/take bloqueantes).
+        runJvm(tmp, """
+                main() {
+                    val c = channel<Int>()
+                    c.send(5)
+                    c.send(6)
+                    c.send(7)
+                    var s = 0
+                    var i = 0
+                    while (i < 3) {
+                        s = s + c.receive()
+                        i++
+                    }
+                    println("s=" + s)
+                    val cs = channel<String>()
+                    cs.send("a")
+                    cs.send("b")
+                    println(cs.receive() + cs.receive())
+                }
+                """, "s=18\nab");
+    }
+
+    @Test
+    void channelNative(@TempDir Path tmp) throws Exception {
+        // Canais no Native: FIFO de lista ligada + mutex futex (mesma tecnica
+        // do kof_alloc). Sem spawn (bug pre-existente spawn->await->spawn).
+        Path f = tmp.resolve("M.kf");
+        Files.writeString(f, """
+                main() {
+                    val c = channel<Int>()
+                    c.send(5)
+                    c.send(6)
+                    c.send(7)
+                    var s = 0
+                    var i = 0
+                    while (i < 3) {
+                        s = s + c.receive()
+                        i++
+                    }
+                    println("s=" + s)
+                    val cs = channel<String>()
+                    cs.send("a")
+                    cs.send("b")
+                    println(cs.receive() + cs.receive())
+                }
+                """);
+        CompilationResult r = driver.compile(f, tmp.resolve("out"), Target.NATIVE);
+        assertTrue(r.success(), "Native channel deve compilar: " + r.diagnostics().getDiagnostics());
+        Path bin = tmp.resolve("out").resolve("Default/Main");
+        Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+        String output = new String(p.getInputStream().readAllBytes()).trim();
+        assertEquals(0, p.waitFor(), "exit code, output: " + output);
+        assertEquals("s=18\nab", output, "FIFO Int + String no Native");
+    }
+
+    @Test
+    void channelJs(@TempDir Path tmp) throws Exception {
+        // JS sequencial: canal = {items:[]} (send push, receive shift).
+        runJs(tmp, """
+                main() {
+                    val c = channel<Int>()
+                    c.send(5)
+                    c.send(6)
+                    c.send(7)
+                    var s = 0
+                    var i = 0
+                    while (i < 3) {
+                        s = s + c.receive()
+                        i++
+                    }
+                    println("s=" + s)
+                }
+                """, "s=18");
+    }
+
+    @Test
     void pollDoneNative(@TempDir Path tmp) throws Exception {
         // CONC001 residual fechado: done/poll não-bloqueantes sobre o handle
         // nativo (flag done no bloco de 32B: 0=tag(2), 4=done, 16=result)
@@ -241,6 +319,66 @@ class KofConcurrency2Test {
                     println(await r)
                 }
                 """, "9");
+    }
+
+    @Test
+    void schedulerEveryNative(@TempDir Path tmp) throws Exception {
+        // SCHED001 fechado: scheduler.every/cancel no Native — thread por job
+        // (trampoline: usleep ms→us + invoke da task enquanto active) e
+        // cancel(id) marca active=0; o job sai sozinho. Ticks no 1º trecho,
+        // silêncio após o cancel, END por último.
+        Path f = tmp.resolve("M.kf");
+        Files.writeString(f, """
+                main() {
+                    var id = scheduler.every(100) { println("T") }
+                    time.sleep(250)
+                    scheduler.cancel(id)
+                    time.sleep(250)
+                    println("END")
+                }
+                """);
+        CompilationResult r = driver.compile(f, tmp.resolve("out"), Target.NATIVE);
+        assertTrue(r.success(), "Native scheduler deve compilar: " + r.diagnostics().getDiagnostics());
+        Path bin = tmp.resolve("out").resolve("Default/Main");
+        Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+        String output = new String(p.getInputStream().readAllBytes()).trim();
+        assertEquals(0, p.waitFor(), "exit code, output: " + output);
+        assertTrue(output.endsWith("END"), "END deve ser a última linha: " + output);
+        int ticks = 0;
+        for (String l : output.split("\n")) if (l.equals("T")) ticks++;
+        assertTrue(ticks >= 1 && ticks <= 6, "esperava 1..6 ticks, veio " + ticks + ": " + output);
+    }
+
+    @Test
+    void schedulerEveryJvm(@TempDir Path tmp) throws Exception {
+        // Paridade JVM: scheduler.every/cancel (thread daemon por job).
+        // Contagem frouxa (timer não determinístico); END sempre por último.
+        Path file = tmp.resolve("M.kf");
+        Files.writeString(file, """
+                main() {
+                    var id = scheduler.every(100) { println("T") }
+                    time.sleep(250)
+                    scheduler.cancel(id)
+                    time.sleep(250)
+                    println("END")
+                }
+                """);
+        Path outDir = tmp.resolve("out");
+        CompilationResult result = driver.compile(file, outDir, Target.JVM);
+        assertTrue(result.success(), "JVM scheduler deve compilar: " + result.diagnostics().getDiagnostics());
+        try {
+            Process p = new ProcessBuilder(System.getProperty("java.home") + "/bin/java",
+                    "-cp", outDir.toString(), "Default.Main").redirectErrorStream(true).start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            assertEquals(0, p.waitFor(), "JVM exit code, output: " + output);
+            assertTrue(output.endsWith("END"), "END deve ser a última linha: " + output);
+            int ticks = 0;
+            for (String l : output.split("\n")) if (l.equals("T")) ticks++;
+            assertTrue(ticks >= 1 && ticks <= 10, "esperava 1..10 ticks, veio " + ticks + ": " + output);
+        } catch (InterruptedException e) {
+            throw new java.io.IOException("interrupted", e);
+        }
     }
 
     // ── helpers ──

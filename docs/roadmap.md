@@ -55,7 +55,7 @@ Objetivos:
 - possibilidade de utilizar frameworks legados como Spring, Hibernate etc.;
 - backend principal durante a consolidação inicial.
 
-Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 741 testes 31/08;
+Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 746 testes 31/08;
 web stack nativa com WebSocket/SSE e `kof.http` retry/circuit — 30/08)
 
 ### KofNative — Binário Nativo
@@ -206,11 +206,18 @@ targets — 30/08)**, **`kof.http` retry/circuit breaker (JVM+JS — 30/08)**,
 concorrência (`spawn` + `await`/`Handle<T>` — JVM virtual threads, Native
 pthread 31/08, JS sequencial), `List map/filter/reduce`, `Box<T>`, pattern
 matching e `String?` implementados (0.2.6-beta).
-Faltam: HTTP client no Native (HTTP002), scheduler no Native (SCHED001;
-`every`/`at` JVM+JS 27/08), RPC, eventos/filas/pub-sub fora do JVM (MQ001
+Faltam: HTTP client no Native (HTTP002), RPC (gRPC — ver abaixo),
+eventos/filas/pub-sub fora do JVM (MQ001
 Native), tracing, web no Native/JS (WEB002/WEB001), MySQL nativo completo,
 RISC/ARM codegen, GC mark-sweep.
 Ver `docs/plan-spring-independence.md` (Fases 5-14).
+
+**gRPC no `kof.web` (novo, 31/08 — planejado)**: comunicação gRPC como
+primeira classe na plataforma web — `app.grpc { service ... }` com stubs
+gerados a partir de `.proto`, server streaming + unary sobre HTTP/2 no JVM
+(`io.grpc` via `kof.web`), e client `grpc.call(endpoint, method, msg)`.
+Escopo: Fase web (mesma família de `app.ws`/`sse.*`); codegen `.proto` → IR
+Kof; parity JVM primeiro, Native/JS depois.
 
 ### Concorrência — fila residual (0.2.6-beta, 31/08)
 
@@ -231,8 +238,8 @@ o feature de cancel/select (suspeito: `pthread_join` no `kof_await`).
 | ~~`done`/`poll`~~ | ✅ 31/08 — não-bloqueantes sobre o handle (JVM + Native) | — |
 | ~~Port Native~~ | ✅ 31/08 — `pthread_create` + trampoline + `pthread_join` + allocator thread-safe (futex); join implícito (CONC001 fechado) | — |
 | Port JS | spawn sobre Promises/event-loop; await nativo via microtask (CONC003) | P2 |
-| Scheduler/cron | ✅ parcial (27/08): `every`/`at` JVM (`ScheduledExecutor`) + JS (`setInterval`); Native SCHED001 | P2 |
-| Canais tipados | `channel<Int>()` com send/receive bloqueantes entre tasks | P3 |
+| ~~Scheduler/cron~~ | ✅ 31/08 — `every`/`at` JVM (`ScheduledExecutor`) + JS (`setInterval`) + **Native SCHED001** (thread por job, `usleep` ms→us + flag `active`, `cancel(id)` cooperativo) | — |
+| ~~Canais tipados~~ | ✅ 31/08 — `channel<Int>()` com `send`/`receive` (JVM `LinkedBlockingQueue` bloqueante + Native FIFO futex + JS array sequencial) | — |
 
 Critério de "100%": os três targets executando os mesmos programas
 concorrentes com golden diff vazio (mesmo padrão da métrica 1 do plano).
@@ -681,7 +688,7 @@ O Kof é uma plataforma distribuível, não apenas um JAR:
 - distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
 - versionamento centralizado (`VERSION` 0.2.6-beta → pom/properties via `scripts/bump-version.sh`);
-- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 741 → bump → package 3 plataformas → GitHub Release);
+- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 746 → bump → package 3 plataformas → GitHub Release);
 - `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
 - editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);
 - `kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version` PASS (18 comandos; `fmt` e `config gen` 31/08).

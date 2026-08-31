@@ -1,7 +1,7 @@
 # Plano — Kof Spring Starter + Independência do Spring
 
 **Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (741 testes; `kof.http` JVM+JS com retry/circuit; web ws/sse JVM; free-list + pthread spawn Native)
+**Versão:** 0.2.6-beta (746 testes; `kof.http` JVM+JS com retry/circuit; web ws/sse JVM; free-list + pthread spawn Native)
 
 > Este documento transforma a especificação "Kof Spring Starter + Independência
 > do Spring" em um plano executável por fases, com critérios de aceite e ordem
@@ -92,7 +92,7 @@ Evoluir `kof serve` para a stack web completa. Critérios de aceite:
 - [x] `kof serve <file.kf>` executa programas `web.app()`; API legada
       `handle(...)` continua funcionando.
 - [x] Testes E2E (subprocesso + sockets reais) verdes; `mvn test` verde
-      (741 em 0.2.6-beta; 459/459 na época incluindo os 9 de `KofWebE2ETest`; ver `docs/status.md:10-28`).
+      (746 em 0.2.6-beta; 459/459 na época incluindo os 9 de `KofWebE2ETest`; ver `docs/status.md:10-28`).
 - [x] Docs: `docs/stdlib-web.md`, `docs/status.md`, `docs/http.md`, README.
 
 Implementado em: `KofWeb` (tabela compile-time), `Parser` (lambda trailing),
@@ -327,4 +327,4 @@ Conflitos adicionais encontrados e corrigidos durante a implementação de
   `.` (ex.: `config.int`, `config.bool`, `config.long`).
 
 Estado final desta rodada (histórico 23/08): 486 testes, 485 PASS, 1 em progresso na sessão
-paralela (`defaultParameters` no target JS). **Atual 0.2.6-beta (27/08): `mvn test` 741 (728+8+5), golden 16/16, integration 9/9** — ver `docs/status.md:10-28`.
+paralela (`defaultParameters` no target JS). **Atual 0.2.6-beta (27/08): `mvn test` 746 (733+8+5), golden 16/16, integration 9/9** — ver `docs/status.md:10-28`.
