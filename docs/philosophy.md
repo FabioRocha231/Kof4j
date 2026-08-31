@@ -36,7 +36,7 @@ para cima da linha da intenção.
 
 | Intenção | Código Kof | O que a plataforma decide |
 |----------|-----------|---------------------------|
-| "roda isso em paralelo" | `spawn processar()` | JVM: virtual threads; Native: gap diagnosticado (CONC001) |
+| "roda isso em paralelo" | `spawn processar()` | JVM: virtual threads; Native: pthread (CONC001 fechado) |
 | "responda /users/:id" | `app.get("/users/:id") { ... }` | servidor HTTP próprio, sem servlet container |
 | "deserialize isto" | `json.decode<User>(body)` | engine JSON + binding por tipo |
 | "mostre uma janela com um botão que soma" | `Window`, `Button("+1", () -> ...)` | KofJS renderiza no webview nativo; JVM/Native são no-ops |
@@ -76,7 +76,7 @@ escrever a intenção, o design falhou.** Exemplos de vazamento que Kof rejeita:
 A intenção é única, mas o backend nem sempre consegue realizá-la — e isso é
 **diagnosticado em compile-time, com código de gap**, não silenciosamente:
 
-- `spawn` no Native → `CONC001`
+- ~~`spawn` no Native → `CONC001`~~ — fechado 31/08 (pthread)
 - JSON de objetos no Native → `JSN002`
 - estaticidade no Native → no-op documentado
 - `kof.ui` no JVM/Native → handles no-ops (a renderização é KofJS)

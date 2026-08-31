@@ -200,7 +200,7 @@ Ver `docs/plan-spring-independence.md` (Fases 5-14).
 ### Concorrência — fila residual (0.2.6-beta)
 
 Estado 0.2.6-beta: concorrência real **JVM** (virtual threads) + **JS** sequencial; Native é
-CONC001 e JS `spawn` é CONC003 — ambos explícitos em compile-time.
+CONC001 foi fechado 31/08 (pthread no Native); o JS `spawn` sequencial cobre stmt/expr — o `CONC003` restante é async event-loop real.
 
 | Item | Descrição | Prioridade |
 |------|-----------|------------|

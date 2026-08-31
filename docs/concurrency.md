@@ -1,6 +1,6 @@
 # CONCURRENCY.md — Modelo de Concorrência Kof
 
-**Status:** Implementado (JVM + JS sequencial) — Native `CONC001` gap documentado — 0.2.6-beta 27/08 (658 testes)
+**Status:** Implementado (JVM + JS sequencial + Native pthread) — 0.2.6-beta 31/08
 **Versão:** 0.2.6-beta
 **Data:** 27 de agosto de 2026
 
@@ -24,14 +24,14 @@ Semântica implementada:
   + shutdown hook no runtime JVM);
 - o valor de retorno da função é descartado (fire-and-forget);
 - exceções na tarefa são impressas em stderr (não derrubam o programa);
-- **Native**: diagnostic `CONC001` ("spawn: not supported on the Native
+- ~~**Native**: diagnostic `CONC001`~~ — ✅ fechado 31/08: pthread_create/trampoline/await via `pthread_join`, allocator com lock futex, join implícito no main. (histórico: "spawn: not supported on the Native
   target yet") — gap documentado, não mascarado;
 - isolamento por valor: a tarefa recebe os argumentos; sem estado
   compartilhado primitivo na linguagem.
 
 ### Implementado 0.1.0 → 0.2.6-beta
 
-- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial completo (stmt + spawn-expr, `CONC003` restante = async event-loop real); Native `CONC001`
+- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial completo (`CONC003` restante = async event-loop real); Native pthread completo (CONC001 fechado)
 - Lambdas com captura via `BoxN` já suportam `spawn { println(x) }`
 - `kof.mq` publish/subscribe/queue — JVM+JS (MQ001 Native); `kof.time interval/cancel` — JVM
 

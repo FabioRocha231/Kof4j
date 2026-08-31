@@ -31,7 +31,7 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` (Handle<T>, unbox, exceção limpa) | ✅ | CONC001 | ✅ sequencial (stmt + spawn-expr) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 5/5 |
+| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` (Handle<T>, unbox, exceção limpa) | ✅ | ✅ 31/08 (pthread) | ✅ sequencial | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 5/5 · `SpawnE2ETest` 4/4 | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 5/5 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |
@@ -65,7 +65,7 @@
 
 | Gap | Diagnostic | Status |
 |-----|-----------|--------|
-| spawn/await no Native | `CONC001` | planned (virtual threads é JVM-only) |
+| spawn/await no Native | ✅ 31/08 (CONC001 fechado — pthread + allocator thread-safe; join implícito) | |
 | spawn/await no JS | ✅ sequencial (stmt + spawn-expr + await/poll/cancel/selectAny) | event-loop async real é evolução futura |
 | web TLS no Native/JS | `WEB002` | planned |
 | kof.http no Native | `HTTP002` | planned (JS now ✅) |
