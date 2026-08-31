@@ -1,6 +1,6 @@
 # Kof Common Patterns
 
-**Version:** 0.2.0-beta (27 Aug 2026)
+**Version:** 0.2.6-beta (30 Aug 2026)
 
 ## CRUD Entity (record + primary constructor)
 
@@ -9,7 +9,7 @@ record User(String name, String email)
 var u = User("Mel", "mel@kof.dev")
 ```
 
-## Service Pattern — prefer funções top-level (0.2.0-beta)
+## Service Pattern — prefer funções top-level (0.2.6-beta)
 
 ```kof
 // Kof não precisa de Service/Repository ceremony — função top-level é idiomática
@@ -41,7 +41,7 @@ handle(String method, String path, String body): String {
     return "Not found"
 }
 
-// Nativa (idiomática 0.2.0-beta)
+// Nativa (idiomática 0.2.6-beta)
 var app = web.app()
 app.get("/users") { return json.encode(users) }
 app.get("/users/:id") { return param("id") }
@@ -49,7 +49,7 @@ app.post("/users") { var u = json.decode<User>(body()); return json.encode(u) }
 app.listen(8080)
 ```
 
-## HTTP client (0.2.0-beta)
+## HTTP client (0.2.6-beta)
 
 ```kof
 var html = http.get("https://example.com")
@@ -71,7 +71,7 @@ try {
     println("Cleanup")
 }
 
-// Ausência como valor — String? (0.2.0-beta)
+// Ausência como valor — String? (0.2.6-beta)
 String? maybe = find("key")
 if (maybe != null) {
     println(maybe)
@@ -80,7 +80,7 @@ if (maybe != null) {
 }
 ```
 
-## Collections — higher-order (0.2.0-beta)
+## Collections — higher-order (0.2.6-beta)
 
 ```kof
 var nomes = users.map((u: User) -> u.name)
@@ -91,7 +91,7 @@ var soma = nums.reduce((a: Int, b: Int) -> a + b, 0)
 var x = listOf(1,2,3).get(1)   // 2
 ```
 
-## Record pattern destructuring (0.2.0-beta)
+## Record pattern destructuring (0.2.6-beta)
 
 ```kof
 record Point(Int x, Int y)
@@ -146,7 +146,7 @@ class Entity implements Serializable {
 }
 ```
 
-## KofScript global (0.2.0-beta)
+## KofScript global (0.2.6-beta)
 
 ```kof
 let x = 5

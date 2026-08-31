@@ -1,6 +1,6 @@
 # Anti-pattern — Unnecessary Abstraction
 
-**Updated:** 0.2.0-beta (27 Aug 2026)
+**Updated:** 0.2.6-beta (30 Aug 2026)
 
 ## Name
 

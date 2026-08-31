@@ -1,6 +1,6 @@
 # Idioms — Concurrency
 
-**Status:** available (JVM + JS) · **Introduced:** 0.0.5-alpha · **Updated:** 0.2.0-beta · **Native:** CONC001 (planned)
+**Status:** available (JVM + JS) · **Introduced:** 0.0.5-alpha · **Updated:** 0.2.6-beta · **Native:** CONC001 (planned)
 
 ## What it is
 
@@ -19,7 +19,7 @@ main() {
     println("fim")
 }
 
-// Com resultado (0.2.0-beta)
+// Com resultado (0.2.6-beta)
 main() {
     val r = spawn trabalho()   // Handle<T> tipado
     var v = await r            // bloqueia; T com unboxing de primitivos
@@ -27,7 +27,7 @@ main() {
 }
 ```
 
-## Semântica real (verificada — 0.2.0-beta, 658 testes)
+## Semântica real (verificada — 0.2.6-beta, 658 testes)
 
 - a tarefa roda em paralelo (JVM: virtual threads; JS: via KofJsRunner);
 - o programa **espera as tarefas antes de sair** (join implícito);
@@ -76,7 +76,7 @@ var id = kof.time.interval(() -> println("tick"), 1000)
 `spawn` expressa intenção. Thread/Runnable/Executor são mecanismos da
 plataforma — a decisão de como executar pertence ao runtime.
 
-## Limitações honestas (0.2.0-beta)
+## Limitações honestas (0.2.6-beta)
 
 - Native: **CONC001** — use JVM/JS por enquanto;
 - filas produtor/consumidor: `kof.mq` / `kof.concurrent.Queue` são alternativas via `kof.mq`;

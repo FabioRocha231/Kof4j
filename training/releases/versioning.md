@@ -19,17 +19,17 @@ MAJOR.MINOR.PATCH[-suffix]
 
 ## Estágio atual
 
-- O Kof está em `0.2.0-beta` (27 Aug 2026, commit `b4339c8`).
-- Evolução: `0.0.5-alpha` → `0.1.0` → `0.2.0-beta` → Beta → Release Candidate → Stable.
+- O Kof está em `0.2.6-beta` (30 Aug 2026, commit `b4339c8`).
+- Evolução: `0.0.5-alpha` → `0.1.0` → `0.2.6-beta` → Beta → Release Candidate → Stable.
 - A versão de componente (compiler/runtime/stdlib) é `0.2.0`; o sufixo
   `-beta` pertence ao release.
 - Targets: `jvm` / `native` / `native.risc` / `native.arm` / `js` / `kofc` + `KofScript`.
 
 ## Fonte única de verdade
 
-- A versão vive no arquivo `VERSION` na raiz do repositório (`0.2.0-beta`).
+- A versão vive no arquivo `VERSION` na raiz do repositório (`0.2.6-beta`).
 - `scripts/bump-version.sh` sincroniza `VERSION` → `pom.xml` (`<revision>`)
-  → `kof-compiler/src/main/resources/dev/kof/version.properties` (`kof.version=0.2.0-beta`).
+  → `kof-compiler/src/main/resources/dev/kof/version.properties` (`kof.version=0.2.6-beta`).
 - A pipeline atualiza automaticamente: compiler, CLI, runtime, artefatos,
   pacote, GitHub Release, changelog.
 - Não editar versões manualmente em vários arquivos.
@@ -52,11 +52,11 @@ commit → CI (mvn test 658) → package+release em single job (sem perda de art
 ## Artefatos
 
 ```text
-kof-0.2.0-beta-linux-x86_64.tar.gz
-kof-0.2.0-beta-windows-x86_64.zip
-kof-0.2.0-beta-macos-x86_64.tar.gz
-kof-0.2.0-beta-linux-riscv64.tar.gz   # placeholder
-kof-0.2.0-beta-linux-aarch64.tar.gz   # placeholder
+kof-0.2.6-beta-linux-x86_64.tar.gz
+kof-0.2.6-beta-windows-x86_64.zip
+kof-0.2.6-beta-macos-x86_64.tar.gz
+kof-0.2.6-beta-linux-riscv64.tar.gz   # placeholder
+kof-0.2.6-beta-linux-aarch64.tar.gz   # placeholder
 SHA256SUMS
 lib/kof.jar + kof-cli jars
 ```
@@ -73,7 +73,7 @@ JDK embutido (Temurin 21, Tooling API Level 21).
 
 ## Tags
 
-- Tags seguem `kof-<versão>` (ex.: `kof-0.2.0-beta`).
+- Tags seguem `kof-<versão>` (ex.: `kof-0.2.6-beta`).
 - O commit de bump usa `[skip ci]` para não re-disparar a pipeline.
 
 ## Regras importantes

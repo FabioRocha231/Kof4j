@@ -1,6 +1,6 @@
 # Idioms — Collections
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta (27 Aug 2026)
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (30 Aug 2026)
 
 ## What it is
 
@@ -8,7 +8,7 @@
 Disponível em JVM (ArrayList), Native (implementação própria com free-list GC) e JS (Array) com a mesma API.
 `Map<K,V>` e `Set<T>` existem desde 0.1.0 nos 3 targets (JVM HashMap/HashSet, Native asm próprio, JS Map/Set).
 
-## API real (verificada no compilador — 0.2.0-beta)
+## API real (verificada no compilador — 0.2.6-beta)
 
 ```kof
 var l = listOf(1, 2, 3, 4)
@@ -22,7 +22,7 @@ var r = l.remove(1)
 l.clear()
 var vazio = listOf<Int>()
 
-// Higher-order (0.2.0-beta, 3 targets)
+// Higher-order (0.2.6-beta, 3 targets)
 var dobrados = l.map((x: Int) -> x * 2)
 var pares = l.filter((x: Int) -> x % 2 == 0)
 var soma = l.reduce((a: Int, b: Int) -> a + b, 0)
@@ -77,7 +77,7 @@ class Registry {
 }
 ```
 
-## GOOD — transformação declarativa (0.2.0-beta)
+## GOOD — transformação declarativa (0.2.6-beta)
 
 ```kof
 var nomes = users.map((u: User) -> u.name)

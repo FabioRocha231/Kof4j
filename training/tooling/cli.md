@@ -3,7 +3,7 @@
 Fatos sobre a CLI oficial do Kof. Use para responder perguntas sobre
 comandos, tooling e editor support.
 
-**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests
+**Version:** 0.2.6-beta (30 Aug 2026) — 658 tests
 
 ## Comandos oficiais
 
@@ -21,7 +21,7 @@ comandos, tooling e editor support.
 | `kof init <nome>` | Inicializa projeto (planned P5) |
 | `kof info [--json]` | Relatório do ambiente (inclui native.risc/arm, kofc) |
 | `kof lsp` | Language Server (stdio, LSP 3.x) — hover/completion + .ks preprocess |
-| `kof version` | Versão da plataforma (0.2.0-beta) |
+| `kof version` | Versão da plataforma (0.2.6-beta) |
 | `kof bench [...]` | Benchmark harness com baselines |
 | `kof debug <file.kf>` | DAP MVP no JVM |
 
@@ -74,7 +74,7 @@ kof c app.c
 
 ## `kof info`
 
-Informa: versão do Kof (0.2.0-beta), versão do compiler/runtime/stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
+Informa: versão do Kof (0.2.6-beta), versão do compiler/runtime/stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
 JVM, targets disponíveis (jvm, native, native.risc, native.arm, js, kofc) e localização da instalação.
 Legível por humanos; `--json` para formato estruturado.
 

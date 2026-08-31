@@ -2,12 +2,12 @@
 
 Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86_64, riscv64, aarch64) and KofJS (ES Modules), plus KofScript and KofC.
 
-**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests (650 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
+**Version:** 0.2.6-beta (30 Aug 2026) — 658 tests (650 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
 
 ## Key Characteristics
 
 - **Compiled** — the compiler emits JVM bytecode (via ASM), a native ELF binary (x86_64/riscv64/aarch64), or ES Modules; there is no interpreter
-- **Statically typed** — type errors caught at compile time; null safety `String?` + narrowing `if (x != null)` since 0.2.0-beta
+- **Statically typed** — type errors caught at compile time; null safety `String?` + narrowing `if (x != null)` since 0.2.6-beta
 - **Multi-target** — same code runs on JVM, Native, JS, Native.risc, Native.arm, plus KofScript (JIT in-memory) and KofC (C subset → native)
 - **Intent-oriented** — not a formal paradigm, but object orientation taken to
   its extreme: code expresses *what* should happen; the platform (language +
@@ -44,7 +44,7 @@ Kof IR (backend-agnostic, KofOperation)
  * placeholder via riscv64-linux-gnu-as/ld + qemu
 ```
 
-## Current Features (0.2.0-beta)
+## Current Features (0.2.6-beta)
 
 | Feature | JVM | Native | JS | Notes |
 |---------|-----|--------|----|-------|
@@ -52,14 +52,14 @@ Kof IR (backend-agnostic, KofOperation)
 | Constructors (`constructor(...)`, primary `class X(...)`) | ✅ | ✅ | ✅ | desde 0.0.5 |
 | Functions (all forms, no `fun`, expression body) | ✅ | ✅ | ✅ | |
 | Enums (`enum Color { Red }` + values/valueOf/name + exhaustive switch SEM031) | ✅ | ✅ | ✅ | 3 targets |
-| Lambdas com captura mutável (Box0) | ✅ | ✅ | ✅ | 0.2.0-beta |
+| Lambdas com captura mutável (Box0) | ✅ | ✅ | ✅ | 0.2.6-beta |
 | If-expressions `var x = if (c) a else b` | ✅ | ✅ | ✅ | |
 | `List<T>` + `listOf` + `map/filter/reduce` | ✅ | ✅ | ✅ | higher-order 27/08 |
 | `Map<K,V>` + `mapOf` (put/get/remove/contains/size/keys/values/clear/isEmpty) | ✅ | ✅ | ✅ | desde 0.1.0 |
 | `Set<T>` + `setOf` (add/contains/remove/size/clear/isEmpty) | ✅ | ✅ | ✅ | desde 0.1.0 |
 | `Box<T>` generics com `T` primitivo | ✅ | ✅ | ✅ | fix substituteTypeVariable 25/08 |
-| Null safety `String?` / `Int?` + narrowing `if (x != null)` | ✅ | ✅ | ✅ | 0.2.0-beta |
-| Pattern matching `case String s` + `instanceof`/`as` | ✅ | ✅ | ✅ | 0.2.0-beta |
+| Null safety `String?` / `Int?` + narrowing `if (x != null)` | ✅ | ✅ | ✅ | 0.2.6-beta |
+| Pattern matching `case String s` + `instanceof`/`as` | ✅ | ✅ | ✅ | 0.2.6-beta |
 | Record destructuring `case Point(x, y)` | ✅ | ✅ | ✅ | Parser fieldVars |
 | Concorrência: `spawn` / `Handle<T>` / `await` | ✅ | CONC001 | ✅ | virtual threads |
 | Strings (`+`, `==`, indexOf, trim, split, ...) | ✅ | ✅ | ✅ | |
@@ -80,7 +80,7 @@ Kof IR (backend-agnostic, KofOperation)
 | KofScript `let` top-level + repl --watch --inspect | ✅ | ✅ | ✅ | KofScriptGlobals |
 | KofC C subset → ELF x86_64 | — | ✅ | — | nativo-only |
 
-## Planned / Unavailable (0.2.0-beta)
+## Planned / Unavailable (0.2.6-beta)
 
 | Feature | Status |
 |---------|--------|

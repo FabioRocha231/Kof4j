@@ -71,7 +71,7 @@ try {
   captures (no type dispatch between multiple catches).
 - **finally**: always executed (normal path, caught path, propagation).
 
-## Limitations (0.2.0-beta)
+## Limitations (0.2.6-beta)
 
 - No stack traces in Native
 - In Native, multiple catches on one try: the first one captures

@@ -10,12 +10,12 @@ Quando uma feature ainda não existe, o código precisa de um desvio.
 O desvio é legítimo — mas **não é idiom**. O corpus deve marcar
 explicitamente `WORKAROUND` e `NOT IDIOMATIC`.
 
-## Workarounds atuais (0.2.0-beta, 27 Aug 2026 — 658 testes)
+## Workarounds atuais (0.2.6-beta, 30 Aug 2026 — 658 testes)
 
 ### 1. Null safety parcial
 
 ```kof
-// ✅ 0.2.0-beta — String? / Int? implementado com narrowing
+// ✅ 0.2.6-beta — String? / Int? implementado com narrowing
 String? s = null
 if (s != null) {
     println(s.length)   // OK — narrowing via isAssignable
@@ -40,7 +40,7 @@ if (s != null) {
 // JVM e JS: Float/Double OK
 ```
 
-### 3. Construtor com argumentos — RESOLVIDO (0.2.0-beta)
+### 3. Construtor com argumentos — RESOLVIDO (0.2.6-beta)
 
 ```kof
 // ✅ Primary constructor é a forma idiomática desde 0.0.5
@@ -51,7 +51,7 @@ var u = User("Mel", 30)   // sem new também OK
 
 Não use `// WORKAROUND` para construtor — é feature estável.
 
-### 4. Captura em lambdas — RESOLVIDO (0.2.0-beta)
+### 4. Captura em lambdas — RESOLVIDO (0.2.6-beta)
 
 ```kof
 var offset = 10
@@ -99,7 +99,7 @@ Não implemente bounds check manual — a stdlib já faz.
 
 Quando a feature é implementada, o exemplo oficial é atualizado e o rótulo
 removido. O histórico conceitual é preservado no CHANGELOG, não no corpus.
-Em 0.2.0-beta foram removidos: captura lambda, imports a.b.C, List.get, primary constructor.
+Em 0.2.6-beta foram removidos: captura lambda, imports a.b.C, List.get, primary constructor.
 
 ## Exceptions
 

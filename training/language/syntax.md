@@ -1,6 +1,6 @@
 # Kof Syntax Reference
 
-**Version:** 0.2.0-beta (27 Aug 2026)
+**Version:** 0.2.6-beta (30 Aug 2026)
 
 ## Declarations
 
@@ -9,7 +9,7 @@
 package com.example
 ```
 
-### Import (0.2.0-beta fix: file-specific)
+### Import (0.2.6-beta fix: file-specific)
 
 ```kof
 import a.b.C          // arquivo a/b/C.kf — fix 27/08 CompilerDriver expandKofImports
@@ -74,11 +74,11 @@ interface Speaker {
 var x = 10
 val y = 20
 String name = "Mel"
-String? maybe = null        // 0.2.0-beta nullable
+String? maybe = null        // 0.2.6-beta nullable
 Box<Int> b = Box(42)        // generics com primitivo
 ```
 
-### Nullable (0.2.0-beta)
+### Nullable (0.2.6-beta)
 
 ```kof
 String? s = null
@@ -88,14 +88,14 @@ if (s != null) {
 String t = s            // erro SEM014 se sem check
 ```
 
-### KofScript top-level let (0.2.0-beta)
+### KofScript top-level let (0.2.6-beta)
 ```kof
 let x = 5
 const y: Int = 10
 // → KofScriptGlobals static fields + rewriting
 ```
 
-### Pattern matching (0.2.0-beta)
+### Pattern matching (0.2.6-beta)
 
 ```kof
 switch (obj) {
@@ -121,9 +121,9 @@ val r = spawn expr();    // Handle<T> typed handle
 val v = await r;         // blocks; T (primitives unboxed)
 ```
 
-Gaps: Native CONC001 · JS OK (desde 0.2.0-beta) · Android AND001.
+Gaps: Native CONC001 · JS OK (desde 0.2.6-beta) · Android AND001.
 
-### kof.http (0.2.0-beta)
+### kof.http (0.2.6-beta)
 
 ```kof
 var html = http.get("https://example.com")

@@ -1,6 +1,6 @@
 # Kof Target Reference
 
-**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests
+**Version:** 0.2.6-beta (30 Aug 2026) — 658 tests
 
 ## JVM Target
 
@@ -43,7 +43,7 @@ kof build --target native.risc   # riscv64 ELF via riscv64-linux-gnu-as/ld + qem
 kof build --target native.arm    # aarch64 via aarch64-linux-gnu-as/ld + qemu
 ```
 
-- Target separation `Target.NATIVE_RISCV64` / `NATIVE_AARCH64` feito em 0.2.0-beta
+- Target separation `Target.NATIVE_RISCV64` / `NATIVE_AARCH64` feito em 0.2.6-beta
 - Codegen ainda placeholder (emite x86_64 header com riscv/arm ELF placeholder); execução via `qemu-riscv64`/`qemu-aarch64` com skip condicional se toolchain ausente
 - `isNative()` true para os três; `nativeArch()` retorna `x86_64`/`riscv64`/`aarch64`
 
