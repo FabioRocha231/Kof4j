@@ -1,7 +1,7 @@
 # Estado Atual do Projeto Kof
 
 **Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
+**Versão:** 0.2.6-beta
 
 ---
 
@@ -19,7 +19,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Plataforma 0.0.7-0.1.0 (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol com `kof_db_mysql_scramble`), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable` `CompilerDriver.java:3972`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
 
-**0.2.0-beta (27/08)**: Targets separados `native`/`native.riscv64`/`native.aarch64` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, `release.yml` single job + JDK 21, Windows SIGPIPE; VERSION 0.2.0-beta; `mvn test` 658 (650+8+5), golden 16/16, integration 9/9.
+**0.2.6-beta (27/08)**: Targets separados `native`/`native.riscv64`/`native.aarch64` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, `release.yml` single job + JDK 21, Windows SIGPIPE; VERSION 0.2.6-beta; `mvn test` 658 (650+8+5), golden 16/16, integration 9/9.
 
 ---
 
@@ -285,7 +285,7 @@ handles no-ops.
 
 ---
 
-## O que NÃO está implementado (residual 0.2.0-beta)
+## O que NÃO está implementado (residual 0.2.6-beta)
 
 ### Language Features
 - Null safety completo (`String?` básico ✅ 27/08, checks avançados planned)
@@ -305,8 +305,8 @@ handles no-ops.
 
 ### Runtime
 - GC automático Native — free-list `kof_free_head` + `kof_gc_collect` implementados 27/08 (reuso `mmap`); mark-sweep pendente (`munmap` fallback remanescente)
-- JSON Float/Double: JSN001 (diagnostic claro)
-- Ponto flutuante Native: sem SSE real (FLT001)
+- ~~JSON Float/Double: JSN001~~ — ✅ fechado 31/08 (encode/decode/arrays FP XMM + parser fracionário/expoente)
+- ~~Ponto flutuante Native: sem SSE real (FLT001)~~ — ✅ fechado: aritmética FP é XMM; JSON FP fechado no JSN001
 
 ### Security (kof.security — docs/security.md)
 - v1 + G9 implementado (3 targets).
@@ -326,7 +326,7 @@ handles no-ops.
 
 ---
 
-## Arquitetura (0.2.0-beta — 6 targets)
+## Arquitetura (0.2.6-beta — 6 targets)
 
 ```text
 Source (.kf)
@@ -353,7 +353,7 @@ Source (.kf)
 | kof-cli | Funcional (build, run, serve, check, info, lsp, install) |
 | kof-runtime | Estrutura criada (runtime nativa embutida no NativeBackend; KofJson no JVM) |
 
-| Métrica | Valor (0.2.0-beta 27/08) |
+| Métrica | Valor (0.2.6-beta 27/08) |
 |---------|--------------------------|
 | Testes JUnit | 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip |
 | E2E JVM | 29 |

@@ -478,13 +478,13 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
 2. `spawn` no Native: CONC001 (gap documentado) — `spawn`/`await` OK em JVM/JS
-3. JSON de objetos/records no Native: JSN002 (gap documentado)
-4. JSON Float/Double: JSN001 (gap documentado)
-5. ~~JSON decode de arrays (`Int[]`)~~ — ✅ JSN003 fechado: decoders nativos para Int[]/Long[]/Bool[]/String[]; Float/Double[] segue sob o JSN001 (FP sem SSE)
+3. ~~JSON de objetos/records no Native: JSN002~~ — ✅ fechado (composição compile-time)
+4. ~~JSON Float/Double: JSN001~~ — ✅ fechado 31/08 (parser FP completo: fração+expoente, arrays Double[])
+5. ~~JSON decode de arrays~~ — ✅ JSN003 fechado: Int[]/Long[]/Bool[]/String[]; JSN001 fechou Double[]/Float[] (31/08)
 6. ~~Lambdas sem captura~~ — ✅ captura implementada (mutable via box `BoxN`; `Lambda0`/`Box0`)
 7. ~~Generics `Box<T>` com println nativo~~ — ✅ 25/08 `Box<Int>`/`T` substituído + `kof_int_to_string`
 8. ~~`SEM025` falso-positivo em `hashCode/equals/toString`~~ — ✅ `isObjectMethod` em 25/08
-9. `await`/join: ✅ JVM/JS; Native CONC001
+9. `await`/join: ✅ JVM/JS (stmt + spawn-expr); Native CONC001
 10. `kof fmt`: planned (P5)
 11. ~~Map/Set~~ — ✅ `List.map/filter/reduce` + `Map/Set` JVM/Native/JS (26/08)
 12. Pattern matching: ✅ `switch (x) { case String s: ... }` + `case Point(x,y)` em `Parser/Semantic/CompilerDriver` + `Native rbx→rcx` + `JS typeof` (27/08 `Point(x,y)` `JVM:30 Native:30 JS:30` `KofPatternMatchingTest 10/10` + `KofWebE2ETest 9/9`)
@@ -495,8 +495,8 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS (`Java HttpClient`), Native HTTP002
 18. MySQL/MariaDB no Native: wire protocol em progresso (auth scramble SHA-1 feito; falta handshake completo, query e prepared statements) (P3)
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
-20. ~~Ponto flutuante no Native~~ — FLT001/JSN001 diagnosticados em compile-time; SSE real + dtoa são trabalho futuro do backend.
-21. Ponto flutuante no Native: sem aritmética SSE real (bits vivem como inteiros na pilha); operações FP viram FLT001/JSN001 em compile-time. Fechar exige backend SSE + formatação double→string.
+20. ~~Ponto flutuante no Native~~ — ✅ FLT001 fechado: FP é XMM real (`vcvtsi2sd`, `mulsd`); dtoa via snprintf alinhado; `kof_string_to_double` parse completo (fração+expoente).
+21. ~~idem~~
 22. `KofCcompiler` riscv64/aarch64 placeholder (target separation feito `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm`, codegen ainda x86_64 placeholder, `qemu` skip)
 23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
 
