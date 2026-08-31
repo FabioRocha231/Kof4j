@@ -800,6 +800,7 @@ class SemanticAnalyzer {
                         && !KofScheduler.isSchedulerNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
+                        && !KofUi.isRouterNamespace(ie.name())
                         && !"Theme".equals(ie.name())
                         && !isBuiltinTypeName(ie.name())
                         && !knownClasses.containsKey(ie.name())) {

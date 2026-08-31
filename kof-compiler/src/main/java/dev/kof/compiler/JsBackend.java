@@ -4900,13 +4900,17 @@ class JsBackend implements Backend {
                 const root = kofUiRouterState.routes[name];
                 if (root === undefined || root === null) return false;
                 const prev = kofUiRouterState.current;
-                if (prev !== null && prev !== name) {
-                    const prevComp = kofUiRouterState.routes[prev];
-                    if (prevComp !== undefined && prevComp !== null) {
-                        kofUiComponentUnmount(prevComp);
-                        const prevEl = kofUiComponents.get(prevComp);
-                        if (prevEl && prevEl.el && prevEl.el.parentNode) {
-                            prevEl.el.parentNode.removeChild(prevEl.el);
+                // desmonta qualquer rota montada que não seja o destino
+                // (cobre o caso do bind inicial, que monta sem registrar current)
+                for (const key of Object.keys(kofUiRouterState.routes)) {
+                    if (key === name) continue;
+                    const rc = kofUiRouterState.routes[key];
+                    const rn = kofUiComponents.get(rc);
+                    if (rn && rn.mounted) {
+                        kofUiComponentUnmount(rc);
+                        const rel = kofUiComponents.get(rc);
+                        if (rel && rel.el && rel.el.parentNode) {
+                            rel.el.parentNode.removeChild(rel.el);
                         }
                     }
                 }
@@ -4928,33 +4932,20 @@ class JsBackend implements Backend {
 
             function host() { return kofUiRouterHost(); }
 
-            export function kofUiRouterGo(name, param) {
+            export function kofUiRouterGo1(name) {
+                return kofUiRouterShow(name, null, true);
+            }
+
+            export function kofUiRouterGo2(name, param) {
                 return kofUiRouterShow(name, param, true);
             }
 
-            export function kofUiRouterReplace(name, param) {
-                // substitui a entrada atual (sem empilhar histórico)
-                const root = kofUiRouterState.routes[name];
-                if (root === undefined || root === null) return false;
-                const prev = kofUiRouterState.current;
-                if (prev !== null && prev !== name) {
-                    const prevComp = kofUiRouterState.routes[prev];
-                    if (prevComp !== undefined) {
-                        kofUiComponentUnmount(prevComp);
-                        const prevEl = kofUiComponents.get(prevComp);
-                        if (prevEl && prevEl.el && prevEl.el.parentNode) {
-                            prevEl.el.parentNode.removeChild(prevEl.el);
-                        }
-                    }
-                }
-                kofUiRouterState.current = name;
-                kofUiRouterState.param = param;
-                const comp = kofUiComponents.get(root);
-                if (comp && kofUiRouterHost()) {
-                    if (comp.el && !comp.el.parentNode) kofUiRouterHost().appendChild(comp.el);
-                    kofUiComponentMount(root);
-                }
-                return true;
+            export function kofUiRouterReplace1(name) {
+                return kofUiRouterNavigate(name, null);
+            }
+
+            export function kofUiRouterReplace2(name, param) {
+                return kofUiRouterNavigate(name, param);
             }
 
             export function kofUiRouterBack() {

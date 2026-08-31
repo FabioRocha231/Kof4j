@@ -152,13 +152,11 @@ final class KofUi {
                 case "route" -> argCount == 2
                         ? new UiCall("kof_ui_route_register", Type.PrimitiveType.VOID, List.of(STR, INT)) : null;
                 case "go" -> argCount == 1
-                        ? new UiCall("kof_ui_router_go1", BOOL, List.of(STR)) : null;
-                case "goParam" -> argCount == 2
-                        ? new UiCall("kof_ui_router_go2", BOOL, List.of(STR, STR)) : null;
+                        ? new UiCall("kof_ui_router_go1", BOOL, List.of(STR))
+                        : argCount == 2 ? new UiCall("kof_ui_router_go2", BOOL, List.of(STR, STR)) : null;
                 case "replace" -> argCount == 1
-                        ? new UiCall("kof_ui_router_replace1", BOOL, List.of(STR)) : null;
-                case "replaceParam" -> argCount == 2
-                        ? new UiCall("kof_ui_router_replace2", BOOL, List.of(STR, STR)) : null;
+                        ? new UiCall("kof_ui_router_replace1", BOOL, List.of(STR))
+                        : argCount == 2 ? new UiCall("kof_ui_router_replace2", BOOL, List.of(STR, STR)) : null;
                 case "back" -> argCount == 0
                         ? new UiCall("kof_ui_router_back", BOOL, List.of()) : null;
                 case "forward" -> argCount == 0
