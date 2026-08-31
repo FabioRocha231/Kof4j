@@ -86,7 +86,7 @@ if (resultado != null) {
 - 🚧 Flow analysis mais profundo e operadores `?.` / `?:` ainda planejados
 - 🚧 Codegen JVM/JS é erasure (nullable vira String no bytecode); `length()` após guard ainda passa pelo type checker mas runtime é String normal
 
-Antes de 0.2.0, `null` era tratado como qualquer valor Java. Agora `?` é a forma oficial de documentar e checar nulabilidade (658 testes).
+Antes de 0.2.0, `null` era tratado como qualquer valor Java. Agora `?` é a forma oficial de documentar e checar nulabilidade (736 testes).
 
 ## Próximo passo
 

@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 658 testes (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional
+mvn test             → 736 testes (723 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -384,48 +384,80 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (658 declarados = 650 kof-compiler +8 kof-script +5 kof-c-compiler — 1 skip; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4 em 27/08)
+## Testes (736 declarados = 723 kof-compiler +8 kof-script +5 kof-c-compiler — 1 skip condicional; medição real 31/08 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
 | CompilerDriverTest | 190 | compilação, semântica, fases, isolamento |
-| OptimizerTest | 21 | passes de otimização da IR |
 | NativeE2ETest | 50 | execução real de binários nativos |
 | KofJsE2ETest | 35 | execução real JS (GraalJS) |
 | JvmE2ETest | 29 | execução real de bytecode JVM |
+| KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais |
+| OptimizerTest | 21 | passes de otimização da IR |
+| KofOrmE2ETest | 16 | kof.orm: entity, CRUD, where, migrate, unique, MongoDB |
 | IoE2ETest | 15 | kof.io multiplatform |
-| UiE2ETest | 14 | kof.ui: widgets, estilo, bindings, múltiplas janelas |
+| ComponentCoreE2ETest | 14 | kof.ui Component: view/onMount/onDispose |
+| CoreRegressionE2ETest | 14 | regressões de uso real (BOM, toInt, ARITH001...) |
 | JsonE2ETest | 14 | JSON JVM + Native |
-| CoreRegressionE2ETest | 14 | regressões de feedback de uso real (BOM, toInt, ARITH001...) |
+| UiE2ETest | 14 | kof.ui: widgets, estilo, bindings, múltiplas janelas |
+| AndroidInteropE2ETest | 11 | android: interop Java (external classpath) |
+| KofConfigE2ETest | 11 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
+| KofWebWsE2ETest | 11 | WebSocket RFC 6455: handshake + frame + lifecycle |
+| StructuredTestE2ETest | 11 | test "nome" {} nos 3 targets + process.exit |
 | BackendParityTest | 10 | paridade JVM/Native/JS |
-| KofOrmE2ETest | 10 | kof.orm: entity, CRUD, where, migrate, unique, PK não-numérica, MongoDB E2E, ORM001/ORM002 |
-| KofLogE2ETest | 10 | kof.log JVM: níveis, stderr, off, JSON estruturado, correlation ID |
-| NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
+| KofLogE2ETest | 10 | kof.log JVM: níveis, stderr, off, JSON, correlation |
+| KofPatternMatchingTest | 10 | switch case String s / Point(x,y) 3 targets |
+| KofWebE2ETest | 10 | stack web nativa (web.app, rotas, JSON, middleware) |
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
-| KofCacheE2ETest | 5 | kof.cache: get/set/ttl/expiry/delete/clear x3 targets |
-| KofWebE2ETest | 9 | stack web nativa (web.app, rotas, JSON, middleware) |
 | KofDbE2ETest | 8 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
-| KofConfigE2ETest | 11 | kof.config: env, arquivo, profiles, precedência, typed, CONF001 |
-| KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais (JVM/Native/JS) |
-| JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
+| NativeConfigE2ETest | 8 | kof.config Native (asm): precedência, typed, comentários |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
-| IdiomaticCoreE2ETest | 6 | field initializers, \\uXXXX, listOf<T>() |
+| JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
+| KofAwaitTest | 7 | spawn/await Handle<T> tipado (JVM) |
+| KofWebSseE2ETest | 7 | SSE: sse.send/event/close (sockets reais) |
+| KofWsFrameTest | 7 | frame codec RFC 6455: máscara, limites, ping/pong |
+| NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
+| IdiomaticCoreE2ETest | 6 | field initializers, \uXXXX, listOf<T>() |
 | AssertE2ETest | 5 | assert JVM + Native |
-| StructuredTestE2ETest | 11 | test "nome" {} nos 3 targets + process.exit + descoberta |
+| FloatingPointGapE2ETest | 5 | FP XMM: encode/decode/arrays (FLT001) |
+| KofCacheE2ETest | 5 | suíte E2E/compilação |
+| KofConcurrency2Test | 5 | spawn statement/expr, selectAny, gaps CONC |
+| KofHigherOrderTest | 5 | funções de ordem superior (map/filter/reduce) |
+| KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
+| KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/JS) |
+| KofWebTlsTest | 5 | TLS/HTTPS: listenSecure + kof.http sobre TLS |
+| PackagesE2ETest | 5 | pacotes/módulos multi-arquivo (import a.b.C) |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
+| KofEnumSwitchTest | 4 | switch exaustivo sobre enum + SEM031 |
+| KofEnumTest | 4 | enum: values/valueOf/name, SEM030, mapeamento JVM |
+| KofHttpE2ETest | 4 | kof.http client (sockets reais, JVM + JS) |
+| KofMqE2ETest | 4 | kof.mq publish/subscribe/queue (JVM+JS, MQ001) |
+| KofWebStreamE2ETest | 4 | WebSocket/SSE end-to-end (persistent-conn) |
 | LambdaE2ETest | 4 | lambdas + if-expr |
+| RouterE2ETest | 4 | kof.ui Router Fase 7: go/replace/back/forward |
+| SpawnE2ETest | 4 | spawn (JVM virtual threads) + join implícito |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
-| WindowE2ETest | 3 | Window: size, close-to-exit |
-| SpawnE2ETest | 3 | spawn (JVM) + CONC001 |
+| ConfigGenTest | 3 | kof config gen: template kof.config do código |
+| KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
+| KofMapSetTest | 3 | Map/Set 3 targets (asm próprio no Native) |
+| KofObservabilityTest | 3 | health/metrics/requestId (JVM/Native/JS) |
+| KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
+| KofValidationTest | 3 | 13 predicados de validação (3 targets) |
 | TetrisEasterEggTest | 3 | registro easter egg oculto |
-| IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
+| TuringCompleteE2ETest | 3 | completude de Turing (loops/while/recursão) |
+| WindowE2ETest | 3 | Window: size, close-to-exit |
 | DebugInfoE2ETest | 2 | SourceFile + LineNumberTable (JVM) |
-| NativeDebugTest* | 5 | harnesses de debug |
-| **Total** | **581 declarados** (+1 skip condicional; conferir total no CI a cada release) | |
-
----
-
+| IRStatisticsTest | 2 | observer de IR + estatísticas de otimização |
+| NativeDebugTest | 1 | harnesses de debug nativo |
+| NativeDebugTest2 | 1 | harnesses de debug nativo (2) |
+| NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
+| NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
+| NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
+| **Total kof-compiler** | **723** | |
+| kof-script | 8 | KofScriptGlobals / repl / --watch |
+| kof-c-compiler | 5 | KofC C subset → ELF |
+| **Total** | **736** (+1 skip condicional; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da

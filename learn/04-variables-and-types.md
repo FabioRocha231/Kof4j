@@ -166,7 +166,7 @@ String? s = null     // nullable básico
 if (s != null) { println(s.length()) }
 ```
 
-## Status atual (0.2.6-beta, 658 testes)
+## Status atual (0.2.6-beta, 736 testes)
 
 ✅ `var` e `val` funcionam
 ✅ `let`/`const` (alias → `KofScriptGlobals` no KofScript)

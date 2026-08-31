@@ -1,6 +1,6 @@
 # 03 — Fundamentos da Linguagem
 
-> **Kof 0.2.6-beta — `intention->Kof->frontend->IR->backend->runtime` — 658 testes**
+> **Kof 0.2.6-beta — `intention->Kof->frontend->IR->backend->runtime` — 736 testes**
 
 ## O que você vai aprender
 

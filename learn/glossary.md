@@ -55,7 +55,7 @@ KofJS (`kof run --target=js`) sem depender de Node.js.
 ## K
 
 **Kof IR** — representação intermediária única da Kof: o mesmo frontend gera a
-IR e os backends (JVM, Native x86-64/riscv64/aarch64, KofJS, KofC) a consomem — `intention->Kof->frontend->IR->backend->runtime` (0.2.6-beta, 658 testes, Target separation).
+IR e os backends (JVM, Native x86-64/riscv64/aarch64, KofJS, KofC) a consomem — `intention->Kof->frontend->IR->backend->runtime` (0.2.6-beta, 736 testes, Target separation).
 
 **KofFormatter** — formatter do `kof fmt` (31/08): formatação via parser real
 (`KofFormatter`), idempotente.

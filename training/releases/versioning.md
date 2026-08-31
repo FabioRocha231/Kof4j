@@ -34,32 +34,36 @@ MAJOR.MINOR.PATCH[-suffix]
   pacote, GitHub Release, changelog.
 - Não editar versões manualmente em vários arquivos.
 
-## Release automático (CI/CD) — single job (fix 27/08)
+ ## Release automático (CI/CD) — 2 jobs (test-and-bump → package-and-release)
 
-Cada commit na `main`:
+ Cada commit na `main`:
 
-```text
-commit → CI (mvn test 658) → package+release em single job (sem perda de artifact) → GitHub Release
-```
+ ```text
+ commit → CI (gate) → test-and-bump (mvn package + golden + integration + bump + push do commit, exporta bump_sha)
+       → package-and-release (checkout do COMMIT DE BUMP via ref: bump_sha; matriz 3 runners; sanity check VERSION; package --jdk; valida artefato; GitHub Release por plataforma)
+ ```
 
-- Fix 27/08: `package+release` agora em **single job** (evita artifact loss entre jobs separados).
-- A `main` nunca aponta para um estado que não compila.
-- O release só acontece se `mvn clean test` e `mvn clean package` passarem.
-- Workflow de PR: build + testes + verificações estáticas.
-- Workflow de push na main: testes, bump (próxima versão Beta), empacotamento
-  multiplataforma (linux-x86_64, windows-x86_64, macos-x86_64 + risc/arm placeholder), validação de artefato, changelog, GitHub Release com JDK 21 no release job.
+ - A `main` nunca aponta para um estado que não compila.
+ - O release só acontece se `mvn clean package`, `tests/run-golden.sh` e
+   `tests/run-integration.sh` passarem.
+ - O job `package-and-release` **checkout o commit de bump** (não o do
+   trigger) — sem isso o pacote saíria com a versão anterior; há sanity
+   check que `VERSION` do checkout == versão da release.
+ - Workflow de PR: build + testes + verificações estáticas.
+ - Workflow de push na main: 2 jobs — `test-and-bump` (bump + push +
+   exporta SHA) e `package-and-release` (matriz: linux-x86_64,
+   windows-x86_64, **macos-arm64**), validação de artefato, changelog,
+   GitHub Release por plataforma com JDK 21 embutido.
 
-## Artefatos
+ ## Artefatos
 
-```text
-kof-0.2.6-beta-linux-x86_64.tar.gz
-kof-0.2.6-beta-windows-x86_64.zip
-kof-0.2.6-beta-macos-x86_64.tar.gz
-kof-0.2.6-beta-linux-riscv64.tar.gz   # placeholder
-kof-0.2.6-beta-linux-aarch64.tar.gz   # placeholder
-SHA256SUMS
-lib/kof.jar + kof-cli jars
-```
+ ```text
+ kof-0.2.6-beta-linux-x86_64.tar.gz
+ kof-0.2.6-beta-windows-x86_64.zip
+ kof-0.2.6-beta-macos-arm64.tar.gz
+ kof-cli-0.2.6-beta.jar
+ SHA256SUMS
+ ```
 
 Cada pacote contém compiler, CLI, runtime, stdlib, tooling, editor support e
 JDK embutido (Temurin 21, Tooling API Level 21).
@@ -81,4 +85,6 @@ JDK embutido (Temurin 21, Tooling API Level 21).
 - Em Beta: todo commit na main gera a próxima versão Beta.
 - Verificação de consistência: CI compara `VERSION`, `pom.xml` e o resource
   empacotado (`mvn package` valida).
-- Single job para package+release — não separar em jobs com upload/download artifacts.
+- O job `package-and-release` faz checkout do **commit de bump** (via
+  `ref: bump_sha`) — nunca do commit trigger, para o pacote carregar a
+  versão nova; há sanity check de `VERSION` antes do empacotamento.

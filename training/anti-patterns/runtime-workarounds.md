@@ -10,7 +10,7 @@ Quando uma feature ainda não existe, o código precisa de um desvio.
 O desvio é legítimo — mas **não é idiom**. O corpus deve marcar
 explicitamente `WORKAROUND` e `NOT IDIOMATIC`.
 
-## Workarounds atuais (0.2.6-beta, 31 Aug 2026 — 658 testes)
+## Workarounds atuais (0.2.6-beta, 31 Aug 2026 — 736 testes)
 
 ### 1. Null safety parcial
 

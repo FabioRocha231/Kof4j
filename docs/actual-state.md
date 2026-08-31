@@ -19,7 +19,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Plataforma 0.0.7-0.1.0 (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol com `kof_db_mysql_scramble`), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable` `CompilerDriver.java:3972`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
 
-**0.2.6-beta (27/08)**: Targets separados `native`/`native.risc`/`native.arm` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, Windows SIGPIPE; VERSION 0.2.6-beta; `mvn test` 658 (650+8+5), golden 16/16, integration 9/9.
+**0.2.6-beta (27/08)**: Targets separados `native`/`native.risc`/`native.arm` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, Windows SIGPIPE; VERSION 0.2.6-beta; `mvn test` 736 (723+8+5), golden 16/16, integration 9/9.
 
 **0.2.6-beta (30-31/08)**: Native `spawn`/`await` real (`pthread_create` + trampoline + `pthread_join` + allocator thread-safe com futex — CONC001 fechado); FP real em XMM (`vcvtsi2sd`/`mulsd`, dtoa via `snprintf` — FLT001); JSON objetos/records + arrays no Native (Int/Long/Bool/String/Double — JSN001/JSN002/JSN003); SQLite nativo via `.so` direto; MySQL wire protocol em progresso (auth scramble SHA-1 + parse `user:pass@`); JVM `WebSocket` (`app.ws`, handshake RFC 6455 + frame codec com máscara) e `SSE` (`sse.send/event/close`) via `kof.web`; `kof.http` retry/circuit breaker JVM+JS (`KOF_HTTP_RETRIES`/`KOF_HTTP_TRIPS`/`KOF_HTTP_FAILURES`/`KOF_HTTP_OPEN_UNTIL`, janela 30s, fail-fast); `kof.cache` corrigido no Native (clobber de registradores `%rax`/`%rdi`); UI Fase 7 Router (`go/replace/back/forward/param/current/depth` — real em JS, no-op JVM); `KofRuntime.close` + descritores ws; `kof fmt` e `kof config gen` implementados; pipeline de release 2 jobs (`test-and-bump` → `package-and-release` com sanity de versão) × 3 plataformas.
 
@@ -30,7 +30,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (658 testes: 650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4, `KofCacheE2ETest` 5/5 (x3 targets), `KofWebWsE2ETest` 11/11, `KofWebSseE2ETest` 7/7 |
+| `mvn test` | ✅ PASSA (736 testes: 723 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional; `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4, `KofCacheE2ETest` 5/5 (x3 targets), `KofWebWsE2ETest` 11/11, `KofWebSseE2ETest` 7/7 |
 | `kof build` | ✅ PASSA (`--target jvm|native|native.risc|native.arm|js` [--release]; `android` em Fase 1) |
 | `kof run` | ✅ PASSA (jvm|native|native.risc|native.arm|js) [--release] |
 | `kof serve` | ✅ PASSA (web.app() nativo + API legada handle()) |
@@ -366,7 +366,7 @@ Source (.kf)
 
 | Métrica | Valor (0.2.6-beta 31/08) |
 |---------|--------------------------|
-| Testes JUnit | 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip |
+| Testes JUnit | 736 (723 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) +1 skip |
 | E2E JVM | 29 |
 | E2E Native (x86_64) | 50 |
 | E2E JS (KofJS) | 35 (+ kof.http JS) |

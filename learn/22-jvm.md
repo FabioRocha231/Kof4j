@@ -1,6 +1,6 @@
 # 22 — JVM
 
-> **Kof 0.2.6-beta — 658 testes — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 736 testes — `intention->Kof->frontend->IR->backend->runtime`**
 
 ## O que o compilador gera
 
