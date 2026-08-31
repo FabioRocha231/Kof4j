@@ -5,7 +5,7 @@
 
 > Deltas desde 0.1.0: Targets `native.risc` (riscv64) e `native.arm` (aarch64) separados de `native` x86_64 (toolchain + qemu; codegen ainda x86_64 placeholder); Native free-list (`kof_free_head`) + `kof_gc_collect` (mark-sweep pendente; auto-GC desativado); MySQL wire protocol em progresso (`kof_db_mysql_scramble` + `user:pass@`); pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `List map/filter/reduce` + `Box<T>`; Windows SIGPIPE fix.
 > Deltas 30-31/08: `spawn`/`await` real no Native (pthread + trampoline + join + allocator thread-safe futex — CONC001); FP real em XMM (FLT001); JSON objetos/records + arrays FP no Native (JSN001/JSN002/JSN003); WebSocket/SSE no JVM (`app.ws`/`sse.*`, RFC 6455); `kof.http` retry/circuit JVM+JS (30s window, fail-fast); `kof.cache` 3 targets (fix de clobber de registradores); UI Fase 7 Router (JS real, JVM no-op); SQLite nativo via `.so` direto; `kof fmt` + `kof config gen`.
-> Tabela reflete 0.2.6-beta (31/08) — Build `mvn test` 736 (723+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
+> Tabela reflete 0.2.6-beta (31/08) — Build `mvn test` 741 (728+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -32,7 +32,7 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001) | ✅ sequencial (async real = CONC003) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 5/5 · `SpawnE2ETest` 3/3 |
+| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms) | ✅ sequencial (async real = CONC003) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 10/10 · `SpawnE2ETest` 4/4 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |

@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 736 testes (723 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional
+mvn test             → 741 testes (728 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) + 1 skip condicional
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -265,7 +265,7 @@ spawn {
 
 - JVM: virtual threads; o programa espera as tarefas (join implícito).
 - Native: pthread_create + trampoline + `await`/pthread_join + allocator
-  thread-safe (futex) — ✅ 31/08 (CONC001 fechado).
+  thread-safe (futex) + `done`/`poll`/`cancel`/`cancelled`/`selectAny` — ✅ 31/08 (CONC001 fechado).
 - JS: sequencial (spawn statement/expr cobre; async real = CONC003 parcial).
 - Zero API de plataforma exposta (Thread/Runnable são internos do runtime).
 - Ver: `docs/concurrency.md`.
@@ -384,7 +384,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (736 declarados = 723 kof-compiler +8 kof-script +5 kof-c-compiler — 1 skip condicional; medição real 31/08 (grep @Test)
+## Testes (741 declarados = 728 kof-compiler +8 kof-script +5 kof-c-compiler — 1 skip condicional; medição real 31/08 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -422,7 +422,7 @@ main() { /* ignorado pelo kof test */ }
 | AssertE2ETest | 5 | assert JVM + Native |
 | FloatingPointGapE2ETest | 5 | FP XMM: encode/decode/arrays (FLT001) |
 | KofCacheE2ETest | 5 | suíte E2E/compilação |
-| KofConcurrency2Test | 5 | spawn statement/expr, selectAny, gaps CONC |
+| KofConcurrency2Test | 10 | spawn stmt/expr, selectAny, cancel/cancelled, done/poll, awaitTimeout (JVM/Native/JS) |
 | KofHigherOrderTest | 5 | funções de ordem superior (map/filter/reduce) |
 | KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
 | KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/JS) |
@@ -454,10 +454,10 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
-| **Total kof-compiler** | **723** | |
+| **Total kof-compiler** | **728** | |
 | kof-script | 8 | KofScriptGlobals / repl / --watch |
 | kof-c-compiler | 5 | KofC C subset → ELF |
-| **Total** | **736** (+1 skip condicional; conferir total no CI a cada release) | |
+| **Total** | **741** (+1 skip condicional; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -513,7 +513,8 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ## Bugs Restantes (reais)
 
 1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
-2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito
+2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito + `done`/`poll`/`cancel`/`cancelled`/`selectAny` (cancel cooperativo por TID + selectAny polling 1ms; `SemanticAnalyzer` desambigua `cancel(Handle<T>)→Bool` vs `scheduler.cancel(String)→VOID`)
+   - ⚠️ bug pré-existente SEPARADO (reproduz na tree limpa, sem o feature de CONC001): `spawn→await→spawn` corrompe a pilha/frame da main thread — SIGSEGV no 2º `pthread_create` (retorno viciado), mesmo sem cancel/selectAny. **Gatilho = `pthread_join` na main** (reprodutor mínimo: `spawn t1(); await; spawn t2()`; sem o `join` — ex. `spawn; sleep; spawn` — passa). Alinhamento de pilha já auditado (conforme ABI x86_64) e **descartado** como causa. Reprodutível com `BUG`/`G1`/`M2f`/`G3`. Suspeito: interação `pthread_join`+`kof_alloc`/`pthread_create` no main (possível UAF do bloco do handle).
 3. ~~JSON de objetos/records no Native: JSN002~~ — ✅ fechado (composição compile-time)
 4. ~~JSON Float/Double: JSN001~~ — ✅ fechado 31/08 (parser FP completo: fração+expoente, arrays Double[])
 5. ~~JSON decode de arrays~~ — ✅ JSN003 fechado: Int[]/Long[]/Bool[]/String[]; JSN001 fechou Double[]/Float[] (31/08)
@@ -567,13 +568,47 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 15. `kof fmt` (parser real) + `kof init` + `REPL`
 16. LSP hover/completion/rename + Debugger Native DWARF/JS source maps + VS Code extension
 
-Roadmap: `docs/roadmap.md`; execução: `docs/plan-platform-completion.md`
+## Roadmap — Estado por Fase (31/08)
 
----
+### Concluído — Disponível
 
-## Roadmap de Longo Prazo
+- Compiler foundation — Lexer, Parser, AST, Type system foundation, Semantic analysis, Kof IR
+- JVM backend; Native backend (x86_64); JS backend (GraalJS)
+- classes, records, inheritance, interfaces, constructors (sobrecarga), exceptions, generics, collections, string operations, control flow
+- `kof build`, `kof run`, `kof serve`, `kof test`, `kof debug` (MVP JVM, DAP sobre stdio), `kof bench` (37 benchmarks + baselines), `kof fmt` (parser real, idempotente)
+- `kof.web` — rotas e middleware (JVM); WebSocket RFC 6455 + SSE nativo (JVM, 0.2.6-beta); TLS/HTTPS `web.listenSecure` (JVM)
+- `kof.db` — JDBC + SQLite nativo; `kof.orm` — entity, CRUD, migrate, MongoDB (JVM)
+- `kof.log` nativo; `kof.config` (arquivo > env > profile, tipado, `${key}`, 3 targets); `kof.mq` pub/sub (JVM)
+- cliente HTTP (JVM) + JS via `Java HttpClient` interop (HTTP002 JS fechado) + retry/circuit (3 targets, 30/08)
+- `kof.security` v1 (JVM/Native/JS); web security G9 — rateLimit, sessões, API keys (3 targets)
+- `kof.validation` (13 predicados, 3 targets); `kof.observability` (health/métricas/request IDs, 3 targets); `kof.ui` widgets com render KofJS
+- `kof.process` execução de processos externos; `process.spawn` stdin/stdout vivos (F10, JVM/JS)
+- **Concorrência**: `spawn`/`await` JVM (virtual threads) + **Native (pthread — CONC001 fechado 31/08)** + JS sequencial; `done`/`poll` não-bloqueantes; `cancel`/`cancelled` cooperativo (JVM + Native por TID); `selectAny` (JVM + Native + JS); `awaitTimeout(r, ms)` — valor no prazo, exceção capturável no estouro (JVM + Native; JS sequencial = paridade) — `KofConcurrency2Test` 10/10, `SpawnE2ETest` 4/4
+- enum nos 3 targets + switch exaustivo (SEM031); Map/Set nos 3 targets (COL001 fechado)
+- otimizador de IR sempre ativo; pattern matching (switch com tipos + destructuring, 3 targets); null safety básica (`String?`, 3 targets); higher-order em coleções (map/filter/reduce, 3 targets); módulos multi-arquivo (`import a.b.C`)
+- KofScript — top-level let/const (`KofScriptGlobals`, repl, `--watch`); KofC compiler — C subset → ELF x86_64 (`kof c`)
+- LSP com hover/completion + diagnostics reais; widening de return
+- Native GC — free-list `kof_free_head` (reuso mmap, 27/08); `kof_gc_collect` mark-sweep emitido (auto-GC desligado após hang — memória devolvida só no `munmap` fallback; ver "Bugs Restantes" #1)
+- Ponto flutuante real no Native (FLT001 fechado 31/08 — XMM); JSON objetos/records no Native (JSN002 fechado) + arrays FP (JSN001/003)
+- releases multiplataforma (2 jobs: `test-and-bump` → `package-and-release`; linux-x86_64 / macos-arm64 / windows-x86_64)
 
-- `docs/roadmap.md` com a visão completa.
-- Próximo grande marco: **aplicação web completa em Kof** (frontend via KofJS,
-  backend via kof serve, banco, auth, JSON — lógica de negócio em poucos
-  arquivos).
+### Em desenvolvimento
+
+- Standard Library (contratos em estabilização)
+- Async / Concurrency residual: canais tipados (`channel<Int>()`); scheduler/cron no Native (SCHED001); JS async real sobre Promises/event-loop (CONC003); Android `AND001`; ⚠️ bug pré-existente `spawn→await→spawn` (SIGSEGV no próximo `pthread_create` — ver "Bugs Restantes" #2)
+- KofAndroid — Fase 1 ✅ (projeto Maven, host em Kof); Fase 2 pendente
+- MySQL/MariaDB nativo — handshake `kof_db_mysql_scramble` (wire protocol, 27/08; query/prepared pendentes)
+- `native.risc` (riscv64) toolchain estável + `native.arm` (aarch64) placeholder — ELF via cross-as/ld + qemu (codegen ainda x86_64)
+- Debugger — além do MVP JVM (DAP sobre stdio já no JVM; Native DWARF / JS source maps pendentes)
+- KofJS — plataforma web no browser (ES Modules via GraalJS já em alpha)
+
+### Planejado
+
+- KofScript — runtime completo de execução direta (hoje só top-level let)
+- package manager (`kof init`, `kofdeps`, registry)
+- complete language specification; conformance suite
+- query DSL tipada para o ORM (`User.query { where age > 18 }`)
+- full web platform (frontend declarativo + routing/forms/SSR)
+- auto-hospedagem (compilador escrito em Kof)
+
+Roadmap completo: `docs/roadmap.md`; execução: `docs/plan-platform-completion.md`

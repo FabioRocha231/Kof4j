@@ -744,6 +744,12 @@ class SemanticAnalyzer {
         }
     }
 
+    private static boolean isConcurrentHandle(Type t) {
+        return t instanceof Type.ClassType ct
+                && "kof.concurrent".equals(ct.packageName())
+                && "Handle".equals(ct.name());
+    }
+
     Type inferType(ExpressionNode expr, SymbolTable scope) {
         Type cached = expressionTypes.get(expr);
         if (cached != null && !Type.isUnknown(cached)) return cached;
@@ -887,6 +893,20 @@ class SemanticAnalyzer {
                         KofProcess.ProcessCall hm = KofProcess.handleMethod(mc.methodName(), argTypes);
                         if (hm != null) yield hm.returnType();
                     }
+                    // Canais tipados: c.send(v) / c.receive() -> T
+                    if (BuiltinTypes.isChannel(recv)) {
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        if ("send".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                        if ("receive".equals(mc.methodName())) yield BuiltinTypes.channelElement(recv);
+                    }
+                }
+                if (mc.receiver() == null && "channel".equals(mc.methodName())
+                        && mc.arguments().isEmpty()) {
+                    // channel<T>() -> Channel<T>; sem argumento é Channel<Unknown>
+                    Type elemType = mc.typeArguments().isEmpty()
+                            ? Type.UnknownType.UNKNOWN
+                            : resolveType(mc.typeArguments().get(0), scope);
+                    yield new Type.ClassType("kof.concurrent", "Channel", List.of(elemType));
                 }
                 if (mc.receiver() == null && "listOf".equals(mc.methodName())) {
                     // listOf(...) keeps its element type: List<T> must survive
@@ -943,7 +963,16 @@ class SemanticAnalyzer {
                         || (mc.receiver() instanceof IdentifierExpr rid2 && KofScheduler.isSchedulerNamespace(rid2.name())
                                 && KofScheduler.isSchedulerMethod(mc.methodName()))) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
-                    if ("cancel".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                    if ("cancel".equals(mc.methodName())) {
+                        // cancel(Handle<T>) é o cancel de concorrência (retorna Bool);
+                        // cancel(String taskId) é o do scheduler (VOID). Distingue pelo
+                        // tipo do argumento para o + string converter o Bool certo.
+                        Type a0 = inferType(mc.arguments().get(0), scope);
+                        if (isConcurrentHandle(a0)) {
+                            yield Type.PrimitiveType.BOOL;
+                        }
+                        yield Type.PrimitiveType.VOID;
+                    }
                     else yield BuiltinTypes.STRING;
                 }
                 if (mc.receiver() == null && "transaction".equals(mc.methodName())
@@ -1394,6 +1423,17 @@ class SemanticAnalyzer {
                         && !mc.arguments().isEmpty()) {
                     Type t0 = Type.UnknownType.UNKNOWN;
                     for (ExpressionNode arg : mc.arguments()) t0 = inferType(arg, scope);
+                    if (t0 instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && "awaitTimeout".equals(mc.methodName())
+                        && mc.arguments().size() == 2) {
+                    Type t0 = inferType(mc.arguments().get(0), scope);
+                    inferType(mc.arguments().get(1), scope);
                     if (t0 instanceof Type.ClassType ct
                             && "kof.concurrent".equals(ct.packageName())
                             && !ct.typeArguments().isEmpty()) {

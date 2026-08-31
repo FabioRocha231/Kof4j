@@ -857,10 +857,9 @@ class JvmBackend implements Backend {
                     mv.visitMethodInsn(INVOKEVIRTUAL, boxed, unboxMethodName(kc.returnType()),
                             "()" + JvmTypeMapper.toDescriptor(kc.returnType()), false);
                     mv.visitLabel(end);
-                } else if ("kof_await".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
-                    // await com resultado primitivo: reflexão devolve boxed.
-                    // Restrito — o descritor default é Object para muitas funções
-                    // que na verdade retornam primitivo cru.
+                } else if (("kof_await".equals(kc.methodName())
+                        || "kof_await_timeout".equals(kc.methodName())) && isPrimitiveType(kc.returnType())) {
+                    // await/awaitTimeout com resultado primitivo: reflexão devolve boxed.
                     emitUnboxIfPrimitive(mv, kc.returnType());
                 } else if ("kof_list_reduce".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
                     emitUnboxIfPrimitive(mv, kc.returnType());
@@ -921,6 +920,37 @@ class JvmBackend implements Backend {
                     emitUnboxIfPrimitive(mv, elemType);
                 }
                 case "kof_list_clear" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "clear", "()V", false);
+                default -> {}
+            }
+        } else if (op instanceof KofCall kc && BuiltinTypes.isChannel(kc.ownerType())) {
+            // Canais tipados: LinkedBlockingQueue (FIFO thread-safe; put/take
+            // bloqueiam — com virtual threads o bloqueio é barato).
+            Type elemType = BuiltinTypes.channelElement(kc.ownerType());
+            switch (kc.methodName()) {
+                case "kof_channel_new" -> {
+                    mv.visitTypeInsn(NEW, "java/util/concurrent/LinkedBlockingQueue");
+                    mv.visitInsn(DUP);
+                    mv.visitMethodInsn(INVOKESPECIAL, "java/util/concurrent/LinkedBlockingQueue",
+                            "<init>", "()V", false);
+                }
+                case "kof_channel_send" -> {
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/concurrent/LinkedBlockingQueue",
+                            "put", "(Ljava/lang/Object;)V", false);
+                }
+                case "kof_channel_receive" -> {
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/concurrent/LinkedBlockingQueue",
+                            "take", "()Ljava/lang/Object;", false);
+                    if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType)
+                            && !(elemType instanceof Type.UnknownType)) {
+                        if (elemType instanceof Type.ArrayType at) {
+                            mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toDescriptor(at));
+                        } else if (elemType instanceof Type.ClassType ct) {
+                            mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+                        }
+                    }
+                    emitUnboxIfPrimitive(mv, elemType);
+                }
                 default -> {}
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isMap(kc.ownerType())) {

@@ -1727,6 +1727,10 @@ class JsBackend implements Backend {
             }
             return;
         }
+        if (isChannelOp(kc)) {
+            handleChannelOp(ctx, stack, preambleExprs, kc, receiver, args);
+            return;
+        }
         if (isListOp(kc)) {
             handleListOp(ctx, stack, preambleExprs, kc, receiver, args);
             return;
@@ -1967,6 +1971,10 @@ class JsBackend implements Backend {
         return BuiltinTypes.isList(kc.ownerType()) && kc.methodName().startsWith("kof_list_");
     }
 
+    private boolean isChannelOp(KofCall kc) {
+        return BuiltinTypes.isChannel(kc.ownerType()) && kc.methodName().startsWith("kof_channel_");
+    }
+
     private boolean isMapOp(KofCall kc) {
         return BuiltinTypes.isMap(kc.ownerType()) && kc.methodName().startsWith("kof_map_");
     }
@@ -1975,9 +1983,34 @@ class JsBackend implements Backend {
         return BuiltinTypes.isSet(kc.ownerType()) && kc.methodName().startsWith("kof_set_");
     }
 
+    private void handleChannelOp(MethodCtx ctx, List<Object> stack,
+                               List<JsIr.JsExpression> preambleExprs, KofCall kc,
+                               JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
+        // Canais tipados (JS sequencial): FIFO { items: [] } — send push, receive shift.
+        String fn = switch (kc.methodName()) {
+            case "kof_channel_new" -> "kofChannelNew";
+            case "kof_channel_send" -> "kofChannelSend";
+            case "kof_channel_receive" -> "kofChannelReceive";
+            default -> throw new IllegalStateException("KofJS: unknown channel op " + kc.methodName());
+        };
+        registerRuntime(fn);
+        if ("kof_channel_new".equals(kc.methodName())) {
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier(fn), List.of()));
+            return;
+        }
+        List<JsIr.JsExpression> callArgs = new ArrayList<>();
+        callArgs.add(receiver);
+        callArgs.addAll(args);
+        JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
+        if (Type.isVoid(kc.returnType())) {
+            throw new StatementEnd(call);
+        }
+        stack.add(call);
+    }
+
     private void handleListOp(MethodCtx ctx, List<Object> stack,
-                              List<JsIr.JsExpression> preambleExprs, KofCall kc,
-                              JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
+                               List<JsIr.JsExpression> preambleExprs, KofCall kc,
+                               JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
         String fn = switch (kc.methodName()) {
             case "kof_list_new" -> "kofListNew";
             case "kof_list_add" -> "kofListAdd";
@@ -2178,6 +2211,7 @@ class JsBackend implements Backend {
                 || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.equals("kof_poll") || name.equals("kof_done")
                 || name.equals("kof_cancel") || name.equals("kof_cancelled")
+                || name.equals("kof_await_timeout")
                 || name.equals("kof_select_any")
                 || name.equals("kof_list_map") || name.equals("kof_list_filter")
                 || name.equals("kof_list_reduce")
@@ -3655,6 +3689,20 @@ class JsBackend implements Backend {
                 return [];
             }
 
+            export function kofChannelNew() {
+                // JS sequencial: canal degenera em FIFO { items: [] }
+                return { items: [] };
+            }
+
+            export function kofChannelSend(chan, value) {
+                chan.items.push(value);
+            }
+
+            export function kofChannelReceive(chan) {
+                // JS é single-threaded: sempre há item (send executa antes)
+                return chan.items.shift();
+            }
+
             export function kofListAdd(list, value) {
                 list.push(value);
             }
@@ -3818,6 +3866,15 @@ class JsBackend implements Backend {
             }
 
             export function kofAwait(handle) {
+                if (handle != null && typeof handle.get === "function") {
+                    return handle.get();
+                }
+                return handle;
+            }
+
+            // JS sequencial: a task sempre está pronta (roda em ordem), então o
+            // timeout nunca estoura — equivalente a kofAwait (paridade de API).
+            export function kofAwaitTimeout(handle, timeoutMs) {
                 if (handle != null && typeof handle.get === "function") {
                     return handle.get();
                 }

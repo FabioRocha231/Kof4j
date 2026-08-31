@@ -1,7 +1,7 @@
 # Licenciamento do Kof
 
 **Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (736 testes; 7 targets; free-list + pthread spawn + FP XMM)
+**Versão:** 0.2.6-beta (741 testes; 7 targets; free-list + pthread spawn + FP XMM)
 
 ---
 
@@ -29,7 +29,7 @@ e executa. `scripts/package.sh` gera layout dist + tar.gz/zip + SHA256SUMS, `rel
 
 ## 2.1 Compilador (0.2.6-beta)
 
-O compilador Kof (módulos `kof-compiler` 723 testes + `kof-script` 8 + `kof-c-compiler` 5 = 736, `VERSION` 0.2.6-beta) é GPLv3.
+O compilador Kof (módulos `kof-compiler` 728 testes + `kof-script` 8 + `kof-c-compiler` 5 = 741, `VERSION` 0.2.6-beta) é GPLv3.
 
 Ele contém:
 - Lexer / Parser (`case String s` + `Point(x,y)` + `String?`)

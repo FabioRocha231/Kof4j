@@ -55,7 +55,7 @@ Objetivos:
 - possibilidade de utilizar frameworks legados como Spring, Hibernate etc.;
 - backend principal durante a consolidação inicial.
 
-Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 736 testes 31/08;
+Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 741 testes 31/08;
 web stack nativa com WebSocket/SSE e `kof.http` retry/circuit — 30/08)
 
 ### KofNative — Binário Nativo
@@ -215,15 +215,20 @@ Ver `docs/plan-spring-independence.md` (Fases 5-14).
 ### Concorrência — fila residual (0.2.6-beta, 31/08)
 
 Estado 0.2.6-beta: concorrência real **JVM** (virtual threads) + **Native**
-(pthread, CONC001 fechado 31/08) + **JS** sequencial (stmt/expr; o `CONC003`
-restante é async event-loop real).
+(pthread, CONC001 fechado 31/08: spawn/await + `done`/`poll`/`cancel`/
+`cancelled`/`selectAny` — cancel cooperativo por TID, selectAny por polling
+1ms) + **JS** sequencial (stmt/expr/cancel/selectAny; o `CONC003` restante é
+async event-loop real). ⚠️ Bug pré-existente separado: `spawn→await→spawn`
+corrompe a pilha da main (SIGSEGV no próximo `pthread_create`); reproduz sem
+o feature de cancel/select (suspeito: `pthread_join` no `kof_await`).
 
 | Item | Descrição | Prioridade |
 |------|-----------|------------|
-| Unwrap de `ExecutionException` | `kof_await` re-lança a causa original em vez do wrapper — mensagens limpas em try/catch | alta |
-| `await` com timeout | `await r, timeoutMs` → `null`/exceção no estouro; hoje bloqueia para sempre | alta |
-| Cancelamento | `cancel(r)` cooperativo via flag no handle | média |
-| Espera múltipla | `select(h1, h2, ...)` → primeiro handle pronto (estilo Go) | média |
+| ~~Unwrap de `ExecutionException`~~ | ✅ 31/08 — `kof_await` re-lança a causa original (JVM) | — |
+| ~~`await` com timeout~~ | ✅ 31/08 — `awaitTimeout(r, ms)`: valor no prazo, exceção capturável via `try/catch` no estouro (JVM `Future.get(ms)` + Native polling 1ms com deadline; JS sequencial = paridade) | — |
+| ~~Cancelamento~~ | ✅ 31/08 — `cancel(r)`/`cancelled()` cooperativo via flag no handle (JVM + Native por TID) | — |
+| ~~Espera múltipla~~ | ✅ 31/08 — `selectAny(h1, h2, ...)` → primeiro handle pronto (JVM + Native + JS) | — |
+| ~~`done`/`poll`~~ | ✅ 31/08 — não-bloqueantes sobre o handle (JVM + Native) | — |
 | ~~Port Native~~ | ✅ 31/08 — `pthread_create` + trampoline + `pthread_join` + allocator thread-safe (futex); join implícito (CONC001 fechado) | — |
 | Port JS | spawn sobre Promises/event-loop; await nativo via microtask (CONC003) | P2 |
 | Scheduler/cron | ✅ parcial (27/08): `every`/`at` JVM (`ScheduledExecutor`) + JS (`setInterval`); Native SCHED001 | P2 |
@@ -676,7 +681,7 @@ O Kof é uma plataforma distribuível, não apenas um JAR:
 - distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
 - versionamento centralizado (`VERSION` 0.2.6-beta → pom/properties via `scripts/bump-version.sh`);
-- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 736 → bump → package 3 plataformas → GitHub Release);
+- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 741 → bump → package 3 plataformas → GitHub Release);
 - `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
 - editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);
 - `kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version` PASS (18 comandos; `fmt` e `config gen` 31/08).

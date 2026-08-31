@@ -35,6 +35,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_spawn_result") || methodName.equals("kof_await")
                 || methodName.equals("kof_poll") || methodName.equals("kof_done")
                 || methodName.equals("kof_cancel") || methodName.equals("kof_cancelled")
+                || methodName.equals("kof_await_timeout")
                 || methodName.equals("kof_select_any")
                 || methodName.equals("kof_list_map") || methodName.equals("kof_list_filter") || methodName.equals("kof_list_reduce")
                 || methodName.startsWith("kof_observability_")
@@ -323,6 +324,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_done", "kof_cancel" -> "(Ljava/lang/Object;)Z";
             case "kof_cancelled" -> "()Z";
             case "kof_select_any" -> "(Ljava/util/List;)Ljava/lang/Object;";
+            case "kof_await_timeout" -> "(Ljava/lang/Object;I)Ljava/lang/Object;";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -444,6 +446,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";
             case "kof_sec_session_get", "kof_enum_value_of" -> "Ljava/lang/String;";
             case "kof_spawn_result", "kof_await", "kof_poll" -> "Ljava/lang/Object;";
+            case "kof_await_timeout" -> "Ljava/lang/Object;";
             case "kof_done", "kof_cancel", "kof_cancelled" -> "I";
             case "kof_select_any" -> "Ljava/lang/Object;";
             case "kof_tetris_run" -> "V";
@@ -1900,6 +1903,24 @@ static boolean hasRuntimeFn(String methodName) {
                         }
                     }
                     throw new IllegalStateException("await: handle inválido");
+                }
+
+                /** awaitTimeout(handle, timeoutMs) -> valor; lança exceção no estouro. */
+                public static Object kof_await_timeout(Object handle, int timeoutMs) throws Exception {
+                    if (!(handle instanceof java.util.concurrent.Future<?> f)) {
+                        throw new IllegalStateException("awaitTimeout: handle inválido");
+                    }
+                    try {
+                        return f.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    } catch (java.util.concurrent.TimeoutException te) {
+                        throw new RuntimeException("awaitTimeout: estourou o tempo limite de " + timeoutMs + "ms");
+                    } catch (java.util.concurrent.ExecutionException e) {
+                        // re-lança a causa original (mesma semântica do kof_await)
+                        Throwable cause = e.getCause() != null ? e.getCause() : e;
+                        if (cause instanceof RuntimeException re) throw re;
+                        if (cause instanceof Error err) throw err;
+                        throw new RuntimeException(cause);
+                    }
                 }
 
                 /** poll(rdi=handle) -> valor pronto | 0 (null) — não bloqueia. */

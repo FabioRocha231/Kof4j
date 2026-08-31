@@ -53,6 +53,30 @@ public final class BuiltinTypes {
 
 
     /**
+     * Canais tipados (concorrência): {@code channel<T>()}. O tipo carrega o
+     * elemento T; em runtime o canal é opaco (JVM: Long do registry de filas;
+     * Native: pointer p/ a struct; JS: objeto com array). Métodos: {@code send(v)},
+     * {@code receive()} -> T.
+     */
+    public static final Type CHANNEL = new Type.ClassType("kof.concurrent", "Channel", List.of());
+
+    public static boolean isChannel(Type type) {
+        if (type instanceof Type.ClassType ct) {
+            return "kof.concurrent".equals(ct.packageName()) && "Channel".equals(ct.name());
+        }
+        return false;
+    }
+
+    public static Type channelElement(Type type) {
+        if (type instanceof Type.ClassType ct && "Channel".equals(ct.name())
+                && !ct.typeArguments().isEmpty()) {
+            return ct.typeArguments().get(0);
+        }
+        return Type.UnknownType.UNKNOWN;
+    }
+
+
+    /**
      * Enums declarados na compilação corrente: em runtime o valor do enum É
      * o nome (String) — mapeado para java/lang/String em todos os backends.
      */

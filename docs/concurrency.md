@@ -33,7 +33,9 @@ Semântica implementada:
 
 ### Implementado 0.1.0 → 0.2.6-beta
 
-- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial completo (`CONC003` restante = async event-loop real); Native pthread completo (CONC001 fechado)
+- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 10/10) — JVM; JS sequencial completo (`CONC003` restante = async event-loop real); Native pthread completo (CONC001 fechado)
+- `done(h)`/`poll(h)` não-bloqueantes, `cancel(h)`/`cancelled()` (cancel cooperativo por TID) e `selectAny(h1, h2, …)` (polling 1ms) — JVM + Native (`KofConcurrency2Test`); Android segue `AND001`
+- `awaitTimeout(r, ms)` — valor se a task terminar no prazo; senão lança exceção (capturável via `try/catch`) — JVM (`Future.get(ms)`) + Native (polling 1ms com deadline); JS sequencial é paridade (a task sempre está pronta) — `KofConcurrency2Test`
 - Lambdas com captura via `BoxN` já suportam `spawn { println(x) }`
 - `kof.mq` publish/subscribe/queue — JVM+JS (MQ001 Native); `kof.time interval/cancel` — JVM
 
@@ -46,7 +48,7 @@ Nenhuma API de plataforma (Thread/Runnable/Executor) é visível na linguagem.
 
 - filas produtor/consumidor tipadas (`kof.concurrent.Queue`);
 - scheduler nativo (threads no target Native — depende de futex/clone);
-- `await` com timeout / `select` múltiplo / cancelamento cooperativo.
+- `select` múltiplo com timeout (`selectAny` já ✅ sem timeout; a combinação com deadline é o próximo passo).
 
 Concorrência é uma capacidade da **linguagem/stdlib**, não uma coleção de
 APIs da plataforma.
@@ -149,7 +151,7 @@ A mesma semântica Kof utiliza implementações diferentes:
 | Target | Implementação | Status |
 |--------|---------------|--------|
 | JVM 21+ | Virtual Threads (scheduler da JVM) | ✅ `await`/`Handle<T>` + `kof.mq` |
-| Native x86_64 | OS threads: `pthread_create` + trampoline + `await`/`pthread_join` + allocator thread-safe (futex) | ✅ 31/08 (`CONC001` fechado) |
+| Native x86_64 | OS threads: `pthread_create` + trampoline + `await`/`pthread_join` + `done`/`poll`/`cancel`/`cancelled`/`selectAny` + allocator thread-safe (futex) | ✅ 31/08 (`CONC001` fechado) |
 | Native riscv64/aarch64 | OS threads futuro (target ainda placeholder) | `CONC001` (placeholder) |
 | JS (GraalJS) | Event loop (sequencial hoje; Promises futuro) | ✅ sequencial (`spawn`/`await` sequencial) |
 | KofScript | JVM via KofScriptGlobals | ✅ |

@@ -2777,14 +2777,16 @@ private Target target = Target.JVM;
                     boolean argsOk = "cancelled".equals(mc.methodName())
                             ? mc.arguments().isEmpty() : !mc.arguments().isEmpty();
                     if (!argsOk) yield localIdx;
-                    if (target.isNative() || target == Target.ANDROID) {
+                    // Android: ART não tem o Handle de pthread nativo — gap honesto.
+                    // Native: cancel/cancelled/selectAny sobre o handle pthread
+                    // (flags de cancel por TID + polling anyOf) — CONC001 fechado.
+                    if (target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
-                                    mc.methodName() + ": not supported on the " + target
-                                            + " target yet (" + code + ")", code);
+                                    mc.methodName() + ": not supported on the android target yet (AND001)",
+                                    "AND001");
                         }
                         yield localIdx;
                     }
@@ -2827,15 +2829,16 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && ("poll".equals(mc.methodName()) || "done".equals(mc.methodName()))
                         && mc.arguments().size() == 1
                         && findLocalVar(mc.methodName(), locals) == null) {
-                    // sem threads no alvo não há Handle real: gap honesto
-                    if (target.isNative() || target == Target.ANDROID) {
+                    // Android: ART não tem o Handle de pthread nativo — gap honesto.
+                    // Native: done/poll são leituras não-bloqueantes do flag do
+                    // handle (pthread já existe via spawn) — CONC001 fechado p/ estes.
+                    if (target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
-                                    mc.methodName() + ": not supported on the " + target
-                                            + " target yet (" + code + ")", code);
+                                    mc.methodName() + ": not supported on the android target yet (AND001)",
+                                    "AND001");
                         }
                         yield localIdx;
                     }
@@ -2851,6 +2854,58 @@ private Target target = Target.JVM;
                             new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
                             "kof_" + mc.methodName(),
                             List.of(hE), ret, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "awaitTimeout".equals(mc.methodName())
+                        && mc.arguments().size() == 2
+                        && findLocalVar("awaitTimeout", locals) == null) {
+                    // awaitTimeout(r, timeoutMs): valor se a task terminar no prazo;
+                    // senão lança exceção (capturável via try/catch). G8/CONC residual.
+                    if (target == Target.ANDROID) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    "awaitTimeout: not supported on the android target yet (AND001)",
+                                    "AND001");
+                        }
+                        yield localIdx;
+                    }
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    Type hT = inferExprType(mc.arguments().get(0), locals);
+                    Type resT = Type.UnknownType.UNKNOWN;
+                    if (hT instanceof Type.ClassType ct && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        resT = ct.typeArguments().get(0);
+                    }
+                    localIdx = emitExpression(mc.arguments().get(1), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(
+                            new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_await_timeout", List.of(hT, Type.PrimitiveType.INT),
+                            resT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "channel".equals(mc.methodName())
+                        && mc.arguments().isEmpty()
+                        && findLocalVar("channel", locals) == null) {
+                    // Canais tipados (concorrência): channel<T>() -> Channel<T>
+                    // FIFO thread-safe; c.send(v) enfileira, c.receive() retira.
+                    Type elemT = mc.typeArguments().isEmpty()
+                            ? Type.UnknownType.UNKNOWN
+                            : toType(mc.typeArguments().get(0));
+                    Type chanT = new Type.ClassType("kof.concurrent", "Channel", List.of(elemT));
+                    if (target == Target.ANDROID) {
+                        if (currentDiagnostics != null) {
+                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                    mc.position() != null ? mc.position().line() : 0,
+                                    mc.position() != null ? mc.position().column() : 0, 0,
+                                    "channel: not supported on the android target yet (AND001)",
+                                    "AND001");
+                        }
+                        yield localIdx;
+                    }
+                    ops.add(new KofCall(chanT, "kof_channel_new", List.of(),
+                            chanT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
@@ -4088,6 +4143,23 @@ private Target target = Target.JVM;
                             yield localIdx;
                         }
                     }
+                    if (BuiltinTypes.isChannel(recvType)) {
+                        // Canais tipados: c.send(v) enfileira; c.receive() retira.
+                        // O receiver (Channel) está empilhado; o elemento vai
+                        // após — o backend faz a ordem (send: chan,elem; receive: chan).
+                        Type elemT = BuiltinTypes.channelElement(recvType);
+                        if ("send".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                            localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(recvType, "kof_channel_send", List.of(elemT),
+                                    Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        }
+                        if ("receive".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                            ops.add(new KofCall(recvType, "kof_channel_receive", List.of(),
+                                    elemT, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        }
+                    }
                     if (BuiltinTypes.isList(recvType)) {
                         String listFn = switch (mc.methodName()) {
                             case "add", "push", "append" -> "kof_list_add";
@@ -5281,7 +5353,18 @@ private Target target = Target.JVM;
                         && mc.arguments().size() == 1 && findLocalVar("done", locals) == null) {
                     yield Type.PrimitiveType.BOOL;
                 }
-if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                    Type t = inferExprType(mc.arguments().get(0), locals);
+                    if (t instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && "awaitTimeout".equals(mc.methodName())
+                        && mc.arguments().size() == 2
+                        && findLocalVar("awaitTimeout", locals) == null) {
                     Type t = inferExprType(mc.arguments().get(0), locals);
                     if (t instanceof Type.ClassType ct
                             && "kof.concurrent".equals(ct.packageName())

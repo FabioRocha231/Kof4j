@@ -1414,6 +1414,34 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        // CONC001 (residual): done/poll não-bloqueantes — 1 arg (handle), valor em rax
+        if ("kof_done".equals(kc.methodName()) || "kof_poll".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(kc.methodName()).append("\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // cancel(handle) -> bool; selectAny(list) -> valor pronto
+        if ("kof_cancel".equals(kc.methodName()) || "kof_select_any".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(kc.methodName()).append("\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_cancelled".equals(kc.methodName())) {
+            sb.append("    call kof_cancelled\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // awaitTimeout(handle, ms): 2 args (handle em rdi, ms em esi); valor em rax
+        if ("kof_await_timeout".equals(kc.methodName())) {
+            sb.append("    popq %r12\n");
+            sb.append("    popq %rdi\n");
+            sb.append("    movl %r12d, %esi\n");
+            sb.append("    call kof_await_timeout\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if ("kof_spawn_join_all".equals(kc.methodName())) {
             sb.append("    call kof_spawn_join_all\n");
             return;
@@ -1494,6 +1522,24 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 sb.append("    call ").append(collFn).append("\n");
+                if (!Type.isVoid(kc.returnType())) {
+                    sb.append("    pushq %rax\n");
+                }
+                return;
+            }
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && BuiltinTypes.isChannel(kc.ownerType())) {
+            // Canais: receiver (Channel) + args na pilha; asm: chan=rdi, value=rsi.
+            String chFn = kc.methodName().startsWith("kof_channel_") ? kc.methodName() : null;
+            if (chFn != null) {
+                int argCount = kc.parameterTypes().size();
+                String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                for (int i = argCount - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
+                sb.append("    call ").append(chFn).append("\n");
                 if (!Type.isVoid(kc.returnType())) {
                     sb.append("    pushq %rax\n");
                 }

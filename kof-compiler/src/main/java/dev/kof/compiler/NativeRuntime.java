@@ -29,6 +29,7 @@ final class NativeRuntime {
         emitFree(sb);
         emitGc(sb);
         emitConcurrency(sb);
+        emitChannel(sb);
         emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
@@ -661,14 +662,26 @@ final class NativeRuntime {
             .balign 8
             kof_spawn_handles: .quad 0          # cabeca da lista (no: [next, handle])
             kof_spawn_count: .quad 0
+            kof_cancelled_flags: .space 256     # cancel cooperativo por TID % 256
             .section .text
             .globl kof_spawn_trampoline
             .type kof_spawn_trampoline, @function
             kof_spawn_trampoline:
                 # rdi = bloco {task, handle}
+                # 2 pushes -> site do call rsp ≡ 0 (mesmo padrão do pthread_create
+                # em kof_spawn_handle_new). Sem subq: mantém pthread_self e o
+                # call *task no alinhamento que já funciona.
                 pushq %rbx
                 pushq %r12
                 movq %rdi, %rbx
+                # limpa a flag de cancel deste TID (slot pode ser de worker
+                # anterior reutilizado; mod 256).
+                call pthread_self               # TID em rax
+                movabs $0x9E3779B97F4A7C15, %r10
+                mulq %r10                       # rdx = (TID*phi) >> 64
+                shrq $56, %rdx                  # slot 0..255
+                leaq kof_cancelled_flags(%rip), %r10
+                movb $0, (%r10,%rdx,1)
                 movq 0(%rbx), %rdi              # task
                 movq 8(%rbx), %r12              # handle (0 p/ stmt)
                 movq 8(%rdi), %rax              # task vtable
@@ -791,7 +804,7 @@ final class NativeRuntime {
                 jne .Lkof_await_null
                 cmpq $0, 8(%rdi)
                 je .Lkof_await_val
-                pushq %rdi                      # preserva handle na pilha
+                pushq %rdi                      # rsp: ≡8 -> ≡0 no call (ABI)
                 movq 8(%rdi), %rdi              # pthread_join(tid, NULL)
                 xorl %esi, %esi
                 call pthread_join
@@ -828,6 +841,305 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+
+            # kof_await_timeout(handle, timeoutMs): valor se a task terminar no prazo;
+            # senão lança (kof_throw_string -> try/catch do usuário) ou panic.
+            # Polling 1ms (o handle já existe; sem join para não bloquear demais).
+            .Lstr_await_timeout: .asciz "awaitTimeout: estourou o tempo limite"
+            .globl kof_await_timeout
+            .type kof_await_timeout, @function
+            kof_await_timeout:
+                # rdi = handle, esi = timeoutMs (>=0)
+                # entry rsp≡8; 2 push -> rsp≡0? nao: 16k+8-8-8 = 16k-8 ≡ 8 no call ✓
+                pushq %rbx
+                pushq %r12
+                testq %rdi, %rdi
+                jz .Lkat_zero
+                cmpl $2, 0(%rdi)
+                jne .Lkat_zero
+                movq %rdi, %rbx
+                movl %esi, %r12d                    # iterações restantes (~1ms cada)
+            .Lkat_poll:
+                cmpl $1, 4(%rbx)                    # done?
+                je .Lkat_result
+                testl %r12d, %r12d
+                jle .Lkat_timeout
+                movl $1000, %edi
+                call usleep
+                decl %r12d
+                jmp .Lkat_poll
+            .Lkat_result:
+                movq 16(%rbx), %rax
+                popq %r12
+                popq %rbx
+                ret
+            .Lkat_timeout:
+                leaq .Lstr_await_timeout(%rip), %rdi
+                call kof_throw_string               # longjmp p/ o try; panic se não houver
+            .Lkat_zero:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            # CONC001 (residual): done/poll não-bloqueantes sobre o handle.
+            # Handle: 0=tag(2), 4=done, 8=pthread_t, 16=result. x86 TSO
+            # garante visibilidade do store do worker p/ um load simples.
+            .globl kof_done
+            .type kof_done, @function
+            kof_done:
+                # rdi = handle -> 1 se a tarefa terminou, 0 caso contrário.
+                # movzbl: zero-estende p/ rax de 64 bits (bool limpo)
+                testq %rdi, %rdi
+                jz .Lkof_done_zero
+                cmpl $2, 0(%rdi)
+                jne .Lkof_done_zero
+                movzbl 4(%rdi), %eax
+                ret
+            .Lkof_done_zero:
+                xorl %eax, %eax
+                ret
+
+            .globl kof_poll
+            .type kof_poll, @function
+            kof_poll:
+                # rdi = handle -> valor se pronto, 0 se ainda não (não bloqueia)
+                testq %rdi, %rdi
+                jz .Lkof_poll_zero
+                cmpl $2, 0(%rdi)
+                jne .Lkof_poll_zero
+                cmpl $1, 4(%rdi)
+                jne .Lkof_poll_zero
+                movq 16(%rdi), %rax
+                ret
+            .Lkof_poll_zero:
+                xorl %eax, %eax
+                ret
+
+            # cancel(handle): marca a flag do TID do handle (cooperativo).
+            # sem calls -> alinhamento irrelevante.
+            .globl kof_cancel
+            .type kof_cancel, @function
+            kof_cancel:
+                # rdi = handle -> 1 se marcou, 0 se handle nulo/inválido
+                testq %rdi, %rdi
+                jz .Lkof_cancel_no
+                cmpl $2, 0(%rdi)
+                jne .Lkof_cancel_no
+                movq 8(%rdi), %rax              # TID
+                testq %rax, %rax
+                jz .Lkof_cancel_no              # nunca disparou: sem TID
+                movabs $0x9E3779B97F4A7C15, %r10
+                mulq %r10                       # rdx = (TID*phi) >> 64
+                shrq $56, %rdx                  # slot 0..255
+                leaq kof_cancelled_flags(%rip), %r10
+                movb $1, (%r10,%rdx,1)
+                movq $1, %rax                   # rax 64b limpo (movl deixaria altos do mulq)
+                ret
+            .Lkof_cancel_no:
+                xorl %eax, %eax
+                ret
+
+            # cancelled(): a flag do TID ATUAL foi marcada?
+            # 1 call (pthread_self) -> rsp≡8 na entrada, ok.
+            .globl kof_cancelled
+            .type kof_cancelled, @function
+            kof_cancelled:
+                call pthread_self               # TID em rax
+                movabs $0x9E3779B97F4A7C15, %r10
+                mulq %r10                       # rdx = (TID*phi) >> 64
+                shrq $56, %rdx                  # slot 0..255
+                leaq kof_cancelled_flags(%rip), %r10
+                movzbl (%r10,%rdx,1), %eax
+                ret
+
+            # selectAny(list): valor do primeiro handle pronto; senão
+            # aguarda (polling 1ms) até um terminar — paridade JVM anyOf.
+            # frame: 2 push + subq 16 -> rsp≡8 nos calls.
+            .globl kof_select_any
+            .type kof_select_any, @function
+            kof_select_any:
+                pushq %rbx                      # list
+                pushq %r12                      # index
+                subq $16, %rsp                  # -8(%rsp)=size
+                movq %rdi, %rbx
+                testq %rbx, %rbx
+                jz .Lkof_sel_no
+                call kof_list_size              # rsp≡8
+                testq %rax, %rax
+                jz .Lkof_sel_no
+                movq %rax, -8(%rsp)            # size
+                xorl %r12d, %r12d
+            .Lkof_sel_scan:
+                movq -8(%rsp), %rax             # rax = size
+                cmpq %rax, %r12                 # r12 - rax = index - size
+                jge .Lkof_sel_wait              # index >= size -> aguarda e re-escaneia
+                movq %rbx, %rdi
+                movl %r12d, %esi
+                call kof_list_get               # rsp≡8
+                testq %rax, %rax
+                jz .Lkof_sel_next
+                cmpl $2, 0(%rax)
+                jne .Lkof_sel_next
+                cmpl $1, 4(%rax)
+                jne .Lkof_sel_next
+                mfence                          # visibilidade do done/result escrito pelo worker
+                movq 16(%rax), %rax             # pronto: devolve resultado
+                addq $16, %rsp
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_sel_next:
+                incq %r12
+                jmp .Lkof_sel_scan
+            .Lkof_sel_wait:
+                movl $1000, %edi                # usleep(1ms)
+                call usleep                     # rsp≡8
+                xorl %r12d, %r12d               # RE-SCAN: reset index (senão loopa p/ sempre)
+                jmp .Lkof_sel_scan
+            .Lkof_sel_no:
+                xorl %eax, %eax
+                addq $16, %rsp
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    private static void emitChannel(StringBuilder sb) {
+        sb.append("""
+            # Canais tipados: FIFO de lista ligada + mutex futex + polling.
+            # Struct (56B): 0=head  8=tail  16=count(int)  20=lock(4B)
+            # No (16B): 0=value  8=next.  head=frente (de onde recebe),
+            # tail=tras (onde envia). lock/unlock inline (tecnica de kof_alloc).
+            # receive vazio: libera o lock e dorme 1ms (usleep) — sem perder wake.
+            .globl kof_channel_new
+            .type kof_channel_new, @function
+            kof_channel_new:
+                pushq %rbx
+                movl $56, %edi
+                call kof_alloc
+                movq %rax, %rbx
+                movq %rbx, 0(%rbx)              # head
+                movq %rbx, 8(%rbx)              # tail
+                movl $0, 16(%rbx)               # count
+                movl $0, 20(%rbx)               # lock
+                popq %rbx
+                ret
+
+            .globl kof_channel_send
+            .type kof_channel_send, @function
+            kof_channel_send:
+                # rdi = chan, rsi = value (valor em rbp — clobber-safe)
+                # entry rsp≡8; 4 push + subq 8 = 5 unidades -> ≡0 no call (ABI)
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %rbp
+                subq $8, %rsp
+                movq %rsi, %rbp
+                leaq 20(%rdi), %rsi             # &lock
+                xorl %eax, %eax
+            .Lchan_send_lock:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lchan_send_locked
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lchan_send_lock
+            .Lchan_send_locked:
+                movl $16, %edi
+                call kof_alloc                  # no em rax
+                movq %rbp, 0(%rax)              # no.value
+                xorq %rdx, %rdx
+                movq %rdx, 8(%rax)              # no.next = 0
+                movq 8(%rdi), %r12              # r12 = tail
+                testq %r12, %r12
+                je .Lchan_send_empty            # vazio: head=tail=no
+                movq %rax, 8(%r12)              # tail->next = no
+                movq %rax, 8(%rdi)              # tail = no
+                jmp .Lchan_send_count
+            .Lchan_send_empty:
+                movq %rax, 0(%rdi)              # head = no
+                movq %rax, 8(%rdi)              # tail = no
+            .Lchan_send_count:
+                addl $1, 16(%rdi)               # count++
+                leaq 20(%rdi), %rdi
+                movl $0, (%rdi)                 # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                xorl %eax, %eax
+                addq $8, %rsp
+                popq %rbp
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_channel_receive
+            .type kof_channel_receive, @function
+            kof_channel_receive:
+                # rdi = chan -> value (polling 1ms se vazio)
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                leaq 20(%rdi), %rsi             # &lock
+                xorl %eax, %eax
+            .Lchan_recv_lock:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lchan_recv_locked
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lchan_recv_lock
+            .Lchan_recv_locked:
+                cmpl $0, 16(%rdi)               # count?
+                je .Lchan_recv_empty
+                movq 0(%rdi), %rax              # no = head
+                movq 0(%rax), %r12              # value
+                movq 8(%rax), %r13              # next
+                movq %r13, 0(%rdi)              # head = next
+                decl 16(%rdi)                   # count--
+                movq %rax, %rdi
+                call kof_free                   # libera o no (rax clobber)
+                movq %r12, %rax                 # resultado
+                leaq 20(%rdi), %rdi
+                movl $0, (%rdi)                 # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lchan_recv_empty:
+                movl $0, (%rsi)                 # libera o lock antes de dormir
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                movl $1000, %edi
+                call usleep
+                jmp .Lchan_recv_lock
             """);
     }
 
@@ -8297,7 +8609,96 @@ final class NativeRuntime {
             .Ldb_at_simple_done:
                 testq %r11, %r11
                 jz .Ldb_no_at_simple
+                # user:pass@ — extrai userinfo e monta KofStrings (r14=user, r15=pass)
+                leaq 8(%r12), %rdi
+                subq $32, %rsp
+                movq %rdi, 0(%rsp)       # u0
+                leaq (%r11), %rdx        # len userinfo = @ - u0
+                subq %rdi, %rdx
+                movq %rdx, 24(%rsp)
+                xorl %r8d, %r8d          # colon (0 se ausente)
+            .Ldb_up_find_colon:
+                cmpq %rdx, %r8
+                jge .Ldb_up_find_colon_done
+                cmpb $':', 0(%rdi,%r8)
+                je .Ldb_up_find_colon_done
+                incq %r8
+                jmp .Ldb_up_find_colon
+            .Ldb_up_find_colon_done:
+                movq %r8, 8(%rsp)        # colon offset (0 se ausente)
+                movq %r11, 16(%rsp)      # '@' (kof_alloc faz syscall: recarregar depois)
+                # NUL no fim do user (muta o buffer da URL in-place)
+                testq %r8, %r8
+                jz .Ldb_up_term_at
+                movb $0, (%rdi,%r8)
+                jmp .Ldb_up_term_done
+            .Ldb_up_term_at:
+                movb $0, (%r11)
+            .Ldb_up_term_done:
+                # pass = [colon+1, @) -> r15
+                testq %r8, %r8
+                jz .Ldb_up_nopass
+                leaq 1(%rdi,%r8), %rsi   # colon+1 (ptr real)
+                movq %r11, %rdx
+                subq %rsi, %rdx
+                jle .Ldb_up_nopass
+                leal 25(%rdx), %edi
+                call kof_alloc
+                movl $1, 0(%rax)
+                movl $0, 4(%rax)
+                movq $0, 8(%rax)
+                movq 0(%rsp), %rsi
+                movq 8(%rsp), %r8
+                leaq 1(%rsi,%r8), %rsi   # colon+1
+                movq 16(%rsp), %rdx
+                subq %rsi, %rdx
+                movl %edx, 16(%rax)
+                movl $0, 20(%rax)
+                xorl %ecx, %ecx
+            .Ldb_up_pcopy:
+                cmpl %edx, %ecx
+                jge .Ldb_up_pcopy_done
+                movzbl (%rsi,%rcx), %edi
+                movb %dil, 24(%rax,%rcx)
+                incl %ecx
+                jmp .Ldb_up_pcopy
+            .Ldb_up_pcopy_done:
+                movb $0, 24(%rax,%rdx)
+                movq %rax, %r15
+            .Ldb_up_nopass:
+                # user = [u0, colon ou @) -> r14
+                movq 0(%rsp), %rsi
+                movq 8(%rsp), %rdx
+                testq %rdx, %rdx
+                jnz .Ldb_up_ulen
+                movq %r11, %rdx
+            .Ldb_up_ulen:
+                subq %rsi, %rdx
+                jle .Ldb_up_nouser
+                leal 25(%rdx), %edi
+                call kof_alloc
+                movl $1, 0(%rax)
+                movl $0, 4(%rax)
+                movq $0, 8(%rax)
+                movq 0(%rsp), %rsi
+                movl %edx, 16(%rax)
+                movl $0, 20(%rax)
+                xorl %ecx, %ecx
+            .Ldb_up_ucopy:
+                cmpl %edx, %ecx
+                jge .Ldb_up_ucopy_done
+                movzbl (%rsi,%rcx), %edi
+                movb %dil, 24(%rax,%rcx)
+                incl %ecx
+                jmp .Ldb_up_ucopy
+            .Ldb_up_ucopy_done:
+                movb $0, 24(%rax,%rdx)
+                movq %rax, %r14
+            .Ldb_up_nouser:
+                movq 16(%rsp), %r11   # syscall clobberou r11
+                addq $32, %rsp
                 leaq 1(%r11), %r10
+                jmp .Ldb_no_at
             .Ldb_no_at_simple:
             .Ldb_no_at:
                 movq %r10, %rsi
@@ -8592,12 +8993,20 @@ final class NativeRuntime {
                 subl %esi, %eax          # seedlen = pacote - offset (should be 21, but use 20 without terminator)
                 movl $20, %edx
                 movq %r13, %rsi
+                # sem pass: responde vazio
+                testq %r15, %r15
+                jz .Ldb_switch_no_scramble2
                 # out do scramble em 8(%rsp)... usar o stack livre
                 leaq .Ldb_mysql_names+32(%rip), %rdi
                 leaq .Ldb_mysql_names(%rip), %rsi
                 movl $20, %edx
                 movq %r15, %rcx
                 call kof_db_mysql_scramble
+                jmp .Ldb_switch_scramble_done2
+            .Ldb_switch_no_scramble2:
+                leaq .Ldb_mysql_names+32(%rip), %rdi
+                movl $0, 0(%rdi)
+            .Ldb_switch_scramble_done2:
                 # AuthSwitchResponse: just the 20-byte scramble (no plugin name)
                 leaq .Ldb_mysql_buf(%rip), %r8
                 leaq .Ldb_mysql_names+32(%rip), %rsi
