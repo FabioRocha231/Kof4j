@@ -1478,6 +1478,12 @@ public class NativeBackend implements Backend {
             }
             String ctorLabel = resolveCalleeName(kc);
             sb.append("    call ").append(ctorLabel).append("\n");
+            if (stackArgs > 0) {
+                // callee é caller-clean: remove os stack args empilhados de
+                // volta. O pop subsequente do consumidor desempilha o push
+                // duplicado do receptor (mesmo contrato do caminho <=5 args).
+                sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+            }
             return;
         }
 
