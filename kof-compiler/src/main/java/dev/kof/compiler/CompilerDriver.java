@@ -3533,6 +3533,32 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofGpu.isGpuNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofGpu.GpuCall gpuCall = KofGpu.staticCall(mc.methodName(), argTypes);
+                    if (gpuCall != null) {
+                        if (!KofGpu.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (GPU001)",
+                                        "GPU001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofGpu.GPU, gpuCall.function(), gpuCall.parameterTypes(),
+                                gpuCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                             && KofSecurity.isSecurityNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -6686,6 +6712,10 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                 KofCache.CacheCall cc = KofCache.staticCall(mc.methodName(), cacheArgTypes);
                 if (cc == null) return true;
                 return !(cc.returnType() instanceof Type.PrimitiveType pt && "void".equals(pt.name()));
+            }
+            // gpu.*: todas as funções retornam valor (bool/str/int)
+            if (mc.receiver() instanceof IdentifierExpr rid && KofGpu.isGpuNamespace(rid.name())) {
+                return true;
             }
             if (mc.receiver() != null && KofIo.instanceMethod(Type.UnknownType.UNKNOWN,
                     mc.methodName(), mc.arguments().size()) != null) {

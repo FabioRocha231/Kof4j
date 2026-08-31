@@ -787,6 +787,7 @@ class SemanticAnalyzer {
                         && !KofWeb.isWebNamespace(ie.name())
                         && !KofConfig.isConfigNamespace(ie.name())
                         && !KofCache.isCacheNamespace(ie.name())
+                        && !KofGpu.isGpuNamespace(ie.name())
                         && !KofDb.isDbNamespace(ie.name())
                         && !KofOrm.isOrmNamespace(ie.name())
                         && !KofLog.isLogNamespace(ie.name())
@@ -823,6 +824,7 @@ class SemanticAnalyzer {
                                 && !KofWeb.isWebNamespace(ie.name())
                                 && !KofConfig.isConfigNamespace(ie.name())
                                 && !KofCache.isCacheNamespace(ie.name())
+                                && !KofGpu.isGpuNamespace(ie.name())
                                 && !KofDb.isDbNamespace(ie.name())
                                 && !KofOrm.isOrmNamespace(ie.name())
                                 && !KofLog.isLogNamespace(ie.name())
@@ -1181,6 +1183,13 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         KofCache.CacheCall cacheCall = KofCache.staticCall(mc.methodName(), argTypes);
                         if (cacheCall != null) yield cacheCall.returnType();
+                        yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofGpu.isGpuNamespace(rid.name())) {
+                        List<Type> argTypes = new ArrayList<>();
+                        for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
+                        KofGpu.GpuCall gpuCall = KofGpu.staticCall(mc.methodName(), argTypes);
+                        if (gpuCall != null) yield gpuCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofHttp.isHttpNamespace(rid.name())) {

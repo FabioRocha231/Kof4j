@@ -62,6 +62,7 @@ final class NativeRuntime {
         emitIoTimeFunctions(sb);
         emitKofTimeFunctions(sb);
         emitCacheFunctions(sb);
+        emitVkStubs(sb);
         emitLogFunctions(sb);
         emitConfigFunctions(sb);
         emitIoFileFunctions(sb);
@@ -5885,6 +5886,34 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+            """);
+    }
+
+    // M32.2: stubs Vulkan p/ native — FFM não existe fora da JVM; o HAL
+    // consulta kof_vk_available() e cai para os goldens CPU. Os kof_vk_*
+    // existem aqui só para o link do namespace gpu.* (se um dia emisso).
+    private static void emitVkStubs(StringBuilder sb) {
+        sb.append("""
+            .section .text
+            .globl kof_vk_available
+            .type kof_vk_available, @function
+            kof_vk_available:
+                pushq $0
+                ret
+            .globl kof_vk_fail_reason
+            .type kof_vk_fail_reason, @function
+            kof_vk_fail_reason:
+                leaq .Lvk_na(%rip), %rax
+                pushq %rax
+                ret
+            .globl kof_vk_dispatch
+            .type kof_vk_dispatch, @function
+            kof_vk_dispatch:
+                pushq $1
+                ret
+            .section .data
+            .Lvk_na: .asciz "gpu: native target has no Vulkan FFM (GPU001)\\0"
+            .section .text
             """);
     }
 

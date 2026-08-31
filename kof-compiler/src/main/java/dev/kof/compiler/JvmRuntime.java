@@ -42,6 +42,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_http_")
                 || methodName.startsWith("kof_mq_")
                 || methodName.startsWith("kof_time_")
+                || methodName.startsWith("kof_vk_")
                 || methodName.startsWith("kof_scheduler_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
@@ -228,6 +229,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_cache_ttl" -> "(Ljava/lang/String;)I";
             case "kof_cache_delete" -> "(Ljava/lang/String;)V";
             case "kof_cache_clear" -> "()V";
+            case "kof_vk_available" -> "()Z";
+            case "kof_vk_fail_reason" -> "()Ljava/lang/String;";
+            case "kof_vk_dispatch" -> "([I[I[IIII)I";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
                     -> "(Ljava/lang/String;)V";
             case "kof_db_connect" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -352,6 +356,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_cache_get" -> "Ljava/lang/String;";
             case "kof_cache_set", "kof_cache_set_ttl", "kof_cache_delete", "kof_cache_clear" -> "V";
             case "kof_cache_ttl" -> "I";
+            case "kof_vk_available" -> "Z";
+            case "kof_vk_fail_reason" -> "Ljava/lang/String;";
+            case "kof_vk_dispatch" -> "I";
             case "kof_http_get", "kof_http_get_headers", "kof_http_delete", "kof_http_delete_headers",
                     "kof_http_options", "kof_http_options_headers", "kof_http_post", "kof_http_post_headers",
                     "kof_http_put", "kof_http_put_headers", "kof_http_patch", "kof_http_patch_headers"
@@ -891,7 +898,8 @@ static boolean hasRuntimeFn(String methodName) {
                 + JvmCacheRuntime.source()
                 + JvmOrmRuntime.source()
                 + JvmTimeRuntime.source()
-                + JvmStringRuntime.source();
+                + JvmStringRuntime.source()
+                + JvmVkRuntime.source();
     }
 
     private static String sourceCore(String decoders) {
