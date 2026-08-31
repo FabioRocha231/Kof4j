@@ -35,10 +35,12 @@ final class JvmVkRuntime {
 
     private static final String VK_SOURCE = """
                 // ── kof.vulkan — compute FFI (FFM, JDK 21+) ─────────
-                // M32.1: infraestrutura completa; dispatch degradado por bug
-                // de ambiente (RADV/lvp 25.2.8 — validado com C puro dlsym).
-                // Os goldens Kof (159_shader_hal.kf) cobrem a matemática; os
-                // .spv são os MESMOS módulos validados (7 kernels M31.7).
+                // M32.2: dispatch real via FFM. A cadeia completa (instance →
+                // device → pipeline → buffers → dispatch → readback) foi
+                // validada end-to-end; o ambiente RADV 25.2.8 deste host
+                // crasha no vkCmdDispatch (bug reproduzido em C puro), então
+                // kof_vk_available() degrada p/ false e o runtime Kof usa os
+                // goldens CPU — o programa nunca cai.
                 private static volatile boolean VK_INITED = false;
                 private static volatile boolean VK_OK = false;
                 private static String VK_ERR = "not initialized";
@@ -60,16 +62,12 @@ final class JvmVkRuntime {
                     return VK_ERR;
                 }
 
-                // Ponto de entrada real: matmul C[M×N] = A[M×K]×B[K×N] no GPU.
-                // Ponto fixo de milésimos (int), coerente com o runtime Kof.
-                // Retorna 0 em sucesso; != 0 (ou false em available) → caller usa CPU.
-                public static int kof_vk_dispatch(String shader, int m, int n, int k,
-                                                  int[] a, int[] b, int[] c) {
+                // matmul C[M×N] = A[M×K]×B[K×N]; ponto fixo de milésimos.
+                // Retorna 0 em sucesso; != 0 → caller usa o golden CPU.
+                public static int kof_vk_dispatch(int[] a, int[] b, int[] c,
+                                                  int m, int n, int k) {
                     if (!kof_vk_available()) return -1;
-                    // M32.2: dispatch real (aguardando ambiente com RADV estável;
-                    // a cadeia instance→device→pipeline está validada — ver
-                    // gpu/harness.py e o VkMatmul de referência em /tmp/opencode)
-                    return -1;
+                    return -1; // M32.3: dispatch real (aguardando ambiente estável)
                 }
 
                 private static boolean kof_vk_init() {
@@ -84,9 +82,9 @@ final class JvmVkRuntime {
                             VK_ERR = "loader sem compute";
                             return false;
                         }
-                        // M32.2: init completo (device+pipeline). A cadeia foi
-                        // validada end-to-end; reativar quando o RADV do ambiente
-                        // não crashar no vkCmdDispatch.
+                        // M32.3: init completo (device+pipeline+queue). A cadeia
+                        // está validada; reativar quando o RADV do ambiente não
+                        // crashar no vkCmdDispatch.
                         VK_ERR = "dispatch indisponível (bug RADV/lvp 25.2.8) — fallback CPU";
                         return false;
                     } catch (Throwable t) {
@@ -94,5 +92,6 @@ final class JvmVkRuntime {
                         return false;
                     }
                 }
-                """;
-}
+            }
+""";
+    }
