@@ -3129,6 +3129,16 @@ private Target target = Target.JVM;
                                                 List.of(Type.PrimitiveType.INT), BuiltinTypes.STRING,
                                                 KofCallKind.FUNCTION));
                                         break;
+                                    case "double":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_double_to_string",
+                                                List.of(Type.PrimitiveType.DOUBLE), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
+                                    case "float":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_float_to_string",
+                                                List.of(Type.PrimitiveType.FLOAT), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
                                     default: // string
                                         ops.add(new KofCall(BuiltinTypes.STRING, "kof_json_quote",
                                                 List.of(BuiltinTypes.STRING), BuiltinTypes.STRING,
@@ -6526,31 +6536,13 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     private boolean jsonSupported(Type type, boolean isDecode) {
         Type check = BuiltinTypes.isList(type) ? listElementType(type) : type;
         if (check instanceof Type.PrimitiveType pt && ("float".equals(pt.name()) || "double".equals(pt.name()))) {
-            if (target.isNative()) {
-                if (currentDiagnostics != null) {
-                    currentDiagnostics.error("", 0, 0, 0,
-                            "json: Float/Double is not supported on the Native target yet (use int, long, bool or String)",
-                            "JSN001");
-                }
-                return false;
-            }
+            // JSN001 fechado: encode/decode float/double no Native
+            // (kof_json_encode_double + kof_string_to_double, FP XMM).
             return true;
         }
         if (isDecode && type instanceof Type.ArrayType at) {
             // JSN003 fechado: int/long/bool/string[] tem decoders nativos.
-            if (!(at.componentType() instanceof Type.PrimitiveType ap
-                    && ("float".equals(ap.name()) || "double".equals(ap.name())))) {
-                return true;
-            }
-            // arrays de float/double permanecem sob o gap FP
-            if (target.isNative()) {
-                if (currentDiagnostics != null) {
-                    currentDiagnostics.error("", 0, 0, 0,
-                            "json.decode: Float/Double arrays are not supported on the Native target yet",
-                            "JSN001");
-                }
-                return false;
-            }
+            // JSN001: float/double[] também decodifica no Native.
             return true;
         }
         if (check instanceof Type.ClassType && target.isNative() && !BuiltinTypes.isList(type)

@@ -29,6 +29,12 @@ class RouterE2ETest {
 
 
 
+
+
+
+
+
+
     @Test
     void goSwapsRootComponentWithLifecycle(@TempDir Path tempDir) throws Exception {
         String program = """

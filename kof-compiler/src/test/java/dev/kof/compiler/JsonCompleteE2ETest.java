@@ -119,30 +119,38 @@ class JsonCompleteE2ETest {
     }
 
     @Test
-    void nativeStillReportsJsnGaps(@TempDir Path tempDir) throws IOException {
+    void nativeEncodeDecodeFloatDoubleJsn001(@TempDir Path tempDir) throws IOException, InterruptedException {
+        // JSN001 fechado: encode/decode de Float/Double no Native (FP XMM)
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
                 println(json.encode(3.14))
+                println(json.decode<Double>("2.75"))
+                println(json.decode<Float>("1.5"))
+                var arr = json.decode<Double[]>("[1.5, -2.25]")
+                println(arr.length)
+                println(arr[1])
             }
             """);
         CompilationResult r = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
-        assertFalse(r.success());
-        assertTrue(r.diagnostics().getDiagnostics().toString().contains("JSN001"),
-                r.diagnostics().getDiagnostics().toString());
+        assertTrue(r.success(), "Native Float/Double JSON should compile: "
+                + r.diagnostics().getDiagnostics());
+        Path binFile = tempDir.resolve("native-out").resolve("Default/Main");
+        assertTrue(Files.exists(binFile), "Binary should exist");
+        ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+            .replace("\r\n", "\n").trim();
+        int ec = p.waitFor();
+        assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+        assertTrue(output.contains("3.14"), "encode double: " + output);
+        assertTrue(output.contains("2.75"), "decode double: " + output);
+        assertTrue(output.contains("1.5"), "decode float: " + output);
+        assertTrue(output.contains("2"), "array length: " + output);
+        assertTrue(output.contains("-2.25"), "array elem: " + output);
 
-        // arrays de Float/Double continuam sob o gap FP (JSN001)...
-        Files.writeString(source, """
-            main() {
-                var arr = json.decode<Double[]>("[1]")
-            }
-            """);
-        r = driver.compile(source, tempDir.resolve("native-out2"), Target.NATIVE);
-        assertFalse(r.success());
-        assertTrue(r.diagnostics().getDiagnostics().toString().contains("JSN001"),
-                r.diagnostics().getDiagnostics().toString());
-
-        // ...mas Int[] agora decodifica de verdade no Native (JSN003 fechado)
+        // Int[] continua decodificando (JSN003)
         Files.writeString(source, """
             main() {
                 var arr = json.decode<Int[]>("[7]")

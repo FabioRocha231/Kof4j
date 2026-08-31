@@ -403,26 +403,30 @@ final class NativeRuntime {
                 pushq %rbp
                 movq %rsp, %rbp
                 pushq %rbx
-                subq $88, %rsp
+                pushq %r12
+                subq $80, %rsp
+                leaq -72(%rbp), %r12
                 cvtss2sd %xmm0, %xmm0
-                leaq -64(%rbp), %rbx
-                movq %rbx, %rdi
+                movq %r12, %rdi
                 movq $64, %rsi
                 leaq .Lfmt_float(%rip), %rdx
                 movl $1, %eax
+                movq %rsp, %rbx
+                andq $-16, %rsp             # alinha para snprintf
                 call snprintf
-                movq %rbx, %rdi
-                xorq %rdx, %rdx
+                movq %rbx, %rsp
+                xorl %edx, %edx
             .Lkof_flt_str_len:
-                cmpb $0, (%rdi,%rdx)
+                cmpb $0, (%r12,%rdx)
                 je .Lkof_flt_str_gotlen
                 incq %rdx
                 jmp .Lkof_flt_str_len
             .Lkof_flt_str_gotlen:
                 movl %edx, %esi
-                movq %rbx, %rdi
+                movq %r12, %rdi
                 call kof_string_from_literal
-                addq $88, %rsp
+                addq $80, %rsp
+                popq %r12
                 popq %rbx
                 popq %rbp
                 ret
@@ -437,25 +441,29 @@ final class NativeRuntime {
                 pushq %rbp
                 movq %rsp, %rbp
                 pushq %rbx
-                subq $88, %rsp
-                leaq -64(%rbp), %rbx
-                movq %rbx, %rdi
+                pushq %r12
+                subq $80, %rsp
+                leaq -72(%rbp), %r12
+                movq %r12, %rdi
                 movq $64, %rsi
                 leaq .Lfmt_double(%rip), %rdx
                 movl $1, %eax
+                movq %rsp, %rbx
+                andq $-16, %rsp             # alinha para snprintf
                 call snprintf
-                movq %rbx, %rdi
-                xorq %rdx, %rdx
+                movq %rbx, %rsp
+                xorl %edx, %edx
             .Lkof_dbl_str_len:
-                cmpb $0, (%rdi,%rdx)
+                cmpb $0, (%r12,%rdx)
                 je .Lkof_dbl_str_gotlen
                 incq %rdx
                 jmp .Lkof_dbl_str_len
             .Lkof_dbl_str_gotlen:
                 movl %edx, %esi
-                movq %rbx, %rdi
+                movq %r12, %rdi
                 call kof_string_from_literal
-                addq $88, %rsp
+                addq $80, %rsp
+                popq %r12
                 popq %rbx
                 popq %rbp
                 ret
@@ -1634,6 +1642,46 @@ final class NativeRuntime {
             kof_json_encode_bool:
                 jmp kof_bool_to_string
 
+            .globl kof_json_encode_double
+            .type kof_json_encode_double, @function
+            kof_json_encode_double:
+                # xmm0 = double -> KofString* com o texto (%g via snprintf)
+                pushq %rbp
+                movq %rsp, %rbp
+                pushq %rbx
+                pushq %r12
+                subq $80, %rsp
+                leaq -72(%rbp), %r12        # buffer (acima do rsp real, no frame)
+                movq %r12, %rdi
+                movq $64, %rsi
+                leaq .Lfmt_double(%rip), %rdx
+                movl $1, %eax
+                movq %rsp, %rbx
+                andq $-16, %rsp             # alinha para snprintf
+                call snprintf
+                movq %rbx, %rsp             # restaura rsp real
+                xorl %edx, %edx
+            .Lkof_je_dbl_len:
+                cmpb $0, (%r12,%rdx)
+                je .Lkof_je_dbl_gotlen
+                incq %rdx
+                jmp .Lkof_je_dbl_len
+            .Lkof_je_dbl_gotlen:
+                movl %edx, %esi
+                movq %r12, %rdi
+                call kof_string_from_literal
+                addq $80, %rsp
+                popq %r12
+                popq %rbx
+                popq %rbp
+                ret
+
+            .globl kof_json_encode_float
+            .type kof_json_encode_float, @function
+            kof_json_encode_float:
+                cvtss2sd %xmm0, %xmm0
+                jmp kof_json_encode_double
+
             .globl kof_json_encode_string
             .type kof_json_encode_string, @function
             kof_json_encode_string:
@@ -1878,6 +1926,110 @@ final class NativeRuntime {
             .type kof_json_decode_long, @function
             kof_json_decode_long:
                 jmp kof_json_decode_int
+
+            .globl kof_json_decode_double
+            .type kof_json_decode_double, @function
+            kof_json_decode_double:
+                # rdi = KofString* json -> xmm0 = double do primeiro token
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $192, %rsp             # token em 0(%rsp), KofString em 128(%rsp)
+                movq %rdi, %rbx
+                testq %rbx, %rbx
+                jz .Lkof_jdd_zero
+                movl 16(%rbx), %r15d        # len
+                xorq %r12, %r12             # pos
+            .Lkof_jdd_skip:
+                cmpl %r15d, %r12d
+                jge .Lkof_jdd_zero
+                movzbl 24(%rbx,%r12), %eax
+                cmpb $32, %al
+                je .Lkof_jdd_skip_inc
+                cmpb $9, %al
+                je .Lkof_jdd_skip_inc
+                cmpb $10, %al
+                je .Lkof_jdd_skip_inc
+                cmpb $13, %al
+                je .Lkof_jdd_skip_inc
+                jmp .Lkof_jdd_scan
+            .Lkof_jdd_skip_inc:
+                incq %r12
+                jmp .Lkof_jdd_skip
+            .Lkof_jdd_scan:
+                xorq %r13, %r13             # len do token
+            .Lkof_jdd_loop:
+                cmpl %r15d, %r12d
+                jge .Lkof_jdd_build
+                movzbl 24(%rbx,%r12), %eax
+                cmpb $43, %al               # '+'
+                je .Lkof_jdd_take
+                cmpb $45, %al               # '-'
+                je .Lkof_jdd_take
+                cmpb $46, %al               # '.'
+                je .Lkof_jdd_take
+                cmpb $101, %al              # 'e'
+                je .Lkof_jdd_take
+                cmpb $69, %al               # 'E'
+                je .Lkof_jdd_take
+                cmpb $48, %al
+                jb .Lkof_jdd_build
+                cmpb $57, %al
+                ja .Lkof_jdd_build
+            .Lkof_jdd_take:
+                cmpq $127, %r13
+                jge .Lkof_jdd_build
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r12), %eax
+                movb %al, (%rsp,%r13)
+                incq %r13
+                incq %r12
+                jmp .Lkof_jdd_loop
+            .Lkof_jdd_build:
+                testq %r13, %r13
+                jz .Lkof_jdd_zero
+                movb $0, (%rsp,%r13)        # NUL-terminate
+                # KofString temporario em 128(%rsp): tag/len/data
+                movq $1, 128(%rsp)          # tag string
+                movq $0, 136(%rsp)
+                movl %r13d, 144(%rsp)       # len
+                xorq %r14, %r14
+            .Lkof_jdd_copy:
+                cmpq %r13, %r14
+                jge .Lkof_jdd_call
+                movzbl (%rsp,%r14), %eax
+                movb %al, 152(%rsp,%r14)
+                incq %r14
+                jmp .Lkof_jdd_copy
+            .Lkof_jdd_call:
+                movb $0, 152(%rsp,%r13)
+                leaq 128(%rsp), %rdi
+                call kof_string_to_double
+                addq $192, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_jdd_zero:
+                xorpd %xmm0, %xmm0
+                addq $192, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_float
+            .type kof_json_decode_float, @function
+            kof_json_decode_float:
+                call kof_json_decode_double
+                cvtsd2ss %xmm0, %xmm0
+                ret
 
             .globl kof_json_decode_list
             .type kof_json_decode_list, @function
@@ -2377,13 +2529,14 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 testq %rdi, %rdi
                 jz .Lkof_str_to_dbl_zero
                 movq %rdi, %rbx
                 movl 16(%rbx), %r12d
-                xorq %r13, %r13
-                xorl %ecx, %ecx
-                xorl %r14d, %r14d
+                xorq %r13, %r13            # parte inteira acumulada
+                xorl %ecx, %ecx            # cursor
+                xorl %r14d, %r14d          # neg
                 cmpl $0, %r12d
                 je .Lkof_str_to_dbl_done
                 movzbl 24(%rbx), %eax
@@ -2393,10 +2546,14 @@ final class NativeRuntime {
                 movl $1, %r14d
             .Lkof_str_to_dbl_int:
                 cmpl %r12d, %ecx
-                jge .Lkof_str_to_dbl_convert
+                jge .Lkof_str_to_dbl_frac
                 movzbl 24(%rbx,%rcx), %eax
                 cmpl $46, %eax
-                je .Lkof_str_to_dbl_convert
+                je .Lkof_str_to_dbl_frac
+                cmpb $101, %al
+                je .Lkof_str_to_dbl_exp
+                cmpb $69, %al
+                je .Lkof_str_to_dbl_exp
                 movq $10, %rax
                 imulq %r13, %rax
                 movzbl 24(%rbx,%rcx), %edx
@@ -2406,13 +2563,86 @@ final class NativeRuntime {
                 movq %rax, %r13
                 incl %ecx
                 jmp .Lkof_str_to_dbl_int
-            .Lkof_str_to_dbl_convert:
-                vcvtsi2sd %r13, %xmm0, %xmm0
+            .Lkof_str_to_dbl_frac:
+                vcvtsi2sd %r13, %xmm0, %xmm0      # xmm0 = parte inteira
+                incl %ecx                          # pula o '.'
+                movsd .Lkof_dbl_one(%rip), %xmm2   # scale = 1.0
+            .Lkof_str_to_dbl_frac_loop:
+                cmpl %r12d, %ecx
+                jge .Lkof_str_to_dbl_finish
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $101, %al
+                je .Lkof_str_to_dbl_exp
+                cmpb $69, %al
+                je .Lkof_str_to_dbl_exp
+                cmpb $48, %al
+                jb .Lkof_str_to_dbl_finish
+                cmpb $57, %al
+                ja .Lkof_str_to_dbl_finish
+                movsd %xmm2, %xmm3                 # peso atual
+                divsd .Lkof_dbl_ten(%rip), %xmm2   # scale /= 10
+                movsd %xmm2, %xmm3                 # peso = scale/10 (apos o ponto)
+                movzbl 24(%rbx,%rcx), %eax
+                subl $48, %eax
+                vcvtsi2sd %eax, %xmm4, %xmm4       # digito
+                mulsd %xmm3, %xmm4                 # digito * peso
+                addsd %xmm4, %xmm0                 # acc += ...
+                incl %ecx
+                jmp .Lkof_str_to_dbl_frac_loop
+            .Lkof_str_to_dbl_exp:
+                # expoente: 'e'/'E' [+-] digits — aplica por multiplicacao
+                incl %ecx
+                xorl %r15d, %r15d                  # exp neg?
+                xorq %r13, %r13                    # exp value
+                cmpl %r12d, %ecx
+                jge .Lkof_str_to_dbl_finish
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $45, %al
+                jne .Lkof_str_to_dbl_exp_pos
+                movl $1, %r15d
+                incl %ecx
+                jmp .Lkof_str_to_dbl_exp_digits
+            .Lkof_str_to_dbl_exp_pos:
+                cmpb $43, %al
+                jne .Lkof_str_to_dbl_exp_digits
+                incl %ecx
+            .Lkof_str_to_dbl_exp_digits:
+                cmpl %r12d, %ecx
+                jge .Lkof_str_to_dbl_exp_apply
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $48, %al
+                jb .Lkof_str_to_dbl_exp_apply
+                cmpb $57, %al
+                ja .Lkof_str_to_dbl_exp_apply
+                imulq $10, %r13
+                subl $48, %eax
+                movslq %eax, %rax
+                addq %rax, %r13
+                incl %ecx
+                jmp .Lkof_str_to_dbl_exp_digits
+            .Lkof_str_to_dbl_exp_apply:
+                movsd .Lkof_dbl_one(%rip), %xmm1
+            .Lkof_str_to_dbl_exp_mul:
+                testq %r13, %r13
+                jz .Lkof_str_to_dbl_exp_sign
+                mulsd .Lkof_dbl_ten(%rip), %xmm1
+                decq %r13
+                jmp .Lkof_str_to_dbl_exp_mul
+            .Lkof_str_to_dbl_exp_sign:
+                testl %r15d, %r15d
+                jz .Lkof_str_to_dbl_exp_mul2
+                divsd %xmm1, %xmm0
+                jmp .Lkof_str_to_dbl_finish
+            .Lkof_str_to_dbl_exp_mul2:
+                mulsd %xmm1, %xmm0
+                jmp .Lkof_str_to_dbl_finish
+            .Lkof_str_to_dbl_finish:
                 testl %r14d, %r14d
                 jz .Lkof_str_to_dbl_done
                 movsd .Lkof_dbl_neg(%rip), %xmm1
                 mulsd %xmm1, %xmm0
             .Lkof_str_to_dbl_done:
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
@@ -3788,6 +4018,186 @@ final class NativeRuntime {
                 movl $1, %esi
                 call kof_array_alloc
                 jmp .Ljba_done
+
+            # helper: parser FP minimalista sobre (rbx=json, r13=pos)
+            # -> xmm0 = valor, r13 = pos apos o token. Aceita [-+0-9.eE].
+            .Ljad_f64_at:
+                pushq %rbx
+                subq $192, %rsp             # token em 0(%rsp), KofString em 128(%rsp)
+                movq %rbx, %r10             # salva rbx (json) em r10
+                xorq %rbx, %rbx             # len do token
+            .Ljad_f64_loop:
+                cmpl 16(%r10), %r13d
+                jge .Ljad_f64_build
+                movl 16(%r10), %eax
+                cmpl %eax, %r13d
+                jge .Ljad_f64_build
+                movzbl 24(%r10,%r13), %eax
+                cmpb $43, %al
+                je .Ljad_f64_take
+                cmpb $45, %al
+                je .Ljad_f64_take
+                cmpb $46, %al
+                je .Ljad_f64_take
+                cmpb $101, %al
+                je .Ljad_f64_take
+                cmpb $69, %al
+                je .Ljad_f64_take
+                cmpb $48, %al
+                jb .Ljad_f64_build
+                cmpb $57, %al
+                ja .Ljad_f64_build
+            .Ljad_f64_take:
+                cmpq $127, %rbx
+                jge .Ljad_f64_build
+                movzbl 24(%r10,%r13), %eax
+                movb %al, (%rsp,%rbx)
+                incq %rbx
+                incq %r13
+                jmp .Ljad_f64_loop
+            .Ljad_f64_build:
+                testq %rbx, %rbx
+                jz .Ljad_f64_zero
+                movq $1, 128(%rsp)          # tag string (header nao sobrescreve o token)
+                movq $0, 136(%rsp)
+                movl %ebx, 144(%rsp)        # len
+                xorq %rcx, %rcx
+            .Ljad_f64_copy:
+                cmpq %rbx, %rcx
+                jge .Ljad_f64_call
+                movzbl (%rsp,%rcx), %eax
+                movb %al, 152(%rsp,%rcx)
+                incq %rcx
+                jmp .Ljad_f64_copy
+            .Ljad_f64_call:
+                movb $0, 152(%rsp,%rbx)
+                leaq 128(%rsp), %rdi
+                call kof_string_to_double
+                addq $192, %rsp
+                popq %rbx
+                ret
+            .Ljad_f64_zero:
+                xorpd %xmm0, %xmm0
+                addq $192, %rsp
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_double_array
+            .type kof_json_decode_double_array, @function
+            kof_json_decode_double_array:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $32, %rsp
+                movq %rdi, %rbx
+                movl 16(%rbx), %r15d
+                xorq %r13, %r13
+            .Ljda_skip0:
+                cmpl %r15d, %r13d
+                jge .Ljda_empty
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $91, %al                # '['
+                je .Ljda_open
+                incq %r13
+                jmp .Ljda_skip0
+            .Ljda_open:
+                incq %r13
+                xorq %r14, %r14              # count
+            .Ljda_count:
+                cmpl %r15d, %r13d
+                jge .Ljda_alloc
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $93, %al                # ']'
+                je .Ljda_alloc
+                cmpb $44, %al                # ','
+                je .Ljda_cnext
+                cmpb $32, %al
+                je .Ljda_cws
+                cmpb $10, %al
+                je .Ljda_cws
+                cmpb $9, %al
+                je .Ljda_cws
+                incq %r14                    # qualquer char de numero conta
+            .Ljda_cvskip:
+                cmpl %r15d, %r13d
+                jge .Ljda_alloc
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $44, %al
+                je .Ljda_cnext2
+                cmpb $93, %al
+                je .Ljda_alloc
+                incq %r13
+                jmp .Ljda_cvskip
+            .Ljda_cnext2:
+                incq %r13
+                jmp .Ljda_count
+            .Ljda_cws:
+                incq %r13
+                jmp .Ljda_count
+            .Ljda_cnext:
+                incq %r13
+                jmp .Ljda_count
+            .Ljda_alloc:
+                movl %r14d, %edi
+                movl $8, %esi
+                call kof_array_alloc
+                movq %rax, %r12
+                xorq %r13, %r13
+            .Ljda_rescan0:
+                cmpl %r15d, %r13d
+                jge .Ljda_done
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $91, %al
+                je .Ljda_rescan1
+                incq %r13
+                jmp .Ljda_rescan0
+            .Ljda_rescan1:
+                incq %r13
+                xorq %r14, %r14              # idx
+            .Ljda_fill:
+                cmpl %r15d, %r13d
+                jge .Ljda_done
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $93, %al
+                je .Ljda_done
+                cmpb $44, %al
+                je .Ljda_fnext
+                cmpb $32, %al
+                je .Ljda_fws
+                cmpb $10, %al
+                je .Ljda_fws
+                cmpb $9, %al
+                je .Ljda_fws
+                call .Ljad_f64_at            # xmm0 = valor, r13 ja avancado
+                movq %r14, %rcx
+                shlq $3, %rcx
+                addq $24, %rcx
+                addq %r12, %rcx
+                movsd %xmm0, (%rcx)
+                incq %r14
+                jmp .Ljda_fill
+            .Ljda_fnext:
+                incq %r13
+                jmp .Ljda_fill
+            .Ljda_fws:
+                incq %r13
+                jmp .Ljda_fill
+            .Ljda_done:
+                movq %r12, %rax
+                addq $32, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Ljda_empty:
+                xorl %edi, %edi
+                movl $8, %esi
+                call kof_array_alloc
+                jmp .Ljda_done
             """);
     }
 

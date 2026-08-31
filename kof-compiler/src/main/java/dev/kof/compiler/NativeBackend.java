@@ -1334,12 +1334,61 @@ public class NativeBackend implements Backend {
             return;
         }
         if ("kof_string_to_int".equals(kc.methodName())
-                || "kof_string_to_long".equals(kc.methodName())
-                || "kof_string_to_double".equals(kc.methodName())
-                || "kof_string_to_float".equals(kc.methodName())) {
+                || "kof_string_to_long".equals(kc.methodName())) {
             String fn = kc.methodName();
             sb.append("    popq %rdi\n");
             sb.append("    call ").append(fn).append("\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // retorno FP vive em xmm0 — preservar os bits na pilha
+        if ("kof_string_to_double".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_to_double\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_string_to_float".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_to_float\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // JSN001: json.decode<Double>/decode<Float> retorna em xmm0
+        if ("kof_json_decode_double".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_json_decode_double\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_json_decode_float".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_json_decode_float\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // JSN001: json.encode(double) recebe em xmm0 (bits na pilha)
+        if ("kof_json_encode_double".equals(kc.methodName())) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    call kof_json_encode_double\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_json_encode_float".equals(kc.methodName())) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    call kof_json_encode_float\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_json_decode_double_array".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_json_decode_double_array\n");
             sb.append("    pushq %rax\n");
             return;
         }
