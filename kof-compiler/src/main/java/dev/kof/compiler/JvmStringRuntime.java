@@ -865,7 +865,6 @@ final class JvmStringRuntime {
                     }
                     return 0;
                 }
-            }
 """;
     }
 }
