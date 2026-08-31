@@ -35,6 +35,37 @@ class RouterE2ETest {
 
 
 
+
+    @Test
+    void debugConc001(@TempDir Path tempDir) throws Exception {
+        Path source = tempDir.resolve("sp.kf");
+        Files.writeString(source, """
+            Int work(Int x) { return x * 2 }
+            main() {
+                spawn {
+                    println("inside")
+                }
+                val r = spawn work(21)
+                println(await r)
+                println("after")
+            }
+            """);
+        CompilationResult rn = driver.compile(source, tempDir.resolve("nout"), Target.NATIVE);
+        System.err.println("DEBUG-CONC001 native ok=" + rn.success() + (rn.success() ? "" : " " + rn.diagnostics().getDiagnostics()));
+        if (!rn.success()) {
+            try { for (java.nio.file.Path s : Files.walk(tempDir.resolve("nout")).filter(f -> f.toString().endsWith(".s")).toList()) {
+                String asm = Files.readString(s);
+                for (String line : asm.split("\n")) if (line.contains("kof_spawn") || line.contains("pthread")) System.err.println("ASM: " + line.trim());
+            } } catch (Exception e) {}
+        }
+        if (rn.success()) {
+            Path bin = tempDir.resolve("nout").resolve("Default/Main");
+            Process p2 = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+            String out = new String(p2.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            System.err.println("DEBUG-CONC001 ec=" + p2.waitFor() + " out=[" + out.trim() + "]");
+        }
+    }
+
     @Test
     void goSwapsRootComponentWithLifecycle(@TempDir Path tempDir) throws Exception {
         String program = """

@@ -28,6 +28,7 @@ final class NativeRuntime {
         emitAlloc(sb);
         emitFree(sb);
         emitGc(sb);
+        emitConcurrency(sb);
         emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
@@ -474,6 +475,7 @@ final class NativeRuntime {
         sb.append("""
             .section .bss
             .balign 8
+            kof_alloc_lock: .space 40          # pthread_mutex_t (zero-init = default)
             kof_free_head: .quad 0
             .globl kof_gc_head
             .balign 8
@@ -495,7 +497,25 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                movq %rdi, %r12
+                subq $24, %rsp
+                movq %rdi, (%rsp)                # tamanho solicitado
+                leaq kof_alloc_lock(%rip), %rsi  # &lock
+                xorl %eax, %eax                  # esperado 0
+            .Lkof_alloc_lock_try:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)        # 0->1 atomically?
+                testl %eax, %eax
+                jz .Lkof_alloc_locked
+                # ocupado: futex wait
+                movl $1, %edx                    # val=1
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax                  # SYS_futex WAIT
+                syscall
+                jmp .Lkof_alloc_lock_try
+            .Lkof_alloc_locked:
+                movq (%rsp), %r12
                 addq $7, %r12
                 andq $~7, %r12
                 addq $32, %r12
@@ -524,6 +544,16 @@ final class NativeRuntime {
                 addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
+                movq %rax, (%rsp)                # preserva retorno
+                leaq kof_alloc_lock(%rip), %rdi
+                movl $0, (%rdi)
+                movl $1, %esi                    # FUTEX_WAKE, 1 waiter
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                syscall
+                movq (%rsp), %rax
+                addq $24, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -569,6 +599,16 @@ final class NativeRuntime {
                 addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
+                movq %rax, (%rsp)                # preserva retorno
+                leaq kof_alloc_lock(%rip), %rdi
+                movl $0, (%rdi)
+                movl $1, %esi                    # FUTEX_WAKE, 1 waiter
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                syscall
+                movq (%rsp), %rax
+                addq $24, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -576,6 +616,13 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_alloc_fail:
+                leaq kof_alloc_lock(%rip), %rdi
+                movl $0, (%rdi)
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                syscall
                 leaq .Lstr_alloc_fail(%rip), %rdi
                 call kof_panic
             """);
@@ -597,6 +644,189 @@ final class NativeRuntime {
                 incq .Lkof_free_count(%rip)
                 addq %rsi, .Lkof_free_bytes(%rip)
             .Lkof_free_done:
+                ret
+            """);
+    }
+
+    /**
+     * CONC001: spawn/await no Native via pthread.
+     * Handle (32 bytes): 0=tag(2), 4=done, 8=pthread_t, 16=result.
+     * Bloco do trampolim (16 bytes): 0=task, 8=handle.
+     * kof_spawn_track adiciona o handle na lista global; o fim do main
+     * chama kof_spawn_join_all (join implicito, sem tarefa orfa).
+     */
+    private static void emitConcurrency(StringBuilder sb) {
+        sb.append("""
+            .section .bss
+            .balign 8
+            kof_spawn_handles: .quad 0          # cabeca da lista (no: [next, handle])
+            kof_spawn_count: .quad 0
+            .section .text
+            .globl kof_spawn_trampoline
+            .type kof_spawn_trampoline, @function
+            kof_spawn_trampoline:
+                # rdi = bloco {task, handle}
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq 0(%rbx), %rdi              # task
+                movq 8(%rbx), %r12              # handle (0 p/ stmt)
+                movq 8(%rdi), %rax              # task vtable
+                movq (%rax), %rax               # vtable[0] = invoke
+                call *%rax
+                testq %r12, %r12
+                jz .Lkof_spawn_thr_done
+                movq %rax, 16(%r12)             # handle->result
+                movl $1, 4(%r12)                # handle->done = 1
+            .Lkof_spawn_thr_done:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_spawn_handle_new
+            .type kof_spawn_handle_new, @function
+            kof_spawn_handle_new:
+                # rdi = task, esi = wants_result -> handle
+                # entry ≡8; 4 push -> ≡8; subq 24 -> ≡8-24? 16k+8-32-24 = 16k-48 ≡ 0 no call ✓
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                subq $24, %rsp
+                movq %rdi, %r13
+                movl %esi, %r14d
+                movl $32, %edi
+                call kof_alloc
+                movq %rax, %rbx                 # handle
+                movl $2, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movq $0, 16(%rbx)
+                # bloco do trampolim
+                movl $16, %edi
+                call kof_alloc
+                movq %r13, 0(%rax)              # task
+                movq %rbx, 8(%rax)              # handle
+                leaq 8(%rbx), %rdi              # &handle->thread
+                xorl %esi, %esi                 # attr = NULL
+                leaq kof_spawn_trampoline(%rip), %rdx
+                movq %rax, %rcx                 # arg = bloco
+                call pthread_create
+                testl %eax, %eax
+                jz .Lkof_spawn_ok
+                # falha no pthread: roda inline (degradacao segura)
+                movq %r13, %rdi
+                call kof_spawn_trampoline
+                movl $1, 4(%rbx)
+                jmp .Lkof_spawn_next
+            .Lkof_spawn_ok:
+                # adiciona o handle na lista global p/ join implicito
+                movl $16, %edi
+                call kof_alloc
+                leaq kof_spawn_handles(%rip), %rcx
+                movq (%rcx), %rdx               # head atual
+                movq %rbx, 8(%rax)              # no->handle
+                movq %rdx, 0(%rax)              # no->next
+                movq %rax, (%rcx)
+                incq kof_spawn_count(%rip)
+            .Lkof_spawn_next:
+                addq $24, %rsp
+                movq %rbx, %rax                 # retorna handle
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_spawn
+            .type kof_spawn, @function
+            kof_spawn:
+                # rdi = task (stmt) -> handle fire-and-forget (nao registrado)
+                # entry rsp≡8; 2 push -> ≡8; subq 24 -> ≡8+24? nao: 16k+8-16-24 = 16k-32 ≡ 0 no call ✓
+                pushq %rbx
+                pushq %r12
+                subq $24, %rsp
+                movq %rdi, %r12
+                movl $32, %edi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $2, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movq $0, 16(%rbx)
+                movl $16, %edi
+                call kof_alloc
+                movq %r12, 0(%rax)
+                movq %rbx, 8(%rax)
+                leaq 8(%rbx), %rdi              # &handle->thread
+                xorl %esi, %esi                 # attr = NULL
+                leaq kof_spawn_trampoline(%rip), %rdx
+                movq %rax, %rcx                 # arg = bloco
+                call pthread_create
+                testl %eax, %eax
+                jz .Lkof_spawn_stmt_ok
+                movq %r12, %rdi
+                call kof_spawn_trampoline
+            .Lkof_spawn_stmt_ok:
+                addq $24, %rsp
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_spawn_result
+            .type kof_spawn_result, @function
+            kof_spawn_result:
+                # rdi = task -> handle registrado (await/join depois)
+                movl $1, %esi
+                jmp kof_spawn_handle_new
+
+            .globl kof_await
+            .type kof_await, @function
+            kof_await:
+                # rdi = handle -> valor (join da thread)
+                testq %rdi, %rdi
+                jz .Lkof_await_null
+                cmpl $2, 0(%rdi)
+                jne .Lkof_await_null
+                cmpq $0, 8(%rdi)
+                je .Lkof_await_val
+                pushq %rdi                      # preserva handle na pilha
+                movq 8(%rdi), %rdi              # pthread_join(tid, NULL)
+                xorl %esi, %esi
+                call pthread_join
+                popq %rdi                       # restaura handle base
+            .Lkof_await_val:
+                movq 16(%rdi), %rax
+                ret
+            .Lkof_await_null:
+                xorl %eax, %eax
+                ret
+
+            .globl kof_spawn_join_all
+            .type kof_spawn_join_all, @function
+            kof_spawn_join_all:
+                # join implicito: percorre a lista e aguarda todas as tasks
+                pushq %rbx
+                pushq %r12
+                subq $8, %rsp
+                movq kof_spawn_handles(%rip), %rbx
+            .Lkof_join_loop:
+                testq %rbx, %rbx
+                jz .Lkof_join_done
+                movq 8(%rbx), %r12              # handle
+                cmpq $0, 8(%r12)
+                je .Lkof_join_next
+                movq 8(%r12), %rdi              # tid
+                xorl %esi, %esi                 # retval = NULL
+                call pthread_join
+            .Lkof_join_next:
+                movq 0(%rbx), %rbx              # next
+                jmp .Lkof_join_loop
+            .Lkof_join_done:
+                addq $8, %rsp
+                popq %r12
+                popq %rbx
                 ret
             """);
     }

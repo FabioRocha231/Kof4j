@@ -20,6 +20,7 @@ public class NativeBackend implements Backend {
     private IRClass currentClass = null;
     private boolean usesDb = false;
     private boolean usesMysql = false;
+    private boolean usesConcurrency = false;
     private final Map<String, String> functionMangleMap = new HashMap<>();
     private final Map<String, ClassLayout> layoutCache = new HashMap<>();
     private Map<String, IRClass> allClassesMap = new HashMap<>();
@@ -256,6 +257,10 @@ public class NativeBackend implements Backend {
                                     || kc.methodName().equals("kof_db_connect2")) {
                                 usesMysql |= connectsToMysql(i, ops);
                             }
+                        }
+                        if (op instanceof KofCall kc && (kc.methodName().equals("kof_spawn")
+                                || kc.methodName().equals("kof_spawn_result"))) {
+                            usesConcurrency = true;
                         }
                     }
                 }
@@ -518,6 +523,10 @@ public class NativeBackend implements Backend {
         }
 
         if (!endsWithReturn) {
+            if (usesConcurrency && "main".equals(method.name())) {
+                // join implícito: nenhuma tarefa spawnada fica orfa
+                sb.append("    call kof_spawn_join_all\n");
+            }
             sb.append("    movq %rbp, %rsp\n");
             sb.append("    popq %rbp\n");
             sb.append("    ret\n");
@@ -1392,6 +1401,23 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        // CONC001: spawn/await no Native
+        if ("kof_spawn".equals(kc.methodName()) || "kof_spawn_result".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(kc.methodName()).append("\n");
+            if ("kof_spawn_result".equals(kc.methodName())) sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_await".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_await\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_spawn_join_all".equals(kc.methodName())) {
+            sb.append("    call kof_spawn_join_all\n");
+            return;
+        }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
             Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
             if (argType instanceof Type.PrimitiveType pt && ("int".equals(pt.name()) || "char".equals(pt.name())
@@ -1663,24 +1689,15 @@ public class NativeBackend implements Backend {
         boolean needsDynamic = true;
         String os = System.getProperty("os.name", "").toLowerCase();
         if (needsDynamic && os.contains("linux")) {
+            java.util.List<String> cmdL = new java.util.ArrayList<>(java.util.Arrays.asList(
+                    "ld", "-o", binFile.toString(), objFile.toString(),
+                    "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "-lc"));
             if (usesDb) {
-                String[] extra = usesMysql
-                        ? new String[]{"-l:libsqlite3.so.0", "-l:libmariadb.so.3"}
-                        : new String[]{"-l:libsqlite3.so.0"};
-                String[] cmd = new String[7 + extra.length];
-                cmd[0] = "ld";
-                cmd[1] = "-o";
-                cmd[2] = binFile.toString();
-                cmd[3] = objFile.toString();
-                cmd[4] = "-dynamic-linker";
-                cmd[5] = "/lib64/ld-linux-x86-64.so.2";
-                cmd[6] = "-lc";
-                System.arraycopy(extra, 0, cmd, 7, extra.length);
-                runCommand(cmd, "ld");
-            } else {
-                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString(),
-                        "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "-lc"}, "ld");
+                cmdL.add(usesMysql ? "-l:libsqlite3.so.0" : "-l:libsqlite3.so.0");
+                if (usesMysql) cmdL.add("-l:libmariadb.so.3");
             }
+            if (usesConcurrency) cmdL.add("-l:libpthread.so.0");
+            runCommand(cmdL.toArray(new String[0]), "ld");
         } else {
             if (usesDb) {
                 String os2 = System.getProperty("os.name", "").toLowerCase();

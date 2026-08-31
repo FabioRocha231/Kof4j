@@ -1891,10 +1891,18 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (target.isNative()) {
-                    if (currentDiagnostics != null) {
-                        currentDiagnostics.error("", 0, 0, 0,
-                                "spawn: not supported on the Native target yet (JVM supports it)", "CONC001");
-                    }
+                    // CONC001 fechado: pthread_create no runtime nativo
+                    LambdaExpr leN = ss.expression() instanceof LambdaExpr l1 ? l1
+                            : new LambdaExpr(ss.position(), List.of(),
+                                    List.of(new ExpressionStmt(ss.position(), ss.expression())));
+                    Type.FunctionType ftN = new Type.FunctionType(List.of(), Type.PrimitiveType.VOID, null);
+                    String lambdaClassN = lambdaClass(leN, ftN, List.of());
+                    Type taskTypeN = new Type.ClassType("", lambdaClassN, List.of());
+                    ops.add(new KofNewObject(taskTypeN, List.of()));
+                    ops.add(new KofDup());
+                    ops.add(new KofCall(taskTypeN, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                    ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_spawn", List.of(taskTypeN), Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (target == Target.JS) {
@@ -2858,16 +2866,24 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                         yield localIdx;
                     }
-                    if (target != Target.JVM) {
-                        if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001"
-                                    : target == Target.ANDROID ? "AND001" : "CONC003";
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "spawn expr: not supported on the " + target + " target yet (" + code + ")",
-                                    code);
-                        }
+                    if (target.isNative()) {
+                        // CONC001: spawn-expr com handle real (pthread)
+                        ExpressionNode bodyN = mc.arguments().get(0);
+                        Type resultTN = inferExprType(bodyN, locals);
+                        Type handleTN = new Type.ClassType("kof.concurrent", "Handle", List.of(resultTN));
+                        LambdaExpr leN2 = bodyN instanceof LambdaExpr l2 ? l2
+                                : new LambdaExpr(bodyN.position() != null ? bodyN.position() : mc.position(),
+                                        List.of(), List.of(new ExpressionStmt(
+                                                bodyN.position() != null ? bodyN.position() : mc.position(), bodyN)));
+                        Type.FunctionType ftN2 = new Type.FunctionType(List.of(), resultTN, null);
+                        String lambdaClassN2 = lambdaClass(leN2, ftN2, List.of());
+                        Type taskTypeN2 = new Type.ClassType("", lambdaClassN2, List.of());
+                        ops.add(new KofNewObject(taskTypeN2, List.of()));
+                        ops.add(new KofDup());
+                        ops.add(new KofCall(taskTypeN2, "<init>", List.of(),
+                                Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                        ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                "kof_spawn_result", List.of(taskTypeN2), handleTN, KofCallKind.FUNCTION));
                         yield localIdx;
                     }
                     ExpressionNode body = mc.arguments().get(0);
@@ -2889,14 +2905,12 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
-                    if (target.isNative() || target == Target.ANDROID) {
+                    if (target == Target.ANDROID) {
                         if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001" : "AND001";
                             currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                     mc.position() != null ? mc.position().line() : 0,
                                     mc.position() != null ? mc.position().column() : 0, 0,
-                                    "await: not supported on the " + target + " target yet (" + code + ")",
-                                    code);
+                                    "await: not supported on the android target yet (AND001)", "AND001");
                         }
                         yield localIdx;
                     }
