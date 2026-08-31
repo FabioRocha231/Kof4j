@@ -1,7 +1,7 @@
 # stdlib config — Configuração Nativa do Kof
 
 **Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (746 testes)
+**Versão:** 0.2.6-beta (747 testes)
 **Status:** implementado (Fase 3 do plano de independência do Spring) — 3 targets (JVM / Native asm próprio `/proc/self/environ` + free-list / JS `kof_platform`) + `required`/interpolação `${key}`/`kof config gen` (30/08)
 
 ---

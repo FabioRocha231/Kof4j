@@ -5,7 +5,7 @@
 
 > Deltas desde 0.1.0: Targets `native.risc` (riscv64) e `native.arm` (aarch64) separados de `native` x86_64 (toolchain + qemu; codegen ainda x86_64 placeholder); Native free-list (`kof_free_head`) + `kof_gc_collect` (mark-sweep pendente; auto-GC desativado); MySQL wire protocol em progresso (`kof_db_mysql_scramble` + `user:pass@`); pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `List map/filter/reduce` + `Box<T>`; Windows SIGPIPE fix.
 > Deltas 30-31/08: `spawn`/`await` real no Native (pthread + trampoline + join + allocator thread-safe futex — CONC001); FP real em XMM (FLT001); JSON objetos/records + arrays FP no Native (JSN001/JSN002/JSN003); WebSocket/SSE no JVM (`app.ws`/`sse.*`, RFC 6455); `kof.http` retry/circuit JVM+JS (30s window, fail-fast); `kof.cache` 3 targets (fix de clobber de registradores); UI Fase 7 Router (JS real, JVM no-op); SQLite nativo via `.so` direto; `kof fmt` + `kof config gen`.
-> Tabela reflete 0.2.6-beta (31/08) — Build `mvn test` 746 (733+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
+> Tabela reflete 0.2.6-beta (31/08) — Build `mvn test` 747 (734+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -32,7 +32,7 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex) | ✅ sequencial (async real = CONC003; canal = array) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 13/13 · `SpawnE2ETest` 4/4 |
+| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive / `scheduler.every`+`at`+`cancel` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue; scheduler = ScheduledExecutor) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex; **scheduler SCHED001** = thread por job + `usleep` ms→us + flag `active`) | ✅ sequencial (async real = CONC003; canal = array; scheduler = setInterval) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 15/15 · `SpawnE2ETest` 4/4 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |
@@ -52,7 +52,7 @@
 | `kof.config` (typed) | ✅ | ✅ (asm próprio) | CONF001 | precedência total Native (`KOF_CONFIG` > env > profile > `kof.config`); `NativeConfigE2ETest` 8 |
 | `kof.log` | ✅ (JSON + correlation ID) | ✅ (asm; UTC, sem JSON) | LOG001 | `KofLogE2ETest` 10 + `NativeLogE2ETest` 7 |
 | `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM asm |
-| `kof.db`/`kof.orm` | ✅ | ✅ (SQLite `.so` direto)/ORM001 | DB001/ORM001 | MySQL wire protocol WIP (scramble SHA-1 + `user:pass@`, 31/08) |
+| `kof.db`/`kof.orm` | ✅ | ✅ (SQLite `.so` direto; **MySQL wire protocol** — handshake+scramble+auth-switch+COM_QUERY+resultset 31/08)/ORM001 | DB001/ORM001 | MySQL native `nativeMysqlWireProtocol`; prepared statements pendentes |
 | `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
 | `web.app()` WebSocket `app.ws` + SSE `sse.*` | ✅ 30/08 (RFC 6455 + frame codec/máscara) | WEB002 | WEB001 | `KofWebWsE2ETest` 11/11 · `KofWebSseE2ETest` 7/7 · `KofWsFrameTest` 7/7 |
 | `status(code, body)` / `headerSet` | ✅ 27/08 | WEB002 | WEB001 | `KofWebE2ETest` 9/9 |

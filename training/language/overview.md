@@ -2,7 +2,7 @@
 
 Kof is a compiled, statically-typed, object-oriented programming language targeting JVM, Native (x86_64, riscv64, aarch64) and KofJS (ES Modules), plus Android (Fase 1, APK via backend JVM), KofScript and KofC.
 
-**Version:** 0.2.6-beta (31 Aug 2026) — 746 tests (733 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
+**Version:** 0.2.6-beta (31 Aug 2026) — 747 tests (734 kof-compiler + 8 kof-script + 5 kof-c-compiler, 0 failures).
 
 ## Key Characteristics
 

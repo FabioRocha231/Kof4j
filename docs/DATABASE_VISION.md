@@ -10,7 +10,7 @@ versionadas) + **MongoDB**; SQLite nativo via `libsqlite3.so.0` direto
 (roundtrip E2E real); MySQL/MariaDB nativo via wire protocol em progresso
 (auth scramble SHA-1 `kof_db_mysql_scramble` + `lenenc` + parse `user:pass@`
 done; handshake completo/query/prepared pendentes); `VERSION` 0.2.6-beta;
-build 746 testes.
+build 747 testes.
 
 ---
 
@@ -208,7 +208,7 @@ db.close(db)
   progresso: handshake completo, query e prepared statements pendentes;
   sem teste E2E contra servidor real ainda.
 - **JS:** `DB001` (diagnóstico claro em compile-time).
-- Testes: `KofDbE2ETest` (8) + `KofOrmE2ETest` (16, inclui MariaDB/PostgreSQL/
+- Testes: `KofDbE2ETest` (9) + `KofOrmE2ETest` (16, inclui MariaDB/PostgreSQL/
   MongoDB com skip condicional + SQLite nativo). O link nativo inclui a lib
   do MySQL apenas quando o programa a usa (DSN literal detectado em
   compile-time).

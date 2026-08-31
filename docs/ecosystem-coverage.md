@@ -6,7 +6,7 @@
 >
 > **Data:** 31 de agosto de 2026 · **Versão:** 0.2.6-beta
 > **Método:** auditoria do repositório (código + testes + docs) — ver §2.
-> **Build:** `mvn clean package` PASS, `mvn test` 746 733 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.6-beta, `release.yml` 2 jobs (`test-and-bump` → `package-and-release`) × 3 plataformas, Windows SIGPIPE fix.
+> **Build:** `mvn clean package` PASS, `mvn test` 747 734 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.6-beta, `release.yml` 2 jobs (`test-and-bump` → `package-and-release`) × 3 plataformas, Windows SIGPIPE fix.
 > **Resultado:** nenhuma implementação nova foi feita neste documento —
 > apenas inventário, matriz, gaps, prioridade e estratégia. 0.2.6-beta acrescenta targets `native.risc`/`native.arm`, free-list GC, pattern matching, `String?`, `KofScriptGlobals`, `KofCcompiler`; 30-31/08 acrescenta spawn Native (pthread/CONC001), FP XMM (FLT001), JSON completo no Native (JSN001/002/003), WebSocket/SSE JVM, `kof.cache` 3 targets, `kof.http` retry/circuit (JVM+JS), `kof fmt`/`kof config gen`, UI Fase 7 Router, SQLite nativo `.so` direto.
 
@@ -108,7 +108,7 @@ Documentação: `docs/security.md`; testes: `KofSecurityTest` (22).
 | Native | `NativeRuntime.java` (asm x86-64, sem libc) | strings, listas, json, io, sec (parcial), net (símbolos), time, print |
 | JS | `JsBackend` gera `kof-runtime.mjs` + `kof-runtime-io.mjs`; `kof-runtime` module = `KofJsRunner` (GraalJS embarcado) | linguagem, io via `kof_platform`, sec, ui (DOM/webview) |
 
-## 2.6 Testes (746 JUnit: 733 kof-compiler +8 kof-script +5 kof-c-compiler) — por módulo (27/08)
+## 2.6 Testes (747 JUnit: 734 kof-compiler +8 kof-script +5 kof-c-compiler) — por módulo (27/08)
 
 Security (22) · CompilerDriver (190) · Native E2E (50) · KofJS E2E (35) ·
 JVM E2E (29) · Optimizer (21) · Io (15) · Json (14 + completo 7) · CoreRegression (14) ·
@@ -119,7 +119,7 @@ FunctionSyntax (4) · Lambda (4) · **KofTime (5)** · **KofMq (4)** ·
 **KofDb (8, + SQLite `.so` + MySQL scramble WIP)** · Spawn (3) · Window (3) · IRStatistics (2) · DebugInfo (2) ·
 NativeDebug (5) · StructuredTest (11) · AndroidInterop (11) · **KofScript (8)** · **KofCcompiler (5)** ·
 **KofWs (11) + KofWsFrame (7) + KofSse (7) + KofCache (5, x3 targets) + Router (E2E)** (30-31/08).
-Golden: `tests/golden/` 16/16 (8 casos × jvm+native). Integration: `tests/run-integration.sh` 9/9. `mvn test` 746.
+Golden: `tests/golden/` 16/16 (8 casos × jvm+native). Integration: `tests/run-integration.sh` 9/9. `mvn test` 747.
 
 ## 2.7 Benchmarks (37, em 17 categorias, `kof bench` PASS)
 
@@ -178,7 +178,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` direto + MySQL wire protocol WIP (scramble SHA-1 + `user:pass@`, 31/08) | y | y (SQLite + MySQL WIP) | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
+| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` direto + MySQL wire protocol (handshake+scramble+auth-switch+COM_QUERY+resultset, 31/08) | y | y (SQLite + MySQL wire) | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
 | `db.connect/query/transaction` | ✅ (+ `query<T>` tipado) | y | y | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
 | prepared statements | ✅ (binds `?`) | y | y | – DB001 | KofDbE2ETest | — |
 | connection pools | `PLANNED` | — | — | — | — | — |

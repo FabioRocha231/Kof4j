@@ -8409,9 +8409,18 @@ final class NativeRuntime {
             .Ldb_slots: .zero 512
             .Ldb_types: .zero 64
             .Ldb_count: .quad 0
-            .Ldb_mysql_buf: .zero 65536
+            .Ldb_mysql_buf: .zero 16384
             .Ldb_mysql_names: .zero 1024
             .Ldb_mysql_seq: .zero 1
+            # estado do reader de pacotes (query):
+            #   .Ldb_mysql_fd    — fd atual
+            #   .Ldb_mysql_ppos  — offset do payload atual (buf+4)
+            #   .Ldb_mysql_pend  — fim do payload atual
+            #   .Ldb_mysql_next  — 1 se o próximo pacote já está em buf
+            .Ldb_mysql_fd: .quad 0
+            .Ldb_mysql_ppos: .quad 0
+            .Ldb_mysql_pend: .quad 0
+            .Ldb_mysql_next: .long 0
             .section .data
             .Ldb_mysql_plugin: .asciz "mysql_native_password"
             .Ldb_mysql_empty: .asciz ""
@@ -8691,8 +8700,8 @@ final class NativeRuntime {
                 incq %r8
                 jmp .Lscr_copy_st2
             .Lscr_copy_st2_done:
-                movq %r8, %rdx
                 leaq 36(%rsp), %rsi
+                movq %r8, %rdx
                 call kof_sec_sha1_internal
                 # result = stage1 XOR stage3
                 xorl %ecx, %ecx
@@ -8735,6 +8744,248 @@ final class NativeRuntime {
                 shll $16, %edx
                 orl %edx, %eax
                 addq $4, %rsi
+                ret
+
+            # kof_db_mysql_render(rdi=value) → rax: literal SQL p/ bind.
+            # Int (rdx<0x1000000) -> decimais; String (rdi>=0x1000000) -> 'escaped'
+            # (MySQL: ' -> '' e \\ -> \\\\).
+            .globl kof_db_mysql_render
+            .type kof_db_mysql_render, @function
+            kof_db_mysql_render:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $4096, %rsp
+                cmpq $0x1000000, %rdi
+                jb .Ldb_rnd_int
+            .Ldb_rnd_str:
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                leaq 24(%rbx), %rsi
+                movq %rsp, %r13               # scratch start
+                movq %rsp, %r14              # out cursor
+                xorl %ecx, %ecx
+            .Ldb_rnd_esc:
+                cmpl %r12d, %ecx
+                jge .Ldb_rnd_esc_done
+                movzbl (%rsi,%rcx), %eax
+                cmpb $'\'', %al
+                je .Ldb_rnd_dbl
+                cmpb $'\\', %al
+                je .Ldb_rnd_dbl
+                movb %al, (%r14)
+                incq %r14
+            .Ldb_rnd_next:
+                incl %ecx
+                jmp .Ldb_rnd_esc
+            .Ldb_rnd_dbl:
+                movb %al, (%r14)
+                incq %r14
+                movb %al, (%r14)
+                incq %r14
+                jmp .Ldb_rnd_next
+            .Ldb_rnd_esc_done:
+                movq %r14, %r15
+                subq %r13, %r15                  # escaped len
+                leal 2(%r15), %r12d              # novo len (com aspas)
+                leal 25(%r12d), %edi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r12d, 16(%rbx)
+                movl $0, 20(%rbx)
+                movb $39, 24(%rbx)               # ' (abre)
+                leaq 25(%rbx), %rdi
+                movq %r13, %rsi
+                movq %r15, %rdx
+                call kof_memcpy
+                leaq 23(%rbx,%r12), %rdi         # fecha em data[len-1] = 24+len-1
+                movb $39, (%rdi)                 # ' (fecha)
+                incq %rdi
+                movb $0, (%rdi)                  # NUL em 24+len
+                movq %rbx, %rax
+                jmp .Ldb_rnd_done
+            .Ldb_rnd_int:
+                movl %edi, %edi
+                call kof_int_to_string
+                movq %rax, %rbx
+            .Ldb_rnd_done:
+                addq $4096, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # kof_db_mysql_replace_q(rdi=sql, rsi=literal) → rax: troca o 1º '?'
+            # por literal (buffer bruto). Sem '?': devolve sql inalterado.
+            .globl kof_db_mysql_replace_q
+            .type kof_db_mysql_replace_q, @function
+            kof_db_mysql_replace_q:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $4096, %rsp
+                movq %rdi, %rbx                 # sql
+                movq %rsi, %r12                 # literal
+                movl 16(%rbx), %r13d            # sql len
+                leaq 24(%rbx), %r14             # sql data
+                # acha o 1º '?'
+                xorl %ecx, %ecx
+            .Ldb_rq_scan:
+                cmpl %r13d, %ecx
+                jge .Ldb_rq_none
+                cmpb $'?', (%r14,%rcx)
+                jne .Ldb_rq_adv
+                jmp .Ldb_rq_found
+            .Ldb_rq_adv:
+                incl %ecx
+                jmp .Ldb_rq_scan
+            .Ldb_rq_none:
+                movq %rbx, %rax
+                jmp .Ldb_rq_done
+            .Ldb_rq_found:
+                movl %ecx, %r15d                # idx
+                movq %rsp, %r8                   # out
+                # copia sql[0..idx)
+                xorl %esi, %esi
+            .Ldb_rq_c1:
+                cmpl %r15d, %esi
+                jge .Ldb_rq_c1_done
+                movzbl (%r14,%rsi), %eax
+                movb %al, (%r8)
+                incq %r8
+                incl %esi
+                jmp .Ldb_rq_c1
+            .Ldb_rq_c1_done:
+                # copia literal (forward)
+                xorl %esi, %esi
+            .Ldb_rq_c2:
+                cmpl 16(%r12), %esi
+                jge .Ldb_rq_c2_done
+                movzbl 24(%r12,%rsi), %eax
+                movb %al, (%r8)
+                incq %r8
+                incl %esi
+                jmp .Ldb_rq_c2
+            .Ldb_rq_c2_done:
+                # copia sql[idx+1..end)
+                leal 1(%r15d), %esi
+            .Ldb_rq_c3:
+                cmpl %r13d, %esi
+                jge .Ldb_rq_c3_done
+                movzbl (%r14,%rsi), %eax
+                movb %al, (%r8)
+                incq %r8
+                incl %esi
+                jmp .Ldb_rq_c3
+            .Ldb_rq_c3_done:
+                movq %r8, %r13
+                movq %rsp, %r14
+                subq %r14, %r13                 # novo len
+                leal 25(%r13), %edi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r13d, 16(%rbx)
+                movl $0, 20(%rbx)
+                leaq 24(%rbx), %rdi
+                movq %rsp, %rsi
+                movq %r13, %rdx
+                call kof_memcpy
+                movq %rbx, %rax
+            .Ldb_rq_done:
+                addq $4096, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # kof_db_mysql_reset(rdi=fd): zera o estado do reader de pacotes.
+            .globl kof_db_mysql_reset
+            .type kof_db_mysql_reset, @function
+            kof_db_mysql_reset:
+                movq %rdi, .Ldb_mysql_fd(%rip)
+                leaq .Ldb_mysql_buf(%rip), %rax
+                movq %rax, .Ldb_mysql_ppos(%rip)
+                movq %rax, .Ldb_mysql_pend(%rip)
+                ret
+
+            # kof_db_mysql_next: lê o PRÓXIMO pacote do stream (buf interno).
+            # rsi = ponteiro do payload (buf+4 do pacote), rax = len do payload.
+            # rax = 0 em fim de stream / erro. Clobbers rax rsi rdx rcx r8 r9
+            # r10 r11 (leaf: sem call interno além de kof_net_read).
+            .globl kof_db_mysql_next
+            .type kof_db_mysql_next, @function
+            kof_db_mysql_next:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq .Ldb_mysql_ppos(%rip), %r12   # start do pacote não lido
+                movq .Ldb_mysql_pend(%rip), %rbx   # fim dos dados válidos
+                cmpq %rbx, %r12
+                jb .Ldb_mynxt_extract
+            .Ldb_mynxt_read:
+                movq .Ldb_mysql_fd(%rip), %rdi
+                leaq .Ldb_mysql_buf(%rip), %rsi
+                movl $16384, %edx
+                call kof_net_read
+                testq %rax, %rax
+                jle .Ldb_mynxt_fail
+                leaq .Ldb_mysql_buf(%rip), %r12            # ppos = inicio do buf
+                leaq .Ldb_mysql_buf(%rip), %rbx
+                addq %rax, %rbx                             # pend = buf + rlen
+                movq %rbx, .Ldb_mysql_pend(%rip)
+                jmp .Ldb_mynxt_extract
+            .Ldb_mynxt_extract:
+                movzbl (%r12), %eax
+                movzbl 1(%r12), %ecx
+                shll $8, %ecx
+                orl %ecx, %eax
+                movzbl 2(%r12), %ecx
+                shll $16, %ecx
+                orl %ecx, %eax
+                cmpl $0xFFFFFF, %eax
+                je .Ldb_mynxt_fail                 # chunk de 16MB — fora de escopo
+                leaq 4(%r12), %rsi                 # payload
+                leaq .Ldb_mysql_buf(%rip), %r13
+                addq $16384, %r13                  # buf end
+                addq $4, %r12                      # pula o header
+                addq %rax, %r12                    # + payload
+                cmpq %r13, %r12
+                ja .Ldb_mynxt_fail
+                movq %r12, .Ldb_mysql_ppos(%rip)   # próximo não lido
+                # return: rsi=payload, rax=len
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Ldb_mynxt_fail:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
                 ret
 
             # resolve "db<N>" → sqlite3* em rax (leaf: clobbera rsi/rdx/rax/rcx)
@@ -8933,13 +9184,19 @@ final class NativeRuntime {
                 movq 0(%rsp), %rsi
                 movq 8(%rsp), %rdx
                 testq %rdx, %rdx
-                jnz .Ldb_up_ulen
-                movq %r11, %rdx
+                jz .Ldb_up_nocolon
+                # com colon: len = colon; rdx precisa ser u0+colon p/ o subq abaixo
+                addq %rsi, %rdx
+                jmp .Ldb_up_ulen
+            .Ldb_up_nocolon:
+                movq %r11, %rdx            # '@' absoluto
             .Ldb_up_ulen:
                 subq %rsi, %rdx
                 jle .Ldb_up_nouser
                 leal 25(%rdx), %edi
+                movq %rdx, 24(%rsp)      # salva len (kof_alloc clobbera edx)
                 call kof_alloc
+                movq 24(%rsp), %rdx
                 movl $1, 0(%rax)
                 movl $0, 4(%rax)
                 movq $0, 8(%rax)
@@ -9128,7 +9385,7 @@ final class NativeRuntime {
                 nop
             .Ldb_scramble_done:
                 leaq .Ldb_mysql_buf(%rip), %r8
-                movl $0x00088201, 4(%r8)
+                movl $0x00088209, 4(%r8)   # +0x0008 CLIENT_CONNECT_WITH_DB (db no auth)
                 movl $0x01000000, 8(%r8)
                 movb $0x21, 12(%r8)
                 leaq 13(%r8), %rdi
@@ -9178,8 +9435,6 @@ final class NativeRuntime {
                 movb $0, (%rdi)
                 incq %rdi
             .Ldb_auth_db2:
-                movb $0, (%rdi)
-                incq %rdi
                 testq %r13, %r13
                 jz .Ldb_auth_db_empty
                 movq %r13, %rax
@@ -9259,9 +9514,9 @@ final class NativeRuntime {
                 # sem pass: responde vazio
                 testq %r15, %r15
                 jz .Ldb_switch_no_scramble2
-                # out do scramble em 8(%rsp)... usar o stack livre
+                # out do scramble em .Ldb_mysql_names+32; seed NOVA do switch em r13
                 leaq .Ldb_mysql_names+32(%rip), %rdi
-                leaq .Ldb_mysql_names(%rip), %rsi
+                movq %r13, %rsi
                 movl $20, %edx
                 movq %r15, %rcx
                 call kof_db_mysql_scramble
@@ -9270,7 +9525,7 @@ final class NativeRuntime {
                 leaq .Ldb_mysql_names+32(%rip), %rdi
                 movl $0, 0(%rdi)
             .Ldb_switch_scramble_done2:
-                # AuthSwitchResponse: just the 20-byte scramble (no plugin name)
+                # AuthSwitchResponse: 20-byte scramble (sem plugin name), seq 3
                 leaq .Ldb_mysql_buf(%rip), %r8
                 leaq .Ldb_mysql_names+32(%rip), %rsi
                 leaq 4(%r8), %rdi
@@ -9381,6 +9636,7 @@ final class NativeRuntime {
                 ret
 
             # kof_db_close(id: KofString) — handles both sqlite and mysql fd
+            # (2 pushes apos andq: call em rsp≡0 — SSE do sqlite3_close exige)
             .globl kof_db_close
             .type kof_db_close, @function
             kof_db_close:
@@ -9388,6 +9644,7 @@ final class NativeRuntime {
                 movq %rsp, %rbp
                 andq $-16, %rsp
                 pushq %rbx
+                pushq %r12
                 movq %rdi, %rbx
                 call kof_db_type
                 cmpl $2, %eax
@@ -9407,6 +9664,7 @@ final class NativeRuntime {
                 movq %rax, %rdi
                 call kof_net_close
             .Ldb_close_ret:
+                popq %r12
                 popq %rbx
                 movq %rbp, %rsp
                 popq %rbp
@@ -9470,9 +9728,7 @@ final class NativeRuntime {
                 movb %al, 1(%r13)
                 shrl $8, %eax
                 movb %al, 2(%r13)
-                movb .Ldb_mysql_seq(%rip), %al
-                movb %al, 3(%r13)
-                incb .Ldb_mysql_seq(%rip)
+                movb $0, 3(%r13)
                 movq %r12, %rdi
                 movq %r13, %rsi
                 leaq 5(%rcx), %rdx
@@ -9638,6 +9894,39 @@ final class NativeRuntime {
                 call sqlite3_changes
                 jmp .Ldb_exec_done\\n
             .Ldb_exec_mysql\\n:
+                # binds '?' -> literais (COM_QUERY não suporta ?)
+                .if \\n >= 1
+                movq %r13, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 2
+                movq %r14, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 3
+                movq %r15, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
                 # COM_QUERY: [len 3][seq 0][0x03][sql]
                 leaq .Ldb_mysql_buf(%rip), %r13
                 movb $0x03, 4(%r13)
@@ -9652,9 +9941,7 @@ final class NativeRuntime {
                 movb %al, 1(%r13)
                 shrl $8, %eax
                 movb %al, 2(%r13)
-                movb .Ldb_mysql_seq(%rip), %al
-                movb %al, 3(%r13)
-                incb .Ldb_mysql_seq(%rip)
+                movb $0, 3(%r13)
                 movq 32(%rsp), %rdi
                 movq %r13, %rsi
                 leaq 5(%rcx), %rdx
@@ -9867,7 +10154,40 @@ final class NativeRuntime {
                 movq %r14, %rax
                 jmp .Ldb_query_done\\n
             .Ldb_query_mysql\\n:
-                # COM_QUERY + parse do resultset (M1: um read por pacote)
+                # binds '?' -> literais (COM_QUERY não suporta ?)
+                .if \\n >= 1
+                movq %r13, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 2
+                movq %r14, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 3
+                movq %r15, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                # COM_QUERY + parse do resultset pacote a pacote
                 leaq .Ldb_mysql_buf(%rip), %r13
                 movb $0x03, 4(%r13)
                 leaq 24(%r12), %rsi
@@ -9881,60 +10201,71 @@ final class NativeRuntime {
                 movb %al, 1(%r13)
                 shrl $8, %eax
                 movb %al, 2(%r13)
-                movb .Ldb_mysql_seq(%rip), %al
-                movb %al, 3(%r13)
-                incb .Ldb_mysql_seq(%rip)
+                movb $0, 3(%r13)
                 movq 32(%rsp), %rdi
                 movq %r13, %rsi
                 leaq 5(%rcx), %rdx
                 call kof_net_write
+                # reader de pacotes: reset + 1º pacote
                 movq 32(%rsp), %rdi
-                movq %r13, %rsi
-                movl $65536, %edx
-                call kof_net_read
+                call kof_db_mysql_reset
+                call kof_db_mysql_next
                 testq %rax, %rax
                 jle .Ldb_query_bad\\n
-                cmpb $0xFF, 4(%r13)
+                movq %rsi, 24(%rsp)          # salva payload (kof_list_new clobbera rsi)
+                cmpb $0xFF, (%rsi)
                 je .Ldb_query_bad\\n
                 call kof_list_new
                 movq %rax, %r14
-                # parse: col count (lenenc) no payload
-                leaq 4(%r13), %rsi
+                movq 24(%rsp), %rsi          # restaura payload
+                # col count (lenenc) do 1º pacote
                 call kof_db_mysql_lenenc
                 movl %eax, %r13d
+                # column definitions: um pacote por coluna
                 xorl %ebx, %ebx
-                # column definitions: 4 lenenc strings (def/schema/table/org) + name
             .Ldb_mysql_cols\\n:
                 cmpl %r13d, %ebx
                 jge .Ldb_mysql_cols_done\\n
+                call kof_db_mysql_next
+                testq %rax, %rax
+                jle .Ldb_query_bad\\n
+                # pula cat, schema, table, org_table (4 lenenc: len + addq p/ dados)
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 # name = lenenc string: len em eax, dados em rsi
                 call kof_db_mysql_lenenc
                 movq %rsi, .Ldb_mysql_names(,%rbx,8)
                 movl %eax, .Ldb_mysql_names+512(,%rbx,4)
-                addq %rax, %rsi
-                # pula org_name (lenenc) + bloco fixo (12 bytes)
+                # pula org_name (lenenc)
                 call kof_db_mysql_lenenc
-                addq $12, %rsi
+                addq %rax, %rsi
                 incq %rbx
                 jmp .Ldb_mysql_cols\\n
             .Ldb_mysql_cols_done\\n:
-                # EOF apos colunas: 0xFE
+                # pacote apos colunas: 0x00 (OK, sem resultset) ou 0xFE (EOF)
+                call kof_db_mysql_next
+                testq %rax, %rax
+                jle .Ldb_query_done\\n
+                cmpb $0x00, (%rsi)
+                je .Ldb_query_mydone\\n
+                jmp .Ldb_mysql_rows\\n
+            .Ldb_mysql_rows\\n:
+                call kof_db_mysql_next
+                testq %rax, %rax
+                jle .Ldb_query_mydone\\n
                 movzbl (%rsi), %eax
+                cmpb $0xFF, %al
+                je .Ldb_query_mydone\\n
                 cmpb $0xFE, %al
-                je .Ldb_mysql_eof\\n
-                call kof_db_mysql_lenenc
-            .Ldb_mysql_eof\\n:
-                incq %rsi
-                movq %rsi, 40(%rsp)
-            .Ldb_mysql_row\\n:
-                movq 40(%rsp), %rsi
-                movzbl (%rsi), %eax
-                cmpb $0xFE, %al
-                je .Ldb_query_done\\n
+                je .Ldb_query_mydone\\n
+                # pacote de linha: monta o JSON object (cursor do pacote em 24(%rsp))
+                movq %rsi, 24(%rsp)
                 call kof_json_builder_new
                 movq %rax, %r15
                 movq %r15, %rdi
@@ -9963,16 +10294,15 @@ final class NativeRuntime {
                 movl $58, %esi
                 call kof_json_builder_char
                 # valor: lenenc; NULL = 0xFB
-                movq 40(%rsp), %rsi
+                movq 24(%rsp), %rsi
                 movzbl (%rsi), %eax
                 cmpb $0xFB, %al
                 je .Ldb_mysql_null\\n
                 call kof_db_mysql_lenenc
-                movq %rsi, %r12
-                addq %rax, %r12
-                movq %rax, %rdx
-                movq %rsi, %rdi
-                movq %r12, 40(%rsp)
+                leaq (%rsi,%rax), %r10
+                movq %r10, 24(%rsp)           # cursor = fim dos dados
+                movq %rsi, %rdi               # rdi = src (dados)
+                movq %rax, %rsi               # rsi = len (make_string: rdi=src, rsi=len)
                 call kof_io_make_string
                 movq %rax, %r12
                 xorl %r10d, %r10d
@@ -10005,9 +10335,9 @@ final class NativeRuntime {
                 movq %r15, %rdi
                 movq %rax, %rsi
                 call kof_json_builder_str
-                movq 40(%rsp), %rsi
+                movq 24(%rsp), %rsi
                 incq %rsi
-                movq %rsi, 40(%rsp)
+                movq %rsi, 24(%rsp)
             .Ldb_mysql_val\\n:
                 incl %ebx
                 jmp .Ldb_mysql_col\\n
@@ -10020,9 +10350,11 @@ final class NativeRuntime {
                 movq %r14, %rdi
                 movq %rax, %rsi
                 call kof_list_add
-                jmp .Ldb_mysql_row\\n
+                jmp .Ldb_mysql_rows\\n
             .Ldb_query_bad\\n:
                 call kof_list_new
+            .Ldb_query_mydone\\n:
+                movq %r14, %rax
             .Ldb_query_done\\n:
                 addq $40, %rsp
                 popq %r15
