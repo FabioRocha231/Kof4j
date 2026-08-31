@@ -1,9 +1,9 @@
 # Arquitetura de Distribuição do Kof
 
-**Versão:** 0.0.5-alpha
+**Versão:** 0.2.6-beta (30/08/2026)
 
 O Kof não é apenas um compilador — é uma plataforma distribuível. A partir
-desta versão, o projeto trata a instalação como parte oficial do produto:
+do 0.2.x-beta, o projeto trata a instalação como parte oficial do produto:
 
 > **Kof deve parecer uma linguagem que você instala, não um projeto Java que você precisa montar.**
 
@@ -36,11 +36,13 @@ embutido, cai para um `java` do sistema.
 ### Estrutura de arquivos por artefato
 
 ```text
-kof-<versão>-<os>-<arch>.tar.gz   # Linux / macOS
-kof-<versão>-<os>-<arch>.zip      # Windows
+kof-<versão>-linux-x86_64.tar.gz      # Linux (Intel/AMD)
+kof-<versão>-macos-arm64.tar.gz       # macOS (Apple Silicon)
+kof-<versão>-windows-x86_64.zip       # Windows (Intel/AMD)
 ```
 
 Cada artefato acompanha um `SHA256SUMS` para verificação de integridade.
+Matriz completa em [PACKAGING.md](PACKAGING.md).
 
 ---
 
@@ -125,14 +127,26 @@ compilador/runtime, nunca exposta ao programador.
 
 ### Pacote oficial (recomendado)
 
-```bash
-# Linux / macOS
-tar -xzf kof-0.0.5-alpha-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.0.5-alpha-linux-x86_64/bin:$PATH"
+Baixe o pacote do seu sistema em
+[GitHub Releases](https://github.com/KofLang/Kof4j/releases/latest)
+(Linux `linux-x86_64` / macOS `macos-arm64` / Windows `windows-x86_64`).
+O nome muda a cada release — o globo `*` evita depender da versão:
 
-# Windows
-# extraia o zip e adicione kof-0.0.5-alpha-windows-x86_64\bin ao PATH
+```bash
+# Linux
+tar -xzf kof-*-linux-x86_64.tar.gz
+export PATH="$PWD/$(ls -d kof-*-linux-x86_64 | head -1)/bin:$PATH"
+
+# macOS (Apple Silicon)
+tar -xzf kof-*-macos-arm64.tar.gz
+export PATH="$PWD/$(ls -d kof-*-macos-arm64 | head -1)/bin:$PATH"
+
+# Windows (PowerShell)
+Expand-Archive .\kof-*-windows-x86_64.zip
+# adicione <pasta>\bin ao PATH
 ```
+
+Guia completo por sistema: [INSTALL.md](INSTALL.md).
 
 ### Build de desenvolvimento
 
@@ -154,7 +168,7 @@ sha256sum -c SHA256SUMS
 Depois de instalar:
 
 ```bash
-kof version      # kof 0.0.5-alpha
+kof version      # kof 0.2.6-beta (a versão da sua release)
 kof info         # ambiente completo (JVM embutida aparece com "(embedded)")
 kof run hello.kf
 ```

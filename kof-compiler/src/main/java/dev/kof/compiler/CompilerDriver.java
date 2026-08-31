@@ -3808,6 +3808,17 @@ private Target target = Target.JVM;
                         yield localIdx;
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr ridRt && KofUi.isRouterNamespace(ridRt.name())) {
+                    // Fase 7 (docs/ui/architecture.md §2.9): Router.*
+                    KofUi.UiCall routerCall = KofUi.staticMethod("Router", mc.methodName(), mc.arguments().size());
+                    if (routerCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofUi.COMPONENT, routerCall.function(), routerCall.parameterTypes(),
+                                routerCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() != null) {
                     if (mc.receiver() instanceof IdentifierExpr sid && "super".equals(sid.name())
                             && !owner.isEmpty()) {
@@ -5191,6 +5202,13 @@ private Target target = Target.JVM;
                 if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) yield uiCall.returnType();
+                }
+                if (mc.receiver() instanceof IdentifierExpr ridR && KofUi.isRouterNamespace(ridR.name())) {
+                    KofUi.UiCall routerCall = KofUi.staticMethod("Router", mc.methodName(), mc.arguments().size());
+                    if (routerCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) inferExprType(arg, locals);
+                        yield routerCall.returnType();
+                    }
                 }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     yield new Type.ClassType("kof", "List", List.of(listOfElementType(mc, locals)));

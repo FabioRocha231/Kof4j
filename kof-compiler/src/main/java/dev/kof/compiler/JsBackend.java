@@ -2298,7 +2298,12 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_event_stop")
                 || name.equals("kof_ui_store_new") || name.equals("kof_ui_store_get")
                 || name.equals("kof_ui_store_set") || name.equals("kof_ui_store_subscribe")
-                || name.equals("kof_ui_store_unsubscribe") || name.equals("kof_ui_stores_live")) {
+                || name.equals("kof_ui_store_unsubscribe") || name.equals("kof_ui_stores_live")
+                || name.equals("kof_ui_route_register") || name.equals("kof_ui_router_go1")
+                || name.equals("kof_ui_router_go2") || name.equals("kof_ui_router_replace1")
+                || name.equals("kof_ui_router_replace2") || name.equals("kof_ui_router_back")
+                || name.equals("kof_ui_router_forward") || name.equals("kof_ui_router_param")
+                || name.equals("kof_ui_router_current") || name.equals("kof_ui_router_depth")) {
             registerRuntime(capitalizeUiFn(name));
             List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
             if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
@@ -4868,7 +4873,150 @@ class JsBackend implements Backend {
             export function kofUiStoresLive() {
                 return kofUiStores.size;
             }
+
+            // ── Fase 7: Navegação (docs/ui/architecture.md §2.9) ──────
+            // Route = nome + builder(componente raiz). Navegar troca o
+            // componente raiz da janela: unmount do antigo (lifecycle
+            // completo) + mount do novo. back/forward = histórico em stack.
+            const kofUiRouterState = {
+                routes: {},          // name -> root component id
+                current: null,       // nome da rota ativa
+                param: null,         // params da rota ativa
+                history: [],         // stack para back()
+                forwardStack: [],    // stack para forward()
+            };
+
+            export function kofUiRouteRegister(name, rootComponent) {
+                kofUiRouterState.routes[name] = rootComponent;
+            }
+
+            function kofUiRouterHost() {
+                // primeiro window montado (o app de janela única usa o id 1)
+                return typeof window !== "undefined" && window.__kofWindows
+                    ? window.__kofWindows[1] : null;
+            }
+
+            function kofUiRouterShow(name, param, pushHistory) {
+                const root = kofUiRouterState.routes[name];
+                if (root === undefined || root === null) return false;
+                const prev = kofUiRouterState.current;
+                if (prev !== null && prev !== name) {
+                    const prevComp = kofUiRouterState.routes[prev];
+                    if (prevComp !== undefined && prevComp !== null) {
+                        kofUiComponentUnmount(prevComp);
+                        const prevEl = kofUiComponents.get(prevComp);
+                        if (prevEl && prevEl.el && prevEl.el.parentNode) {
+                            prevEl.el.parentNode.removeChild(prevEl.el);
+                        }
+                    }
+                }
+                if (pushHistory && prev !== null && prev !== name) {
+                    kofUiRouterState.forwardStack.length = 0;
+                    kofUiRouterState.history.push({ name: prev, param: kofUiRouterState.param });
+                }
+                kofUiRouterState.current = name;
+                kofUiRouterState.param = param;
+                const comp = kofUiComponents.get(root);
+                if (comp && kofUiRouterHost()) {
+                    if (comp.el && !comp.el.parentNode) {
+                        kofUiRouterHost().appendChild(comp.el);
+                    }
+                    kofUiComponentMount(root);
+                }
+                return true;
+            }
+
+            function host() { return kofUiRouterHost(); }
+
+            export function kofUiRouterGo(name, param) {
+                return kofUiRouterShow(name, param, true);
+            }
+
+            export function kofUiRouterReplace(name, param) {
+                // substitui a entrada atual (sem empilhar histórico)
+                const root = kofUiRouterState.routes[name];
+                if (root === undefined || root === null) return false;
+                const prev = kofUiRouterState.current;
+                if (prev !== null && prev !== name) {
+                    const prevComp = kofUiRouterState.routes[prev];
+                    if (prevComp !== undefined) {
+                        kofUiComponentUnmount(prevComp);
+                        const prevEl = kofUiComponents.get(prevComp);
+                        if (prevEl && prevEl.el && prevEl.el.parentNode) {
+                            prevEl.el.parentNode.removeChild(prevEl.el);
+                        }
+                    }
+                }
+                kofUiRouterState.current = name;
+                kofUiRouterState.param = param;
+                const comp = kofUiComponents.get(root);
+                if (comp && kofUiRouterHost()) {
+                    if (comp.el && !comp.el.parentNode) kofUiRouterHost().appendChild(comp.el);
+                    kofUiComponentMount(root);
+                }
+                return true;
+            }
+
+            export function kofUiRouterBack() {
+                if (kofUiRouterState.history.length === 0) return 0;
+                const entry = kofUiRouterState.history.pop();
+                if (kofUiRouterState.current !== null) {
+                    kofUiRouterState.forwardStack.push(
+                            { name: kofUiRouterState.current, param: kofUiRouterState.param });
+                }
+                const ok = kofUiRouterNavigate(entry.name, entry.param);
+                return ok ? 1 : 0;
+            }
+
+            // troca sem mexer nos stacks (usada por back/forward)
+            function kofUiRouterNavigate(name, param) {
+                const root = kofUiRouterState.routes[name];
+                if (root === undefined || root === null) return false;
+                const prev = kofUiRouterState.current;
+                if (prev !== null && prev !== name) {
+                    const prevComp = kofUiRouterState.routes[prev];
+                    if (prevComp !== undefined) {
+                        kofUiComponentUnmount(prevComp);
+                        const prevEl = kofUiComponents.get(prevComp);
+                        if (prevEl && prevEl.el && prevEl.el.parentNode) {
+                            prevEl.el.parentNode.removeChild(prevEl.el);
+                        }
+                    }
+                }
+                kofUiRouterState.current = name;
+                kofUiRouterState.param = param;
+                const comp = kofUiComponents.get(root);
+                if (comp && kofUiRouterHost()) {
+                    if (comp.el && !comp.el.parentNode) kofUiRouterHost().appendChild(comp.el);
+                    kofUiComponentMount(root);
+                }
+                return true;
+            }
+
+            export function kofUiRouterForward() {
+                if (kofUiRouterState.forwardStack.length === 0) return 0;
+                const entry = kofUiRouterState.forwardStack.pop();
+                if (kofUiRouterState.current !== null) {
+                    kofUiRouterState.history.push(
+                            { name: kofUiRouterState.current, param: kofUiRouterState.param });
+                }
+                const ok = kofUiRouterNavigate(entry.name, entry.param);
+                return ok ? 1 : 0;
+            }
+
+            export function kofUiRouterParam() {
+                return kofUiRouterState.param == null ? "" : String(kofUiRouterState.param);
+            }
+
+            export function kofUiRouterCurrent() {
+                return kofUiRouterState.current == null ? "" : kofUiRouterState.current;
+            }
+
+            export function kofUiRouterDepth() {
+                return kofUiRouterState.history.length;
+            }
             """;
+
 
     private static final String IO_RUNTIME = """
             // KofJS platform runtime — filesystem/console operations for the

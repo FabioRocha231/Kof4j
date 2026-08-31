@@ -3,7 +3,7 @@
 Fatos sobre o modelo de versionamento e release do Kof. Use para responder
 perguntas sobre versões, releases e o processo de publicação.
 
-**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests
+**Version:** 0.2.6-beta (30 Aug 2026)
 
 ## Formato de versão
 

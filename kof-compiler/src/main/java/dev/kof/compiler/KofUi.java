@@ -43,6 +43,9 @@ final class KofUi {
     static final Type ALIGN = new Type.ClassType("kof.ui", "Align", List.of());
     static final Type STORE = new Type.ClassType("kof.ui", "Store", List.of());
 
+    /** Fase 7: Router é namespace (Router.go(...)), não tipo. */
+    static boolean isRouterNamespace(String name) { return "Router".equals(name); }
+
     static boolean isColor(Type t) { return COLOR.equals(t); }
     static boolean isTheme(Type t) { return THEME.equals(t); }
     static boolean isLabel(Type t) { return LABEL.equals(t); }
@@ -139,6 +142,33 @@ final class KofUi {
             return switch (name) {
                 case "light" -> argCount == 0 ? new UiCall("kof_ui_theme_light", THEME, List.of()) : null;
                 case "dark" -> argCount == 0 ? new UiCall("kof_ui_theme_dark", THEME, List.of()) : null;
+                default -> null;
+            };
+        }
+        if (isRouterNamespace(className)) {
+            // Fase 7 (docs/ui/architecture.md §2.9): navegação por troca de
+            // componente raiz — unmount do antigo + mount do novo.
+            return switch (name) {
+                case "route" -> argCount == 2
+                        ? new UiCall("kof_ui_route_register", Type.PrimitiveType.VOID, List.of(STR, INT)) : null;
+                case "go" -> argCount == 1
+                        ? new UiCall("kof_ui_router_go1", BOOL, List.of(STR)) : null;
+                case "goParam" -> argCount == 2
+                        ? new UiCall("kof_ui_router_go2", BOOL, List.of(STR, STR)) : null;
+                case "replace" -> argCount == 1
+                        ? new UiCall("kof_ui_router_replace1", BOOL, List.of(STR)) : null;
+                case "replaceParam" -> argCount == 2
+                        ? new UiCall("kof_ui_router_replace2", BOOL, List.of(STR, STR)) : null;
+                case "back" -> argCount == 0
+                        ? new UiCall("kof_ui_router_back", BOOL, List.of()) : null;
+                case "forward" -> argCount == 0
+                        ? new UiCall("kof_ui_router_forward", BOOL, List.of()) : null;
+                case "param" -> argCount == 0
+                        ? new UiCall("kof_ui_router_param", STR, List.of()) : null;
+                case "current" -> argCount == 0
+                        ? new UiCall("kof_ui_router_current", STR, List.of()) : null;
+                case "depth" -> argCount == 0
+                        ? new UiCall("kof_ui_router_depth", INT, List.of()) : null;
                 default -> null;
             };
         }

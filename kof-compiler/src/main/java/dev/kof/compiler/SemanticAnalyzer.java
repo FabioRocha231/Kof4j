@@ -1051,6 +1051,13 @@ class SemanticAnalyzer {
                         yield uiCall.returnType();
                     }
                 }
+                if (mc.receiver() instanceof IdentifierExpr ridR && KofUi.isRouterNamespace(ridR.name())) {
+                    KofUi.UiCall routerCall = KofUi.staticMethod("Router", mc.methodName(), mc.arguments().size());
+                    if (routerCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        yield routerCall.returnType();
+                    }
+                }
                 if (mc.receiver() != null) {
                     // Nome de CLASSE KOF (de qualquer pacote do modulo) como
                     // receiver para metodo ESTATICO: Desconto.aplicar(c)

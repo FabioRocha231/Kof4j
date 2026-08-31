@@ -163,6 +163,15 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_ui_store_set" -> "(II)V";
             case "kof_ui_store_subscribe", "kof_ui_store_unsubscribe" -> "(ILjava/lang/Object;)V";
             case "kof_ui_stores_live" -> "()I";
+            // Fase 7: Router (no-ops JVM — UI é KofJS)
+            case "kof_ui_route_register" -> "(Ljava/lang/String;I)V";
+            case "kof_ui_router_go1" -> "(Ljava/lang/String;)Z";
+            case "kof_ui_router_go2" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_ui_router_replace1" -> "(Ljava/lang/String;)Z";
+            case "kof_ui_router_replace2" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_ui_router_back", "kof_ui_router_forward" -> "()Z";
+            case "kof_ui_router_param", "kof_ui_router_current" -> "()Ljava/lang/String;";
+            case "kof_ui_router_depth" -> "()I";
             case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
                     -> "(I)Ljava/lang/String;";
             case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
@@ -397,6 +406,9 @@ static boolean hasRuntimeFn(String methodName) {
                      "kof_ui_event_stop", "kof_ui_store_set", "kof_ui_store_subscribe",
                      "kof_ui_store_unsubscribe" -> "V";
              case "kof_ui_store_get", "kof_ui_store_new", "kof_ui_stores_live" -> "I";
+             case "kof_ui_router_go1", "kof_ui_router_go2", "kof_ui_router_replace1",
+                     "kof_ui_router_replace2", "kof_ui_router_back", "kof_ui_router_forward" -> "Z";
+             case "kof_ui_router_param", "kof_ui_router_current" -> "Ljava/lang/String;";
              case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
                      "kof_ui_window_set_theme" -> "V";
             // ── kof.security (docs/security.md §5) ───────────────────
@@ -1551,6 +1563,46 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static int kof_ui_stores_live() {
                     return kofUiStoreLive.size();
+                }
+
+                // ── Fase 7: Router (no-ops — UI é KofJS) ──
+                public static void kof_ui_route_register(String name, int root) {
+                }
+
+                public static boolean kof_ui_router_go1(String name) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_go2(String name, String param) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_replace1(String name) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_replace2(String name, String param) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_back() {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_forward() {
+                    return false;
+                }
+
+                public static String kof_ui_router_param() {
+                    return "";
+                }
+
+                public static String kof_ui_router_current() {
+                    return "";
+                }
+
+                public static int kof_ui_router_depth() {
+                    return 0;
                 }
 
                 // ── Fase 4: primitivas de layout (no-ops) ──

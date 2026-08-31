@@ -8913,6 +8913,26 @@ final class NativeRuntime {
             Store_get:
                 xorl %eax, %eax
                 ret
+            // ── Fase 7: Router (no-ops — UI é KofJS) ──
+            kof_ui_route_register:
+                ret
+            kof_ui_router_go1:
+            kof_ui_router_go2:
+            kof_ui_router_replace1:
+            kof_ui_router_replace2:
+            kof_ui_router_back:
+            kof_ui_router_forward:
+                xorl %eax, %eax           # false (não navegou)
+                ret
+            kof_ui_router_param:
+            kof_ui_router_current:
+                leaq .Lkrtr_empty(%rip), %rdi
+                movl $0, %esi
+                jmp kof_string_from_literal
+            kof_ui_router_depth:
+                xorl %eax, %eax
+                ret
+            .Lkrtr_empty: .asciz ""
             """);
     }
 

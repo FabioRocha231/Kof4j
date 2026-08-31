@@ -238,7 +238,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
-| kof.http (`http.get/post/put/delete/status`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop) |
+| kof.http (`http.get/post/put/delete/status` + `timeout/retry/circuit`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop; 30/08 retry/circuit paridade) |
 | kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
 | kof.mq (publish/subscribe/queue) | ✅ | MQ001 | ✅ |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
@@ -513,9 +513,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 **P2 — Web completa (próxima listinha):**
 5. ✅ Resposta rica `status(201, body)`/`headerSet("X","y")` `JVM` `201 Created 202 Accepted` `X-Custom/X-Test` `KofWebE2ETest 9/9` (27/08) `Native WEB002` `JS stub`
 6. ✅ `kof.cache` `get/set/set(key,v,ttl)/ttl/delete/clear` — ✅ JVM/Native/JS (30/08; fix nativo: clobber de `%rax/%rdi` em `set_ttl/get/ttl` + `println(null)` segfault; `KofCacheE2ETest 5/5 x3 targets`)
-7. `WebSocket` `app.ws("/chat") { }` + `SSE`
+7. ✅ `WebSocket` `app.ws("/chat") { }` + `SSE` `sse.send/event/close` — ✅ JVM (30/08; PRs 14-17: persistent-conn/route-kinds, SSE, handshake RFC 6455, frame codec+máscara; `KofWebSseE2ETest 7/7` `KofWebWsE2ETest 11/11` `KofWsFrameTest 7/7`)
 8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM `every/at/cancel` `kof_scheduler_every` `ScheduledExecutor` + JS `setInterval` `kofSchedulerEvery` `27/08` `scheduler.every(100) job-1` `JVM:job-1 JS:kofSchedulerEvery` `KofTimeE2ETest 5/0` `Native SCHED001`)
-9. `kof.http` client já ✅, falta `HTTP/2`/`retry`/`timeout`/`circuit breaker`
+9. ✅ `kof.http` `timeout`/`retry`/`circuit breaker` — ✅ JVM+JS (30/08; retry repete em exceção+HTTP 5xx, circuito abre após N falhas por 30s com fail-fast, `circuit(0)` recupera; `KofHttpResilienceE2ETest 3/3` JVM+JS) — falta `HTTP/2`
 
 **P3 — Data produção:**
 10. Query DSL tipada `User.query { where age > 18 }`
