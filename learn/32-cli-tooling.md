@@ -1,6 +1,6 @@
 # 32 — CLI e Tooling
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
 
 A CLI é a ferramenta central da plataforma Kof.
 
@@ -23,7 +23,7 @@ A CLI é a ferramenta central da plataforma Kof.
 | `kof debug <file.kf> [--target jvm]` | DAP MVP |
 | `kof info [--json]` | Relatório do ambiente |
 | `kof lsp` | Language Server (stdio, LSP 3.x) |
-| `kof version` | Versão da plataforma (`0.2.0-beta`) |
+| `kof version` | Versão da plataforma (`0.2.6-beta`) |
 
 Planejado: `kof fmt` (formatter). Todos os comandos seguem `intention->Kof->frontend->IR->backend->runtime`.
 
@@ -32,15 +32,15 @@ Planejado: `kof fmt` (formatter). Todos os comandos seguem `intention->Kof->fron
 Diagnóstico oficial do ambiente — para usuários e suporte:
 
 ```text
-Kof 0.2.0-beta
+Kof 0.2.6-beta
 Tooling API: 21
 OS: linux
 Arch: x86_64
 Target: linux-x86_64
 JVM: Eclipse Adoptium 25.0.4 (embedded)
-Compiler: 0.2.0-beta
-Runtime: 0.2.0-beta
-Stdlib: 0.2.0-beta
+Compiler: 0.2.6-beta
+Runtime: 0.2.6-beta
+Stdlib: 0.2.6-beta
 Targets: jvm, native, native.risc, native.arm, js, kofc
 Install: /opt/kof
 ```

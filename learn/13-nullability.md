@@ -1,6 +1,6 @@
 # 13 — Nullability
 
-> **Status: básico implementado (0.2.0-beta) — `String?` + verificação via `kof check`**
+> **Status: básico implementado (0.2.6-beta) — `String?` + verificação via `kof check`**
 >
 > `String?` (e `Tipo?` em geral) já é reconhecido pelo parser/type system (`NullableType`, `parseTypeRef` com `?`); o compilador exige tratamento antes de dereferenciar e `kof check` valida. Interop com Java mapeia retornos que podem ser `null` para `String?`. No runtime, `String?` é erasure para `String` (mesma carga), a guarda é do type system — `intention->Kof->frontend->IR->backend->runtime`.
 
@@ -13,7 +13,7 @@ String nome = null;
 System.out.println(nome.length());  // NullPointerException!
 ```
 
-## A solução (0.2.0-beta)
+## A solução (0.2.6-beta)
 
 Kof adiciona tipos nullable com `?`:
 

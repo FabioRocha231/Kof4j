@@ -1,6 +1,6 @@
 # 22 — JVM
 
-> **Kof 0.2.0-beta — 658 testes — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 658 testes — `intention->Kof->frontend->IR->backend->runtime`**
 
 ## Como Kof roda (JVM é um dos backends — ver Target separation `native.risc/arm` em cap. 31)
 

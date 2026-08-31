@@ -50,24 +50,24 @@ KofJS (`kof run --target=js`) sem depender de Node.js.
 ## K
 
 **Kof IR** — representação intermediária única da Kof: o mesmo frontend gera a
-IR e os backends (JVM, Native x86-64/riscv64/aarch64, KofJS, KofC) a consomem — `intention->Kof->frontend->IR->backend->runtime` (0.2.0-beta, 658 testes, Target separation).
+IR e os backends (JVM, Native x86-64/riscv64/aarch64, KofJS, KofC) a consomem — `intention->Kof->frontend->IR->backend->runtime` (0.2.6-beta, 658 testes, Target separation).
 
-**KofC** — `kof c <file.c>` : compilador de subset C (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → ELF x86-64 nativo-only (0.2.0-beta, Target separation).
+**KofC** — `kof c <file.c>` : compilador de subset C (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → ELF x86-64 nativo-only (0.2.6-beta, Target separation).
 
 **KofJS** — target `js` da Kof: gera ES Modules (ECMAScript 2022+) a partir da
 Kof IR (JVM+JS para `kof.http`, HTTP002 Native). Ver `learn/37-kofjs.md`.
 
-**KofScript** — `kof script <file.ks|kf>` + `kof repl` : execução direta; `let`/`const` no topo viram `KofScriptGlobals` persistentes, `--watch` re-executa; targets jvm/native/js (0.2.0-beta).
+**KofScript** — `kof script <file.ks|kf>` + `kof repl` : execução direta; `let`/`const` no topo viram `KofScriptGlobals` persistentes, `--watch` re-executa; targets jvm/native/js (0.2.6-beta).
 
-**String?** — tipo nullable básico (0.2.0-beta): `String? x = null; if (x != null) x.length()`.
+**String?** — tipo nullable básico (0.2.6-beta): `String? x = null; if (x != null) x.length()`.
 
-**Pattern matching** — `switch (o) { case String s: ... case Point(x,y): ... }` com type pattern + destructuring (0.2.0-beta, JVM/Native/JS).
+**Pattern matching** — `switch (o) { case String s: ... case Point(x,y): ... }` com type pattern + destructuring (0.2.6-beta, JVM/Native/JS).
 
-**Free-list GC** — Native allocator `kof_free_head` (0.2.0-beta): reusa `mmap` via free-list, GC mark-sweep pendente.
+**Free-list GC** — Native allocator `kof_free_head` (0.2.6-beta): reusa `mmap` via free-list, GC mark-sweep pendente.
 
-**kof_db / MySQL** — `kof_db` (JVM: JDBC/SQLite/MySQL/PostgreSQL/MongoDB; Native: SQLite via `.so` + MySQL wire protocol WIP com auth SHA-1) (0.2.0-beta).
+**kof_db / MySQL** — `kof_db` (JVM: JDBC/SQLite/MySQL/PostgreSQL/MongoDB; Native: SQLite via `.so` + MySQL wire protocol WIP com auth SHA-1) (0.2.6-beta).
 
-**Target separation** — `Target {JVM,NATIVE,NATIVE_RISCV64,NATIVE_AARCH64,JS,ANDROID}` + `parseTarget native.risc/arm` (0.2.0-beta, `Target.nativeArch()`).
+**Target separation** — `Target {JVM,NATIVE,NATIVE_RISCV64,NATIVE_AARCH64,JS,ANDROID}` + `parseTarget native.risc/arm` (0.2.6-beta, `Target.nativeArch()`).
 
 **kof.ui** — plataforma de UI: `Color`, `Theme`, `Palette`, `Window`, `Label`,
 `Button`, `Input`, `Column`/`Row`, `View`+`Style`. Renderização é KofJS

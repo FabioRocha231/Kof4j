@@ -2,7 +2,7 @@
 
 > **Status:** Fase 1 (inspeção) concluída. Fase 2 (Component Core) em implementação.
 > **Última atualização:** 30 de agosto de 2026
-> **Versão:** 0.2.3-beta
+> **Versão:** 0.2.6-beta
 
 Este documento é o mapa da arquitetura do `kof.ui`: o estado real encontrado na
 inspeção, os problemas, e a fundação que a UI precisa antes de qualquer widget

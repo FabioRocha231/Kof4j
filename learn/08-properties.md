@@ -1,8 +1,8 @@
 # 08 — Propriedades
 
-> **Status: planejado (pós 0.2.0-beta)**
+> **Status: planejado (pós 0.2.6-beta)**
 >
-> A sintaxe de propriedades ainda não foi implementada (0.2.0-beta foca em `String?`, pattern matching e coleções). Este capítulo documenta a visão planejada.
+> A sintaxe de propriedades ainda não foi implementada (0.2.6-beta foca em `String?`, pattern matching e coleções). Este capítulo documenta a visão planejada.
 
 ## O problema
 

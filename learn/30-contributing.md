@@ -1,6 +1,6 @@
 # 30 — Contribuindo
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
 
 ## Estrutura do repositório
 
@@ -14,7 +14,7 @@ kof/
 ├── docs/               ← documentação interna
 ├── learn/              ← este material (intention->Kof->frontend->IR->backend->runtime)
 ├── tests/              ← testes golden (658)
-├── pom.xml             ← build Maven (0.2.0-beta)
+├── pom.xml             ← build Maven (0.2.6-beta)
 └── README.md
 ```
 
@@ -140,7 +140,7 @@ Sempre que uma feature mudar:
 
 ## Estado atual do projeto
 
-O projeto está em 0.2.0-beta (658 testes), funcional:
+O projeto está em 0.2.6-beta (658 testes), funcional:
 
 **Funciona hoje:**
 - Lexer completo com 55+ keywords (`String?`, `let`/`const` alias)

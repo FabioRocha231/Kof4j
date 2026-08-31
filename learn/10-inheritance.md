@@ -1,6 +1,6 @@
 # 10 — Herança
 
-> **Status: implementado (JVM / JS — Native SUP001) — 0.2.0-beta — Target separation `native.risc/arm` preserva dispatch**
+> **Status: implementado (JVM / JS — Native SUP001) — 0.2.6-beta — Target separation `native.risc/arm` preserva dispatch**
 >
 > `extends`, virtual dispatch, sobrescrita e chamadas `super(...)` /
 > `super.metodo()` funcionam nos targets JVM e KofJS. No Native,

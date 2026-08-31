@@ -1,6 +1,6 @@
 # 25 — Spring
 
-> **Status: futuro (pós 0.2.0-beta — `kof.web` + `kof_db` já cobrem o caso sem Spring)**
+> **Status: futuro (pós 0.2.6-beta — `kof.web` + `kof_db` já cobrem o caso sem Spring)**
 >
 > A integração com Spring é um dos objetivos de longo prazo da Kof. Este capítulo documenta a visão planejada.
 

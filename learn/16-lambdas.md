@@ -1,6 +1,6 @@
 # 16 — Lambdas
 
-> **Status: implementado (JVM / Native / JS) — 0.2.0-beta — com capturas**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — com capturas**
 >
 > Lambdas `(x: Int) -> expr` com capturas (box `BoxN`) funcionam nos três targets; `map/filter/reduce` em `List<T>` usam lambdas capturando.
 

@@ -4,7 +4,7 @@
 
 Neste capítulo você vai entender como declara variáveis, como o sistema de tipos funciona, e como a inferência de tipos opera.
 
-## Declaração de variáveis (0.2.0-beta)
+## Declaração de variáveis (0.2.6-beta)
 
 Em Kof existem duas palavras-chave para variáveis (mais `let`/`const` como alias no KofScript → `KofScriptGlobals`):
 
@@ -166,7 +166,7 @@ String? s = null     // nullable básico
 if (s != null) { println(s.length()) }
 ```
 
-## Status atual (0.2.0-beta, 658 testes)
+## Status atual (0.2.6-beta, 658 testes)
 
 ✅ `var` e `val` funcionam
 ✅ `let`/`const` (alias → `KofScriptGlobals` no KofScript)

@@ -1,6 +1,6 @@
 # 07 — Classes e Objetos
 
-> **Kof 0.2.0-beta — `Point(x,y)` destructuring + `String?` + `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — `Point(x,y)` destructuring + `String?` + `intention->Kof->frontend->IR->backend->runtime`**
 
 ## O que você vai aprender
 

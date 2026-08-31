@@ -106,7 +106,7 @@ descoberto por reflection.
 
 ## 8. Onde estamos vs. o padrão ouro (Spring/Quarkus) — auditoria honesta
 
-**Última revisão:** 30/08/2026 (0.2.4-beta, auditoria da Fase de Configuração)
+**Última revisão:** 30/08/2026 (0.2.6-beta, auditoria da Fase de Configuração)
 
 | Capacidade | kof.config hoje | Spring Boot | Status |
 |------------|-----------------|-------------|--------|

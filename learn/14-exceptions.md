@@ -1,6 +1,6 @@
 # 14 — Exceptions
 
-> **Status: implementado (JVM + Native unwinding) — 0.2.0-beta**
+> **Status: implementado (JVM + Native unwinding) — 0.2.6-beta**
 >
 > `throw`/`try`/`catch`/`finally` com unwinding real em JVM e Native; a cadeia `intention->Kof->frontend->IR->backend->runtime` mantém a mesma semântica nos dois runtimes.
 

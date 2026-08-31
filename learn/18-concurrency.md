@@ -1,6 +1,6 @@
 # 18 — Concorrência
 
-> **Status: implementado (JVM, virtual threads) — 0.2.0-beta**
+> **Status: implementado (JVM, virtual threads) — 0.2.6-beta**
 >
 > Kof não expõe `Thread`, `Runnable` nem `CompletableFuture`: a intenção é
 > `spawn` (rode em paralelo) e `await` (espere o resultado). No Native e

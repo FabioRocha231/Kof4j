@@ -1,6 +1,6 @@
 # 05 — Controle de Fluxo
 
-> **Status: implementado (JVM / Native / JS) — 0.2.0-beta**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta**
 >
 > `if/else`, `while`, `for`, `for-in`, `switch`, `break/continue` funcionam nos três targets. Pattern matching (`case String s`, `Point(x,y)`) ver capítulo 15.
 

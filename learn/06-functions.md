@@ -1,6 +1,6 @@
 # 06 — Funções
 
-> **Status: implementado (JVM / Native / JS / KofScript) — 0.2.0-beta**
+> **Status: implementado (JVM / Native / JS / KofScript) — 0.2.6-beta**
 >
 > Funções de nível superior, métodos, expression bodies e default parameters funcionam nos três targets (JVM, Native, KofJS) + KofScript (`let`→`KofScriptGlobals`). Target separation `native.risc/arm` preserva a mesma IR.
 

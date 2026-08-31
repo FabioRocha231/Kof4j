@@ -1,6 +1,6 @@
 # 29 — Internals do Compilador
 
-> **Kof 0.2.0-beta — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
 
 ## Arquitetura
 

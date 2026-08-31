@@ -1,7 +1,7 @@
 # Status do Projeto Kof
 
-**Última atualização:** 30 de agosto de 2026
-**Versão:** 0.2.3-beta
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta
 
 ---
 
@@ -228,7 +228,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | lambdas `(x: Int) -> expr` + capturas | ✅ | ✅ | ✅ |
 | exceptions reais (try/catch/finally + unwinding) | ✅ | ✅ | ✅ |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ |
-| `spawn` (concorrência, join implícito) | ✅ | CONC001 | — |
+| `spawn` (concorrência, join implícito) | ✅ | ✅ (pthread, 31/08) | ✅ |
 | strings (concat `+`, `==`, indexOf, trim, split...) | ✅ | ✅ | ✅ |
 | arrays | ✅ | ✅ | ✅ |
 | `List<T>`, `listOf`, `map/filter/reduce` | ✅ | ✅ | ✅ |
@@ -262,7 +262,9 @@ spawn {
 ```
 
 - JVM: virtual threads; o programa espera as tarefas (join implícito).
-- Native: `CONC001` (gap documentado — planned).
+- Native: pthread_create + trampoline + `await`/pthread_join + allocator
+  thread-safe (futex) — ✅ 31/08 (CONC001 fechado).
+- JS: sequencial (spawn statement/expr cobre; async real = CONC003 parcial).
 - Zero API de plataforma exposta (Thread/Runnable são internos do runtime).
 - Ver: `docs/concurrency.md`.
 
@@ -485,7 +487,8 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 7. ~~Generics `Box<T>` com println nativo~~ — ✅ 25/08 `Box<Int>`/`T` substituído + `kof_int_to_string`
 8. ~~`SEM025` falso-positivo em `hashCode/equals/toString`~~ — ✅ `isObjectMethod` em 25/08
 9. ~~`await`/join~~ — ✅ nos 3 targets (JVM virtual threads, JS sequencial, Native pthread)
-10. `kof fmt`: planned (P5)
+10. ~~`kof fmt`: planned (P5)~~ — ✅ implementado: `kof fmt` via parser real
+    (`KofFormatter`), idempotente (2c3e794)
 11. ~~Map/Set~~ — ✅ `List.map/filter/reduce` + `Map/Set` JVM/Native/JS (26/08)
 12. Pattern matching: ✅ `switch (x) { case String s: ... }` + `case Point(x,y)` em `Parser/Semantic/CompilerDriver` + `Native rbx→rcx` + `JS typeof` (27/08 `Point(x,y)` `JVM:30 Native:30 JS:30` `KofPatternMatchingTest 10/10` + `KofWebE2ETest 9/9`)
 13. Null safety `String?`: ✅ básica `String?` `Int?` `?`-check em compile-time `Type.NullableType` `JvmBackend:110` `SemanticAnalyzer:1637` `isAssignable` `var s:String?=null` `s==null` `t="hello"` `jvm: null/hello native: null/hello js: null/hello` (27/08)

@@ -1,6 +1,6 @@
 # Roadmap KofNative
 
-> **0.2.0-beta — 27 ago 2026 — 658 testes — free-list GC done, Target separation done, MySQL via kof_db WIP**
+> **0.2.6-beta — 31 ago 2026 — 658 testes — free-list GC done, Target separation done, MySQL via kof_db WIP**
 
 ## Princípios
 
@@ -35,7 +35,7 @@ O backend nativo já está funcional. Aqui está o que já foi implementado:
 - **Milestone 14 — Free-list GC**: `kof_free_head` reuso `mmap` ✅
 - **Milestone 15 — kof_db MySQL**: SQLite via `.so` + MySQL wire auth SHA-1 ✅ WIP
 
-### ✅ Concluídos (0.2.0-beta) — 9-12 já implementados; ver acima
+### ✅ Concluídos (0.2.6-beta) — 9-12 já implementados; ver acima
 
 ## Milestones detalhados
 

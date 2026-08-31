@@ -1,6 +1,6 @@
 # 33 — Versionamento e Releases
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes**
+> **Kof 0.2.6-beta — 31 ago 2026 — 658 testes**
 
 ## Formato
 
@@ -15,15 +15,15 @@ MAJOR.MINOR.PATCH
 O PATCH é o *pontinho da vergonha*: bugfixes, correções, regressões e
 pequenos ajustes sem mudança arquitetural relevante.
 
-## Estágio Beta (0.2.0-beta)
+## Estágio Beta (0.2.6-beta)
 
-O Kof saiu de `0.0.x` (Alpha) para `0.2.0-beta`. Cada release carrega o sufixo:
+O Kof saiu de `0.0.x` (Alpha) para `0.2.6-beta`. Cada release carrega o sufixo:
 
 ```text
-0.2.0-beta
+0.2.6-beta
 ```
 
-Nada é chamado de stable. A evolução foi: Alpha → Beta (0.2.0-beta, 27 ago 2026, 658 testes) → Release Candidate → Stable. A cadeia `intention->Kof->frontend->IR->backend->runtime` vale para todos.
+Nada é chamado de stable. A evolução foi: Alpha → Beta (0.2.6-beta, 31 ago 2026, 658 testes) → Release Candidate → Stable. A cadeia `intention->Kof->frontend->IR->backend->runtime` vale para todos.
 
 Targets oficiais em 0.2.0: `jvm`, `native` (x86-64), `native.risc` (riscv64), `native.arm` (aarch64), `js` (KofJS), `kofc` (KofC C subset nativo-only). Target separation já no `Target` enum.
 
@@ -33,7 +33,7 @@ A versão vive em `VERSION` (raiz do repositório). `scripts/bump-version.sh`
 sincroniza:
 
 ```text
-VERSION (0.2.0-beta) → pom.xml (<revision>0.2.0-beta</revision>) → dev/kof/version.properties (empacotado)
+VERSION (0.2.6-beta) → pom.xml (<revision>0.2.6-beta</revision>) → dev/kof/version.properties (empacotado)
 ```
 
 Nunca edite versões espalhadas por arquivos — a pipeline cuida disso.

@@ -140,11 +140,11 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 37 | KofJS (caminho da Web) | ✅ (alpha) |
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM,
-Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.0-beta, 658 testes).
+Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 658 testes).
 
 **Testes:** 658
 
-**O que funciona hoje (0.2.0-beta — 27 ago 2026 — 658 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
+**O que funciona hoje (0.2.6-beta — 31 ago 2026 — 658 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
 - Frontend completo (lexer, parser, type system, semântica) — `intention->Kof->frontend->IR->backend->runtime`
 - Seis targets: JVM (ASM), Native x86-64 (free-list GC), Native.risc, Native.arm, KofJS (GraalJS) e KofC (C subset nativo-only)
 - Classes, records, herança, interfaces, virtual dispatch, generics (erasure), imports `a.b.C` fix (largeproj)
