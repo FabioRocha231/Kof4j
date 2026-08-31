@@ -244,12 +244,24 @@ O core adiciona as primitivas estruturais faltando, todas com
 `Box`, `Stack`, `Spacer`, `Wrap`, `Grid`, `Center`, `Align` (além do `Row`/
 `Column`/`View` existentes). `Scroll` entra com a camada de layout.
 
-### 2.9 Navegação (Fase 7)
+### 2.9 Navegação (Fase 7) — implementada
 
-`Route`/`Router`/`go`/`back`/`forward`/`replace` + params. Navegar =
-**trocar o componente raiz**: o engine desmonta o antigo (lifecycle correto +
-cleanup) e monta o novo. A espinha de componente do core é o que torna isso
-possível (árvore + lifecycle + cleanup).
+`Router` namespace: `route(name, component)`, `go(name[, param])`,
+`replace(name[, param])`, `back()`, `forward()`, `param()`, `current()`,
+`depth()`. Navegar = **trocar o componente raiz**: o engine desmonta o antigo
+(lifecycle correto + cleanup) e monta o novo. A espinha de componente do core é
+o que torna isso possível (árvore + lifecycle + cleanup).
+
+Detalhes de implementação (alvo JS):
+
+- `kofUiRouterShow` desmonta **qualquer rota montada** que não seja o destino
+  (cobre o bind inicial de `Window.bind`, que monta um componente raiz sem
+  registrar `current`). Padrão suportado: configurar o component (`view`,
+  `onMount`, ...) **antes** de `win.bind`/`Router.go`.
+- `Router.go`/`replace` aceitam 1 ou 2 argumentos (com ou sem param).
+- `back()`/`forward()` usam pilhas de histórico; `forwardStack` é limpo ao
+  navegar para frente.
+- Testes: `RouterE2ETest` (go com lifecycle, back/forward, rota unknown).
 
 ### 2.10 Estrutura de módulos (Fase 11)
 
