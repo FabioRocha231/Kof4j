@@ -155,6 +155,13 @@ final class JvmWebRuntime {
                     }
 
                     public void event(String name, String data) {
+                        // Sanitize event name. The wire format forbids CR/LF in
+                        // any field value; otherwise the client would parse a
+                        // synthetic header out of the injected bytes.
+                        if (name.indexOf((int) '\\r') >= 0 || name.indexOf((int) '\\n') >= 0) {
+                            throw new IllegalArgumentException(
+                                    "event name must not contain CR or LF");
+                        }
                         writeFrame("event: " + name + "\\n");
                         writeData(data);
                     }
@@ -177,7 +184,11 @@ final class JvmWebRuntime {
                     }
 
                     private void writeData(String data) {
-                        for (String line : data.split("\\n", -1)) {
+                        // SSE spec: split on ANY line break (CRLF, LF, or lone CR)
+                        // so the output is normalized regardless of which OS
+                        // produced the data. Without this, CRLF payloads would
+                        // leak the trailing CR onto the wire.
+                        for (String line : data.split("\\\\R", -1)) {
                             writeFrame("data: " + line + "\\n");
                         }
                         writeFrame("\\n");
