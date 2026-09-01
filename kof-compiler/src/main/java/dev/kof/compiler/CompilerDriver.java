@@ -7051,6 +7051,11 @@ private Target target = Target.JVM;
     private boolean hasReturnValueInner(ExpressionNode expr, List<IRLocalVariable> locals) {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
+            if (Boolean.getBoolean("kof.trace.pop") && "add".equals(mc.methodName())) {
+                System.err.println("[hrv-in] receiver=" + mc.receiver().getClass().getSimpleName()
+                        + " recvName=" + (mc.receiver() instanceof IdentifierExpr r ? r.name() : "?")
+                        + " recvType=" + (mc.receiver() != null ? inferExprType(mc.receiver(), locals) : "null"));
+            }
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
             // cache.* primeiro: cache.delete é void e o nome colide com o
             // File.delete do Io (que o check genérico abaixo não sabe tipar
