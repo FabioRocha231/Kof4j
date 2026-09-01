@@ -4427,6 +4427,34 @@ private Target target = Target.JVM;
                             }
                         }
                     }
+                    // String.valueOf/Integer.valueOf/…: receiver é o NOME de
+                    // um tipo builtin (não uma variável) — o identificador não
+                    // empilha valor; mapeia para o owner JDK estático (sem
+                    // isso o emit saía com owner "" → ClassFormatError)
+                    if (recvType instanceof Type.UnknownType
+                            && mc.receiver() instanceof IdentifierExpr brid
+                            && findLocalVar(brid.name(), locals) == null
+                            && !brid.name().isEmpty()
+                            && Character.isUpperCase(brid.name().charAt(0))) {
+                        Type jdkOwner = switch (brid.name()) {
+                            case "String" -> BuiltinTypes.STRING;
+                            case "Int", "Integer" -> new Type.ClassType("java.lang", "Integer", List.of());
+                            case "Long" -> new Type.ClassType("java.lang", "Long", List.of());
+                            case "Float" -> new Type.ClassType("java.lang", "Float", List.of());
+                            case "Double" -> new Type.ClassType("java.lang", "Double", List.of());
+                            case "Bool", "Boolean" -> new Type.ClassType("java.lang", "Boolean", List.of());
+                            default -> Type.UnknownType.UNKNOWN;
+                        };
+                        if (!(jdkOwner instanceof Type.UnknownType)) {
+                            recvType = jdkOwner;
+                            callKind = KofCallKind.STATIC;
+                            if (methodParamTypes.size() == 1
+                                    && methodParamTypes.get(0) instanceof Type.PrimitiveType) {
+                                // valueOf(I) direto do JDK — sem boxing duplo
+                                methodReturnType = BuiltinTypes.STRING;
+                            }
+                        }
+                    }
                     ops.add(new KofCall(recvType,
                             runtimeMethod != null ? runtimeMethod : mc.methodName(),
                             methodParamTypes, methodReturnType, callKind));
