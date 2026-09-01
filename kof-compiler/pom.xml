@@ -78,4 +78,19 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- o padrão default (*Test.java) não casa com
+                         NativeDebugTest2/3/4/5.java — explicitar pega todos -->
+                    <includes>
+                        <include>*Test*.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
