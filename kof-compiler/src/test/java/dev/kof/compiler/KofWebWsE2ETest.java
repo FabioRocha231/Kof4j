@@ -204,6 +204,28 @@ class KofWebWsE2ETest {
         out.flush();
     }
 
+    private static void writeRawMaskedFrame(OutputStream out, int b0, int b1, byte[] payload) throws IOException {
+        // Builds a client frame with arbitrary b0/b1 (FIN/RSV/opcode, MASK+len) and masked payload.
+        int len = payload.length;
+        int extLen = 0;
+        if ((b1 & 0x7F) == 126) extLen = 2;
+        else if ((b1 & 0x7F) == 127) extLen = 8;
+        byte[] frame = new byte[2 + extLen + 4 + len];
+        frame[0] = (byte) b0;
+        frame[1] = (byte) b1;
+        if (extLen == 2) {
+            frame[2] = (byte) ((len >> 8) & 0xFF);
+            frame[3] = (byte) (len & 0xFF);
+        } else if (extLen == 8) {
+            for (int i = 0; i < 8; i++) frame[2 + i] = (byte) ((len >> (56 - i * 8)) & 0xFF);
+        }
+        int maskOff = 2 + extLen;
+        System.arraycopy(MASK, 0, frame, maskOff, 4);
+        for (int i = 0; i < len; i++) frame[maskOff + 4 + i] = (byte) (payload[i] ^ MASK[i % 4]);
+        out.write(frame);
+        out.flush();
+    }
+
     private static void writeOversizedFrameHeader(OutputStream out) throws IOException {
         byte[] frame = new byte[14];
         frame[0] = (byte) 0x82;
@@ -418,6 +440,82 @@ class KofWebWsE2ETest {
             assertEquals(0x88, frame[0] & 0xFF);
             assertEquals(0, frame[1] & 0x80);
             assertEquals(1009, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_rsv1_set_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0xC1, 0x80, new byte[0]);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_reserved_opcode_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x83, 0x80, new byte[0]);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_fragmented_control_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x09, 0x80, new byte[0]);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_oversized_ping_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            byte[] payload = new byte[126];
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x89, 0xFE, payload);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_invalid_utf8_text_closes_1007(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x81, 0x82, new byte[]{(byte) 0xC3, 0x28});
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1007, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_invalid_64bit_length_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            int b0 = 0x81;
+            int b1 = 0x80 | 127;
+            byte[] frame = new byte[2 + 8 + 4];
+            frame[0] = (byte) b0;
+            frame[1] = (byte) b1;
+            frame[2] = (byte) 0x80;
+            for (int i = 3; i < 10; i++) frame[i] = 0;
+            System.arraycopy(MASK, 0, frame, 10, 4);
+            response.socket.getOutputStream().write(frame);
+            response.socket.getOutputStream().flush();
+            byte[] serverFrame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, serverFrame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(serverFrame)));
         }
     }
 }

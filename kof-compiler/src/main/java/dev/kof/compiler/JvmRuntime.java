@@ -622,6 +622,24 @@ static boolean hasRuntimeFn(String methodName) {
                             int op = headerBuf[0] & 0x0F;
                             boolean masked = (headerBuf[1] & 0x80) != 0;
                             long plen = headerBuf[1] & 0x7F;
+                            // 1a) Validate RSV bits (RFC 6455 §5.2): no extensions
+                            // negotiated means RSV1/2/3 must all be 0.
+                            boolean rsv = (headerBuf[0] & 0x70) != 0;
+                            // 1b) Validate opcode: 0x0-0x2, 0x8-0xA only.
+                            boolean opValid = op == 0x0 || op == 0x1 || op == 0x2
+                                    || op == 0x8 || op == 0x9 || op == 0xA;
+                            boolean control = (op & 0x08) != 0;
+                            if (rsv || !opValid) {
+                                WsConnection early = new WsConnection(client.getOutputStream());
+                                early.close(WsFrame.CLOSE_PROTOCOL_ERROR,
+                                        rsv ? "RSV must be 0" : "reserved opcode: " + op);
+                                break frameLoop;
+                            }
+                            if (control && !fin) {
+                                WsConnection early = new WsConnection(client.getOutputStream());
+                                early.close(WsFrame.CLOSE_PROTOCOL_ERROR, "fragmented control frame");
+                                break frameLoop;
+                            }
                             // 2) Extended length
                             if (plen == 126) {
                                 byte[] ext = new byte[2];
@@ -630,6 +648,13 @@ static boolean hasRuntimeFn(String methodName) {
                             } else if (plen == 127) {
                                 byte[] ext = new byte[8];
                                 readFully(client.getInputStream(), ext);
+                                // RFC 6455 §5.2: most significant bit MUST be 0
+                                // (length fits in 63 bits). Reject otherwise.
+                                if ((ext[0] & 0x80) != 0) {
+                                    WsConnection early = new WsConnection(client.getOutputStream());
+                                    early.close(WsFrame.CLOSE_PROTOCOL_ERROR, "invalid 64-bit length");
+                                    break frameLoop;
+                                }
                                 plen = 0;
                                 for (int i = 0; i < 8; i++) plen = (plen << 8) | (ext[i] & 0xFF);
                             }
@@ -651,10 +676,30 @@ static boolean hasRuntimeFn(String methodName) {
                                 conn.close(WsFrame.CLOSE_TOO_BIG, "frame too large");
                                 break frameLoop;
                             }
+                            // Control frame payload must be <= 125 (RFC 6455 §5.5).
+                            if (control && plen > 125) {
+                                WsConnection early = new WsConnection(client.getOutputStream());
+                                early.close(WsFrame.CLOSE_PROTOCOL_ERROR, "control frame too large");
+                                break frameLoop;
+                            }
                             byte[] payload = new byte[(int) plen];
                             if (plen > 0) {
                                 readFully(client.getInputStream(), payload);
                                 if (masked) for (int i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
+                            }
+                            // TEXT frames (0x1) must contain well-formed UTF-8 (RFC 6455 §5.6).
+                            if (op == 0x1) {
+                                java.nio.charset.CharsetDecoder dec =
+                                        java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                                                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                                                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+                                try {
+                                    dec.decode(java.nio.ByteBuffer.wrap(payload));
+                                } catch (java.nio.charset.CharacterCodingException bad) {
+                                    WsConnection early = new WsConnection(client.getOutputStream());
+                                    early.close(WsFrame.CLOSE_INVALID_PAYLOAD, "invalid UTF-8");
+                                    break frameLoop;
+                                }
                             }
                             // 5) React
                             if (op == 0x9 /* PING */) { conn.pong(payload); }

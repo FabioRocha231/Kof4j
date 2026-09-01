@@ -288,6 +288,8 @@ final class JvmWebRuntime {
                     public static final int CLOSE_TOO_BIG = 1009;
                     public static final int CLOSE_PROTOCOL_ERROR = 1002;
                     public static final int CLOSE_UNSUPPORTED = 1003;
+                    public static final int CLOSE_INVALID_PAYLOAD = 1007;
+                    public static final int CLOSE_INTERNAL_ERROR = 1011;
                 }
 
                 public static final class WsConnection {
