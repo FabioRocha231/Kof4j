@@ -110,6 +110,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_read_text" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_write_text", "kof_io_append_text" -> "(Ljava/lang/String;Ljava/lang/String;)I";
             case "kof_io_read_bytes" -> "(Ljava/lang/String;)[I";
+            case "kof_io_read_range" -> "(Ljava/lang/String;JI)[I";
+            case "kof_io_read_range_path" -> "(Ljava/lang/String;JI)[I";
             case "kof_io_write_bytes", "kof_io_append_bytes" -> "(Ljava/lang/String;[I)I";
             case "kof_io_delete", "kof_io_dir_create", "kof_io_dir_create_dirs", "kof_io_dir_delete"
                     -> "(Ljava/lang/String;)I";
@@ -382,6 +384,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_process_exit" -> "V";
             case "kof_args_list" -> "Ljava/util/ArrayList;";
             case "kof_io_read_bytes" -> "[I";
+            case "kof_io_read_range", "kof_io_read_range_path" -> "[I";
             case "kof_io_file_size" -> "J";
             case "kof_io_dir_list" -> "Ljava/util/ArrayList;";
             case "kof_web_app_new", "kof_web_param", "kof_web_query", "kof_web_header",
@@ -2117,6 +2120,7 @@ static boolean hasRuntimeFn(String methodName) {
                         cmd.addAll(args);
                         Process p = new ProcessBuilder(cmd)
                                 .redirectErrorStream(false)
+                                .redirectInput(java.lang.ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
                                 .start();
                         java.util.concurrent.FutureTask<String> outTask = new java.util.concurrent.FutureTask<>(
                                 () -> new String(p.getInputStream().readAllBytes(),
@@ -2151,6 +2155,7 @@ static boolean hasRuntimeFn(String methodName) {
                         cmd.addAll(args);
                         Process p = new ProcessBuilder(cmd)
                                 .redirectErrorStream(false)
+                                .redirectInput(java.lang.ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
                                 .start();
                         long id;
                         synchronized (KofRuntime.class) { id = ++SPAWN_SEQ; }
@@ -2272,6 +2277,25 @@ static boolean hasRuntimeFn(String methodName) {
                         int[] out = new int[b.length];
                         for (int i = 0; i < b.length; i++) out[i] = b[i] & 0xFF;
                         return out;
+                    } catch (java.io.IOException e) {
+                        return null;
+                    }
+                }
+
+                public static int[] kof_io_read_range(String path, long offset, int len) {
+                    return kof_io_read_range_path(path, offset, len);
+                }
+
+                public static int[] kof_io_read_range_path(String path, long offset, int len) {
+                    try {
+                        byte[] b = new byte[len];
+                        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(p(path), "r")) {
+                            raf.seek(offset);
+                            int read = raf.read(b, 0, len);
+                            int[] out = new int[read < 0 ? 0 : read];
+                            for (int i = 0; i < out.length; i++) out[i] = b[i] & 0xFF;
+                            return out;
+                        }
                     } catch (java.io.IOException e) {
                         return null;
                     }

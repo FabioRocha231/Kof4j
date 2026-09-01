@@ -52,6 +52,9 @@ final class KofIo {
             case "writeText" -> argCount == 1 ? new IoCall("kof_io_write_text", BOOL, List.of(STR)) : null;
             case "appendText" -> argCount == 1 ? new IoCall("kof_io_append_text", BOOL, List.of(STR)) : null;
             case "readBytes" -> argCount == 0 ? new IoCall("kof_io_read_bytes", INT_ARRAY, List.of()) : null;
+            // leitura com offset p/ arquivos grandes (GGUF de LLM): sem carregar o arquivo inteiro
+            case "readRange" -> argCount == 2
+                    ? new IoCall("kof_io_read_range", INT_ARRAY, List.of(LONG, INT)) : null;
             case "writeBytes" -> argCount == 1 ? new IoCall("kof_io_write_bytes", BOOL, List.of(INT_ARRAY)) : null;
             case "appendBytes" -> argCount == 1 ? new IoCall("kof_io_append_bytes", BOOL, List.of(INT_ARRAY)) : null;
             case "delete" -> isDirectory(receiver)
@@ -84,6 +87,8 @@ final class KofIo {
                 case "writeText" -> argCount == 2 ? new IoCall("kof_io_write_text", BOOL, List.of(STR, STR)) : null;
                 case "appendText" -> argCount == 2 ? new IoCall("kof_io_append_text", BOOL, List.of(STR, STR)) : null;
                 case "readBytes" -> argCount == 1 ? new IoCall("kof_io_read_bytes", INT_ARRAY, List.of(STR)) : null;
+                case "readRange" -> argCount == 3
+                        ? new IoCall("kof_io_read_range_path", INT_ARRAY, List.of(STR, LONG, INT)) : null;
                 case "writeBytes" -> argCount == 2 ? new IoCall("kof_io_write_bytes", BOOL, List.of(STR, INT_ARRAY)) : null;
                 case "delete" -> argCount == 1 ? new IoCall("kof_io_delete", BOOL, List.of(STR)) : null;
                 case "size" -> argCount == 1 ? new IoCall("kof_io_file_size", LONG, List.of(STR)) : null;
