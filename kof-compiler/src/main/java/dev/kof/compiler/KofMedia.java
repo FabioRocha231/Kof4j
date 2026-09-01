@@ -28,6 +28,7 @@ final class KofMedia {
 
     static final Type IMAGE_DATA = new Type.ClassType("kof.media", "ImageData", List.of());
     static final Type AUDIO = new Type.ClassType("kof.media", "Audio", List.of());
+    static final Type VIDEO = new Type.ClassType("kof.media", "Video", List.of());
 
     private static final Type STR = BuiltinTypes.STRING;
     private static final Type INT = Type.PrimitiveType.INT;
@@ -50,6 +51,11 @@ final class KofMedia {
                         ? new MediaCall("kof_media_audio_open_wav", AUDIO, List.of(STR)) : null;
                 default -> null;
             };
+            case "Video" -> switch (name) {
+                case "open" -> argCount == 1
+                        ? new MediaCall("kof_media_video_open", VIDEO, List.of(STR)) : null;
+                default -> null;
+            };
             case "Mic" -> switch (name) {
                 case "record" -> argCount == 1
                         ? new MediaCall("kof_media_mic_record", AUDIO, List.of(INT)) : null;
@@ -63,15 +69,19 @@ final class KofMedia {
     }
 
     static boolean isStaticNamespace(String name) {
-        return "Image".equals(name) || "Audio".equals(name) || "Mic".equals(name);
+        return "Image".equals(name) || "Audio".equals(name) || "Mic".equals(name)
+                || "Video".equals(name);
     }
 
     static boolean isImageData(Type t) { return IMAGE_DATA.equals(t); }
     static boolean isAudio(Type t) { return AUDIO.equals(t); }
+    static boolean isVideo(Type t) { return VIDEO.equals(t); }
 
     /** Handles de mídia são Int em runtime (mesmo modelo dos handles kof.ui)
      *  — o backend JVM os mapeia para o descritor "I". */
-    static boolean isHandleType(Type t) { return isImageData(t) || isAudio(t); }
+    static boolean isHandleType(Type t) {
+        return isImageData(t) || isAudio(t) || isVideo(t);
+    }
 
     /** Métodos em receiver {@code kof.media.ImageData}. */
     static MediaCall imageDataMethod(String name, int argCount) {
@@ -107,6 +117,32 @@ final class KofMedia {
                     ? new MediaCall("kof_media_audio_pcm_bytes", INT_ARRAY, List.of(INT)) : null;
             default -> null;
         };
+    }
+
+    /** Métodos em receiver {@code kof.media.Video}. Vídeo é tratado como
+     *  ARQUIVO de mídia: o app não decodiza frames (gap honesto — sem lib
+     *  externa no JVM); a API expõe metadados do container + bytes para
+     *  servir/streamar. */
+    static MediaCall videoMethod(String name, int argCount) {
+        return switch (name) {
+            case "path" -> argCount == 0 ? new MediaCall("kof_media_video_path", STR, List.of()) : null;
+            case "size" -> argCount == 0 ? new MediaCall("kof_media_video_size", INT, List.of()) : null;
+            case "format" -> argCount == 0 ? new MediaCall("kof_media_video_format", STR, List.of()) : null;
+            case "durationMs" -> argCount == 0
+                    ? new MediaCall("kof_media_video_duration_ms", INT, List.of()) : null;
+            case "bytes" -> argCount == 0
+                    ? new MediaCall("kof_media_video_bytes", INT_ARRAY, List.of()) : null;
+            case "close" -> argCount == 0 ? new MediaCall("kof_media_video_close", VOID, List.of()) : null;
+            default -> null;
+        };
+    }
+
+    /** Método em qualquer handle de mídia (ImageData/Audio/Video). */
+    static MediaCall handleMethod(Type receiver, String name, int argCount) {
+        if (isImageData(receiver)) return imageDataMethod(name, argCount);
+        if (isAudio(receiver)) return audioMethod(name, argCount);
+        if (isVideo(receiver)) return videoMethod(name, argCount);
+        return null;
     }
 
     /** {@code app.serveDir(prefix, dir)} — serve arquivos de um diretório

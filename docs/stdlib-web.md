@@ -111,6 +111,36 @@ Retorno `null` → continua; retorno `String` → resposta imediata (200).
 `app.listen(0)` vincula uma porta efêmera; `app.port()` revela a porta real.
 `app.listenSecure` está disponível no JVM (Native/JS `WEB002`).
 
+### Arquivos estáticos (`app.serveDir`) (31/08)
+
+| Chamada | Descrição |
+|---------|-----------|
+| `app.serveDir(prefix, dir)` | Serve os arquivos de `dir` sob `prefix` (fallback após as rotas dinâmicas) |
+
+O handler devolve o **arquivo em binário** do disco com `Content-Type` pela
+extensão (HTML/CSS/JS, imagens, áudio, **vídeo**, fontes, PDF...),
+`Cache-Control` e proteção contra path-traversal (`..`). É a alternativa a
+colar base64/HTML/CSS em `String` literal no fonte — o app trata o ARQUIVO.
+
+**Range requests**: `serveDir` responde `Range: bytes=...` com `206 Partial
+Content` + `Content-Range` + `Accept-Ranges: bytes` (e `416` para range
+inválido). Isso é o que permite `<video>`/`<audio>` navegarem e seekarem no
+browser — sem Range, o player não consegue posicionar no meio do arquivo.
+
+```kof
+var app = web.app()
+app.serveDir("/media", "assets")   // GET /media/clip.mp4 → bytes + Range 206
+app.listen(8080)
+```
+
+```html
+<video src="/media/clip.mp4" controls></video>
+```
+
+Caminhos relativos do app resolvem contra a raiz do projeto
+(`-Dkof.root`, definido pelo CLI `run`/`serve`). **JVM-only** — Native/JS
+reportam `WEB005` (gap documentado).
+
 ### WebSocket (`app.ws`, RFC 6455) (30/08)
 
 | Chamada | Descrição |
@@ -188,6 +218,7 @@ handlers síncronos; o runtime decide a estratégia.
 - O target `js` reporta `WEB001` para a stack web (gap documentado); `kof.http` já funciona no JS via `Java HttpClient`.
 - O target `native` (`x86_64`/`riscv64`/`aarch64`) não possui servidor web ainda (`WEB002` TLS também).
 - `app.ws`/`app.sse` são JVM-only (Native `WEB004`, JS `WEB003`).
+- `app.serveDir` (arquivos estáticos + Range 206/416) é JVM-only (Native/JS `WEB005`).
 - `kof.http` client — ✅ JVM+JS (27/08; `timeout/retry/circuit` em paridade 30/08), Native `HTTP002` pendente.
 - Middleware/rotas de outros métodos HTTP além dos listados: futuramente.
 

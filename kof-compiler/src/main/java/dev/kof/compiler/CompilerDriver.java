@@ -4023,10 +4023,9 @@ private Target target = Target.JVM;
                         }
                         yield localIdx;
                     }
-                    if (KofMedia.isImageData(recvType) || KofMedia.isAudio(recvType)) {
-                        KofMedia.MediaCall mediaCall = KofMedia.isImageData(recvType)
-                                ? KofMedia.imageDataMethod(mc.methodName(), mc.arguments().size())
-                                : KofMedia.audioMethod(mc.methodName(), mc.arguments().size());
+                    if (KofMedia.isHandleType(recvType)) {
+                        KofMedia.MediaCall mediaCall =
+                                KofMedia.handleMethod(recvType, mc.methodName(), mc.arguments().size());
                         if (mediaCall != null) {
                             List<Type> mediaParams = new ArrayList<>();
                             mediaParams.add(Type.PrimitiveType.INT);      // handle (receiver)
@@ -5532,10 +5531,9 @@ private Target target = Target.JVM;
                         if (webCall != null) yield webCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
                     }
-                    if (KofMedia.isImageData(recvType) || KofMedia.isAudio(recvType)) {
-                        KofMedia.MediaCall mediaCall = KofMedia.isImageData(recvType)
-                                ? KofMedia.imageDataMethod(mc.methodName(), mc.arguments().size())
-                                : KofMedia.audioMethod(mc.methodName(), mc.arguments().size());
+                    if (KofMedia.isHandleType(recvType)) {
+                        KofMedia.MediaCall mediaCall =
+                                KofMedia.handleMethod(recvType, mc.methodName(), mc.arguments().size());
                         if (mediaCall != null) yield mediaCall.returnType();
                     }
                     if (KofIo.isIoType(recvType)) {

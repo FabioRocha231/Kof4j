@@ -342,6 +342,11 @@ main() {
         m.saveWav("assets/gravacao.wav")
         return "ms=" + m.durationMs()
     }
+    app.get("/clip") {
+        var v = Video.open("assets/clip.mp4")
+        return "ms=" + v.durationMs() + " " + v.format()
+    }
+    app.serveDir("/media", "assets")      // Range 206 p/ <video> no browser
     app.listen(8080)
 }
 ```
@@ -352,20 +357,29 @@ main() {
 - **`Audio`**: `openWav`/`saveWav` (WAV RIFF PCM 16-bit), `sampleRate`,
   `durationMs`, `pcmBytes`.
 - **`Mic`**: `record(seconds)` do microfone padrão, `list()`.
+- **`Video`**: `open` + metadados do container (`path/size/format/durationMs`,
+  MP4/MOV lidos do box `mvhd`; outros containers → 0) + `bytes`/`close`.
+  O app NÃO decodifica frames — sem lib externa no JVM (gap honesto); a API
+  serve o arquivo (serveDir + Range) para o navegador reproduzir.
 - **`app.serveDir(prefix, dir)`** (`web`): fallback de rotas dinâmicas —
   devolve o ARQUIVO em binário com content-type pela extensão (HTML/CSS/JS/
-  imagens/áudio/fontes/PDF...), `Cache-Control`, e proteção contra path
-  traversal. Sem isso, o app só tinha `String` por rota → CSS/HTML/imagens
-  viravam strings concatenadas e base64 colado no fonte.
+  imagens/áudio/**vídeo**/fontes/PDF...), `Cache-Control`, proteção contra
+  path traversal e **Range requests** (`206 Partial Content` + `Content-Range`
+  + `Accept-Ranges: bytes`, `416` para range inválido) — necessário para
+  `<video>`/`<audio>` navegarem/seekarem no browser. Sem isso, o app só
+  tinha `String` por rota → CSS/HTML/imagens viravam strings concatenadas e
+  base64 colado no fonte.
 - Caminhos relativos resolvem contra a raiz do projeto (`-Dkof.root`,
   definido pelo CLI `run`/`serve` como o diretório do `.kf`).
-- **Targets**: JVM (javax.imageio + javax.sound). **Gaps honestos**:
-  câmera (MEDIA002 — sem lib externa no JVM; `Mic`/`Image` cobrem o que a
-  plataforma dá), mic sem hardware (MEDIA003 — erro claro, não crash),
-  paridade Native/JS (MEDIA001).
-- Ver: `KofMediaE2ETest` (8 testes: serving binário byte-a-byte, content-type,
-  traversal bloqueado, 404, dimensões reais, conversão PNG→JPEG, WAV
-  info/copy, mic sem hardware).
+- **Targets**: JVM (javax.imageio + javax.sound; vídeo como container +
+  streaming). **Gaps honestos**: decodificação de frames de vídeo (sem lib
+  externa), câmera (MEDIA002), mic sem hardware (MEDIA003), paridade
+  Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView
+  KofJS).
+- Ver: `KofMediaE2ETest` (12 testes: serving binário byte-a-byte,
+  content-type, traversal bloqueado, 404, dimensões reais, conversão
+  PNG→JPEG, WAV info/copy, mic sem hardware, metadados de MP4, Range
+  206/416/200).
 
 ### Configuração nativa (`kof.config`)
 
@@ -634,7 +648,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - `kof.validation` (13 predicados, 3 targets); `kof.observability` (health/métricas/request IDs, 3 targets); `kof.ui` widgets com render KofJS
 - `kof.process` execução de processos externos; `process.spawn` stdin/stdout vivos (F10, JVM/JS)
 - **Concorrência**: `spawn`/`await` JVM (virtual threads) + **Native (pthread — CONC001 fechado 31/08)** + **Android (platform threads — AND001 fechado 31/08, ART sem virtual threads → fallback)** + JS sequencial; `done`/`poll` não-bloqueantes; `cancel`/`cancelled` cooperativo (JVM + Native por TID); `selectAny` (JVM + Native + JS); `awaitTimeout(r, ms)` — valor no prazo, exceção capturável no estouro (JVM + Native; JS sequencial = paridade); `channel<T>()` com `send`/`receive` (JVM LinkedBlockingQueue + Native FIFO futex + JS array); `scheduler.every/at/cancel` (JVM `ScheduledExecutor` + JS `setInterval` + **Native SCHED001**: thread por job com trampoline `usleep` ms→us + flag `active` futex) — `KofConcurrency2Test` 15/15, `SpawnE2ETest` 4/4
-- **`kof.media` (31/08)** — gestão de arquivos multimídia sem base64 literal: `Image.open/save/saveAs/dataUri` (javax.imageio, PNG/JPEG/GIF/BMP), `Audio.openWav/saveWav` (WAV RIFF PCM 16-bit), `Mic.record` (javax.sound.sampled); `web` `app.serveDir(prefix, dir)` serve ARQUIVO do disco com content-type correto + proteção de path-traversal; raiz do app via `-Dkof.root` (CLI `run`/`serve`). Gaps: câmera (MEDIA002), sem hardware de mic (MEDIA003) — `KofMediaE2ETest` 8/8
+- **`kof.media` (31/08)** — gestão de arquivos multimídia sem base64 literal: `Image.open/save/saveAs/dataUri` (javax.imageio, PNG/JPEG/GIF/BMP), `Audio.openWav/saveWav` (WAV RIFF PCM 16-bit), `Mic.record` (javax.sound.sampled), `Video.open` (metadados do container MP4/MOV + streaming); `web` `app.serveDir(prefix, dir)` serve ARQUIVO do disco com content-type correto + **Range requests (206/416)** p/ vídeo navegável + proteção de path-traversal; raiz do app via `-Dkof.root` (CLI `run`/`serve`). Gaps: frames de vídeo (sem lib externa), câmera (MEDIA002), sem hardware de mic (MEDIA003), paridade Native/JS (MEDIA001) — `KofMediaE2ETest` 12/12
 - **KofAndroid Fase 2 (31/08)** — `--apk` standalone (aapt2/d8/zipalign/apksigner direto do CLI) + release signing `--keystore/--storepass/--keypass/--alias` + label/permissões derivados do programa (`detectAppLabel`/`@Permissions`)
 - enum nos 3 targets + switch exaustivo (SEM031); Map/Set nos 3 targets (COL001 fechado)
 - otimizador de IR sempre ativo; pattern matching (switch com tipos + destructuring, 3 targets); null safety básica (`String?`, 3 targets); higher-order em coleções (map/filter/reduce, 3 targets); módulos multi-arquivo (`import a.b.C`)
@@ -649,7 +663,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - Standard Library (contratos em estabilização)
 - Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ⚠️ bug pré-existente `spawn→await→spawn` (SIGSEGV no próximo `pthread_create` — ver "Bugs Restantes" #2)
 - ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
-- **`kof.media` residual (31/08)**: câmera (MEDIA002 — sem lib externa no JVM); paridade Native/JS (hoje JVM: javax.imageio/sound); mic sem hardware (MEDIA003)
+- ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; `nativeMysqlWireProtocol`); restam **prepared statements** (bind `?` via COM_STMT_PREPARE)
 - `native.risc` (riscv64) toolchain estável + `native.arm` (aarch64) placeholder — ELF via cross-as/ld + qemu (codegen ainda x86_64)
 - Debugger — além do MVP JVM (DAP sobre stdio já no JVM; Native DWARF / JS source maps pendentes)

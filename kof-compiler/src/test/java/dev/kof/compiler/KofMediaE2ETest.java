@@ -15,6 +15,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -319,6 +320,97 @@ class KofMediaE2ETest {
         byte[] copy = Files.readAllBytes(appDir.resolve("assets/tone-copy.wav"));
         byte[] orig = Files.readAllBytes(appDir.resolve("assets/tone.wav"));
         assertArrayEquals(orig, copy, "saveWav grava o mesmo PCM");
+    }
+
+    // ── Video: metadados do container (sem decodificação de frames) ───
+
+    private static byte[] mp4Box(String type, byte[] payload) {
+        byte[] out = new byte[8 + payload.length];
+        out[0] = (byte) (out.length >>> 24);
+        out[1] = (byte) (out.length >>> 16);
+        out[2] = (byte) (out.length >>> 8);
+        out[3] = (byte) out.length;
+        System.arraycopy(type.getBytes(StandardCharsets.ISO_8859_1), 0, out, 4, 4);
+        System.arraycopy(payload, 0, out, 8, payload.length);
+        return out;
+    }
+
+    /** MP4 mínimo com moov/mvhd v0: timescale=1000, duration=3000 → 3000ms. */
+    private static byte[] makeMp4() {
+        byte[] mvhdPayload = new byte[100];
+        mvhdPayload[0] = 0;                              // version 0
+        // timescale at payload[12..15] = 1000 (0x03E8)
+        mvhdPayload[12] = 0; mvhdPayload[13] = 0;
+        mvhdPayload[14] = (byte) 0x03; mvhdPayload[15] = (byte) 0xE8;
+        // duration at payload[16..19] = 3000 (0x0BB8)
+        mvhdPayload[16] = 0; mvhdPayload[17] = 0;
+        mvhdPayload[18] = (byte) 0x0B; mvhdPayload[19] = (byte) 0xB8;
+        byte[] mvhd = mp4Box("mvhd", mvhdPayload);
+        byte[] moov = mp4Box("moov", mvhd);
+        byte[] ftypPayload = "isom".getBytes(StandardCharsets.ISO_8859_1);
+        byte[] head = mp4Box("ftyp", ftypPayload);
+        byte[] out = new byte[head.length + moov.length];
+        System.arraycopy(head, 0, out, 0, head.length);
+        System.arraycopy(moov, 0, out, head.length, moov.length);
+        return out;
+    }
+
+    private static final String VIDEO_APP = """
+            main() {
+                var app = web.app()
+                app.get("/info") {
+                    var v = Video.open("assets/clip.mp4")
+                    return "fmt=" + v.format() + " size=" + v.size()
+                           + " ms=" + v.durationMs() + " path=" + v.path()
+                }
+                app.serveDir("/media", "assets")
+                app.listen(PORT)
+            }
+            """;
+
+    @Test
+    void videoMetadataFromMp4Container() throws IOException {
+        byte[] mp4 = makeMp4();
+        Files.write(appDir.resolve("assets/clip.mp4"), mp4);
+        int port = startServer(appDir, VIDEO_APP);
+        String r = request(port, "GET /info HTTP/1.1\r\nHost: x\r\n\r\n");
+        String body = r.substring(r.indexOf("\r\n\r\n") + 4).trim();
+        assertEquals("fmt=mp4 size=" + mp4.length + " ms=3000 path=assets/clip.mp4",
+                body, "metadados do container: " + body);
+    }
+
+    // ── Range requests (206/416): vídeo navegável no browser ─────────
+
+    @Test
+    void servesPartialContentWithContentRange() throws IOException {
+        int port = startServer(appDir, SERVE_APP);
+        byte[] full = Files.readAllBytes(appDir.resolve("assets/style.css"));
+        byte[] body = rawBytes(port,
+                "GET /img/style.css HTTP/1.1\r\nHost: x\r\nRange: bytes=10-19\r\n\r\n");
+        assertEquals(10, body.length, "10 bytes do intervalo");
+        assertArrayEquals(Arrays.copyOfRange(full, 10, 20), body, "bytes 10..19");
+        String r = request(port, "GET /img/style.css HTTP/1.1\r\nHost: x\r\nRange: bytes=10-19\r\n\r\n");
+        assertTrue(r.startsWith("HTTP/1.1 206"), "206 Partial Content: " + r.split("\r\n", 2)[0]);
+        assertTrue(r.contains("Content-Range: bytes 10-19/" + full.length),
+                "Content-Range correto: " + headersOf(r));
+        assertTrue(r.contains("Accept-Ranges: bytes"), "Accept-Ranges");
+    }
+
+    @Test
+    void unsatisfiableRangeIs416() throws IOException {
+        int port = startServer(appDir, SERVE_APP);
+        String r = request(port, "GET /img/style.css HTTP/1.1\r\nHost: x\r\nRange: bytes=99999-\r\n\r\n");
+        assertTrue(r.startsWith("HTTP/1.1 416"), "416: " + r.split("\r\n", 2)[0]);
+        assertTrue(r.contains("Content-Range: bytes */"), "Content-Range */: " + headersOf(r));
+    }
+
+    @Test
+    void fullResponseAdvertisesRangeSupport() throws IOException {
+        int port = startServer(appDir, SERVE_APP);
+        String r = request(port, "GET /img/style.css HTTP/1.1\r\nHost: x\r\n\r\n");
+        assertTrue(r.startsWith("HTTP/1.1 200"));
+        assertTrue(r.contains("Accept-Ranges: bytes"), "Accept-Ranges no 200: " + headersOf(r));
+        assertFalse(r.contains("Content-Range:"), "200 completo não tem Content-Range");
     }
 
     @Test

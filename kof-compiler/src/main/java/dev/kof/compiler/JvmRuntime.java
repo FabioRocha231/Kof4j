@@ -203,16 +203,20 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_listen_secure" -> "(Ljava/lang/String;I)V";
             case "kof_web_serve_dir" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V";
             // ── kof.media: imagem / áudio / microfone ──
-            case "kof_media_image_open", "kof_media_audio_open_wav" -> "(Ljava/lang/String;)I";
+            case "kof_media_image_open", "kof_media_audio_open_wav", "kof_media_video_open"
+                    -> "(Ljava/lang/String;)I";
             case "kof_media_image_width", "kof_media_image_height",
                     "kof_media_audio_sample_rate", "kof_media_audio_duration_ms",
+                    "kof_media_video_size", "kof_media_video_duration_ms",
                     "kof_media_mic_record" -> "(I)I";
             case "kof_media_image_save", "kof_media_audio_save_wav" -> "(ILjava/lang/String;)I";
             case "kof_media_image_format", "kof_media_image_data_uri" -> "(I)Ljava/lang/String;";
             case "kof_media_image_save_fmt" -> "(ILjava/lang/String;Ljava/lang/String;)I";
             case "kof_media_image_bytes", "kof_media_audio_pcm_bytes" -> "(I)[I";
             case "kof_media_image_bytes_fmt" -> "(ILjava/lang/String;)[I";
-            case "kof_media_image_close" -> "(I)V";
+            case "kof_media_video_bytes" -> "(I)[I";
+            case "kof_media_image_close", "kof_media_video_close" -> "(I)V";
+            case "kof_media_video_path", "kof_media_video_format" -> "(I)Ljava/lang/String;";
             case "kof_media_audio_from_pcm_bytes" -> "([III)I";
             case "kof_media_mic_list" -> "()Ljava/util/ArrayList;";
             case "kof_web_port" -> "(Ljava/lang/String;)I";
@@ -459,11 +463,13 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_media_image_save", "kof_media_audio_open_wav",
                     "kof_media_audio_sample_rate", "kof_media_audio_duration_ms",
                     "kof_media_audio_save_wav", "kof_media_audio_from_pcm_bytes",
-                    "kof_media_mic_record" -> "I";
-            case "kof_media_image_format", "kof_media_image_data_uri" -> "Ljava/lang/String;";
+                    "kof_media_mic_record", "kof_media_video_open",
+                    "kof_media_video_size", "kof_media_video_duration_ms" -> "I";
+            case "kof_media_image_format", "kof_media_image_data_uri",
+                    "kof_media_video_path", "kof_media_video_format" -> "Ljava/lang/String;";
             case "kof_media_image_bytes", "kof_media_image_bytes_fmt",
-                    "kof_media_audio_pcm_bytes" -> "[I";
-            case "kof_media_image_close", "kof_web_serve_dir" -> "V";
+                    "kof_media_audio_pcm_bytes", "kof_media_video_bytes" -> "[I";
+            case "kof_media_image_close", "kof_media_video_close", "kof_web_serve_dir" -> "V";
             case "kof_media_mic_list" -> "Ljava/util/ArrayList;";
             case "kof_list_map", "kof_list_filter" -> "Ljava/util/ArrayList;";
             case "kof_list_reduce" -> "Ljava/lang/Object;";
@@ -822,19 +828,56 @@ static boolean hasRuntimeFn(String methodName) {
                         }
                         // Arquivos estáticos (app.serveDir): fallback quando
                         // nenhuma rota dinâmica casa — conteúdo binário do
-                        // disco com content-type, sem o app colar base64 em
-                        // String (Kof-editor-theme-maker: kofPngData()).
-                        String staticHeaders = kof_web_static_headers(app, req.path);
-                        if (staticHeaders != null) {
-                            byte[] staticBody = kof_web_static_resolve(app, req.path);
-                            if (staticBody != null) {
-                                String head = "HTTP/1.1 200 OK\\r\\n"
-                                        + staticHeaders + "\\r\\n"
-                                        + "Content-Length: " + staticBody.length + "\\r\\n"
-                                        + "Connection: close\\r\\n\\r\\n";
-                                return new WebDispatchResult(
-                                        RouteKind.HTTP, head, null, staticBody);
+                        // disco com content-type e Range (vídeo navegável no
+                        // browser), sem o app colar base64 em String.
+                        if (kof_web_static_match(app, req.path) == 0) {
+                            String staticMeta = kof_web_static_meta();
+                            if (staticMeta != null) {
+                                int sep = staticMeta.indexOf('|');
+                                String mime = staticMeta.substring(0, sep);
+                                long total = Long.parseLong(staticMeta.substring(sep + 1));
+                                String range = req.header("range");
+                                long start = 0, end = total - 1;
+                                boolean ranged = false;
+                                if (range != null && range.startsWith("bytes=")) {
+                                    String spec = range.substring(6).split(",", 2)[0].trim();
+                                    int dash = spec.indexOf('-');
+                                    if (dash > 0) {
+                                        String s = spec.substring(0, dash).trim();
+                                        String e = spec.substring(dash + 1).trim();
+                                        start = s.isEmpty()
+                                                ? Math.max(0, total - Long.parseLong(e))
+                                                : Long.parseLong(s);
+                                        end = e.isEmpty()
+                                                ? total - 1
+                                                : Math.min(Long.parseLong(e), total - 1);
+                                        ranged = true;
+                                    }
+                                }
+                                if (ranged && (start > end || start >= total)) {
+                                    String h416 = "HTTP/1.1 416 Range Not Satisfiable\\r\\n"
+                                            + "Content-Range: bytes */" + total + "\\r\\n"
+                                            + "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n";
+                                    return new WebDispatchResult(RouteKind.HTTP, h416, null);
+                                }
+                                byte[] staticBody = kof_web_static_read(start, end);
+                                if (staticBody != null) {
+                                    String head = (ranged ? "HTTP/1.1 206 Partial Content"
+                                            : "HTTP/1.1 200 OK") + "\\r\\n"
+                                            + "Content-Type: " + mime + "\\r\\n"
+                                            + "Accept-Ranges: bytes\\r\\n"
+                                            + "Cache-Control: public, max-age=86400\\r\\n"
+                                            + (ranged
+                                            ? "Content-Range: bytes " + start + "-"
+                                                    + (start + staticBody.length - 1) + "/" + total + "\\r\\n"
+                                            : "")
+                                            + "Content-Length: " + staticBody.length + "\\r\\n"
+                                            + "Connection: close\\r\\n\\r\\n";
+                                    return new WebDispatchResult(
+                                            RouteKind.HTTP, head, null, staticBody);
+                                }
                             }
+                            kof_web_static_done();
                         }
                         return new WebDispatchResult(RouteKind.HTTP,
                                 kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"), null);

@@ -47,9 +47,24 @@ final class JvmMediaRuntime {
                     }
                 }
 
+                public static final class KofVideoFile {
+                    final byte[] data;
+                    final String format;
+                    final String path;
+                    final int durationMs;
+                    KofVideoFile(byte[] data, String format, String path, int durationMs) {
+                        this.data = data;
+                        this.format = format;
+                        this.path = path;
+                        this.durationMs = durationMs;
+                    }
+                }
+
                 private static final java.util.concurrent.ConcurrentHashMap<Integer, KofImageFile> KOF_MEDIA_IMAGES =
                         new java.util.concurrent.ConcurrentHashMap<>();
                 private static final java.util.concurrent.ConcurrentHashMap<Integer, KofAudioData> KOF_MEDIA_AUDIO =
+                        new java.util.concurrent.ConcurrentHashMap<>();
+                private static final java.util.concurrent.ConcurrentHashMap<Integer, KofVideoFile> KOF_MEDIA_VIDEOS =
                         new java.util.concurrent.ConcurrentHashMap<>();
                 private static final java.util.concurrent.atomic.AtomicInteger KOF_MEDIA_SEQ =
                         new java.util.concurrent.atomic.AtomicInteger();
@@ -184,6 +199,131 @@ final class JvmMediaRuntime {
 
                 public static void kof_media_image_close(int id) {
                     KOF_MEDIA_IMAGES.remove(id);
+                }
+
+                // ── Video ──────────────────────────────────────────
+                // Vídeo = arquivo de mídia: o app NÃO decodiza frames (gap
+                // honesto — sem lib externa no JVM). A API expõe metadados
+                // do container (formato, tamanho, duração) + bytes para
+                // servir/streamar (serveDir + Range requests).
+
+                public static int kof_media_video_open(String path) {
+                    try {
+                        java.nio.file.Path p = kof_media_resolve(path);
+                        if (!java.nio.file.Files.isRegularFile(p)) {
+                            throw new RuntimeException("arquivo não encontrado: " + path);
+                        }
+                        byte[] data = java.nio.file.Files.readAllBytes(p);
+                        int id = KOF_MEDIA_SEQ.incrementAndGet();
+                        KOF_MEDIA_VIDEOS.put(id, new KofVideoFile(data,
+                                kof_media_video_format(p.getFileName().toString()),
+                                path, kof_media_mp4_duration_ms(data)));
+                        return id;
+                    } catch (java.io.IOException e) {
+                        throw new RuntimeException("Video.open falhou: " + e.getMessage(), e);
+                    }
+                }
+
+                private static String kof_media_video_format(String fileName) {
+                    String n = fileName == null ? "" : fileName.toLowerCase();
+                    int dot = n.lastIndexOf('.');
+                    if (dot < 0) return "mp4";
+                    String ext = n.substring(dot + 1);
+                    if (ext.equals("mpeg") || ext.equals("mpg")) return "mpeg";
+                    return ext;
+                }
+
+                private static KofVideoFile kof_media_video(int id) {
+                    KofVideoFile v = KOF_MEDIA_VIDEOS.get(id);
+                    if (v == null) throw new IllegalStateException("vídeo inválido: " + id);
+                    return v;
+                }
+
+                public static String kof_media_video_path(int id) {
+                    return kof_media_video(id).path;
+                }
+
+                public static int kof_media_video_size(int id) {
+                    return kof_media_video(id).data.length;
+                }
+
+                public static String kof_media_video_format(int id) {
+                    return kof_media_video(id).format;
+                }
+
+                /** Duração em ms — MP4/MOV lida do box 'mvhd' (ISO BMFF);
+                 *  outros containers (MKV/WebM/AVI) → 0 (desconhecido). */
+                public static int kof_media_video_duration_ms(int id) {
+                    return kof_media_video(id).durationMs;
+                }
+
+                /** Duração de MP4/MOV: varre os boxes até 'mvhd' e lê
+                 *  duration/timescale (v0 32-bit e v1 64-bit). */
+                static int kof_media_mp4_duration_ms(byte[] b) {
+                    long size = b.length;
+                    long pos = 0;
+                    while (pos + 8 <= size) {
+                        long boxSize = kof_media_be32(b, (int) pos);
+                        if (boxSize < 8) break;
+                        String type = new String(b, (int) pos + 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+                        if ("moov".equals(type)) {
+                            return kof_media_mp4_mvhd_duration(b, (int) pos + 8, (int) (pos + boxSize));
+                        }
+                        pos += boxSize;
+                    }
+                    return 0;
+                }
+
+                private static int kof_media_mp4_mvhd_duration(byte[] b, int from, int to) {
+                    int pos = from;
+                    while (pos + 8 <= to) {
+                        long boxSize = kof_media_be32(b, pos);
+                        if (boxSize < 8) break;
+                        String type = new String(b, pos + 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+                        if ("mvhd".equals(type)) {
+                            int version = b[pos + 8] & 0xFF;
+                            if (version == 1) {
+                                // size,type(8) version(8) flags(9..12)
+                                // creation(12..20) mod(20..28) timescale(28..32)
+                                // duration(32..40)
+                                if (pos + 40 > to) break;
+                                long duration = ((long) (b[pos + 32] & 0xFF) << 56)
+                                        | ((long) (b[pos + 33] & 0xFF) << 48)
+                                        | ((long) (b[pos + 34] & 0xFF) << 40)
+                                        | ((long) (b[pos + 35] & 0xFF) << 32)
+                                        | ((long) kof_media_be32(b, pos + 36));
+                                int timescale = kof_media_be32(b, pos + 28);
+                                return timescale > 0 ? (int) Math.min(Integer.MAX_VALUE,
+                                        duration * 1000L / timescale) : 0;
+                            }
+                            // v0: size,type(8) version(8) flags(9..12)
+                            //   creation(12..16) mod(16..20) timescale(20..24)
+                            //   duration(24..28)
+                            if (pos + 28 > to) break;
+                            long duration = kof_media_be32(b, pos + 24);
+                            int timescale = kof_media_be32(b, pos + 20);
+                            return timescale > 0 ? (int) Math.min(Integer.MAX_VALUE,
+                                    duration * 1000L / timescale) : 0;
+                        }
+                        pos += (int) boxSize;
+                    }
+                    return 0;
+                }
+
+                private static int kof_media_be32(byte[] b, int off) {
+                    return ((b[off] & 0xFF) << 24) | ((b[off + 1] & 0xFF) << 16)
+                            | ((b[off + 2] & 0xFF) << 8) | (b[off + 3] & 0xFF);
+                }
+
+                public static int[] kof_media_video_bytes(int id) {
+                    byte[] d = kof_media_video(id).data;
+                    int[] out = new int[d.length];
+                    for (int i = 0; i < d.length; i++) out[i] = d[i];
+                    return out;
+                }
+
+                public static void kof_media_video_close(int id) {
+                    KOF_MEDIA_VIDEOS.remove(id);
                 }
 
                 // ── Audio (WAV) ───────────────────────────────────────
@@ -409,8 +549,15 @@ final class JvmMediaRuntime {
                         case "mp3": return "audio/mpeg";
                         case "ogg": case "oga": return "audio/ogg";
                         case "flac": return "audio/flac";
-                        case "mp4": return "video/mp4";
+                        case "m4a": case "m4b": return "audio/mp4";
+                        case "mp4": case "m4v": return "video/mp4";
+                        case "mov": return "video/quicktime";
                         case "webm": return "video/webm";
+                        case "mkv": return "video/x-matroska";
+                        case "avi": return "video/x-msvideo";
+                        case "mpeg": case "mpg": return "video/mpeg";
+                        case "ts": return "video/mp2t";
+                        case "3gp": return "video/3gpp";
                         case "pdf": return "application/pdf";
                         case "woff": return "font/woff";
                         case "woff2": return "font/woff2";
@@ -423,7 +570,15 @@ final class JvmMediaRuntime {
 
                 /** Retorna o arquivo estático para /prefix/... ou null (404).
                  *  Protegido contra path traversal (normaliza e confina). */
-                public static byte[] kof_web_static_resolve(WebApp app, String path) {
+                // ── estáticos (serveDir) — com Range p/ vídeo ─────────
+                // Match por request em ThreadLocal (evita 3x a resolução de
+                // caminho): kof_web_static_match → id; _meta(id) → "mime|total";
+                // _read(id, start, end) → bytes do intervalo (inclusivo).
+
+                private static final ThreadLocal<java.nio.file.Path> KOF_WEB_STATIC_MATCHED =
+                        new ThreadLocal<>();
+
+                public static int kof_web_static_match(WebApp app, String path) {
                     for (WebApp.StaticDir sd : app.staticDirs) {
                         String rel;
                         if (path.equals(sd.prefix)) {
@@ -436,46 +591,53 @@ final class JvmMediaRuntime {
                         java.nio.file.Path f = sd.dir.resolve(rel).normalize();
                         if (!f.startsWith(sd.dir)) continue;          // traversal
                         if (!java.nio.file.Files.isRegularFile(f)) continue;
-                        try {
-                            return java.nio.file.Files.readAllBytes(f);
-                        } catch (java.io.IOException e) {
-                            continue;
-                        }
+                        KOF_WEB_STATIC_MATCHED.set(f);
+                        return 0;
                     }
-                    return null;
-                }
-
-                public static String kof_web_static_headers(WebApp app, String path) {
-                    for (WebApp.StaticDir sd : app.staticDirs) {
-                        String rel;
-                        if (path.equals(sd.prefix)) rel = "index.html";
-                        else if (path.startsWith(sd.prefix + "/")) rel = path.substring(sd.prefix.length() + 1);
-                        else continue;
-                        java.nio.file.Path f = sd.dir.resolve(rel).normalize();
-                        if (!f.startsWith(sd.dir)) continue;
-                        if (!java.nio.file.Files.isRegularFile(f)) continue;
-                        return "Content-Type: " + kof_web_mime(f.getFileName().toString())
-                                + "\\r\\nCache-Control: public, max-age=86400";
-                    }
-                    return null;
-                }
-
-                public static int kof_web_static_length(WebApp app, String path) {
-                    for (WebApp.StaticDir sd : app.staticDirs) {
-                        String rel;
-                        if (path.equals(sd.prefix)) rel = "index.html";
-                        else if (path.startsWith(sd.prefix + "/")) rel = path.substring(sd.prefix.length() + 1);
-                        else continue;
-                        java.nio.file.Path f = sd.dir.resolve(rel).normalize();
-                        if (!f.startsWith(sd.dir)) continue;
-                        if (!java.nio.file.Files.isRegularFile(f)) continue;
-                        try {
-                            return (int) java.nio.file.Files.size(f);
-                        } catch (java.io.IOException e) {
-                            continue;
-                        }
-                    }
+                    KOF_WEB_STATIC_MATCHED.remove();
                     return -1;
+                }
+
+                public static String kof_web_static_meta() {
+                    java.nio.file.Path f = KOF_WEB_STATIC_MATCHED.get();
+                    if (f == null) return null;
+                    try {
+                        long total = java.nio.file.Files.size(f);
+                        return kof_web_mime(f.getFileName().toString()) + "|" + total;
+                    } catch (java.io.IOException e) {
+                        return null;
+                    }
+                }
+
+                /** Lê [start, end] inclusivo (end clamped no total). */
+                public static byte[] kof_web_static_read(long start, long end) {
+                    java.nio.file.Path f = KOF_WEB_STATIC_MATCHED.get();
+                    if (f == null) return null;
+                    try (var ch = java.nio.channels.FileChannel.open(f, java.nio.file.StandardOpenOption.READ)) {
+                        long total = ch.size();
+                        if (end >= total) end = total - 1;
+                        int len = (int) (end - start + 1);
+                        byte[] out = new byte[len];
+                        int read = 0;
+                        ch.position(start);
+                        while (read < len) {
+                            int n = ch.read(java.nio.ByteBuffer.wrap(out, read, len - read));
+                            if (n < 0) break;
+                            read += n;
+                        }
+                        if (read < len) {
+                            byte[] trimmed = new byte[read];
+                            System.arraycopy(out, 0, trimmed, 0, read);
+                            return trimmed;
+                        }
+                        return out;
+                    } catch (java.io.IOException e) {
+                        return null;
+                    }
+                }
+
+                public static void kof_web_static_done() {
+                    KOF_WEB_STATIC_MATCHED.remove();
                 }
                 """;
     }
