@@ -210,6 +210,12 @@ class Parser {
 
     private FunctionDeclarationNode parseFunctionDeclaration(List<String> mods, List<AnnotationNode> annos) {
         SourcePosition p = pos();
+        // "fn" é o keyword de declaração da linguagem (fn main()); sem isso o
+        // parser tratava "fn" como tipo de retorno e o JvmBackend gerava o
+        // método main([String;)Lfn; → a JVM rejeita (JavaFX launcher error).
+        if (check(TokenType.IDENTIFIER) && "fn".equals(peek().value())) {
+            advance();
+        }
         String returnType = "void";
         String name;
         if ((check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType())
