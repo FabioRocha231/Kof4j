@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 768 testes 751 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 769 testes 752 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -451,7 +451,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (768 declarados = 751 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli  medição real 01/09 (grep @Test)
+## Testes (769 declarados = 752 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli  medição real 01/09 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -504,7 +504,7 @@ main() { /* ignorado pelo kof test */ }
 | KofWebStreamE2ETest | 4 | WebSocket/SSE end-to-end (persistent-conn) |
 | LambdaE2ETest | 4 | lambdas + if-expr |
 | RouterE2ETest | 4 | kof.ui Router Fase 7: go/replace/back/forward |
-| SpawnE2ETest | 4 | spawn (JVM virtual threads) + join implícito |
+| SpawnE2ETest | 5 | spawn (JVM virtual threads / Native pthread / JS sequencial) + join implícito |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
@@ -522,11 +522,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **751** | |
+ | **Total kof-compiler** | **752** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **768** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **769** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -653,7 +653,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - `kof.security` v1 (JVM/Native/JS); web security G9 — rateLimit, sessões, API keys (3 targets)
 - `kof.validation` (13 predicados, 3 targets); `kof.observability` (health/métricas/request IDs, 3 targets); `kof.ui` widgets com render KofJS
 - `kof.process` execução de processos externos; `process.spawn` stdin/stdout vivos (F10, JVM/JS)
-- **Concorrência**: `spawn`/`await` JVM (virtual threads) + **Native (pthread — CONC001 fechado 31/08)** + **Android (platform threads — AND001 fechado 31/08, ART sem virtual threads → fallback)** + JS sequencial; `done`/`poll` não-bloqueantes; `cancel`/`cancelled` cooperativo (JVM + Native por TID); `selectAny` (JVM + Native + JS); `awaitTimeout(r, ms)` — valor no prazo, exceção capturável no estouro (JVM + Native; JS sequencial = paridade); `channel<T>()` com `send`/`receive` (JVM LinkedBlockingQueue + Native FIFO futex + JS array); `scheduler.every/at/cancel` (JVM `ScheduledExecutor` + JS `setInterval` + **Native SCHED001**: thread por job com trampoline `usleep` ms→us + flag `active` futex) — `KofConcurrency2Test` 15/15, `SpawnE2ETest` 4/4
+- **Concorrência**: `spawn`/`await` JVM (virtual threads) + **Native (pthread — CONC001 fechado 31/08)** + **Android (platform threads — AND001 fechado 31/08, ART sem virtual threads → fallback)** + JS sequencial; `done`/`poll` não-bloqueantes; `cancel`/`cancelled` cooperativo (JVM + Native por TID); `selectAny` (JVM + Native + JS); `awaitTimeout(r, ms)` — valor no prazo, exceção capturável no estouro (JVM + Native; JS sequencial = paridade); `channel<T>()` com `send`/`receive` (JVM LinkedBlockingQueue + Native FIFO futex + JS array); `scheduler.every/at/cancel` (JVM `ScheduledExecutor` + JS `setInterval` + **Native SCHED001**: thread por job com trampoline `usleep` ms→us + flag `active` futex) — `KofConcurrency2Test` 15/15, `SpawnE2ETest` 5/5
 - **`kof.media` (31/08)** — gestão de arquivos multimídia sem base64 literal: `Image.open/save/saveAs/dataUri` (javax.imageio, PNG/JPEG/GIF/BMP), `Audio.openWav/saveWav` (WAV RIFF PCM 16-bit), `Mic.record` (javax.sound.sampled), `Video.open` (metadados do container MP4/MOV + streaming); `web` `app.serveDir(prefix, dir)` serve ARQUIVO do disco com content-type correto + **Range requests (206/416)** p/ vídeo navegável + proteção de path-traversal; raiz do app via `-Dkof.root` (CLI `run`/`serve`). Gaps: frames de vídeo (sem lib externa), câmera (MEDIA002), sem hardware de mic (MEDIA003), paridade Native/JS (MEDIA001) — `KofMediaE2ETest` 12/12
 - **KofAndroid Fase 2 (31/08)** — `--apk` standalone (aapt2/d8/zipalign/apksigner direto do CLI) + release signing `--keystore/--storepass/--keypass/--alias` + label/permissões derivados do programa (`detectAppLabel`/`@Permissions`)
 - enum nos 3 targets + switch exaustivo (SEM031); Map/Set nos 3 targets (COL001 fechado)
