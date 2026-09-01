@@ -356,6 +356,7 @@ final class JvmWebRuntime {
                     final java.util.List<WebRoute> routes = new java.util.ArrayList<>();
                     final java.util.List<Object> middlewares = new java.util.ArrayList<>();
                     final java.util.List<StaticDir> staticDirs = new java.util.ArrayList<>();
+                    final java.util.List<String> healthPaths = new java.util.ArrayList<>();
                     volatile java.net.ServerSocket serverSocket;
                     volatile boolean running;
 

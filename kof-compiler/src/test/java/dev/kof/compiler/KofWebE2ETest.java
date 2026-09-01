@@ -146,11 +146,6 @@ class KofWebE2ETest {
 
     @Test
     void helloRoute(@TempDir Path tempDir) throws IOException {
-        int port = startServer(tempDir);
-        String r = request(port, "GET /hello HTTP/1.1\r\nHost: x\r\nX-Auth: secret\r\n\r\n");
-        assertTrue(r.startsWith("HTTP/1.1 200 OK"), r);
-        assertTrue(bodyOf(r).equals("Hello from Kof"), r);
-    }
 
     @Test
     void pathParamAndQuery(@TempDir Path tempDir) throws IOException {
@@ -169,11 +164,45 @@ class KofWebE2ETest {
     }
 
     @Test
-    void methodAndPathContext(@TempDir Path tempDir) throws IOException {
+    void helloRoute(@TempDir Path tempDir) throws IOException {
         int port = startServer(tempDir);
-        String r = request(port, "GET /me HTTP/1.1\r\nHost: x\r\nX-Auth: secret\r\n\r\n");
+        String r = request(port, "GET /hello HTTP/1.1\r\nHost: x\r\nX-Auth: secret\r\n\r\n");
         assertTrue(r.startsWith("HTTP/1.1 200 OK"), r);
-        assertTrue(bodyOf(r).equals("GET /me"), r);
+        assertTrue(bodyOf(r).equals("Hello from Kof"), r);
+    }
+
+    @Test
+    void healthEndpointBypassesMiddleware(@TempDir Path tempDir) throws IOException {
+        // app.health responde ANTES dos middlewares: sonda sem auth → 200,
+        // enquanto /hello sem auth → 401 (middleware bloqueia).
+        String app = """
+                main() {
+                    var app = web.app()
+                    app.health("/health")
+                    app.use {
+                        if (header("x-auth") == "secret") {
+                            return null
+                        }
+                        return "{\\"error\\": \\"unauthorized\\"}"
+                    }
+                    app.get("/hello") {
+                        return "Hello from Kof"
+                    }
+                    app.listen(PORT)
+                }
+                """;
+        int port = startServer(tempDir, app);
+        // sonda de health SEM header de auth → 200 JSON de saúde
+        String r = request(port, "GET /health HTTP/1.1\r\nHost: x\r\n\r\n");
+        assertTrue(r.startsWith("HTTP/1.1 200"), "health 200: " + r.split("\r\n", 2)[0]);
+        String b = bodyOf(r);
+        assertTrue(b.contains("\"status\": \"UP\""), "status UP: " + b);
+        assertTrue(b.contains("\"ready\": true"), "ready: " + b);
+        assertTrue(b.contains("\"alive\": true"), "alive: " + b);
+        // rota normal SEM auth → bloqueada pelo middleware (prova do bypass)
+        String r2 = request(port, "GET /hello HTTP/1.1\r\nHost: x\r\n\r\n");
+        String b2 = bodyOf(r2);
+        assertTrue(b2.contains("unauthorized"), "middleware bloqueia /hello: " + b2);
     }
 
     @Test

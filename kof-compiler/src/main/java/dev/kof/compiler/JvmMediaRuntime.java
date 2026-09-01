@@ -526,6 +526,14 @@ final class JvmMediaRuntime {
                             new WebApp.StaticDir(p, d.toAbsolutePath().normalize()));
                 }
 
+                /** app.health(path) — rota built-in que responde com o estado
+                 *  de saúde do app em JSON (status, readiness, liveness). */
+                public static void kof_web_health(String appId, String path) {
+                    String p = path.startsWith("/") ? path : "/" + path;
+                    while (p.length() > 1 && p.endsWith("/")) p = p.substring(0, p.length() - 1);
+                    kof_web_app(appId).healthPaths.add(p);
+                }
+
                 private static String kof_web_mime(String fileName) {
                     String n = fileName == null ? "" : fileName.toLowerCase();
                     int dot = n.lastIndexOf('.');

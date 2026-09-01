@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 759 testes 746 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
+mvn test             → 760 testes 747 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -447,7 +447,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (759 declarados = 746 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 01/09 (grep @Test)
+## Testes (760 declarados = 747 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 01/09 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -518,10 +518,10 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
-| **Total kof-compiler** | **746** | |
+| **Total kof-compiler** | **747** | |
 | kof-script | 8 | KofScriptGlobals / repl / --watch |
 | kof-c-compiler | 5 | KofC C subset → ELF |
-| **Total** | **759** (+1 skip condicional; conferir total no CI a cada release) | |
+| **Total** | **760** (+1 skip condicional; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -629,9 +629,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
  13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS; Native `OBS002`). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
  14. Health `app.health("/health")` + tracing/OpenTelemetry — `observability.health()/readiness()/liveness()` já existem (3 targets); **tracing/OpenTelemetry** pendente
 
-**P5 — DX:**
-15. `kof fmt` (parser real) + `kof init` + `REPL`
-16. LSP hover/completion/rename + Debugger Native DWARF/JS source maps + VS Code extension
+ **P5 — DX:**
+ 15. ✅ `kof fmt` (parser real) + `kof init` + `REPL` — ✅ todos implementados (`Fmt.java`, `init` em `Main.java:694`, `repl` em `Main.java:839`); `fmt` idempotente
+ 16. LSP hover/completion/rename + Debugger Native DWARF/JS source maps + VS Code extension — LSP hover/completion ✅; **DWARF/JS source maps + VS Code** pendentes
 
 ## Roadmap — Estado por Fase (31/08)
 

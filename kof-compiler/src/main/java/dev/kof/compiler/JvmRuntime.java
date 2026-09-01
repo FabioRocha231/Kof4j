@@ -202,6 +202,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_listen" -> "(Ljava/lang/String;I)V";
             case "kof_web_listen_secure" -> "(Ljava/lang/String;I)V";
             case "kof_web_serve_dir" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V";
+            case "kof_web_health" -> "(Ljava/lang/String;Ljava/lang/String;)V";
             // ── kof.media: imagem / áudio / microfone ──
             case "kof_media_image_open", "kof_media_audio_open_wav", "kof_media_video_open"
                     -> "(Ljava/lang/String;)I";
@@ -778,6 +779,19 @@ static boolean hasRuntimeFn(String methodName) {
                     KOF_WEB_HEADERS.get().clear();
                     KOF_LOG_REQUEST_ID.set(kof_sec_random_hex(16));
                     try {
+                        // app.health(path): built-in — responde antes dos
+                        // middlewares (sondas de load balancer não passam por
+                        // auth/middleware): estado de saúde em JSON.
+                        for (String hp : app.healthPaths) {
+                            if (req.path.equals(hp)) {
+                                String resp = kof_web_build(200, "OK",
+                                        "{\\"status\\": \\"" + kof_observability_health()
+                                        + "\\","
+                                        + "\\"ready\\": " + kof_observability_readiness()
+                                        + ", \\"alive\\": " + kof_observability_liveness() + "}");
+                                return new WebDispatchResult(RouteKind.HTTP, resp, null);
+                            }
+                        }
                         for (Object middleware : app.middlewares) {
                             Object result = kof_web_invoke(middleware, req);
                             if (result != null) {
