@@ -13,7 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-
 final class JvmRuntime {
 
     private JvmRuntime() {}
@@ -603,11 +602,18 @@ static boolean hasRuntimeFn(String methodName) {
                             + "\\r\\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     out.flush();
 
-                    // Frame loop (PR4): handles RFC 6455 frame codec.
-                    // PING -> PONG; CLOSE -> ack CLOSE; oversize -> CLOSE 1009.
-                    // TEXT/BINARY frames are discarded for now (PR5 wires the
-                    // Kof handler).
+                    // Frame loop with fragmentation state (RFC 6455 §5.4).
+                    // PING -> PONG; CLOSE -> ack CLOSE; oversize -> CLOSE 1009;
+                    // message oversize -> CLOSE 1009; BINARY -> 1003; protocol
+                    // violations (orphan CONT, new data mid-fragment, bad FIN on
+                    // control) -> 1002. TEXT is assembled across fragments and
+                    // dispatch to a Kof handler is wired in a later PR.
                     client.setSoTimeout(KEEPALIVE_IDLE_MS);
+                    final long maxMessageBytes = WsFrame.MAX_MESSAGE_BYTES;
+                    final java.io.ByteArrayOutputStream fragmentBuffer = new java.io.ByteArrayOutputStream();
+                    int currentMessageOpcode = -1;
+                    long fragmentBytes = 0;
+                    boolean fragmenting = false;
                     try {
                         frameLoop: while (true) {
                             // 1) Read until we have at least 2 bytes for the header
@@ -659,8 +665,18 @@ static boolean hasRuntimeFn(String methodName) {
                                 for (int i = 0; i < 8; i++) plen = (plen << 8) | (ext[i] & 0xFF);
                             }
                             WsConnection conn = new WsConnection(client.getOutputStream());
-                            if (!fin) {
-                                conn.close(WsFrame.CLOSE_UNSUPPORTED, "fragmented frames not supported");
+                            // Fragmentation rules (§5.4) that depend only on the
+                            // opcode. The orphan-continuation and data-during-fragment
+                            // cases are checked here; BINARY is rejected below after
+                            // the size cap so oversize-frame detection (1009) still
+                            // wins when both apply.
+                            boolean data = (op == 0x1 || op == 0x2);
+                            if (op == 0x0 && !fragmenting) {
+                                conn.close(WsFrame.CLOSE_PROTOCOL_ERROR, "orphan continuation");
+                                break frameLoop;
+                            }
+                            if (data && fragmenting) {
+                                conn.close(WsFrame.CLOSE_PROTOCOL_ERROR, "data frame during fragmentation");
                                 break frameLoop;
                             }
                             // 3) Mask key (must be present on client->server)
@@ -682,6 +698,15 @@ static boolean hasRuntimeFn(String methodName) {
                                 early.close(WsFrame.CLOSE_PROTOCOL_ERROR, "control frame too large");
                                 break frameLoop;
                             }
+                            // BINARY (0x2) is not supported by the current kof.ws
+                            // surface (wsMessage returns String). Reject with 1003
+                            // AFTER the size cap so resource-abuse frames still
+                            // produce 1009 when applicable.
+                            if (op == 0x2) {
+                                WsConnection early = new WsConnection(client.getOutputStream());
+                                early.close(WsFrame.CLOSE_UNSUPPORTED, "binary data not supported");
+                                break frameLoop;
+                            }
                             byte[] payload = new byte[(int) plen];
                             if (plen > 0) {
                                 readFully(client.getInputStream(), payload);
@@ -699,6 +724,53 @@ static boolean hasRuntimeFn(String methodName) {
                                     WsConnection early = new WsConnection(client.getOutputStream());
                                     early.close(WsFrame.CLOSE_INVALID_PAYLOAD, "invalid UTF-8");
                                     break frameLoop;
+                                }
+                            }
+                            // 4b) Assemble fragmented message (TEXT only; BINARY
+                            // already rejected above). Continuation frames append
+                            // to the in-progress buffer; a FIN=1 frame finalizes.
+                            if (data || op == 0x0) {
+                                if (data && !fragmenting) {
+                                    // Start a new message. FIN=1 single-frame
+                                    // messages never enter fragmenting state.
+                                    currentMessageOpcode = op;
+                                    fragmentBytes = 0;
+                                    fragmentBuffer.reset();
+                                    if (!fin) fragmenting = true;
+                                }
+                                fragmentBytes += payload.length;
+                                if (fragmentBytes > maxMessageBytes) {
+                                    conn.close(WsFrame.CLOSE_TOO_BIG, "message too large");
+                                    fragmentBuffer.reset();
+                                    fragmenting = false;
+                                    break frameLoop;
+                                }
+                                fragmentBuffer.write(payload, 0, payload.length);
+                                if (fin) {
+                                    // Finalize. Strict UTF-8 was checked per-frame
+                                    // for the first fragment; a reassembled message
+                                    // re-decodes so we catch mid-stream invalid
+                                    // sequences that started after the per-frame
+                                    // boundary.
+                                    if (currentMessageOpcode == 0x1) {
+                                        byte[] msg = fragmentBuffer.toByteArray();
+                                        java.nio.charset.CharsetDecoder dec =
+                                                java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                                                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                                                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+                                        try {
+                                            dec.decode(java.nio.ByteBuffer.wrap(msg));
+                                        } catch (java.nio.charset.CharacterCodingException bad) {
+                                            conn.close(WsFrame.CLOSE_INVALID_PAYLOAD, "invalid UTF-8");
+                                            fragmentBuffer.reset();
+                                            fragmenting = false;
+                                            break frameLoop;
+                                        }
+                                        // TEXT payload is valid; PR5 dispatches to the
+                                        // Kof handler here. For now we accept and drop.
+                                    }
+                                    fragmentBuffer.reset();
+                                    fragmenting = false;
                                 }
                             }
                             // 5) React

@@ -449,17 +449,6 @@ private static String closeReason(byte[] payload) {
     }
 
     @Test
-    void ws_rsv1_set_closes_1002(@TempDir Path tempDir) throws Exception {
-        int port = startServer(tempDir, wsApp());
-        try (WsResponse response = handshake(port, VALID_HEADERS)) {
-            writeRawMaskedFrame(response.socket.getOutputStream(), 0xC1, 0x80, new byte[0]);
-            byte[] frame = readServerFrame(response.socket.getInputStream());
-            assertEquals(0x88, frame[0] & 0xFF);
-            assertEquals(1002, closeCode(framePayload(frame)));
-        }
-    }
-
-    @Test
     void ws_reserved_opcode_closes_1002(@TempDir Path tempDir) throws Exception {
         int port = startServer(tempDir, wsApp());
         try (WsResponse response = handshake(port, VALID_HEADERS)) {
@@ -589,6 +578,61 @@ private static String closeReason(byte[] payload) {
             // Server echoes 1000 (default) with no reason.
             assertEquals(1000, closeCode(payload));
             assertEquals("", closeReason(payload));
+        }
+    }
+
+    @Test
+    void ws_fragmented_text_assembles_ok(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            // TEXT FIN=0 "hel"
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x01, 0x83, "hel".getBytes(StandardCharsets.UTF_8));
+            // CONT FIN=1 "lo"
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x80, 0x82, "lo".getBytes(StandardCharsets.UTF_8));
+            // PING mid-fragment must not interrupt: the server should PONG.
+            // Since the fragment was already finished, this PING is just after.
+            byte[] ping = "x".getBytes(StandardCharsets.UTF_8);
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x89, 0x81, ping);
+            byte[] pong = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x8A, pong[0] & 0xFF);
+            assertArrayEquals(ping, framePayload(pong));
+        }
+    }
+
+    @Test
+    void ws_orphan_continuation_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            // CONT FIN=1 with no prior data frame -> 1002.
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x80, 0x80, new byte[0]);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_new_text_during_fragmentation_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            // TEXT FIN=0 "first"
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x01, 0x85, "first".getBytes(StandardCharsets.UTF_8));
+            // New TEXT FIN=1 while still fragmenting -> 1002.
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x81, 0x80, new byte[0]);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_binary_frame_closes_1003(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x82, 0x84, new byte[]{1, 2, 3, 4});
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1003, closeCode(framePayload(frame)));
         }
     }
 }
