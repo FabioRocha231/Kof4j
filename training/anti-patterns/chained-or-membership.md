@@ -55,20 +55,17 @@ Bool isQueryOperation(String operation) {
 }
 ```
 
-Quando o conjunto é reutilizado por várias funções, declare-o como **campo**
-de uma classe (top-level `val` não existe em Kof — só `class`/função no topo):
+Quando o conjunto é reutilizado, extraia para uma função que o devolve
+(**não** use `Set<T>` como campo de classe — hoje quebra em runtime com
+`NoClassDefFoundError: kof/Set`; `setOf` local é o caminho verificado):
 
 ```kof
-class Ops {
-    Set<String> queries
+Set<String> queryOperations() {
+    return setOf("GetSession", "GetAccess", "GetDashboard", "GetToday")
+}
 
-    constructor() {
-        queries = setOf("GetSession", "GetAccess", "GetDashboard", "GetToday")
-    }
-
-    Bool isQueryOperation(String operation) {
-        return queries.contains(operation)
-    }
+Bool isQueryOperation(String operation) {
+    return queryOperations().contains(operation)
 }
 ```
 

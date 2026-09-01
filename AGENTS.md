@@ -93,10 +93,10 @@ Int dobro(Int x) { return x * 2 }
 ### Variáveis (só dentro de funções/corpos — **não existe top-level `val`/`var`/`let`**)
 
 ```kof
-var x = 10        // mutável
-val y = 20        // imutável
+var x = 10              // mutável
+val y = 20              // imutável
 String nome = "Mel"
-Int? idade = null // nullability explícita
+var idade: Int? = null  // nullability: forma ANOTADA (não `Int? idade = null`)
 ```
 
 ### Classes (construtor primário é a forma idiomática)
@@ -196,9 +196,9 @@ scheduler.every(100) { ... }
 ### Null safety
 
 ```kof
-String? nome = find(key)
+var nome: String? = find(key)   // forma anotada (não `String? nome = ...`)
 if (nome != null) {
-    println(nome)             // narrowing
+    println(nome)               // narrowing
 }
 ```
 
