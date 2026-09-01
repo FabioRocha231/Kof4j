@@ -15,7 +15,17 @@ class User {
 }
 ```
 
-## 2. Manual memory management
+## 2. String.valueOf(Int) achando que dá o caractere
+
+```kof
+// WRONG — retorna DÍGITOS: "104"
+var s = String.valueOf(104)
+
+// RIGHT — o caractere: "h"
+var c = String.valueOf(104 as Char)
+```
+
+## 3. Manual memory management
 
 ```kof
 // WRONG — Kof manages memory automatically

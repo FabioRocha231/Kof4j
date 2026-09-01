@@ -3,7 +3,7 @@
 Este é o guia **obrigatório** para qualquer agente de IA (ou humano) que
 escreva código Kof neste repositório. Leia antes de gerar qualquer `.kf`.
 
-**Versão:** 0.2.6-beta · Última atualização: 01/09/2026
+**Versão:** 0.2.6-beta · Última atualização: 01/09/2026 (casts primitivos, Long[], String.valueOf builtin)
 
 ---
 
@@ -333,6 +333,7 @@ Kof = intenção + simplicidade.
 - Memb.:   setOf("A","B").contains(x)   (NUNCA x=="A" || x=="B" || ...)
 - Erro:    throw "msg"  /  catch (String e)
 - Null:    String?  +  if (x != null)
+- Cast:    x as Char / big as Int  (conversões numéricas reais)
 - Concorr: spawn / await   (sem Thread)
 - Loops:   for (var x in coll)  /  if-expr
 - Top-level: SÓ class e função (sem val/var/let)

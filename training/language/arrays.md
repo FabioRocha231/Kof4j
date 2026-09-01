@@ -8,6 +8,8 @@
 var arr = new Int[10]      // array of 10 integers
 var strings = new String[5] // array of 5 strings
 var empty = new Int[0]      // empty array
+var bigs = new Long[10]    // ✅ Long[] real (0.2.6-beta, 01/09)
+var rows = new Long[n * k] // tamanho por expressão ok
 ```
 
 ## Access
@@ -24,6 +26,20 @@ println(arr[0]) // get element
 var arr = new Int[5]
 println(arr.length)  // 5
 ```
+
+## Long[] (elementos de 64 bits)
+
+```kof
+var acc = new Long[256]
+acc[0] = 3000000000          // ✅ acima de Int.MAX — ok
+var s = acc[0] + acc[0]      // ✅ 6000000000 (Long)
+```
+
+- `Long[]` é `long[]` na JVM, `long[]` no Native, `BigInt-like`/Number no JS.
+- Store em `Long[]` promove Int para Long automaticamente.
+- Arithmética: `Long×Long→Long`, `Long+Int→Long`; `Int×Int→Int` (overflow silencioso).
+- Para acumuladores de produtos grandes (matmul, checksum, fixed-point),
+  declare `var acc: Long = 0` — não `Int`.
 
 ## Bounds Checking
 

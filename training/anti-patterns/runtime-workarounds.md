@@ -10,7 +10,7 @@ Quando uma feature ainda não existe, o código precisa de um desvio.
 O desvio é legítimo — mas **não é idiom**. O corpus deve marcar
 explicitamente `WORKAROUND` e `NOT IDIOMATIC`.
 
-## Workarounds atuais (0.2.6-beta, 31 Aug 2026 — 747 testes)
+## Workarounds atuais (0.2.6-beta, 01 Sep 2026)
 
 ### 1. Null safety parcial
 
@@ -102,6 +102,31 @@ Não marque spawn/await no Native nem FP como WORKAROUND — é implementado.
 // devolvida no munmap fallback — GC mark-sweep automático ainda pendente.
 // Ainda não é GC completo de produção — programas longos devem evitar vazamento
 ```
+
+### 9. Correções de 01/09 (compiler bugs fechados)
+
+```kof
+// ✅ Frame crash COMP002 com List.add em statement + while — RESOLVIDO 01/09
+// (emit do kof_list_add popava o boolean 2×; agora o KofPop do IR cuida)
+var c = listOf<Box>()
+c.add(Box(7))
+var i = 0
+while (i < n) {
+    var ent = c.get(i)   // ✅ compila e roda (era frame crash antes)
+    i = i + 1
+}
+
+// ✅ Receiver estático de tipo builtin — RESOLVIDO 01/09
+var s = String.valueOf(42)      // "42" (invokestatic String.valueOf)
+var i2 = Integer.valueOf("17")  // idem para Integer/Long/Double/…
+
+// ✅ Casts primitivos reais — RESOLVIDO 01/09
+var ch = 104 as Char            // I2C real (era checkcast "?" → VerifyError)
+var trunc = longVal as Int      // L2I real (narrowing Long→Int)
+```
+
+Não re-aplique workarounds para esses casos (ex.: evitar `List.add` antes
+de `while`, ou concatenar dígitos manualmente em vez de `String.valueOf`).
 
 ## Regra
 

@@ -30,6 +30,22 @@ a == b                      // comparação de CONTEÚDO (não referência)
 a + "!"                     // concatenação
 ```
 
+## String.valueOf + concat (0.2.6-beta corrigido 01/09)
+
+```kof
+// ✅ receiver estático de tipo builtin funciona (String/Integer/Long/
+// Float/Double/Boolean/Char/Math/System):
+var s = "n=" + String.valueOf(42)
+var c = String.valueOf(104 as Char)   // "h" — codepoint→caractere
+
+// ⚠️ ATENÇÃO: String.valueOf(int) retorna DÍGITOS ("104"), não o caractere.
+// Para o caractere: String.valueOf(x as Char)
+```
+
+- Concat com mistura de tipos (`str + Int + Long + char`) é suportado; o
+  compilador boxa e chama `valueOf` no ponto certo (fix frame COMP002 01/09).
+- Não construa conversão manual dígito-a-dígito — use `String.valueOf`.
+
 ## BAD — equals de Java
 
 ```kof

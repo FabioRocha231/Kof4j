@@ -34,6 +34,10 @@ porque existem em outras linguagens. Código assim **não compila** ou
 | `for user in users` (sem var) | ❌ Unavailable |
 | Array literals `{1, 2, 3}` / `[1,2,3]` | ❌ Unavailable — use `new Int[n]` + `listOf` |
 | `async`/`await` (JS-style) | ❌ Unavailable — use `spawn`/`await` |
+| `x as Char` (cast primitivo p/ char) | ✅ Implemented (I2C real, 01/09) |
+| `longVal as Int` (narrowing Long→Int) | ✅ Implemented (L2I real, 01/09) |
+| `new Long[n]` (array de 64 bits) | ✅ Implemented (01/09) |
+| `String.valueOf(x)` receiver estático builtin | ✅ Implemented (01/09) |
 
 ## Bad example (ainda não compila)
 

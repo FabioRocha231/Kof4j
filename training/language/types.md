@@ -53,7 +53,40 @@ Erasure com boxing via `parameterTypes` do call-site.
 ```kof
 var arr = new Int[10]
 var strings = new String[5]
+var bigs = new Long[10]    // ✅ Long[] real (JVM long[]; Native/JS idem)
 ```
+
+### Casts primitivos (`as`) — 0.2.6-beta (01/09)
+
+```kof
+var c = 104 as Char          // ✅ I2C real — Char do codepoint
+println(String.valueOf(c))   // "h"
+var big: Long = 3000000000
+var i = big as Int           // ✅ L2I real — narrowing Long→Int
+// widening Int→Long é implícito; narrowing Long→Int exige `as Int`
+```
+
+- `x as Char`: codepoint do Int (verificação: `String.valueOf(x as Char)`).
+- `big as Int`: trunca o Long para Int (como Java).
+- Nunca use `KofCheckCast` mental para primitivos — o compilador emite
+  conversões numéricas reais (I2C/L2I), não checkcast de objeto.
+
+### Aritmética Long (fixed-point / precisão)
+
+```kof
+var acc: Long = 0
+var i = 0
+while (i < 2048) {
+    acc = acc + bigs[i] * bigs[i]   // ✅ Long×Long→Long (sem overflow de Int)
+    i = i + 1
+}
+var rms = acc / 2048                // divisão Long ok
+```
+
+- Literal sufixado por atribuição (`var acc: Long = 0`) — sem sufixo L.
+- Int×Long promove para Long; Int×Int permanece Int (pode overflow).
+- Padrão fixed-point: estados em MICRO (1e-6) e pesos em NANO (1e-9),
+  acumulador Long, divisão no fim (`acc / 1_000_000_000` estilo).
 
 ### Interfaces
 ```kof
