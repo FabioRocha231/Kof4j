@@ -759,6 +759,8 @@ class JvmBackend implements Backend {
                 mv.visitInsn(I2D);
             } else if (ku.op() == KofUnaryOp.I2C) {
                 mv.visitInsn(I2C);
+            } else if (ku.op() == KofUnaryOp.L2I) {
+                mv.visitInsn(L2I);
             } else if (ku.op() == KofUnaryOp.L2F) {
                 mv.visitInsn(L2F);
             } else if (ku.op() == KofUnaryOp.L2D) {
@@ -886,8 +888,10 @@ class JvmBackend implements Backend {
                 }
                 case "kof_list_add" -> {
                     emitBoxIfPrimitive(mv, elemType);
+                    // ArrayList.add empilha boolean; o IR emite KofPop logo
+                    // após (descarte de statement) — NÃO popar aqui, senão
+                    // o KofPop extra quebra o frame do ASM (underflow).
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z", false);
-                    mv.visitInsn(POP);
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);

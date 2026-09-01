@@ -2310,10 +2310,18 @@ private Target target = Target.JVM;
                     } else if (isPrimitiveType(targetType) && isPrimitiveType(inferExprType(bin.left(), locals))) {
                         // cast primitivo (x as Char/Int/…): conversão numérica,
                         // NÃO checkcast (que exigiria um objeto na pilha)
-                        emitWideningIfNeeded(ops, inferExprType(bin.left(), locals), targetType);
+                        Type fromT = inferExprType(bin.left(), locals);
+                        emitWideningIfNeeded(ops, fromT, targetType);
                         if (targetType instanceof Type.PrimitiveType tp2
                                 && ("char".equals(tp2.name()) || "Char".equals(tp2.name()))) {
-                            ops.add(new KofUnary(KofUnaryOp.I2C, inferExprType(bin.left(), locals)));
+                            ops.add(new KofUnary(KofUnaryOp.I2C, fromT));
+                        }
+                        // narrowing Long→Int: L2I (widening acima não cobre)
+                        if (fromT instanceof Type.PrimitiveType fp2
+                                && ("long".equals(fp2.name()) || "Long".equals(fp2.name()))
+                                && targetType instanceof Type.PrimitiveType tp3
+                                && ("int".equals(tp3.name()) || "Int".equals(tp3.name()))) {
+                            ops.add(new KofUnary(KofUnaryOp.L2I, fromT));
                         }
                     } else {
                         ops.add(new KofCheckCast(targetType));

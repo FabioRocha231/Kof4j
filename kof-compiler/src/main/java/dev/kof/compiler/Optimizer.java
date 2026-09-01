@@ -301,6 +301,7 @@ public final class Optimizer {
             case NOT -> v instanceof Integer i ? KofLoadLiteral.ofInt(~i) : null;
             case I2L -> v instanceof Integer i ? KofLoadLiteral.ofLong(i.longValue()) : null;
             case I2C -> v instanceof Integer i ? KofLoadLiteral.ofInt(i & 0xFFFF) : null;
+            case L2I -> v instanceof Long l ? KofLoadLiteral.ofInt(l.intValue()) : null;
             case I2F -> v instanceof Integer i ? KofLoadLiteral.ofFloat(i.floatValue()) : null;
             case I2D -> v instanceof Integer i ? KofLoadLiteral.ofDouble(i.doubleValue()) : null;
             case L2F -> v instanceof Long l ? KofLoadLiteral.ofFloat(l.floatValue()) : null;
