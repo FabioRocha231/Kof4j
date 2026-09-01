@@ -4,7 +4,7 @@
 
 Neste capítulo você vai entender como declara variáveis, como o sistema de tipos funciona, e como a inferência de tipos opera.
 
-## Declaração de variáveis (0.2.0-beta)
+## Declaração de variáveis (0.2.6-beta)
 
 Em Kof existem duas palavras-chave para variáveis (mais `let`/`const` como alias no KofScript → `KofScriptGlobals`):
 
@@ -110,7 +110,7 @@ constantes ou ter `default` — senão vira erro `SEM031` listando os casos
 faltantes:
 
 ```kf
-fn nome(Color c) -> String {
+String nome(Color c) {
     var r = ""
     switch (c) {
         case Color.Red:   { r = "vermelho" }
@@ -166,7 +166,7 @@ String? s = null     // nullable básico
 if (s != null) { println(s.length()) }
 ```
 
-## Status atual (0.2.0-beta, 658 testes)
+## Status atual (0.2.6-beta, 736 testes)
 
 ✅ `var` e `val` funcionam
 ✅ `let`/`const` (alias → `KofScriptGlobals` no KofScript)
@@ -174,8 +174,8 @@ if (s != null) { println(s.length()) }
 ✅ Inferência de tipos funciona
 ✅ Records funcionam
 ✅ Classes com campos funcionam
-⚠️ Type checking completo ainda em desenvolvimento
-⚠️ Conversões automáticas ainda em desenvolvimento
+✅ Type checking (análise semântica, erros `SEM` em compile-time)
+✅ Conversões automáticas (widening: `Int→Long`, `Int→Double`)
 
 ## Exercício 1
 

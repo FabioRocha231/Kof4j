@@ -87,7 +87,11 @@ final class JvmWebRuntime {
 
                 public enum RouteKind { HTTP, SSE, WS }
 
-                record WebDispatchResult(RouteKind kind, String response, WebRoute route) {}
+                record WebDispatchResult(RouteKind kind, String response, WebRoute route, byte[] body) {
+                    WebDispatchResult(RouteKind kind, String response, WebRoute route) {
+                        this(kind, response, route, null);
+                    }
+                }
 
                 public static final class WebRoute {
                     final String method;
@@ -156,7 +160,7 @@ final class JvmWebRuntime {
                     }
                 }
 
-                public static final class SseConnection {
+                public static final class SseConnection implements SseSender {
                     private final java.io.OutputStream out;
                     private final byte[] nl = "\\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                     private final java.util.concurrent.atomic.AtomicBoolean open =
@@ -173,6 +177,13 @@ final class JvmWebRuntime {
                     }
 
                     public void event(String name, String data) {
+                        // Sanitize event name. The wire format forbids CR/LF in
+                        // any field value; otherwise the client would parse a
+                        // synthetic header out of the injected bytes.
+                        if (name.indexOf((int) '\\r') >= 0 || name.indexOf((int) '\\n') >= 0) {
+                            throw new IllegalArgumentException(
+                                    "event name must not contain CR or LF");
+                        }
                         writeFrame("event: " + name + "\\n");
                         writeData(data);
                     }
@@ -195,7 +206,11 @@ final class JvmWebRuntime {
                     }
 
                     private void writeData(String data) {
-                        for (String line : data.split("\\n", -1)) {
+                        // SSE spec: split on ANY line break (CRLF, LF, or lone CR)
+                        // so the output is normalized regardless of which OS
+                        // produced the data. Without this, CRLF payloads would
+                        // leak the trailing CR onto the wire.
+                        for (String line : data.split("\\\\R", -1)) {
                             writeFrame("data: " + line + "\\n");
                         }
                         writeFrame("\\n");
@@ -306,9 +321,21 @@ final class JvmWebRuntime {
                     public static final int CLOSE_TOO_BIG = 1009;
                     public static final int CLOSE_PROTOCOL_ERROR = 1002;
                     public static final int CLOSE_UNSUPPORTED = 1003;
+                    public static final int CLOSE_INVALID_PAYLOAD = 1007;
+                    public static final int CLOSE_INTERNAL_ERROR = 1011;
                 }
 
-                public static final class WsConnection {
+                /** Interface para o KofRuntime acessar o envio WS sem ciclo de import. */
+                public interface WsSender {
+                    void sendText(String s);
+                }
+
+                /** Interface para o KofRuntime acessar o envio SSE sem ciclo de import. */
+                public interface SseSender {
+                    void send(String event);
+                }
+
+                public static final class WsConnection implements WsSender {
                     private final java.io.OutputStream out;
                     private final java.util.concurrent.locks.ReentrantLock writeLock =
                             new java.util.concurrent.locks.ReentrantLock();
@@ -332,14 +359,32 @@ final class JvmWebRuntime {
                         send(WsFrame.encode(0xA, payload, true));
                     }
                     public void close(int code, String reason) {
-                        byte[] body = new byte[2 + (reason == null ? 0 : reason.length())];
+                        byte[] rb = reason == null
+                                ? new byte[0]
+                                : reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        // RFC 6455 §5.5: control payload <= 125; CLOSE has 2 bytes
+                        // for the status code, so the reason UTF-8 must fit in
+                        // 123 bytes to stay within the control frame budget.
+                        if (rb.length > 123) {
+                            throw new IllegalArgumentException(
+                                    "close reason too large: " + rb.length + " bytes (max 123)");
+                        }
+                        byte[] body = new byte[2 + rb.length];
                         body[0] = (byte) ((code >> 8) & 0xFF);
                         body[1] = (byte) (code & 0xFF);
-                        if (reason != null) {
-                            byte[] rb = reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                            System.arraycopy(rb, 0, body, 2, rb.length);
-                        }
+                        System.arraycopy(rb, 0, body, 2, rb.length);
                         send(WsFrame.encode(0x8, body, true));
+                    }
+
+                    // RFC 6455 §7.4.1: which close codes may appear on the wire.
+                    // 1004/1005/1006/1015 are reserved and MUST NOT appear in a
+                    // close frame payload; 0 and codes > 4999 are invalid.
+                    static boolean isValidCloseCode(int code) {
+                        if (code < 1000 || code > 4999) return false;
+                        if (code == 1004 || code == 1005 || code == 1006 || code == 1015) return false;
+                        // 1016-2999 reserved for future use by RFC.
+                        if (code >= 1016 && code <= 2999) return false;
+                        return true;
                     }
 
                     private void send(byte[] frame) {
@@ -359,11 +404,24 @@ final class JvmWebRuntime {
                     final String id;
                     final java.util.List<WebRoute> routes = new java.util.ArrayList<>();
                     final java.util.List<Object> middlewares = new java.util.ArrayList<>();
+                    final java.util.List<StaticDir> staticDirs = new java.util.ArrayList<>();
                     volatile java.net.ServerSocket serverSocket;
                     volatile boolean running;
 
                     WebApp(String id) {
                         this.id = id;
+                    }
+
+                    /** Diretório de arquivos estáticos servido sob um prefixo
+                     *  de URL (app.serveDir("/img", "assets")) — content-type
+                     *  derivado da extensão, sem o app colar base64 em String. */
+                    public static final class StaticDir {
+                        final String prefix;
+                        final java.nio.file.Path dir;
+                        StaticDir(String prefix, java.nio.file.Path dir) {
+                            this.prefix = prefix;
+                            this.dir = dir;
+                        }
                     }
                 }
 
@@ -584,6 +642,11 @@ final class JvmWebRuntime {
                             java.net.http.HttpClient client2 = isHttps2 ? KOF_HTTP_CLIENT_INSECURE : java.net.http.HttpClient.newHttpClient();
                             java.net.http.HttpResponse<String> r = client2
                                     .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                            if (r.statusCode() >= 500) {
+                                last = new java.io.IOException("HTTP " + r.statusCode() + " from " + url);
+                                kof_http_circuit_record_failure();
+                                continue;
+                            }
                             kof_http_circuit_record_success();
                             return r.body();
                         } catch (Exception e) {

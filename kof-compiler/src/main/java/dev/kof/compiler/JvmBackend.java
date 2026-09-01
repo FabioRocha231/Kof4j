@@ -90,7 +90,7 @@ class JvmBackend implements Backend {
         // kof.ui handles (Color, Theme, Label, Button, Input, Column, Row,
         // View, Style, Window) are Int values on every target; on the JVM
         // they must be boxed when stored in Object slots (e.g. List<Label>).
-        if (dev.kof.compiler.KofUi.isUiType(primitive)) {
+        if (dev.kof.compiler.KofUi.isUiType(primitive) || KofMedia.isHandleType(primitive)) {
             return "java/lang/Integer";
         }
         return null;
@@ -101,7 +101,7 @@ class JvmBackend implements Backend {
         if (boxed != null) {
             String desc = JvmTypeMapper.toDescriptor(type);
             if ("char".equals(typeName(type)) || "Char".equals(typeName(type))) desc = "I";
-            if (KofUi.isUiType(type)) desc = "I";
+            if (KofUi.isUiType(type) || KofMedia.isHandleType(type)) desc = "I";
             mv.visitMethodInsn(INVOKESTATIC, boxed, "valueOf", "(" + desc + ")L" + boxed + ";", false);
         }
     }
@@ -522,7 +522,19 @@ class JvmBackend implements Backend {
         tryCatches.clear();
         tryStack.clear();
 
-        mv.visitMaxs(maxStack, maxLocals);
+        try {
+            mv.visitMaxs(maxStack, maxLocals);
+        } catch (RuntimeException e) {
+            if (Boolean.getBoolean("kof.trace.ir")) {
+                System.err.println("=== IR ops de " + className + "." + method.name() + " ===");
+                for (IRBasicBlock block : method.basicBlocks()) {
+                    for (KofOperation op : block.operations()) {
+                        System.err.println("  " + op);
+                    }
+                }
+            }
+            throw e;
+        }
         mv.visitEnd();
     }
 
@@ -845,10 +857,9 @@ class JvmBackend implements Backend {
                     mv.visitMethodInsn(INVOKEVIRTUAL, boxed, unboxMethodName(kc.returnType()),
                             "()" + JvmTypeMapper.toDescriptor(kc.returnType()), false);
                     mv.visitLabel(end);
-                } else if ("kof_await".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
-                    // await com resultado primitivo: reflexão devolve boxed.
-                    // Restrito — o descritor default é Object para muitas funções
-                    // que na verdade retornam primitivo cru.
+                } else if (("kof_await".equals(kc.methodName())
+                        || "kof_await_timeout".equals(kc.methodName())) && isPrimitiveType(kc.returnType())) {
+                    // await/awaitTimeout com resultado primitivo: reflexão devolve boxed.
                     emitUnboxIfPrimitive(mv, kc.returnType());
                 } else if ("kof_list_reduce".equals(kc.methodName()) && isPrimitiveType(kc.returnType())) {
                     emitUnboxIfPrimitive(mv, kc.returnType());
@@ -878,7 +889,7 @@ class JvmBackend implements Backend {
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
-                    if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType)) {
+                    if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType) && !KofMedia.isHandleType(elemType)) {
                         if (elemType instanceof Type.ArrayType at) {
                             // elemento é array: cast pro tipo JVM real ([I etc)
                             // — callers esperam o componente, não Object
@@ -909,6 +920,37 @@ class JvmBackend implements Backend {
                     emitUnboxIfPrimitive(mv, elemType);
                 }
                 case "kof_list_clear" -> mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "clear", "()V", false);
+                default -> {}
+            }
+        } else if (op instanceof KofCall kc && BuiltinTypes.isChannel(kc.ownerType())) {
+            // Canais tipados: LinkedBlockingQueue (FIFO thread-safe; put/take
+            // bloqueiam — com virtual threads o bloqueio é barato).
+            Type elemType = BuiltinTypes.channelElement(kc.ownerType());
+            switch (kc.methodName()) {
+                case "kof_channel_new" -> {
+                    mv.visitTypeInsn(NEW, "java/util/concurrent/LinkedBlockingQueue");
+                    mv.visitInsn(DUP);
+                    mv.visitMethodInsn(INVOKESPECIAL, "java/util/concurrent/LinkedBlockingQueue",
+                            "<init>", "()V", false);
+                }
+                case "kof_channel_send" -> {
+                    emitBoxIfPrimitive(mv, elemType);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/concurrent/LinkedBlockingQueue",
+                            "put", "(Ljava/lang/Object;)V", false);
+                }
+                case "kof_channel_receive" -> {
+                    mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/concurrent/LinkedBlockingQueue",
+                            "take", "()Ljava/lang/Object;", false);
+                    if (!isPrimitiveType(elemType) && !KofUi.isUiType(elemType) && !KofMedia.isHandleType(elemType)
+                            && !(elemType instanceof Type.UnknownType)) {
+                        if (elemType instanceof Type.ArrayType at) {
+                            mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toDescriptor(at));
+                        } else if (elemType instanceof Type.ClassType ct) {
+                            mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+                        }
+                    }
+                    emitUnboxIfPrimitive(mv, elemType);
+                }
                 default -> {}
             }
         } else if (op instanceof KofCall kc && BuiltinTypes.isMap(kc.ownerType())) {
@@ -949,7 +991,7 @@ class JvmBackend implements Backend {
                 case "kof_map_get" -> {
                     emitBoxIfPrimitive(mv, keyType);
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/HashMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
-                    if (!isPrimitiveType(valueType) && !KofUi.isUiType(valueType) && !(valueType instanceof Type.UnknownType)) {
+                    if (!isPrimitiveType(valueType) && !KofUi.isUiType(valueType) && !KofMedia.isHandleType(valueType) && !(valueType instanceof Type.UnknownType)) {
                         String internal = JvmTypeMapper.toInternalName(valueType instanceof Type.ClassType ct ? ct.packageName() : "", valueType instanceof Type.ClassType ct ? ct.name() : "java/lang/Object");
                         mv.visitTypeInsn(CHECKCAST, internal);
                     }
@@ -1264,7 +1306,7 @@ class JvmBackend implements Backend {
 
     private int loadVarOpcode(Type type) {
         if (type instanceof Type.NullableType nt) return loadVarOpcode(nt.inner());
-        if (KofUi.isUiType(type)) return ILOAD;
+        if (KofUi.isUiType(type) || KofMedia.isHandleType(type)) return ILOAD;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
                 case "int", "Int", "boolean", "bool", "Bool", "byte", "Byte", "short", "Short", "char", "Char" -> ILOAD;
@@ -1279,7 +1321,7 @@ class JvmBackend implements Backend {
 
     private int storeVarOpcode(Type type) {
         if (type instanceof Type.NullableType nt) return storeVarOpcode(nt.inner());
-        if (KofUi.isUiType(type)) return ISTORE;
+        if (KofUi.isUiType(type) || KofMedia.isHandleType(type)) return ISTORE;
         if (type instanceof Type.PrimitiveType pt) {
             return switch (pt.name()) {
                 case "int", "Int", "boolean", "bool", "Bool", "byte", "Byte", "short", "Short", "char", "Char" -> ISTORE;

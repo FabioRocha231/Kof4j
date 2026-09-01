@@ -205,11 +205,17 @@ KofCall(superType, "<init>", args, VOID, CONSTRUCTOR)
 
 ---
 
+> **Atualizado (0.2.6-beta, 31/08):** os itens 1 e 3 abaixo foram
+> superados — virtual dispatch (F.4) e interfaces (F.5) estão implementados
+> em JVM e Native; herança de 3 níveis segue validada por E2E. Com o
+> `spawn` em threads (pthread), o layout de objeto e os offsets calculados
+> em compile-time (ClassLayout) são inalterados e thread-safe.
+
 ## 8. Limitações Conhecidas
 
-1. **Sem virtual dispatch** — métodos são chamados estaticamente (direct dispatch)
+1. ~~**Sem virtual dispatch**~~ — ✅ F.4 (vtable)
 2. **Sem abstract classes** — todas as classes são concretas
-3. **Sem interfaces** — não suportado ainda
+3. ~~**Sem interfaces**~~ — ✅ F.5 (dispatch via vtable)
 4. **Sem sealed classes** — não suportado ainda
 5. **Sem múltipla herança** — apenas herança simples
 6. **Sem diamond problem** — não aplicável com herança simples

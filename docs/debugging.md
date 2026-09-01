@@ -2,7 +2,7 @@
 
 **Status:** MVP funcional no target JVM (`kof debug app.kf`)
 **Data:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64)
+**Versão:** 0.2.6-beta (747 testes; 7 targets; free-list + pthread spawn + FP XMM)
 
 ---
 
@@ -54,12 +54,21 @@ A sessão compila com metadata de debug, lança o JVM com
 
 ## 3. Capacidades
 
-- breakpoints em source (`UserService.kf:42`)
-- continue, step over/into/out, pause, restart, terminate
-- stack traces com nomes e linhas Kof
-- scopes, locals, arguments, campos de classe, coleções (tipos Kof)
+**MVP implementado (target JVM — Fase 3):**
+
+- launch (compila com metadata de debug + lança o JVM com JDWP)
+- breakpoints por linha Kof (`UserService.kf:42`)
+- evento `stopped` ao atingir breakpoint
+- stack traces com nomes e linhas Kof (via LineNumberTable)
+- `continue` e `disconnect`
+
+**Planejadas (Fases 4-7 — ver `debug-adapter.md`):**
+
+- step over/into/out, pause, restart
+- scopes/locals por frame (`StackFrame.GetValues`)
 - exceções (break on throw / uncaught) com stack Kof
-- avaliação de expressões: planejada (com respeito ao type system)
+- avaliação de expressões (com respeito ao type system)
+- Native (DWARF — Fase 5) e JS (source maps — Fase 6)
 
 ## 4. Integração
 

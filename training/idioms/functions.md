@@ -1,13 +1,13 @@
 # Idioms — Functions
 
-**Status:** available · **Introduced:** 0.0.4-alpha (sem `fun`) · **Updated:** 0.2.0-beta
+**Status:** available · **Introduced:** 0.0.4-alpha (sem `fun`) · **Updated:** 0.2.6-beta
 
 ## What it is
 
 Kof não possui a palavra-chave `fun`. Funções são declaradas pelo nome,
 com o tipo de retorno antes do nome **ou** após os parâmetros.
 
-## Formas válidas (todas verificadas — 0.2.0-beta)
+## Formas válidas (todas verificadas — 0.2.6-beta)
 
 ```kof
 main() {
@@ -77,7 +77,7 @@ String capitalizar(String s) {
 A utility class de Java existe porque Java não tem funções fora de classes.
 Kof tem funções top-level. A camada extra de classe é ruído.
 
-## Lambdas (0.2.0-beta — captura implementada)
+## Lambdas (0.2.6-beta — captura implementada)
 
 ```kof
 var f = (x: Int) -> x * 2
@@ -89,7 +89,7 @@ println(g(3, 4))        // 7
 var h = () -> 99
 println(h())            // 99
 
-// Captura mutável — ✅ desde 0.2.0-beta via box sintético Box0
+// Captura mutável — ✅ desde 0.2.6-beta via box sintético Box0
 var offset = 10
 var f2 = (x: Int) -> x + offset
 println(f2(5))          // 15
@@ -125,7 +125,7 @@ var dobrados = nums.map((x: Int) -> x * 2)
 
 ## WHY (captura)
 
-Antes de 0.2.0-beta captura era planned. Em 0.2.0-beta está implementada — usar lambdas com parâmetros, literais e capturas livremente.
+Antes de 0.2.6-beta captura era planned. Em 0.2.6-beta está implementada — usar lambdas com parâmetros, literais e capturas livremente.
 
 ## Anti-patterns relacionados
 

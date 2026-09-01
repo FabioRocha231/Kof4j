@@ -1,6 +1,6 @@
 # Kof Classes
 
-**Version:** 0.2.0-beta (27 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## Basic Class (idiomático: primary constructor)
 
@@ -25,7 +25,7 @@ class User2 {
 record Point(Int x, Int y)
 // Auto-generates: constructor, accessors x(), y(), toString()
 switch (p) {
-    case Point(var x, var y): println(x + "," + y) // 0.2.0-beta destructuring
+    case Point(var x, var y): println(x + "," + y) // 0.2.6-beta destructuring
 }
 ```
 

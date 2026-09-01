@@ -1,12 +1,12 @@
 # CONCURRENCY.md — Modelo de Concorrência Kof
 
-**Status:** Implementado (JVM + JS sequencial) — Native `CONC001` gap documentado — 0.2.0-beta 27/08 (658 testes)
-**Versão:** 0.2.0-beta
-**Data:** 27 de agosto de 2026
+**Status:** Implementado nos 3 targets (JVM + JS sequencial + Native pthread) — 0.2.6-beta 31/08
+**Versão:** 0.2.6-beta
+**Data:** 31 de agosto de 2026
 
 ---
 
-## 0. Implementado (0.2.0-beta)
+## 0. Implementado (0.2.6-beta)
 
 ### `spawn` — statement
 
@@ -19,19 +19,24 @@ spawn {                    // bloco inline (lambda sem capturas)
 
 Semântica implementada:
 
-- a tarefa roda concorrentemente (JVM: virtual threads);
-- o programa **espera as tarefas antes de sair** (join implícito via contador
-  + shutdown hook no runtime JVM);
+- a tarefa roda concorrentemente (JVM: virtual threads; Native: OS threads via `pthread_create`);
+- o programa **espera as tarefas antes de sair** (join implícito — contador +
+  shutdown hook no JVM; `pthread_join` no Native);
 - o valor de retorno da função é descartado (fire-and-forget);
 - exceções na tarefa são impressas em stderr (não derrubam o programa);
-- **Native**: diagnostic `CONC001` ("spawn: not supported on the Native
-  target yet") — gap documentado, não mascarado;
+- ~~**Native**: diagnostic `CONC001`~~ — ✅ fechado 31/08: `pthread_create` +
+  trampoline + `await`/`pthread_join` + allocator thread-safe (lock futex) +
+  join implícito no main (histórico: "spawn: not supported on the Native
+  target yet" — gap documentado, nunca mascarado);
 - isolamento por valor: a tarefa recebe os argumentos; sem estado
   compartilhado primitivo na linguagem.
 
-### Implementado 0.1.0 → 0.2.0-beta
+### Implementado 0.1.0 → 0.2.6-beta
 
-- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 5/5) — JVM; JS sequencial (`CONC003` para `spawn` nativo futuro); Native `CONC001`
+- `spawn` statement + `val r = spawn f()` + `await r` com `Handle<T>` tipado e unboxing (`KofAwaitTest` 7/7, `KofConcurrency2Test` 10/10) — JVM; JS sequencial completo (`CONC003` restante = async event-loop real); Native pthread completo (CONC001 fechado)
+- `done(h)`/`poll(h)` não-bloqueantes, `cancel(h)`/`cancelled()` (cancel cooperativo por TID) e `selectAny(h1, h2, …)` (polling 1ms) — JVM + Native (`KofConcurrency2Test`); Android segue `AND001`
+- `awaitTimeout(r, ms)` — valor se a task terminar no prazo; senão lança exceção (capturável via `try/catch`) — JVM (`Future.get(ms)`) + Native (polling 1ms com deadline); JS sequencial é paridade (a task sempre está pronta) — `KofConcurrency2Test`
+- `channel<T>()` — FIFO thread-safe com `c.send(v)`/`c.receive()` — JVM (`LinkedBlockingQueue`, `put`/`take` bloqueantes) + Native (lista ligada + mutex futex + polling 1ms) + JS (array sequencial) — `KofConcurrency2Test`
 - Lambdas com captura via `BoxN` já suportam `spawn { println(x) }`
 - `kof.mq` publish/subscribe/queue — JVM+JS (MQ001 Native); `kof.time interval/cancel` — JVM
 
@@ -42,9 +47,9 @@ Nenhuma API de plataforma (Thread/Runnable/Executor) é visível na linguagem.
 
 ### Próximas iterações (P2)
 
-- filas produtor/consumidor tipadas (`kof.concurrent.Queue`);
+- ~~filas produtor/consumidor tipadas (`kof.concurrent.Queue`)~~ — ✅ 31/08: `channel<T>()` com `send`/`receive` (JVM `LinkedBlockingQueue` bloqueante + Native FIFO futex + JS array sequencial);
 - scheduler nativo (threads no target Native — depende de futex/clone);
-- `await` com timeout / `select` múltiplo / cancelamento cooperativo.
+- `select` múltiplo com timeout (`selectAny` já ✅ sem timeout; a combinação com deadline é o próximo passo).
 
 Concorrência é uma capacidade da **linguagem/stdlib**, não uma coleção de
 APIs da plataforma.
@@ -116,7 +121,7 @@ Troca de valores entre tarefas através de:
 
 ---
 
-## 3. Sintaxe (escolhida: `spawn` — 0.2.0-beta)
+## 3. Sintaxe (escolhida: `spawn` — 0.2.6-beta)
 
 **Implementada (JVM + JS sequencial):**
 
@@ -127,7 +132,7 @@ val handle = spawn tarefa()   // Handle<T> tipado — 0.1.0
 val result = await handle      // unboxing + exceção limpa — 0.1.0
 ```
 
-`spawn`/`await` funcionam em JVM (virtual threads) e JS (sequencial); Native reporta `CONC001`.
+`spawn`/`await` funcionam em JVM (virtual threads), JS (sequencial) e Native (OS threads via `pthread_create`, 31/08).
 
 Rejeitadas: `async { }` (confunde com async/await).
 
@@ -140,19 +145,21 @@ Decisões pendentes:
 
 ---
 
-## 4. Mapeamento por Target (0.2.0-beta)
+## 4. Mapeamento por Target (0.2.6-beta)
 
 A mesma semântica Kof utiliza implementações diferentes:
 
 | Target | Implementação | Status |
 |--------|---------------|--------|
 | JVM 21+ | Virtual Threads (scheduler da JVM) | ✅ `await`/`Handle<T>` + `kof.mq` |
-| Native x86_64 | OS threads + scheduler Kof (free-list heap) | `CONC001` (gap documentado) |
-| Native riscv64 | riscv64 syscalls (`li a7`) + OS threads futuro | `CONC001` (placeholder) |
+| Native x86_64 | OS threads: `pthread_create` + trampoline + `await`/`pthread_join` + `done`/`poll`/`cancel`/`cancelled`/`selectAny` + allocator thread-safe (futex) | ✅ 31/08 (`CONC001` fechado) |
+| Native riscv64/aarch64 | OS threads futuro (target ainda placeholder) | `CONC001` (placeholder) |
 | JS (GraalJS) | Event loop (sequencial hoje; Promises futuro) | ✅ sequencial (`spawn`/`await` sequencial) |
 | KofScript | JVM via KofScriptGlobals | ✅ |
 
-O código Kof não muda entre targets (gaps diagnosticados `CONC001`/`CONC003`).
+O código Kof não muda entre targets; no x86_64 não há mais gap de
+`spawn`/`await` (`CONC001` fechado) — o restante do `CONC001` se aplica aos
+targets riscv64/aarch64 (placeholder) e `CONC003` ao JS (async real).
 
 ---
 
@@ -181,12 +188,12 @@ Essa decisão pertence ao target/runtime.
 
 ---
 
-## 6. Dependências (0.2.0-beta)
+## 6. Dependências (0.2.6-beta)
 
 - ✅ Lambdas com captura via `BoxN` — implementado (necessário para `spawn { ... }` idiomático);
 - filas na stdlib (`kof.concurrent.Queue` — planned, `kof.mq` já fornece pub/sub);
 - modelo de exceção por tarefa — ✅ unwrap `ExecutionException` no `await` (JVM);
-- scheduler Kof no Native (threads + pilha própria) — pending `CONC001`.
+- ✅ OS threads no Native — `pthread_create` + trampoline + futex (31/08, `CONC001` fechado no x86_64); scheduler `scheduler.every/at` no Native segue `SCHED001`.
 
 ## 7. Fases de Implementação
 

@@ -1,14 +1,18 @@
 # Standard Library — Proposta
 
-**Última atualização:** 21 de agosto de 2026
-> **Atualizado (0.0.5):** implementado parcialmente — `kof.io`
-> (File/Path/Directory), `kof.json` (`json.encode`/`json.decode`),
-> `kof.time` (`now()`), `kof.concurrent` (`spawn`, JVM), `kof.test`
-> (`assert` + `kof test`) e `kof.ui` (Color/Theme/Palette + widgets
-> Window/Label/Button/Input/Column/Row/View/Style — renderização KofJS via
-> webview nativo). A tabela abaixo é o plano completo.
+**Última atualização:** 31 de agosto de 2026
+> **Atualizado (0.2.6-beta):** a stdlib está amplamente implementada nos 3
+> targets (JVM/Native/JS) — `kof.core`, `kof.collections`, `kof.io`,
+> `kof.time`, `kof.json` (FP + arrays completos no Native, 31/08),
+> `kof.http` (client + resiliência JVM+JS), `kof.web` (`web.app()` +
+> WebSocket/SSE JVM), `kof.db`/`kof.orm`, `kof.security`, `kof.config`,
+> `kof.logging`, `kof.observability`, `kof.mq`, `kof.cache`,
+> `kof.scheduler`, `kof.validation`, `kof.test`, `kof.ui` (Color/Theme/
+> Palette + widgets). **Esta página é o plano original; o estado atual, a
+> matriz de módulos e a arquitetura vivem em `docs/stdlib.md`** (fonte de
+> referência). A tabela abaixo é o plano completo.
 
-**Status:** Parcialmente implementado (0.0.5)
+**Status:** amplamente implementado (0.2.6-beta; ver `docs/stdlib.md`)
 
 ---
 

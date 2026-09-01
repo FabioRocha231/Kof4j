@@ -1,6 +1,6 @@
 # 29 — Internals do Compilador
 
-> **Kof 0.2.0-beta — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
 
 ## Arquitetura
 
@@ -12,11 +12,19 @@
   ↓ AST            (AstNodes.java)
   ↓ Type system    (Type.java)
   ↓ IR             (IRNodes.java)
+  ↓ Optimizer      (Optimizer.java, sempre ativo)
   ↓ Backend        (JvmBackend.java ou NativeBackend.java)
   ↓ Output         (.class ou ELF)
 ```
 
 Cada estágio tem uma responsabilidade clara.
+
+O **otimizador de IR** (`Optimizer.java`) roda em todo build: constant
+folding, branch simplification (condições constantes → jumps diretos), dead
+stack effects, unreachable code elimination (com regiões try/catch
+preservadas), jump-to-next elimination e identidades aritméticas. Debug
+positions dos ops sobreviventes são preservados. `kof inspect` expõe as
+estatísticas (ops antes/depois).
 
 ## Lexer (Lexer.java)
 
@@ -210,12 +218,13 @@ error: type mismatch
 | Type system | ✅ `String?` nullable, `List<T>` inference, imports `a.b.C` fix |
 | Symbol table | ⚠️ Definido mas não usado completamente |
 | IR | ✅ Definido, lowering funcional (`intention->Kof->frontend->IR->backend->runtime`) |
-| JVM Backend | ✅ Funcional (via ASM, 658 testes) |
-| Native Backend | ✅ Funcional (x86-64 free-list GC; riscv/arm placeholders via qemu) |
+| Optimizer | ✅ Passes sempre ativos (constant folding, dead code, branch simplification) |
+| JVM Backend | ✅ Funcional (via ASM, bytecode V21, exception table, virtual threads; 736 testes) |
+| Native Backend | ✅ Funcional (x86-64 free-list GC + spawn/pthread + FP XMM; riscv/arm placeholders via qemu) |
 | Diagnostics | ✅ Funcional |
 | KofScript (`KofScriptGlobals`) | ✅ `let`/`const` topo, repl, --watch |
 | KofC (`KofCCompiler`) | ✅ C subset → ELF nativo-only (`kof c`) |
-| CLI | ✅ Funcional (build, run, script, c, version, 658 testes) |
+| CLI | ✅ Funcional (18 comandos: build, run, serve, check, test, script, repl, c, fmt, config gen, bench, profile, inspect, debug, info, lsp, install, version) |
 
 ## Multiplatform architecture
 

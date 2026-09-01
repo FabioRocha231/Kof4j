@@ -59,7 +59,21 @@ dark.background().toCss()   // rgb(18, 18, 18)
   WebKitGTK). JVM/Native: handles no-ops.
 - Não há JavaFX, AWT ou dependência de GUI em nenhum backend.
 
-## Idioma KofScript (0.2.0-beta)
+## Router (Fase 7)
+
+Navegação por troca de componente raiz: `Router` é namespace (não tipo).
+
+- `Router.route(name, component)` — registra rota.
+- `Router.go(name)` / `Router.go(name, param)` — navega (unmount do antigo + mount do novo).
+- `Router.replace(name[, param])` — navega sem empilhar no histórico.
+- `Router.back()` / `Router.forward()` — histórico (pilhas; `forwardStack` limpo ao ir para frente).
+- `Router.param()` — `String` do param da rota atual.
+- `Router.current()` — `String` da rota atual.
+- `Depth`: `Router.depth()` — `Int`.
+- Real no target JS (KofJS); JVM/Native: no-op handles.
+- Ver `docs/ui/architecture.md` §2.9 e `RouterE2ETest`.
+
+## Idioma KofScript (0.2.6-beta)
 
 ```kof
 let x = 5
@@ -69,4 +83,4 @@ var app = Window("Hi", Label("Olá"))
 ## Referência
 
 - `learn/35-kof-ui.md`
-- `kof-compiler/src/test/java/dev/kof/compiler/UiE2ETest.java` (14 testes, 0.2.0-beta)
+- `kof-compiler/src/test/java/dev/kof/compiler/UiE2ETest.java` (14 testes, 0.2.6-beta)

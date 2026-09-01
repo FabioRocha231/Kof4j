@@ -1,10 +1,59 @@
 # 26 — Aplicação Real
 
-> **Status: futuro (pós 0.2.0-beta — `kof.web` + `kof_db` já cobrem o caso sem Spring)**
+> **Status: futuro (pós 0.2.6-beta — `kof.web` + `kof_db` já cobrem o caso sem Spring)**
 >
 > Este capítulo mostra como construir uma aplicação completa em Kof com Spring Boot.
 
-## Task Manager
+## Task Manager hoje (sem Spring)
+
+A mesma API roda hoje com `kof.web` + `kof.orm` — um arquivo, um `main()`:
+
+```kf
+entity Task {
+    id: Long generated
+    title: String
+    description: String
+    completed: Bool
+}
+
+main() {
+    var db = db.connect("jdbc:h2:mem:tasks;DB_CLOSE_DELAY=-1")
+    orm.create<Task>(db)
+
+    var app = web.app()
+    app.get("/tasks") {
+        return json.encode(orm.all<Task>(db))
+    }
+    app.get("/tasks/:id") {
+        var t = orm.find<Task>(db, param("id").toLong())
+        if (t == null) {
+            return status(404, "not found")
+        }
+        return json.encode(t)
+    }
+    app.post("/tasks") {
+        var r = json.decode<CreateTaskRequest>(body())
+        var t = orm.save(db, Task(0, r.title, r.description, false))
+        return status(201, json.encode(t))
+    }
+    app.put("/tasks/:id/complete") {
+        var t = orm.find<Task>(db, param("id").toLong())
+        return json.encode(orm.save(db, Task(t.id, t.title, t.description, true)))
+    }
+    app.listen(8080)
+}
+```
+
+```kf
+record CreateTaskRequest(String title, String description)
+```
+
+- `kof serve tasks.kf` sobe a API; testes com a suíte estruturada
+  (`test "nome" { assert(...) }`) + `KofWebE2ETest`-style sockets reais.
+- O `entity` declara o schema na linguagem — o compilador conhece campos,
+  tipos e constraints em compile-time (sem reflection).
+
+## A visão de longo prazo: Task Manager com Spring
 
 Vamos construir uma API simples de gerenciamento de tarefas.
 

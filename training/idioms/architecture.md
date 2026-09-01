@@ -1,6 +1,6 @@
 # Idioms — Architecture
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta
 
 ## What it is
 
@@ -29,7 +29,7 @@ class Http {
 }
 ```
 
-## GOOD — plataforma (0.2.0-beta)
+## GOOD — plataforma (0.2.6-beta)
 
 ```kof
 var j = json.encode(user)
@@ -113,7 +113,7 @@ Double total(Cart cart) {
 }
 ```
 
-## 4. Módulos (0.2.0-beta)
+## 4. Módulos (0.2.6-beta)
 
 `package`/`import` existem. `import a.b.C` file-specific fixado 27/08 — projetos grandes com `a/b/C.kf` agora compilam corretamente (CompilerDriver). `import a.b.*` para diretório. Targets: `jvm`, `native`, `native.risc`/`native.arm` (placeholder), `js`, `kofc`, `KofScript` (`.ks` com `let`).
 

@@ -7,16 +7,22 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
-## Unreleased
+## [Unreleased]
 
-### Added
-- Native JVM WebSocket support (RFC 6455 handshake + frames + context calls)
-- Native JVM Server-Sent Events support (streaming + context calls)
-- `WEB003` / `WEB004` compile-time diagnostics for SSE/WS on non-JVM targets
+### Fixed
+- `kof.http` retry agora trata respostas HTTP 5xx como retentáveis dentro da
+  janela configurada; o E2E de resiliência (`KofHttpResilienceE2ETest`) foi
+  destravado (sintaxe `main(args: List<String>)` e descritores
+  `kof_http_retry_set`/`kof_http_circuit_set` corrigidos).
 
 ### Changed
-- `app.ws(...)` and `app.sse(...)` are no longer aliases of GET; they now dispatch to dedicated routes
-- WebSocket connections stay open after the handshake; the frame loop handles PING/PONG/CLOSE/oversized/unmasked/fragmented
+- WebSocket JVM (`app.ws`) agora valida RSV, opcodes reservados, control frames
+  (FIN e payload <= 125), comprimento estendido, UTF-8 estrito, handshake key/
+  version/método e close handshake (códigos válidos, eco de code+reason).
+- WebSocket JVM (`app.ws`) agora suporta fragmentação RFC 6455 com
+  `MAX_MESSAGE_BYTES`; BINARY retorna `1003 Unsupported Data`.
+- SSE JVM (`app.sse`) normaliza CRLF/LF/CR em payloads multi-linha e rejeita
+  nomes de evento com CR/LF.
 
 ## [0.1.0] - 2026-08-25
 

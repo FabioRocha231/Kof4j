@@ -1,6 +1,6 @@
 # Idioms — Strings
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta
 
 ## What it is
 
@@ -89,7 +89,7 @@ e **não existe** uma classe StringBuilder na linguagem (não invente uma).
 Use `length` para tamanho; não assuma contagem de caracteres quando precisar
 de precisão por target (diferença em strings com acentos/emoji).
 
-## Null safety (0.2.0-beta)
+## Null safety (0.2.6-beta)
 
 ```kof
 String? s = null
@@ -106,4 +106,4 @@ if (s != null) {
 
 ## Anti-patterns relacionados
 
-- `sentinel-values.md` — use `String?` em vez de `""` para "não encontrado" (0.2.0-beta)
+- `sentinel-values.md` — use `String?` em vez de `""` para "não encontrado" (0.2.6-beta)

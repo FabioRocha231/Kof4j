@@ -1,8 +1,8 @@
 # stdlib config — Configuração Nativa do Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes)
-**Status:** implementado (Fase 3 do plano de independência do Spring) — JVM+Native (Native asm próprio `/proc/self/environ` + free-list, 27/08)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes)
+**Status:** implementado (Fase 3 do plano de independência do Spring) — 3 targets (JVM / Native asm próprio `/proc/self/environ` + free-list / JS `kof_platform`) + `required`/interpolação `${key}`/`kof config gen` (30/08)
 
 ---
 
@@ -25,7 +25,27 @@ var big   = config.long("app.timeoutMillis", 30000) // Long com default
 var raw   = config.get("server.port")               // String ou null
 var has   = config.has("server.port")               // Bool
 var home  = config.env("HOME")                      // variável de ambiente direta
+var need  = config.required("db.url")               // falha no startup se ausente
 ```
+
+### 2.1 Interpolação `${key}` (P2 — implementada, 30/08)
+
+Valores podem referenciar outras chaves do próprio config:
+
+```text
+# kof.config
+db.host = localhost
+db.port = 5432
+db.url  = jdbc:pg://${db.host}:${db.port}/app
+```
+
+- Resolução recursiva (referência a referência funciona), limite de 16 níveis.
+- **Ciclo** (`a=${b}`, `b=${a}`) → valor **literal inalterado** (`a` vale
+  `${b}`), nunca crash nem loop infinito.
+- Chave referenciada **inexistente** → literal inalterado.
+- Funciona igualmente para valores vindos de arquivo **e** de env
+  (`KOF_<KEY>`), nos 3 targets (JVM: `JvmConfigRuntime`; Native: asm
+  `kof_config_interpolate`; JS: `kofConfigInterpolate`).
 
 `config.int/bool/long/str` nunca falham: valor ausente ou inválido → default.
 
@@ -58,20 +78,21 @@ main() {
 }
 ```
 
-## 5. Targets (0.2.0-beta)
+## 5. Targets (0.2.6-beta)
 
 | Target | Estado | Notas |
 |--------|--------|-------|
 | JVM | ✅ completo | `KofRuntime` gerado |
-| Native x86_64 | ✅ completo (asm próprio, 27/08) | `/proc/self/environ` scan, trim, comentários, free-list `kof_free_head` |
+| Native x86_64 | ✅ completo (asm próprio, 27/08) | `/proc/self/environ` scan, trim, comentários, free-list `kof_free_head`, interpolação `kof_config_interpolate` |
 | Native riscv64/aarch64 | ✅/placeholder | riscv64 `li a7` syscalls; aarch64 placeholder |
-| JS | CONF001 (gap documentado) | `config.*` reporta `CONF001` em compile-time; `secrets.get` funciona |
+| JS | ✅ completo | `kof_platform` (`kofConfigLookup`/`kofConfigStr/Int/Bool/Long/Required` + `kofConfigInterpolate`); `KofConfig.supportedOn` = todos os targets (CONF001 fechado) |
 
 ## 6. Testes
 
-`KofConfigE2ETest` — 8 testes E2E (27/08, 0.2.0-beta): env por convenção, defaults, arquivo
-explícito, profiles, arquivo padrão no diretório de trabalho, `env()`,
-precedência completa e CONF001 no JS (Native agora ✅).
+`KofConfigE2ETest` — 11 testes E2E (0.2.6-beta): env por convenção, defaults,
+arquivo explícito, profiles, arquivo padrão no diretório de trabalho, `env()`,
+precedência completa, `required` (presente em todos os targets + falha rápida
+se ausente) e interpolação `${key}` (JVM/Native/JS).
 
 ## 7. Arquitetura
 
@@ -86,7 +107,7 @@ descoberto por reflection.
 
 ## 8. Onde estamos vs. o padrão ouro (Spring/Quarkus) — auditoria honesta
 
-**Última revisão:** 30/08/2026 (0.2.4-beta, auditoria da Fase de Configuração)
+**Última revisão:** 30/08/2026 (0.2.6-beta, auditoria da Fase de Configuração)
 
 | Capacidade | kof.config hoje | Spring Boot | Status |
 |------------|-----------------|-------------|--------|
@@ -94,10 +115,10 @@ descoberto por reflection.
 | Profiles | `KOF_PROFILE` → `kof.prod.config` | `spring.profiles.active` | ✅ equivalente |
 | Env por convenção | `server.port` → `KOF_SERVER_PORT` | `SERVER_PORT` (relaxed binding) | ✅ equivalente |
 | Typed com default | `config.int/str/bool/long` | `@Value` / `@ConfigurationProperties` | ✅ equivalente |
-| Falhar cedo (required) | ❌ `null` silencioso | falha no boot | ❌ **gaps** |
-| Config declarativa tipada | ❌ | ❌ (reflection em runtime) | 🎯 vantagem planejada |
-| Interpolação | ❌ | `${key}` | ❌ gap |
-| Descoberta de chaves | ❌ | Actuator `/env` | ❌ gap (mas há alternativa melhor: o compilador já conhece as chaves) |
+| Falhar cedo (required) | `config.required(key)` falha no startup | falha no boot | ✅ equivalente (P1, 30/08) |
+| Config declarativa tipada | ❌ (P3 planejado) | ❌ (reflection em runtime) | 🎯 vantagem planejada |
+| Interpolação | `${key}` nos 3 targets (P2, 30/08) | `${key}` | ✅ equivalente |
+| Descoberta de chaves | `kof config gen` gera template a partir das chaves do código | Actuator `/env` | ✅ equivalente (P3, 30/08) |
 | Secrets | separados (`kof.security.secrets.get`, env-only) | `Environment` mistura tudo | ✅ Kof é mais seguro |
 
 ### 8.1 Decisões de projeto (firmes)
@@ -115,26 +136,44 @@ descoberto por reflection.
 
 ### 8.2 Roadmap (na ordem de valor)
 
-**P1 — `config.required(key)` — falhar cedo.**
+**P1 — ✅ `config.required(key)` — IMPLEMENTADO (30/08).**
 ```kof
 var url = config.required("database.url")   // erro de startup claro se ausente
 ```
-Elimina a classe inteira de bugs de deploy (" rodou na minha máquina").
-Runtime: se ausente → `KofPanic` com a chave e a precedência consultada.
-Os 3 targets; pequeno.
+Elimina a classe inteira de bugs de deploy ("rodou na minha máquina").
+JVM: `IllegalStateException` nomeando chave + precedência consultada;
+Native: panic asm; JS: throw. Testes: `requiredKeyPresentAllTargets`,
+`requiredKeyMissingFailsFast`.
 
-**P2 — Interpolação no arquivo.**
-```text
-# kof.config
-db.host = localhost
-db.url  = jdbc:h2://${db.host}/mem
+**P2 — ✅ Interpolação `${key}` — IMPLEMENTADA (30/08, ver §2.1).**
+Lookup recursivo com detecção de ciclo (ciclo → literal, nunca crash).
+JVM + Native (asm `kof_config_interpolate`) + JS. Funciona para valores de
+arquivo e de env. Testes: `interpolationResolvesReferences` (JVM),
+interpolação estendida em `nativeAndJsRunConfig` (Native + JS).
+Bônus: expôs e corrigiu um bug latente no asm de `kof_config_bool`
+(rsi nunca era setado antes de `.Lcb_ci_match`; funcionava por acaso).
+
+**P3 — ✅ `kof config gen` — IMPLEMENTADO (30/08).**
+O compilador conhece todas as chaves literais (compile-time dispatch, sem
+reflection). Subcomando:
+
+```bash
+kof config gen src/                    # imprime o template no stdout
+kof config gen src/ --output kof.config  # escreve o arquivo
+kof config gen app.kf --target native    # qualquer target (só análise)
 ```
-Lookup recursivo com detecção de ciclo. Baixo custo, alto valor de DX.
 
-**P3 — `kof config gen` — template a partir do código.**
-O compilador JÁ conhece todas as chaves (compile-time dispatch). Um subcomando
-lista as chaves usadas + defaults e gera um `kof.config` de exemplo para
-deploy. Nenhum concorrente faz isso sem rodar a aplicação.
+Regras do template: chave com default vira **comentário** (o programa já
+tem valor; descomente para sobrescrever); `required`/`get` sem default
+viram **linha ativa** preencher-ou-falhar; chave computada (não literal)
+não aparece — nada é inferido em runtime. Chaves repetidas são dedup
+por (método, chave, default). Testes: `ConfigGenTest` (3 casos).
+
+> **~~Gap conhecido (COMP002, pré-existente)~~ — fechado 31/08:** a causa
+> real eram descritores JVM faltando para funções de contexto web
+> (`kof_web_ws_message` caindo no default `(String)->Object` com 0 args —
+> underflow de pilha no `COMPUTE_FRAMES` do ASM). `config.*` com chave
+> não-literal compila e roda.
 
 **P3 — Config declarativa tipada (a visão do KOF_VS_SPRING §2).**
 ```kof
@@ -150,8 +189,9 @@ config vira erro de compilação — nada no mercado faz isso (Spring resolve
 em runtime por reflection; Quarkus usa anotações + APT).
 Depende: parser de blocos nomeados, codegen. Fase própria, grande.
 
-**P4 — JS:** fechar o gap CONF001 (via `kof_platform` — o host já expõe
-`getenv`).
+**P4 — ✅ JS: CONF001 fechado (30/08).** `config.*` funciona no JS via
+`kof_platform` (`kofConfigLookup` lê `kof.config`/env; `kof_platform` expõe
+`getenv`); `KofConfig.supportedOn` agora retorna `true` para todos os targets.
 
 ### 8.3 O que NÃO faremos
 

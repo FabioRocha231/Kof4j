@@ -1,7 +1,7 @@
 # Kof Standard Library — Security + Enterprise Capability Audit
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list + riscv64; `kof.http` JVM+JS)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes; free-list + riscv64; `kof.http` JVM+JS + retry/circuit)
 
 > Documento arquitetural permanente.
 >
@@ -49,16 +49,17 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 | Expression Language | SpEL | — | MISSING (média) | Pode ser resolvido com funções de primeira classe |
 | AOP | AspectJ | — | MISSING (média) | Composição de funções + middleware cobre casos comuns |
 | Validation | spring-validation | `kof.validation` | **EXISTS** | 13 predicados JVM/Native/JS |
-| Web | spring-web | `kof.web` (`web.app()`) | EXISTS | Rotas, params, query, headers, body, middleware `app.use` |
+| Web | spring-web | `kof.web` (`web.app()`) | **EXISTS** | Rotas, params, query, headers, body, middleware `app.use`, `status`/`headerSet` |
 | Web MVC | WebMVC | `kof.web` + handlers | PARTIAL | Só JVM hoje; JS embarcado (alpha) |
-| WebFlux | WebFlux | `spawn` + virtual threads | PARTIAL | Modelo concorrente próprio |
-| WebSocket | WebSocket | — | MISSING (média) | Depende do servidor HTTP |
-| Messaging | spring-messaging | `kof.messaging` (planejado) | MISSING (alta) | |
-| Transactions | spring-tx | `kof.database` (planejado) | MISSING (alta) | |
-| Scheduling | spring-context | `kof.concurrent` (spawn existe) | PARTIAL | scheduler nativo planejado |
-| Events | ApplicationEvent | — | MISSING (média) | Pode ser idioma + filas |
+| WebFlux | WebFlux | `spawn` + virtual threads | PARTIAL | Modelo concorrente próprio (JVM/Native/JS) |
+| WebSocket | WebSocket | `kof.web` (`app.ws`) | **EXISTS (JVM)** | RFC 6455: handshake + frame codec com máscara (Native `WEB004`, JS `WEB003`) |
+| SSE | (Spring via `SseEmitter`) | `kof.web` (`app.sse`) | **EXISTS (JVM)** | `sse.send/event/close` (Native/JS `WEB003`) |
+| Messaging | spring-messaging | `kof.mq` (publish/subscribe/queue) | **EXISTS** | JVM+JS; Native `MQ001` |
+| Transactions | spring-tx | `kof.db` (`transaction {}`) | **EXISTS** | JVM (JDBC commit/rollback) + Native (SQLite); JS `DB001` |
+| Scheduling | spring-context | `kof.scheduler` (`every/at/cancel`) + `spawn` | PARTIAL | JVM (ScheduledExecutor) + JS (setInterval); Native `SCHED001` |
+| Events | ApplicationEvent | `kof.mq` pub/sub | PARTIAL | filas pub/sub na stdlib |
 | Resources | Resource | `kof.io` | EXISTS | |
-| Cache | spring-cache | — | MISSING (média) | |
+| Cache | spring-cache | `kof.cache` (`get/set/set-ttl/ttl/delete/clear`) | **EXISTS** | 3 targets (fix nativo 30/08) |
 | Conversion | ConversionService | type system Kof | NOT APPLICABLE | Tipagem estática resolve em compile-time |
 | Testing | spring-test | `kof test` + `assert` + JUnit (interno) | PARTIAL | |
 
@@ -66,9 +67,9 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 
 | Capacidade | Spring Boot | Kof | Status | Notas |
 |-----------|-------------|-----|--------|-------|
-| Lifecycle | run() | `main()` + `web.app().listen()` | EXISTS | |
-| Configuração | application.yml | — | MISSING (alta) | `kof.config` planejado (env + arquivo) |
-| Profiles | profiles | — | MISSING (média) | |
+| Lifecycle | run() | `main()` + `web.app().listen()` | **EXISTS** | |
+| Configuração | application.yml | `kof.config` (env + arquivo + typed) | **EXISTS** | 3 targets; `kof config gen` |
+| Profiles | profiles | `KOF_PROFILE` → `kof.<profile>.config` | **EXISTS** | |
 | Dependency management | starters | — | NOT APPLICABLE | Sem dependências: a stdlib É a plataforma |
 | Auto configuration | auto-config | — | NOT APPLICABLE | Compilador sabe o que o programa usa |
 | Embedded servers | Tomcat/Jetty | `KofHttpServer` | EXISTS | JVM apenas |
@@ -109,28 +110,28 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 
 | Capacidade | Spring Data | Kof | Status | Prioridade |
 |-----------|-------------|-----|--------|-----------|
-| Repository abstração | Commons | `kof.database` (planejado) | MISSING | ALTA |
-| JPA | JPA | — | MISSING | MÉDIA (decidir: JDBC direto é mais Kof) |
-| JDBC | JDBC | `kof.database` (planejado) | MISSING | ALTA |
+| Repository abstração | Commons | `kof.orm` (entity + CRUD) | **EXISTS (JVM)** | ALTA |
+| JPA | JPA | — | MISSING | MÉDIA (decisão: JDBC/ORM direto é mais Kof) |
+| JDBC | JDBC | `kof.db` (`db.execute`/`query<T>`/`transaction`) | **EXISTS** | ALTA |
 | R2DBC | R2DBC | — | MISSING | MÉDIA |
-| MongoDB | Mongo | — | MISSING | MÉDIA |
+| MongoDB | Mongo | `kof.orm` (driver oficial, E2E) | **EXISTS (JVM)** | MÉDIA |
 | Redis | Redis | — | MISSING | MÉDIA |
 | REST exports | Data REST | `kof.rest` (planejado) | MISSING | MÉDIA |
-| Migrations | Flyway/Liquibase | — | MISSING | ALTA |
+| Migrations | Flyway/Liquibase | `kof.orm` (`orm.migrate`, `kof_migrations`) | **EXISTS** | ALTA |
 
 ## 2.5 Spring Integration / Cloud / Batch / GraphQL / Session / Kafka / AMQP / Pulsar / WS / HATEOAS / REST Docs / Modulith / Authorization Server
 
 | Capacidade | Spring | Kof | Status | Prioridade |
 |-----------|--------|-----|--------|-----------|
-| Messaging channels | Integration | `kof.messaging` (planejado) | MISSING | MÉDIA |
-| Retry/error handling | Integration | — | MISSING | MÉDIA |
+| Messaging channels | Integration | `kof.mq` (publish/subscribe/queue) | **EXISTS** | MÉDIA |
+| Retry/error handling | Integration | `kof.http` (`http.retry`) | **EXISTS (JVM+JS)** | MÉDIA |
 | Service discovery | Cloud | — | MISSING | BAIXA (config manual) |
 | Gateway | Cloud Gateway | `kof.web` + proxy | PARTIAL | BAIXA |
-| Circuit breakers | Resilience | — | MISSING | BAIXA |
-| Distributed tracing | Sleuth | — | MISSING | BAIXA |
-| Batch (jobs/steps/retry) | Batch | — | MISSING | MÉDIA |
+| Circuit breakers | Resilience | `kof.http` (`http.circuit`) | **EXISTS (JVM+JS)** | BAIXA |
+| Distributed tracing | Sleuth | `kof.observability` (`requestId`/`correlationId`) | PARTIAL | BAIXA |
+| Batch (jobs/steps/retry) | Batch | `kof.mq` queue + `kof.scheduler` | PARTIAL | MÉDIA |
 | GraphQL | GraphQL | — | MISSING | BAIXA (REST primeiro) |
-| Distributed sessions | Session | `kof.security.sessions` (planejado) | MISSING | BAIXA |
+| Distributed sessions | Session | `kof.security` (`sessionCreate/Get/Destroy`) | **EXISTS (JVM/Native/JS)** | BAIXA |
 | Kafka producer/consumer | Kafka | `kof.messaging` (planejado) | MISSING | MÉDIA |
 | AMQP queues | AMQP | idem | MISSING | MÉDIA |
 | Pulsar | Pulsar | idem | MISSING | BAIXA |
@@ -179,28 +180,33 @@ resolve a função de runtime e cada target fornece a implementação.
 | `kof.collections` (List, listOf) | SIM | SIM | SIM (bounds) | JVM/Native/JS | PARCIAL (boxing List<Int> no JVM) | SIM | SIM |
 | `kof.io` (File/Path/Directory, readFile) | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.time` (`now()`) | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
-| `kof.json` (encode/decode) | SIM | SIM | PARCIAL (objetos só JVM; Float/Double gap) | JVM/Native/JS | SIM | SIM | SIM |
-| `kof.http` (serve) | SIM | SIM | PARCIAL (ver abaixo) | JVM | SIM | SIM | SIM |
-| `kof.web` (web.app, rotas, middleware) | SIM | SIM | PARCIAL (auth em construção) | JVM | SIM | SIM (novo) | SIM |
+| `kof.json` (encode/decode) | SIM | SIM | SIM (FP/arrays completos no Native 31/08) | JVM/Native/JS | SIM | SIM | SIM |
+| `kof.http` (serve + client) | SIM | SIM | PARCIAL (auth via middleware) | JVM (serve); JVM+JS (client) | SIM | SIM | SIM |
+| `kof.web` (web.app, rotas, ws/sse) | SIM | SIM | PARCIAL (auth em construção) | JVM | SIM | SIM (novo) | SIM |
 | `kof.rest` | NÃO | — | — | — | — | — | — |
-| `kof.database` | NÃO | — | — | — | — | — | — |
+| `kof.database` (`kof.db` + `kof.orm`) | SIM | SIM | SIM (bind tipado; SQL explícito) | JVM + Native (SQLite/MySQL WIP) | SIM | SIM | SIM |
 | `kof.security` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
-| `kof.concurrent` (spawn) | SIM | SIM | SIM | JVM (native CONC001) | SIM | SIM | SIM |
-| `kof.messaging` | NÃO | — | — | — | — | — | — |
+| `kof.concurrent` (spawn/await) | SIM | SIM | SIM | JVM/Native (pthread)/JS | SIM | SIM | SIM |
+| `kof.messaging` (`kof.mq`) | SIM | SIM | PARCIAL (in-memory) | JVM+JS | SIM | SIM | SIM |
 | `kof.validation` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
-| `kof.serialization` | PARCIAL (json) | SIM | SIM | PARCIAL | SIM | SIM | SIM |
-| `kof.logging` | PARCIAL (println) | SIM | SIM | SIM | SIM | SIM | SIM |
+| `kof.serialization` | PARCIAL (json) | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
+| `kof.logging` | SIM (`log.debug/info/warn/error`) | SIM | SIM | JVM/Native | SIM | SIM | SIM |
 | `kof.observability` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.metrics` | SIM (`kof.observability`) | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
-| `kof.test` (`kof test`, assert) | SIM | SIM | SIM | JVM/Native | SIM | SIM | SIM |
+| `kof.config` | SIM | SIM | SIM (secrets separados) | JVM/Native/JS | SIM | SIM | SIM |
+| `kof.cache` | SIM | SIM | PARCIAL (in-memory) | JVM/Native/JS | SIM | SIM | SIM |
+| `kof.test` (`kof test`, assert) | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.cli` (CLI kof) | SIM | SIM | SIM | JVM | SIM | SIM | SIM |
-| `kof.process` | NÃO | — | — | — | — | — | — |
+| `kof.process` | SIM | SIM | SIM | JVM/Native/JS | SIM | SIM | SIM |
 | `kof.crypto` | NÃO (faz parte de kof.security) | — | — | — | — | — | — |
 | `kof.ui` (plataforma de UI) | PARCIAL | PARCIAL | — | JS | — | PARCIAL | PARCIAL |
 
 ## 4.1 Estado da segurança na plataforma hoje
 
-| Área | Estado atual |
+> **Linha de base (pré `kof.security` v1)** — snapshot do que faltava ANTES
+> da implementação. O estado atual (implementado, 3 targets) está em §7.
+
+| Área | Estado atual (baseline) |
 |------|--------------|
 | Hash de senha | INEXISTENTE (programador usaria sha256 — proibido por design) |
 | Constante de tempo | INEXISTENTE |
@@ -228,23 +234,28 @@ kof.security
 └── auth             → contexto web: secret, token, authenticated, claims, user, hasRole, hasPermission
 ```
 
-Suporte por target (definição):
+Suporte por target (estado atual — `KofSecurity.supportedOn`):
 
 | Função | JVM | Native | JS |
 |--------|-----|--------|----|
-| `passwords.hash/verify/needsRehash` | SIM (javax.crypto PBKDF2) | SIM (asm PBKDF2-HMAC-SHA256) | SIM (PBKDF2 em JS) |
-| `crypto.sha256/sha512` | SIM | SIM (asm) | SIM (JS) |
+| `passwords.hash/verify/needsRehash` | SIM (javax.crypto PBKDF2) | SIM (asm PBKDF2-HMAC-SHA256) | SIM (PBKDF2 platform-delegated) |
+| `crypto.sha256/sha512` | SIM | SIM (asm, FIPS 180-4) | SIM (JS) |
 | `crypto.hmacSha256` | SIM | SIM (asm) | SIM (JS) |
-| `crypto.aesGcm` encrypt/decrypt | SIM | NÃO (SECN002) | NÃO (SECN002) |
+| `crypto.aesGcm` encrypt/decrypt | SIM | SIM (asm, GCM) | NÃO (SECN002) |
 | `crypto.randomHex/randomInt` | SIM (SecureRandom) | SIM (getrandom) | SIM (kof_platform) |
-| `jwt.create/verify` | SIM | NÃO (depende de PBKDF2? não — HMAC; depende de sha256/hmac asm) | SIM |
-| `secrets.get` | SIM (env) | SIM (getenv asm — se viável) | SIM (kof_platform) |
+| `jwt.create/verify/secret` | SIM | SIM (asm: base64url + HMAC) | SIM |
+| `secrets.get` | SIM (env) | SIM (`/proc/self/environ`) | SIM (kof_platform) |
 | `security.constantTimeEquals` | SIM | SIM (asm) | SIM (JS) |
-| `security.redact` | SIM | SIM | SIM |
+| `security.redact` | SIM | SIM (asm) | SIM |
 | `security.csrfToken/csrfValid` | SIM | — | — |
 | `security.corsAllowed` | SIM | — | — |
 | `security.cspHeader/hstsHeader/...` | SIM | — | — |
-| `auth.*` (contexto web) | SIM | — | — |
+| `security.rateLimit/session*/apiKey*` (G9) | SIM | SIM (asm) | SIM (JS) |
+| `auth.*` (contexto web) | SIM (Bearer JWT + ThreadLocal) | — | — |
+
+Gaps reais com diagnóstico em compile-time: `SECN001` (passwords),
+`SECN002` (AES-GCM fora do JVM/Native), `SECN003` (sha512), `SECN004` (jwt) e
+`SECN005` (G9) — nunca comportamento silenciosamente diferente.
 
 **Regra**: qualquer gap emite diagnóstico claro em compile-time (ex.
 `SECN001: passwords.hash não está disponível no target Native ainda`).
@@ -271,9 +282,9 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 
 ---
 
-# 7. ESTADO DA IMPLEMENTAÇÃO (0.2.0-beta, 27/08/2026 — `VERSION` 0.2.0-beta, 658 testes, free-list + riscv64)
+# 7. ESTADO DA IMPLEMENTAÇÃO (0.2.6-beta, 31/08/2026 — `VERSION` 0.2.6-beta, 747 testes, free-list + riscv64)
 
-## 7.1 Implementado (0.2.0-beta)
+## 7.1 Implementado (0.2.6-beta)
 
 | API | JVM | Native x86_64 (+ riscv64) | JS | Formato |
 |-----|-----|---------------------------|----|---------|
@@ -283,8 +294,8 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 | `crypto.sha256(data)` | ✅ | ✅ (asm FIPS 180-4, riscv64 `li a7`) | ✅ (JS puro) | hex |
 | `crypto.sha512(data)` | ✅ | ✅ (asm FIPS 180-4, vetores FIPS testados) | ✅ (JS puro) | hex |
 | `crypto.hmacSha256(key, data)` | ✅ | ✅ (asm) | ✅ (JS puro) | hex |
-| `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ❌ SECN002 | ❌ SECN002 | `aesgcm$iv$ct` |
-| `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ❌ SECN002 | ❌ SECN002 | |
+| `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ✅ (asm GCM, round-trip E2E) | ❌ SECN002 | `aesgcm$iv$ct` |
+| `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ✅ (asm, falha em tamper) | ❌ SECN002 | |
 | `crypto.randomHex(n)` | ✅ SecureRandom | ✅ getrandom (`li a7 318` x86_64 / `214` riscv64) | ✅ platform | hex |
 | `crypto.randomInt(bound)` | ✅ | ✅ getrandom + rejection | ✅ platform | |
 | `jwt.create(claims, secret[, ttl])` | ✅ HS256 + iat/exp | ✅ (asm: base64url + HMAC + kof_now) | ✅ | RFC 7519 HS256 |
@@ -310,11 +321,11 @@ vetores de referência (FIPS 180-4, RFC 2104) — verificado por
 
 ## 7.3 Testes
 
-`KofSecurityTest` (22 testes): hashing/verificação, senha errada, rehash,
+`KofSecurityTest` (25 testes): hashing/verificação, senha errada, rehash,
 SHA-256/512 vetores, HMAC, constant-time, random, JWT (assinatura, expiração,
 issuer/audience, token malformado, confusão de algoritmo, claims não-objeto),
-AES-GCM (round trip, tamper, chave errada), secrets/redact, e diagnostics
-de target gap (SECN001/002/003). Casos adversariais incluídos (§18).
+AES-GCM (round trip JVM+Native, tamper, chave errada), secrets/redact, e
+diagnostics de target gap (SECN001/002/003). Casos adversariais incluídos (§18).
 
 ## 7.4 Benchmarks
 
@@ -325,18 +336,19 @@ de target gap (SECN001/002/003). Casos adversariais incluídos (§18).
 
 - ~~JWT no Native~~ — ✅ fechado: `kof_sec_jwt_*` em asm (base64url + HMAC
   + iat/exp + exp/iss/aud + constant-time + exceções via try/catch).
-- `passwords.*` no Native: PBKDF2 asm planejado.
-- SHA-512 asm: planejado (SECN003 hoje).
-- AES-GCM fora do JVM: primitiva com requisitos de constante de tempo;
-  planejado para Native via primitivas específicas.
+- ~~`passwords.*` no Native~~ — ✅ fechado: PBKDF2-HMAC-SHA256 em asm
+  (`kof_sec_password_*`, HMAC interno + getrandom).
+- ~~SHA-512 asm~~ — ✅ fechado: `kof_sec_sha512` em asm (FIPS 180-4, vetores
+  FIPS testados; `sha512NativeVectors`).
+- ~~AES-GCM no Native~~ — ✅ fechado: `kof_sec_aesgcm_encrypt/decrypt` em asm
+  (GCM; round-trip E2E `aesGcmNativeRoundTrip`). Restante: AES-GCM no JS
+  (`SECN002`).
 - `== null` com String no Native: `kof_string_equals` não trata null
   (limitação pré-existente do backend).
-- **Diagnósticos de target incompletos**: `jwt.*`, `auth.*`, `csrf`,
-  `cors` e os headers de segurança não têm entrada explícita em
-  `KofSecurity.supportedOn` para Native/JS (default `true`) → hoje um
-  programa que os usa no Native falha no link com símbolo indefinido em
-  vez de um diagnóstico SECN00x claro. Item **G7** da auditoria
-  (`docs/ecosystem-coverage.md` §4) — prioridade P0.
+- ~~Diagnósticos de target incompletos (G7)~~ — ✅ fechado: `jwt.*` ganhou
+  entrada explícita em `KofSecurity.supportedOn` (Native/JS reportam
+  `SECN004` em compile-time em vez de link silencioso); `auth.*`/`csrf`/`cors`/
+  headers agora são restritos a `Target.JVM` em `supportedOn`.
 
 ## 7.6 Correções de bugs descobertas durante a implementação
 

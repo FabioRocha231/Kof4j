@@ -1,6 +1,6 @@
 # 32 — CLI e Tooling
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes — targets jvm/native/native.risc/native.arm/js/android + kofc**
 
 A CLI é a ferramenta central da plataforma Kof.
 
@@ -13,37 +13,50 @@ A CLI é a ferramenta central da plataforma Kof.
 | `kof build <dir> --target=native.risc` | Compila para ELF riscv64 |
 | `kof build <dir> --target=native.arm` | Compila para ELF aarch64 |
 | `kof build <dir> --target=js` | Compila para ES Modules |
+| `kof build <dir> --target=android` | Gera projeto Maven + APK (Fase 1: host Activity em Kof; `mvn verify` / `--apk` com o SDK) |
 | `kof run <file.kf> [--target jvm|native|native.risc|native.arm|js]` | Compila e executa |
-| `kof script <file.ks|kf> [--watch] [--target ...]` | KofScript direto (`let`→`KofScriptGlobals`) + REPL (`kof script --repl` / `kof repl`) |
+| `kof script <file.ks|kf> [--watch] [--target ...]` | KofScript direto (`let`→`KofScriptGlobals`) + diagnostics com file:line |
+| `kof repl` | REPL incremental KofScript (type `exit` to quit) |
 | `kof c <file.c> [--run] [--output <bin>]` | KofC C subset → ELF x86-64 nativo-only |
-| `kof serve <file.kf>` | Web server HTTP básico |
+| `kof serve <file.kf>` | Web server HTTP (`web.app()` nativo + API legada `handle()`) |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
-| `kof test <file.kf\|dir> [--target jvm|native|js]` | Roda programas e reporta PASS/FAIL pelo exit code |
-| `kof bench [paths...] [--target ...]` | Benchmark harness |
-| `kof debug <file.kf> [--target jvm]` | DAP MVP |
+| `kof test <file.kf\|dir> [--target jvm|native|js]` | Suíte estruturada `test "nome" { assert(...) }` nos 3 targets + programas inteiros por exit code |
+| `kof bench [paths...] [--target ...] [--iterations N] [--baseline <file>] [--threshold <ratio>] [--json] [--fail-on-regression]` | Benchmark harness (compile, run, validate, métricas, baseline) |
+| `kof profile <file.kf> [--target ...]` | Execução + métricas (CPU, RSS, GC) |
+| `kof inspect <file.kf> [--json]` | Estatísticas da IR: ops antes/depois da otimização |
+| `kof config gen <file.kf\|dir> [--output <arquivo>]` | Gera template `kof.config` a partir das chaves `config.*` do código |
+| `kof fmt <file.kf\|dir> [-w]` | Formatador real via parser (`KofFormatter`), idempotente — implementado em 31/08 |
+| `kof debug <file.kf> [--target jvm]` | DAP MVP (breakpoints por linha Kof, stack trace) |
 | `kof info [--json]` | Relatório do ambiente |
 | `kof lsp` | Language Server (stdio, LSP 3.x) |
-| `kof version` | Versão da plataforma (`0.2.0-beta`) |
+| `kof install <dir>` | Instala este build como distribuição (launcher + `kof.jar`) |
+| `kof version` | Versão da plataforma (`0.2.6-beta`) |
 
-Planejado: `kof fmt` (formatter). Todos os comandos seguem `intention->Kof->frontend->IR->backend->runtime`.
+Todos os comandos seguem `intention->Kof->frontend->IR->backend->runtime`.
 
 ## `kof info`
 
 Diagnóstico oficial do ambiente — para usuários e suporte:
 
 ```text
-Kof 0.2.0-beta
+Kof 0.2.6-beta
+Release channel: beta
 Tooling API: 21
 OS: linux
 Arch: x86_64
 Target: linux-x86_64
 JVM: Eclipse Adoptium 25.0.4 (embedded)
-Compiler: 0.2.0-beta
-Runtime: 0.2.0-beta
-Stdlib: 0.2.0-beta
-Targets: jvm, native, native.risc, native.arm, js, kofc
+Compiler: 0.2.6-beta
+Runtime: 0.2.6-beta
+Stdlib: 0.2.6-beta
+Targets: jvm, native, js (alpha)
+LSP: available
+Editor support: available
 Install: /opt/kof
 ```
+
+(`parseTarget` aceita também `native.risc`/`native.arm`/`android` — o
+relatório resume os targets de runtime principais.)
 
 Formato estruturado: `kof info --json`.
 
@@ -63,6 +76,31 @@ kof c hello.c --output ./bin
 ```
 
 `KofScript` reaproveita o frontend real (`lexer→parser→AST→IR`) e o backend escolhido; `let x=5; fn foo(){println(x)}` vira `class KofScriptGlobals { static Int x=5 }` + `main(){foo()}`.
+
+## `kof fmt` e `kof config gen` (31/08)
+
+```bash
+kof fmt src/                  # formata e imprime (dry-run)
+kof fmt src/ -w               # reescreve os arquivos in-place
+kof config gen src/           # gera template kof.config a partir das chaves config.*
+```
+
+- `kof fmt` formata via parser real (`KofFormatter`) — o resultado é
+  idempotente (rodar duas vezes não muda nada).
+- `kof config gen` extrai as chaves `config.*` do código e gera um
+  template `kof.config` pronto para edição (precedência: `KOF_CONFIG` >
+  env `KOF_<KEY>` > perfil > `kof.config`).
+
+## `kof bench`, `kof profile` e `kof inspect`
+
+- `kof bench [paths...] [--iterations N] [--baseline <file>]
+  [--update-baseline <file>] [--threshold <ratio>] [--json]
+  [--fail-on-regression]` — compila, executa, valida o stdout contra
+  `expected.txt`, mede tempo (mediana) e RSS e compara com o baseline
+  (`PERFORMANCE REGRESSION` acima do threshold; CI usa `--threshold 1.20`).
+- `kof profile <file.kf>` — execução + métricas (CPU, RSS, GC).
+- `kof inspect <file.kf> [--json]` — estatísticas da IR: ops antes/depois
+  da otimização.
 
 ## `kof lsp`
 

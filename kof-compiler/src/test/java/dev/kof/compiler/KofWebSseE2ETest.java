@@ -177,6 +177,15 @@ class KofWebSseE2ETest {
             }
         }
 
+        String readRemaining() throws IOException {
+            StringBuilder body = new StringBuilder();
+            String line;
+            while ((line = in.readLine()) != null) {
+                body.append(line).append('\n');
+            }
+            return body.toString();
+        }
+
         @Override
         public void close() throws IOException {
             socket.close();
@@ -234,6 +243,34 @@ class KofWebSseE2ETest {
         try (SseClient client = connect(port)) {
             assertHeaders(client);
             assertEquals("data: line1\ndata: line2", client.readEvent());
+        }
+    }
+
+    @Test
+    void multi_line_data_splits_crlf(@TempDir Path tempDir) throws Exception {
+        int port = startSseServer(tempDir, "sse.send(\"line1\\r\\nline2\")");
+        try (SseClient client = connect(port)) {
+            assertHeaders(client);
+            assertEquals("data: line1\ndata: line2", client.readEvent());
+        }
+    }
+
+    @Test
+    void multi_line_data_splits_lone_cr(@TempDir Path tempDir) throws Exception {
+        int port = startSseServer(tempDir, "sse.send(\"line1\\rline2\")");
+        try (SseClient client = connect(port)) {
+            assertHeaders(client);
+            assertEquals("data: line1\ndata: line2", client.readEvent());
+        }
+    }
+
+    @Test
+    void event_name_with_newline_is_rejected(@TempDir Path tempDir) throws Exception {
+        int port = startSseServer(tempDir, "sse.event(\"hello\\nid: evil\", \"x\")");
+        try (SseClient client = connect(port)) {
+            assertHeaders(client);
+            String body = client.readRemaining();
+            assertTrue(!body.contains("id: evil"), "event name must not inject SSE fields: " + body);
         }
     }
 

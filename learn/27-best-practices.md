@@ -1,6 +1,6 @@
 # 27 — Boas Práticas
 
-> **Kof 0.2.0-beta — `String?`, `Point(x,y)`, `map/filter/reduce`, `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — `String?`, `Point(x,y)`, `map/filter/reduce`, `intention->Kof->frontend->IR->backend->runtime`**
 
 ## Novidades 0.2.0 que afetam estilo
 
@@ -8,6 +8,12 @@
 - Prefira `case Point(x, y):` a `if` cascata quando desestruturar records.
 - Use `list.map/filter/reduce` em vez de `for` manual quando a intenção for transformar.
 - `let`/`const` no topo só em `.ks` (KofScript → `KofScriptGlobals`); em `.kf` use `var`/`val`.
+- Web: um app `web.app()` por processo; middleware em `app.use { }` antes das rotas;
+  respostas ricas com `status(código, body)` + `headerSet(...)` em vez de strings crues.
+- HTTP client: `http.get/post/put/delete/patch/options` + `timeout`/`retry`/`circuit`
+  (JVM+JS) — nunca raw sockets para HTTP.
+- `spawn` para paralelismo; `await` para o resultado. Sem API de thread exposta.
+- Formate com `kof fmt -w` (31/08) — o formatter é idempotente.
 
 ## Naming
 

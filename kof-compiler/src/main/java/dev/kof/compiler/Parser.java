@@ -1697,7 +1697,8 @@ class Parser {
     private boolean isTypeKeywordField() {
         return check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE,
                 TokenType.DOUBLE_TYPE, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE,
-                TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE);
+                TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE,
+                TokenType.RECORD);
     }
 
     private boolean isTypeKeywordAtNext() {

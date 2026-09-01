@@ -1727,6 +1727,10 @@ class JsBackend implements Backend {
             }
             return;
         }
+        if (isChannelOp(kc)) {
+            handleChannelOp(ctx, stack, preambleExprs, kc, receiver, args);
+            return;
+        }
         if (isListOp(kc)) {
             handleListOp(ctx, stack, preambleExprs, kc, receiver, args);
             return;
@@ -1967,6 +1971,10 @@ class JsBackend implements Backend {
         return BuiltinTypes.isList(kc.ownerType()) && kc.methodName().startsWith("kof_list_");
     }
 
+    private boolean isChannelOp(KofCall kc) {
+        return BuiltinTypes.isChannel(kc.ownerType()) && kc.methodName().startsWith("kof_channel_");
+    }
+
     private boolean isMapOp(KofCall kc) {
         return BuiltinTypes.isMap(kc.ownerType()) && kc.methodName().startsWith("kof_map_");
     }
@@ -1975,9 +1983,34 @@ class JsBackend implements Backend {
         return BuiltinTypes.isSet(kc.ownerType()) && kc.methodName().startsWith("kof_set_");
     }
 
+    private void handleChannelOp(MethodCtx ctx, List<Object> stack,
+                               List<JsIr.JsExpression> preambleExprs, KofCall kc,
+                               JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
+        // Canais tipados (JS sequencial): FIFO { items: [] } — send push, receive shift.
+        String fn = switch (kc.methodName()) {
+            case "kof_channel_new" -> "kofChannelNew";
+            case "kof_channel_send" -> "kofChannelSend";
+            case "kof_channel_receive" -> "kofChannelReceive";
+            default -> throw new IllegalStateException("KofJS: unknown channel op " + kc.methodName());
+        };
+        registerRuntime(fn);
+        if ("kof_channel_new".equals(kc.methodName())) {
+            stack.add(new JsIr.JsCall(new JsIr.JsIdentifier(fn), List.of()));
+            return;
+        }
+        List<JsIr.JsExpression> callArgs = new ArrayList<>();
+        callArgs.add(receiver);
+        callArgs.addAll(args);
+        JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
+        if (Type.isVoid(kc.returnType())) {
+            throw new StatementEnd(call);
+        }
+        stack.add(call);
+    }
+
     private void handleListOp(MethodCtx ctx, List<Object> stack,
-                              List<JsIr.JsExpression> preambleExprs, KofCall kc,
-                              JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
+                               List<JsIr.JsExpression> preambleExprs, KofCall kc,
+                               JsIr.JsExpression receiver, List<JsIr.JsExpression> args) {
         String fn = switch (kc.methodName()) {
             case "kof_list_new" -> "kofListNew";
             case "kof_list_add" -> "kofListAdd";
@@ -2178,6 +2211,7 @@ class JsBackend implements Backend {
                 || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.equals("kof_poll") || name.equals("kof_done")
                 || name.equals("kof_cancel") || name.equals("kof_cancelled")
+                || name.equals("kof_await_timeout")
                 || name.equals("kof_select_any")
                 || name.equals("kof_list_map") || name.equals("kof_list_filter")
                 || name.equals("kof_list_reduce")
@@ -2298,7 +2332,12 @@ class JsBackend implements Backend {
                 || name.equals("kof_ui_event_stop")
                 || name.equals("kof_ui_store_new") || name.equals("kof_ui_store_get")
                 || name.equals("kof_ui_store_set") || name.equals("kof_ui_store_subscribe")
-                || name.equals("kof_ui_store_unsubscribe") || name.equals("kof_ui_stores_live")) {
+                || name.equals("kof_ui_store_unsubscribe") || name.equals("kof_ui_stores_live")
+                || name.equals("kof_ui_route_register") || name.equals("kof_ui_router_go1")
+                || name.equals("kof_ui_router_go2") || name.equals("kof_ui_router_replace1")
+                || name.equals("kof_ui_router_replace2") || name.equals("kof_ui_router_back")
+                || name.equals("kof_ui_router_forward") || name.equals("kof_ui_router_param")
+                || name.equals("kof_ui_router_current") || name.equals("kof_ui_router_depth")) {
             registerRuntime(capitalizeUiFn(name));
             List<JsIr.JsExpression> callArgs = new ArrayList<>(args);
             if (kc.kind() == KofCallKind.INSTANCE && receiver != null) {
@@ -2348,6 +2387,8 @@ class JsBackend implements Backend {
                 case "kof_http_patch_headers" -> "kofHttpPatchHeaders";
                 case "kof_http_status" -> "kofHttpStatus";
                 case "kof_http_timeout_set" -> "kofHttpTimeoutSet";
+                case "kof_http_retry_set" -> "kofHttpRetrySet";
+                case "kof_http_circuit_set" -> "kofHttpCircuitSet";
                 default -> "kofWebStub";
             };
             registerRuntime(jsFn);
@@ -3648,6 +3689,20 @@ class JsBackend implements Backend {
                 return [];
             }
 
+            export function kofChannelNew() {
+                // JS sequencial: canal degenera em FIFO { items: [] }
+                return { items: [] };
+            }
+
+            export function kofChannelSend(chan, value) {
+                chan.items.push(value);
+            }
+
+            export function kofChannelReceive(chan) {
+                // JS é single-threaded: sempre há item (send executa antes)
+                return chan.items.shift();
+            }
+
             export function kofListAdd(list, value) {
                 list.push(value);
             }
@@ -3777,8 +3832,13 @@ class JsBackend implements Backend {
             }
 
             export function kofSpawnResult(value) {
-                // JS single-threaded: o corpo já rodou inline; o handle memoiza
-                return { get: function () { return value; } };
+                // JS single-threaded: o corpo roda agora (sequencial). O alvo JS
+                // já inlina o corpo e passa o valor pronto; o alvo Android passa
+                // a tarefa (new Lambda0() com invoke) — executa o corpo aqui.
+                const result = (value != null && typeof value.invoke === "function")
+                    ? value.invoke()
+                    : value;
+                return { get: function () { return result; } };
             }
 
             export function kofPoll(handle) {
@@ -3817,13 +3877,47 @@ class JsBackend implements Backend {
                 return handle;
             }
 
+            // JS sequencial: a task sempre está pronta (roda em ordem), então o
+            // timeout nunca estoura — equivalente a kofAwait (paridade de API).
+            export function kofAwaitTimeout(handle, timeoutMs) {
+                if (handle != null && typeof handle.get === "function") {
+                    return handle.get();
+                }
+                return handle;
+            }
+
             export function kofWebStub() {
                 // JS stub for kof.web/db — keeps KofJS compilable; real impl is JVM/Native
                 return 0;
             }
 
             let kofHttpTimeoutSec = 10;
+            let kofHttpRetries = 0;
+            let kofHttpCircuitTrips = 0;
+            let kofHttpCircuitFailures = 0;
+            let kofHttpCircuitOpenUntil = 0;
+            const KOF_HTTP_CIRCUIT_WINDOW_MS = 30000;
             export function kofHttpTimeoutSet(sec) { kofHttpTimeoutSec = sec; }
+            export function kofHttpRetrySet(n) { kofHttpRetries = Math.max(0, n | 0); }
+            export function kofHttpCircuitSet(trips) {
+                kofHttpCircuitTrips = Math.max(0, trips | 0);
+                if (kofHttpCircuitTrips <= 0) { kofHttpCircuitFailures = 0; kofHttpCircuitOpenUntil = 0; }
+            }
+            function kofHttpCircuitOpen() {
+                if (kofHttpCircuitOpenUntil === 0) return false;
+                if (Date.now() >= kofHttpCircuitOpenUntil) { kofHttpCircuitOpenUntil = 0; return false; }
+                return true;
+            }
+            function kofHttpCircuitRecordFailure() {
+                if (kofHttpCircuitTrips <= 0) return;
+                if (++kofHttpCircuitFailures >= kofHttpCircuitTrips) {
+                    kofHttpCircuitOpenUntil = Date.now() + KOF_HTTP_CIRCUIT_WINDOW_MS;
+                }
+            }
+            function kofHttpCircuitRecordSuccess() {
+                kofHttpCircuitFailures = 0;
+                kofHttpCircuitOpenUntil = 0;
+            }
             export function kofHttpGet(url) { return kofHttpRequest(url, "GET", null, null); }
             export function kofHttpGetHeaders(url, headers) { return kofHttpRequest(url, "GET", headers, null); }
             export function kofHttpDelete(url) { return kofHttpRequest(url, "DELETE", null, null); }
@@ -3850,36 +3944,56 @@ class JsBackend implements Backend {
                 } catch(e) { return 0; }
             }
             function kofHttpRequest(url, method, headers, body) {
-                try {
-                    // Prefer Java HttpClient via GraalJS interop (synchronous, works in KofJsRunner)
-                    if (typeof Java !== 'undefined' && Java.type) {
-                        const HttpClient = Java.type('java.net.http.HttpClient');
-                        const HttpRequest = Java.type('java.net.http.HttpRequest');
-                        const URI = Java.type('java.net.URI');
-                        const Duration = Java.type('java.time.Duration');
-                        let client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(kofHttpTimeoutSec)).build();
-                        let builder = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(kofHttpTimeoutSec));
-                        if (headers) {
-                            let lines = headers.split("\\n");
-                            for (let line of lines) {
-                                let idx = line.indexOf(":");
-                                if (idx > 0) builder.header(line.substring(0, idx).trim(), line.substring(idx+1).trim());
+                if (kofHttpCircuitOpen()) {
+                    throw new Error("kof.http circuit open (fail fast): " + url);
+                }
+                let lastErr = null;
+                const attempts = kofHttpRetries + 1;
+                for (let attempt = 0; attempt < attempts; attempt++) {
+                    try {
+                        // Prefer Java HttpClient via GraalJS interop (synchronous, works in KofJsRunner)
+                        if (typeof Java !== 'undefined' && Java.type) {
+                            const HttpClient = Java.type('java.net.http.HttpClient');
+                            const HttpRequest = Java.type('java.net.http.HttpRequest');
+                            const URI = Java.type('java.net.URI');
+                            const Duration = Java.type('java.time.Duration');
+                            let client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(kofHttpTimeoutSec)).build();
+                            let builder = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(kofHttpTimeoutSec));
+                            if (headers) {
+                                let lines = headers.split("\\n");
+                                for (let line of lines) {
+                                    let idx = line.indexOf(":");
+                                    if (idx > 0) builder.header(line.substring(0, idx).trim(), line.substring(idx+1).trim());
+                                }
                             }
+                            let publisher = body != null ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody();
+                            builder.method(method, publisher);
+                            let req = builder.build();
+                            let resp = client.send(req, Java.type('java.net.http.HttpResponse$BodyHandlers').ofString());
+                            if (resp.statusCode() >= 500) {
+                                lastErr = new Error("HTTP " + resp.statusCode() + " from " + url);
+                                kofHttpCircuitRecordFailure();
+                                continue;
+                            }
+                            kofHttpCircuitRecordSuccess();
+                            return resp.body() != null ? resp.body() : "";
                         }
-                        let publisher = body != null ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody();
-                        builder.method(method, publisher);
-                        let req = builder.build();
-                        let resp = client.send(req, Java.type('java.net.http.HttpResponse$BodyHandlers').ofString());
-                        return resp.body() != null ? resp.body() : "";
-                    }
-                    // Fallback to fetch if Java interop not available (Node/Browser)
-                    if (typeof fetch !== 'undefined') {
-                        // synchronous fallback not possible - use deasync via Atomics if available
-                        // For MVP, do blocking via fetch sync is not supported; return empty
+                        // Fallback to fetch if Java interop not available (Node/Browser)
+                        if (typeof fetch !== 'undefined') {
+                            // synchronous fallback not possible - use deasync via Atomics if available
+                            // For MVP, do blocking via fetch sync is not supported; return empty
+                            kofHttpCircuitRecordSuccess();
+                            return "";
+                        }
+                        kofHttpCircuitRecordSuccess();
                         return "";
+                    } catch(e) {
+                        lastErr = e;
+                        kofHttpCircuitRecordFailure();
                     }
-                    return "";
-                } catch(e) { return ""; }
+                }
+                if (lastErr == null) lastErr = new Error("request failed: " + url);
+                throw lastErr;
             }
 
             export function kofSchedulerEvery(ms, fn) {
@@ -4632,6 +4746,7 @@ class JsBackend implements Backend {
 
             const __kofObsCounters = {};
             const __kofObsGauges = {};
+            const __kofObsHistograms = {};
 
             export function kofObservabilityHealth() {
                 return "UP";
@@ -4662,6 +4777,41 @@ class JsBackend implements Backend {
             export function kofObservabilityGauge(name, value) {
                 if (name == null) name = "";
                 __kofObsGauges[name] = value;
+            }
+
+            export function kofObservabilityHistogram(name, value) {
+                if (name == null) name = "";
+                const h = __kofObsHistograms[name] || (__kofObsHistograms[name] = { sum: 0, count: 0 });
+                h.sum += value;
+                h.count += 1;
+            }
+
+            function __kofPromName(name, suffix) {
+                let out = String(name).replace(/[^a-zA-Z0-9_:]/g, "_");
+                if (out.length === 0) out = "k";
+                return out + suffix;
+            }
+
+            export function kofObservabilityMetrics() {
+                let sb = "";
+                const counters = Object.keys(__kofObsCounters).sort();
+                for (const m of counters) {
+                    const n = __kofPromName(m, "");
+                    sb += "# TYPE " + n + " counter\\n" + n + " " + __kofObsCounters[m] + "\\n";
+                }
+                const gauges = Object.keys(__kofObsGauges).sort();
+                for (const m of gauges) {
+                    const n = __kofPromName(m, "");
+                    sb += "# TYPE " + n + " gauge\\n" + n + " " + __kofObsGauges[m] + "\\n";
+                }
+                const hists = Object.keys(__kofObsHistograms).sort();
+                for (const m of hists) {
+                    const n = __kofPromName(m, "");
+                    const h = __kofObsHistograms[m];
+                    sb += "# TYPE " + n + "_count counter\\n" + n + "_count " + h.count + "\\n";
+                    sb += "# TYPE " + n + "_sum gauge\\n" + n + "_sum " + h.sum + "\\n";
+                }
+                return sb;
             }
 
             export function kofObservabilityRequestId() {
@@ -4821,7 +4971,141 @@ class JsBackend implements Backend {
             export function kofUiStoresLive() {
                 return kofUiStores.size;
             }
+
+            // ── Fase 7: Navegação (docs/ui/architecture.md §2.9) ──────
+            // Route = nome + builder(componente raiz). Navegar troca o
+            // componente raiz da janela: unmount do antigo (lifecycle
+            // completo) + mount do novo. back/forward = histórico em stack.
+            const kofUiRouterState = {
+                routes: {},          // name -> root component id
+                current: null,       // nome da rota ativa
+                param: null,         // params da rota ativa
+                history: [],         // stack para back()
+                forwardStack: [],    // stack para forward()
+            };
+
+            export function kofUiRouteRegister(name, rootComponent) {
+                kofUiRouterState.routes[name] = rootComponent;
+            }
+
+            function kofUiRouterHost() {
+                // primeiro window montado (o app de janela única usa o id 1)
+                return typeof window !== "undefined" && window.__kofWindows
+                    ? window.__kofWindows[1] : null;
+            }
+
+            function kofUiRouterShow(name, param, pushHistory) {
+                const root = kofUiRouterState.routes[name];
+                if (root === undefined || root === null) return false;
+                const prev = kofUiRouterState.current;
+                // desmonta qualquer rota montada que não seja o destino
+                // (cobre o caso do bind inicial, que monta sem registrar current)
+                for (const key of Object.keys(kofUiRouterState.routes)) {
+                    if (key === name) continue;
+                    const rc = kofUiRouterState.routes[key];
+                    const rn = kofUiComponents.get(rc);
+                    if (rn && rn.mounted) {
+                        kofUiComponentUnmount(rc);
+                        const rel = kofUiComponents.get(rc);
+                        if (rel && rel.el && rel.el.parentNode) {
+                            rel.el.parentNode.removeChild(rel.el);
+                        }
+                    }
+                }
+                if (pushHistory && prev !== null && prev !== name) {
+                    kofUiRouterState.forwardStack.length = 0;
+                    kofUiRouterState.history.push({ name: prev, param: kofUiRouterState.param });
+                }
+                kofUiRouterState.current = name;
+                kofUiRouterState.param = param;
+                const comp = kofUiComponents.get(root);
+                if (comp && kofUiRouterHost()) {
+                    if (comp.el && !comp.el.parentNode) {
+                        kofUiRouterHost().appendChild(comp.el);
+                    }
+                    kofUiComponentMount(root);
+                }
+                return true;
+            }
+
+            function host() { return kofUiRouterHost(); }
+
+            export function kofUiRouterGo1(name) {
+                return kofUiRouterShow(name, null, true);
+            }
+
+            export function kofUiRouterGo2(name, param) {
+                return kofUiRouterShow(name, param, true);
+            }
+
+            export function kofUiRouterReplace1(name) {
+                return kofUiRouterNavigate(name, null);
+            }
+
+            export function kofUiRouterReplace2(name, param) {
+                return kofUiRouterNavigate(name, param);
+            }
+
+            export function kofUiRouterBack() {
+                if (kofUiRouterState.history.length === 0) return 0;
+                const entry = kofUiRouterState.history.pop();
+                if (kofUiRouterState.current !== null) {
+                    kofUiRouterState.forwardStack.push(
+                            { name: kofUiRouterState.current, param: kofUiRouterState.param });
+                }
+                const ok = kofUiRouterNavigate(entry.name, entry.param);
+                return ok ? 1 : 0;
+            }
+
+            // troca sem mexer nos stacks (usada por back/forward)
+            function kofUiRouterNavigate(name, param) {
+                const root = kofUiRouterState.routes[name];
+                if (root === undefined || root === null) return false;
+                const prev = kofUiRouterState.current;
+                if (prev !== null && prev !== name) {
+                    const prevComp = kofUiRouterState.routes[prev];
+                    if (prevComp !== undefined) {
+                        kofUiComponentUnmount(prevComp);
+                        const prevEl = kofUiComponents.get(prevComp);
+                        if (prevEl && prevEl.el && prevEl.el.parentNode) {
+                            prevEl.el.parentNode.removeChild(prevEl.el);
+                        }
+                    }
+                }
+                kofUiRouterState.current = name;
+                kofUiRouterState.param = param;
+                const comp = kofUiComponents.get(root);
+                if (comp && kofUiRouterHost()) {
+                    if (comp.el && !comp.el.parentNode) kofUiRouterHost().appendChild(comp.el);
+                    kofUiComponentMount(root);
+                }
+                return true;
+            }
+
+            export function kofUiRouterForward() {
+                if (kofUiRouterState.forwardStack.length === 0) return 0;
+                const entry = kofUiRouterState.forwardStack.pop();
+                if (kofUiRouterState.current !== null) {
+                    kofUiRouterState.history.push(
+                            { name: kofUiRouterState.current, param: kofUiRouterState.param });
+                }
+                const ok = kofUiRouterNavigate(entry.name, entry.param);
+                return ok ? 1 : 0;
+            }
+
+            export function kofUiRouterParam() {
+                return kofUiRouterState.param == null ? "" : String(kofUiRouterState.param);
+            }
+
+            export function kofUiRouterCurrent() {
+                return kofUiRouterState.current == null ? "" : kofUiRouterState.current;
+            }
+
+            export function kofUiRouterDepth() {
+                return kofUiRouterState.history.length;
+            }
             """;
+
 
     private static final String IO_RUNTIME = """
             // KofJS platform runtime — filesystem/console operations for the

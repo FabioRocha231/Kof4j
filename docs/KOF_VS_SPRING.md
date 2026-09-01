@@ -1,7 +1,7 @@
 # Kof vs Spring — O Problema que Kof Resolve
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; `kof.http` JVM+JS; `kof.db` SQLite + MySQL scramble)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes; web stack completa: ws/sse/middleware/cache; `kof.http` JVM+JS com retry/circuit; `kof.db` SQLite nativo + MySQL WIP)
 
 ---
 
@@ -92,18 +92,21 @@ public class UserController {
 }
 ```
 
-**Solução Kof (PROPOSTA):**
-```kof
-route GET "/users/{id}" {
-    return users.find(id)
+**Solução Kof (implementada no JVM, Fase 1 — independência do Spring):**
+```kf
+var app = web.app()
+app.get("/users/:id") {
+    return User(param("id"))
 }
-
-route POST "/users" {
-    return users.create(input())
+app.post("/users") {
+    return json.encode(json.decode<User>(body()))
 }
+app.use { ... }               // middleware (auth, logging, ...)
+app.ws("/chat") { ... }       // WebSocket (30/08, RFC 6455)
+app.listen(8080)              // servidor próprio, sem servlet container
 ```
 
-**Por que é melhor:** Routing é parte da linguagem. Sem annotations, sem ResponseEntity, sem boilerplate.
+**Por que é melhor:** Routing é parte da linguagem. Sem annotations, sem ResponseEntity, sem boilerplate. Engine HTTP gerada no runtime do programa; cada conexão em virtual thread; WebSocket/SSE/middleware/`status`/`headerSet` nativos (30-31/08).
 
 ### 4. Validation
 
@@ -202,16 +205,14 @@ public class UserServiceTest {
 }
 ```
 
-**Solução Kof (PROPOSTA):**
-```kof
-test UserService {
-    test "find user by id" {
-        assert users.find(1) != null
-    }
+**Solução Kof (implementada):**
+```kf
+test "find user by id" {
+    assert users.find(1) != null
 }
 ```
 
-**Por que é melhor:** Testing é parte da linguagem. Sem annotations, sem framework.
+**Por que é melhor:** Testing é parte da linguagem. Sem annotations, sem framework. `test "nome" { }` nos 3 targets; runner sintetizado em compile-time (zero reflection); `kof test` reporta PASS/FAIL por nome + exit code.
 
 ---
 
@@ -229,12 +230,12 @@ test UserService {
 
 ## Prioridade
 
-| Feature | Prioridade | Justificativa |
-|---------|-----------|---------------|
-| DI | Alta | Elimina boilerplate massivo |
-| HTTP routing | Alta | Essencial para backends |
-| Configuration | Média | Melhora DX significativamente |
-| Validation | Média | Elimina beans validation |
-| Serialization | Média | Essencial para APIs |
-| Lifecycle | Baixa | Pode esperar |
-| Testing | Alta | Essencial para produtividade |
+| Feature | Prioridade | Justificativa | Status (0.2.6-beta, 31/08) |
+|---------|-----------|---------------|----------------------------|
+| DI | Alta | Elimina boilerplate massivo | planejado (proposta `service`) |
+| HTTP routing | Alta | Essencial para backends | ✅ `web.app()` JVM (rotas, middleware, JSON, ws/sse) |
+| Configuration | Média | Melhora DX significativamente | ✅ `kof.config` JVM/Native |
+| Validation | Média | Elimina beans validation | ✅ `kof.validation` 3 targets |
+| Serialization | Média | Essencial para APIs | ✅ `json.encode/decode` 3 targets |
+| Lifecycle | Baixa | Pode esperar | planejado (`application { onStart/onShutdown }`) |
+| Testing | Alta | Essencial para produtividade | ✅ `test "nome" { }` + `kof test` 3 targets |

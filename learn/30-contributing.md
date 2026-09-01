@@ -1,6 +1,6 @@
 # 30 — Contribuindo
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc**
 
 ## Estrutura do repositório
 
@@ -13,8 +13,8 @@ kof/
 ├── kof-runtime/        ← runtime nativo (free-list GC)
 ├── docs/               ← documentação interna
 ├── learn/              ← este material (intention->Kof->frontend->IR->backend->runtime)
-├── tests/              ← testes golden (658)
-├── pom.xml             ← build Maven (0.2.0-beta)
+├── tests/              ← testes golden (736)
+├── pom.xml             ← build Maven (0.2.6-beta)
 └── README.md
 ```
 
@@ -36,17 +36,24 @@ mvn test
 kof-compiler/src/main/java/dev/kof/compiler/
 ├── KofScript.java      ← KofScript eval/runFile/repl (let→Globals)
 ├── KofCCompiler.java   ← KofC C subset → ELF
+├── KofFormatter.java   ← kof fmt (parser real, idempotente)
 ├── Lexer.java          ← lexer hand-written
 ├── Parser.java         ← parser recursivo descendente
 ├── AstNodes.java       ← nós da AST
+├── SemanticAnalyzer.java ← análise semântica/type checking
 ├── Type.java           ← sistema de tipos
 ├── SymbolTable.java    ← tabela de símbolos
 ├── IRNodes.java        ← operações IR
+├── Optimizer.java      ← passes de otimização da IR (sempre ativos)
 ├── CompilerDriver.java ← orquestrador
 ├── Backend.java        ← interface de backend
 ├── Target.java         ← enum de targets
-├── JvmBackend.java     ← geração de bytecode JVM
-├── NativeBackend.java  ← geração de código nativo
+├── JvmBackend.java     ← geração de bytecode JVM (ASM, V21)
+├── JsBackend.java      ← geração de ES Modules (KofJS)
+├── NativeBackend.java  ← geração de assembly x86-64
+├── Kof*.java           ← namespaces stdlib (KofWeb, KofHttp, KofSecurity,
+│                        KofUi, KofDb, KofOrm, KofConfig, KofLog, KofCache...)
+├── JvmRuntime.java     ← runtime JVM (KofRuntime gerado)
 ├── Diagnostic.java     ← diagnósticos
 ├── DiagnosticCollector.java
 ├── CompilationResult.java
@@ -92,11 +99,12 @@ Se a feature precisa de novas instruções:
 
 ## Como alterar o type checker
 
-O type checker está em desenvolvimento. Quando estiver pronto:
+O type checker é o `SemanticAnalyzer` (roda entre o parser e o lowering;
+erros de tipo via `DiagnosticCollector`):
 
-1. Adicione regras em uma nova classe `TypeChecker.java`
-2. O type checker roda entre o parser e o lowering
-3. Erros de tipo são reportados via `DiagnosticCollector`
+1. Adicione as regras em `SemanticAnalyzer.java`
+2. Tipos e nullability (`String?`) vivem em `Type.java`
+3. Gaps de target emitem diagnóstico claro (`HTTP002`, `WEB002`, `SECN00x`) — nunca silenciosamente
 
 ## Como alterar o backend JVM
 
@@ -140,33 +148,32 @@ Sempre que uma feature mudar:
 
 ## Estado atual do projeto
 
-O projeto está em 0.2.0-beta (658 testes), funcional:
+O projeto está em 0.2.6-beta (736 testes), funcional:
 
 **Funciona hoje:**
-- Lexer completo com 55+ keywords (`String?`, `let`/`const` alias)
-- Parser recursivo descendente funcional (pattern `case String s`, `Point(x,y)`, `String?`)
-- Records, classes e interfaces + `map/filter/reduce` + `Map/Set`
-- Funções com `main()`, lambdas com capturas, `spawn`/`await`
-- CLI com build/run/script/c/test/bench/debug/version (`--target=jvm|native|native.risc|native.arm|js`)
-- Backend JVM via ASM — gera `.class` funcionais
-- Backend Nativo — ELF x86-64 (free-list GC) + riscv64/aarch64 placeholders + `kof_db` MySQL WIP
+- Frontend completo: lexer, parser, `SemanticAnalyzer` (type checking + nullability `String?`)
+- Records, classes e interfaces + generics (erasure) + `map/filter/reduce` + `Map/Set` + exceptions reais (JVM + Native unwinding)
+- Funções com `main()`, lambdas com capturas, `spawn`/`await` (JVM virtual threads, Native pthread — 31/08)
+- Pattern matching (`case String s`, `Point(x,y)`) em JVM/Native/JS
+- CLI com 18 comandos (build, run, serve, check, test, script, repl, c, fmt, config gen, bench, profile, inspect, debug, info, lsp, install, version) — `--target=jvm|native|native.risc|native.arm|js|android`
+- Backend JVM via ASM — bytecode V21, exception table, virtual threads
+- Backend Nativo — ELF x86-64 estável (free-list GC, spawn/pthread, FP XMM, JSON completo, SQLite) + riscv64/aarch64 placeholders
+- KofJS — ES Modules via GraalJS (`kof.http` via Java HttpClient interop)
 - KofScript (`let`→`KofScriptGlobals`, repl, --watch) + KofC (`kof c` nativo-only)
-- Testes golden baseados em shell (658)
+- stdlib: kof.io, kof.web, kof.http, kof.security, kof.db, kof.orm, kof.ui, kof.config, kof.log, kof.cache, kof.mq
+- Testes: 736 (golden 16/16, integração 9/9)
 
 **Em desenvolvimento:**
-- Type checking completo
-- Resolução de variáveis
-- Controle de fluxo
-- Expressões complexas
+- GC mark-sweep no Native (hoje free-list)
+- MySQL/MariaDB nativo completo (wire protocol: auth SHA-1 feito)
+- Android Fase 2+ (hoje Fase 1: projeto Maven + APK, host Activity em Kof)
+- Módulos multi-arquivo (semântica unificada residual)
+- Scheduler nativo (SCHED001)
 
 **Planejado:**
-- Generics
-- Exceptions
-- Pattern matching
-- Collections
-- Java interop
-- KofScript
-- KofJS
+- Query DSL tipada, connection pooling, ORM fora do JVM
+- Observabilidade (métricas, tracing)
+- Debugger nativo (DWARF) e JS (source maps)
 
 ## Próximo passo
 

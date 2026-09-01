@@ -3,30 +3,32 @@
 Fatos sobre a CLI oficial do Kof. Use para responder perguntas sobre
 comandos, tooling e editor support.
 
-**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests
+**Version:** 0.2.6-beta (31 Aug 2026) — 747 tests
 
-## Comandos oficiais
+## Comandos oficiais (18)
 
 | Comando | Comportamento |
 |---------|---------------|
-| `kof build <dir> [--target jvm\|native\|native.risc\|native.arm\|js] [--output <dir>] [--release]` | Compila |
-| `kof run <file.kf\|dir> [--target jvm\|native\|native.risc\|native.arm\|js] [args...]` | Compila e executa |
+| `kof build <dir> [--target jvm\|native\|native.risc\|native.arm\|js\|android] [--output <dir>] [--release] [--apk]` | Compila |
+| `kof run <file.kf\|dir> [--target jvm\|native\|native.risc\|native.arm\|js\|android] [args...]` | Compila e executa |
 | `kof serve <file.kf> [--port <port>] [--host <host>]` | Web server HTTP básico |
 | `kof check <file.kf\|dir>` | Type-check sem emitir código |
 | `kof test <file.kf\|dir> [--target jvm\|native\|js]` | Suíte estruturada `test "nome" { }`: PASS/FAIL por teste; arquivos sem testes rodam inteiros (PASS = exit 0) |
 | `kof script <file.ks> [--target jvm\|native\|js] [--watch] [--inspect] [args...]` | KofScript: JIT com top-level `let` → KofScriptGlobals, repl, cache 64 LRU |
 | `kof repl` | Alias para `kof script` interativo |
 | `kof c <file.c> [-o outDir]` | KofCcompiler: C subset nativo-only → ELF x86_64 |
-| `kof fmt <file.kf\|dir>` | Formatter (planned P5) |
-| `kof init <nome>` | Inicializa projeto (planned P5) |
+| `kof fmt <file.kf\|dir>` | Formatter via parser real (`KofFormatter`), idempotente |
+| `kof init <nome>` | Inicializa projeto (`main.kf` + `tests/`) |
+| `kof config gen <file.kf\|dir> [--target jvm\|native\|js] [--output <arquivo>]` | Gera template `kof.config` a partir das chaves `config.*` do código |
 | `kof info [--json]` | Relatório do ambiente (inclui native.risc/arm, kofc) |
 | `kof lsp` | Language Server (stdio, LSP 3.x) — hover/completion + .ks preprocess |
-| `kof version` | Versão da plataforma (0.2.0-beta) |
+| `kof version` | Versão da plataforma (0.2.6-beta) |
 | `kof bench [...]` | Benchmark harness com baselines |
 | `kof debug <file.kf>` | DAP MVP no JVM |
 
-Planejado: `kof fmt` ainda. Não existe comando `kof doctor` — o
-diagnóstico oficial é `kof info`.
+`kof fmt` (parser real, idempotente) e `kof config gen` são implementados
+(0.2.6-beta). Não existe comando `kof doctor` — o diagnóstico oficial é
+`kof info`.
 
 ## KofScript
 
@@ -74,7 +76,7 @@ kof c app.c
 
 ## `kof info`
 
-Informa: versão do Kof (0.2.0-beta), versão do compiler/runtime/stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
+Informa: versão do Kof (0.2.6-beta), versão do compiler/runtime/stdlib, tooling API level, target/arquitetura, SO, JVM embutida, versão da
 JVM, targets disponíveis (jvm, native, native.risc, native.arm, js, kofc) e localização da instalação.
 Legível por humanos; `--json` para formato estruturado.
 
@@ -82,5 +84,5 @@ Legível por humanos; `--json` para formato estruturado.
 
 - Preservar `kof build`, `kof install` (compatibilidade), `kof run`, `kof serve`, `kof script`, `kof c`.
 - Não criar `kof doctor` — o comando de diagnóstico é `kof info`.
-- Formatter e test runner serão consumidos do frontend oficial, sem
+- Formatter, config gen e test runner são consumidos do frontend oficial, sem
   implementações paralelas.

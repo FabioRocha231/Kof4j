@@ -68,7 +68,7 @@ futura).
 ## Regras
 
 1. **Codinome por release de destaque** — nem todo bump de patch ganha nome
-   (`0.2.5-beta` → `0.2.6-beta` não tem codinome; um corte marcante tipo
+   (`0.2.6-beta` → `0.2.6-beta` não tem codinome; um corte marcante tipo
    "Fase 6 Router + Fase 9 diffing fechadas" ganha).
 2. **`Alpha` e `Beta` já foram consumidos como fase**, não como codinome de
    release específica — a lista de codinomes efetivamente começa no
