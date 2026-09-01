@@ -69,7 +69,11 @@ final class JvmWebRuntime {
 
                 public enum RouteKind { HTTP, SSE, WS }
 
-                record WebDispatchResult(RouteKind kind, String response, WebRoute route) {}
+                record WebDispatchResult(RouteKind kind, String response, WebRoute route, byte[] body) {
+                    WebDispatchResult(RouteKind kind, String response, WebRoute route) {
+                        this(kind, response, route, null);
+                    }
+                }
 
                 public static final class WebRoute {
                     final String method;
@@ -351,11 +355,24 @@ final class JvmWebRuntime {
                     final String id;
                     final java.util.List<WebRoute> routes = new java.util.ArrayList<>();
                     final java.util.List<Object> middlewares = new java.util.ArrayList<>();
+                    final java.util.List<StaticDir> staticDirs = new java.util.ArrayList<>();
                     volatile java.net.ServerSocket serverSocket;
                     volatile boolean running;
 
                     WebApp(String id) {
                         this.id = id;
+                    }
+
+                    /** Diretório de arquivos estáticos servido sob um prefixo
+                     *  de URL (app.serveDir("/img", "assets")) — content-type
+                     *  derivado da extensão, sem o app colar base64 em String. */
+                    public static final class StaticDir {
+                        final String prefix;
+                        final java.nio.file.Path dir;
+                        StaticDir(String prefix, java.nio.file.Path dir) {
+                            this.prefix = prefix;
+                            this.dir = dir;
+                        }
                     }
                 }
 

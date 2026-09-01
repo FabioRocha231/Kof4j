@@ -1,9 +1,11 @@
 # KofAndroid — o target Android da Kof
 
-> **Status: Fase 1 implementada.** `kof build --target android` gera o
+> **Status: Fases 1 e 2 implementadas (31/08).** `kof build --target android` gera o
 > projeto Maven + APK pipeline com o host Activity escrito EM KOF
 > (`dev/kof/android-host.kf`) — zero Java, zero Kotlin, zero Gradle no
 > projeto gerado; dependências resolvidas pelo Kof (ExternalClasspath).
+> Fase 2: label/permissões derivados do programa, `--apk` standalone
+> (aapt2/d8/apksigner direto do CLI) e release signing `--keystore`.
 > A base de compilador que isso exige está funcional: herança de classes
 > externas, `super(...)`/`super.metodo()` com INVOKESPECIAL correto,
 > chamadas encadeadas em receivers externos, construtores e campos
@@ -179,11 +181,20 @@ class MainActivity extends Activity { ... }
 O label do app é a primeira `Window("...")` do programa. O ícone é
 vetorial (`res/drawable/ic_launcher_kof.xml`) — nenhum binário gerado.
 
-### Fase 2 — refinamentos
+### Fase 2 — implementada (31/08): refinamentos
 
-- ícone/label derivados do programa (hoje: label fixa "Kof App");
-- modo standalone sem Maven chamando aapt2/d8/apksigner direto do CLI;
-- release signing parametrizável (`--keystore`).
+- ✅ **label derivado do programa**: título da primeira `Window("...")` vira
+  `android:label` do manifesto (`AndroidProjectWriter.detectAppLabel`);
+- ✅ **permissões declarativas**: `@Permissions([...])` numa classe Kof vira
+  `<uses-permission>` no manifesto (`detectPermissions`);
+- ✅ **modo standalone sem Maven**: `kof build --target android --apk` chama
+  `aapt2 → d8 → zip → zipalign → apksigner` direto do CLI (build-tools 34 +
+  `ANDROID_HOME`);
+- ✅ **release signing parametrizável**: `--keystore <ks> [--storepass <p>]
+  [--keypass <p>] [--alias <a>]` — sem `--keystore`, mantém o debug keystore
+  local gerado na primeira vez;
+- ícone: default vetorial do Kof (`res/drawable/ic_launcher_kof.xml`);
+  override declarativo por metadado segue planejado (nenhum binário gerado).
 
 ## Restrições e gaps (diagnosticados em compile-time)
 

@@ -155,6 +155,7 @@ public final class Main {
         }
         List<String> javaArgs = new ArrayList<>();
         javaArgs.add(javaExecutable());
+        javaArgs.add("-Dkof.root=" + file.toAbsolutePath().normalize().getParent());
         javaArgs.add("-cp");
         javaArgs.add(tempDir.toString());
         javaArgs.add(className);
@@ -199,9 +200,9 @@ public final class Main {
     }
 
 private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk] [--classpath <jars>] [--keystore <ks> [--storepass <p>] [--keypass <p>] [--alias <a>]]");
         if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
-            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
+            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk] [--classpath <jars>] [--keystore <ks> [--storepass <p>] [--keypass <p>] [--alias <a>]]");
             return;
         } return; }
         Path src = Path.of(args[1]);
@@ -210,6 +211,10 @@ private static void build(String[] args) {
         boolean release = false;
         boolean apk = false;
         String classpath = null;
+        String keystore = null;
+        String storepass = null;
+        String keypass = null;
+        String keyalias = null;
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             if (arg.startsWith("--target=")) {
@@ -230,6 +235,22 @@ private static void build(String[] args) {
                 classpath = arg.substring("--classpath=".length());
             } else if (arg.equals("--classpath") && i + 1 < args.length) {
                 classpath = args[++i];
+            } else if (arg.startsWith("--keystore=")) {
+                keystore = arg.substring("--keystore=".length());
+            } else if (arg.equals("--keystore") && i + 1 < args.length) {
+                keystore = args[++i];
+            } else if (arg.startsWith("--storepass=")) {
+                storepass = arg.substring("--storepass=".length());
+            } else if (arg.equals("--storepass") && i + 1 < args.length) {
+                storepass = args[++i];
+            } else if (arg.startsWith("--keypass=")) {
+                keypass = arg.substring("--keypass=".length());
+            } else if (arg.equals("--keypass") && i + 1 < args.length) {
+                keypass = args[++i];
+            } else if (arg.startsWith("--alias=")) {
+                keyalias = arg.substring("--alias=".length());
+            } else if (arg.equals("--alias") && i + 1 < args.length) {
+                keyalias = args[++i];
             }
         }
         CompilerDriver driver = new CompilerDriver();
@@ -254,16 +275,18 @@ private static void build(String[] args) {
         if (!module.success()) System.exit(1);
         // target android + --apk: pipeline direto (sem Maven) usando o SDK
         if (target == Target.ANDROID && apk) {
-            runApkPipeline(out);
+            runApkPipeline(out, keystore, storepass, keypass, keyalias);
         }
     }
 
     /**
      * Pipeline APK standalone (#6/#7): chama os binários oficiais do SDK
-     * direto — d8 → aapt2 → zip → zipalign → apksigner. Debug keystore
-     * gerado localmente na primeira vez.
+     * direto — d8 → aapt2 → zip → zipalign → apksigner. Sem --keystore,
+     * gera debug keystore local na primeira vez; com --keystore, assina
+     * com o keystore do usuário (release signing parametrizável).
      */
-    private static void runApkPipeline(Path projDir) {
+    private static void runApkPipeline(Path projDir, String keystore, String storepass,
+                                       String keypass, String keyalias) {
         String androidHome = System.getenv("ANDROID_HOME");
         if (androidHome == null || androidHome.isBlank()) {
             System.err.println("--apk: ANDROID_HOME não definido; gere o projeto e use 'mvn verify'");
@@ -277,11 +300,12 @@ private static void build(String[] args) {
         }
         Path build = projDir.resolve("target");
         Path apkDir = build.resolve("apk");
+        boolean userKs = keystore != null && !keystore.isBlank();
         try {
             Files.createDirectories(apkDir);
-            // debug keystore local
-            Path ks = build.resolve("debug.keystore");
-            if (!Files.exists(ks)) {
+            // debug keystore local (só quando o usuário não passou --keystore)
+            Path ks = userKs ? Path.of(keystore) : build.resolve("debug.keystore");
+            if (!userKs && !Files.exists(ks)) {
                 run(List.of("keytool", "-genkeypair", "-keystore", ks.toString(),
                         "-alias", "androiddebugkey", "-storepass", "android",
                         "-keypass", "android", "-keyalg", "RSA", "-validity", "9999",
@@ -305,10 +329,20 @@ private static void build(String[] args) {
             run(List.of(bt.resolve("zipalign").toString(), "-f", "4",
                     apkDir.resolve("base.apk").toString(),
                     apkDir.resolve("aligned.apk").toString()), projDir);
-            run(List.of(bt.resolve("apksigner").toString(), "sign",
-                    "--ks", ks.toString(), "--ks-pass", "pass:android",
-                    "--out", build.resolve("kof-app.apk").toString(),
-                    apkDir.resolve("aligned.apk").toString()), projDir);
+            String sp = userKs && storepass != null ? storepass : "android";
+            String kp = userKs && keypass != null ? keypass : sp;
+            List<String> sign = new ArrayList<>(List.of(
+                    bt.resolve("apksigner").toString(), "sign",
+                    "--ks", ks.toString(), "--ks-pass", "pass:" + sp,
+                    "--key-pass", "pass:" + kp));
+            if (userKs && keyalias != null && !keyalias.isBlank()) {
+                sign.add("--ks-key-alias");
+                sign.add(keyalias);
+            }
+            sign.add("--out");
+            sign.add(build.resolve("kof-app.apk").toString());
+            sign.add(apkDir.resolve("aligned.apk").toString());
+            run(sign, projDir);
             System.out.println("APK gerado: " + build.resolve("kof-app.apk"));
         } catch (Exception e) {
             System.err.println("pipeline apk falhou: " + e.getMessage());
@@ -1102,7 +1136,9 @@ private static void build(String[] args) {
                     }
                     cleanup(tempDir);
                 }));
-                executeProcess(List.of(javaExecutable(), "-cp", tempDir.toString(), className), tempDir);
+                executeProcess(List.of(javaExecutable(),
+                        "-Dkof.root=" + file.toAbsolutePath().normalize().getParent(),
+                        "-cp", tempDir.toString(), className), tempDir);
                 return;
             }
             dev.kof.compiler.KofHttpServer server = new dev.kof.compiler.KofHttpServer(

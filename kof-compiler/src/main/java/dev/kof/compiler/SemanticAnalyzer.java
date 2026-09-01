@@ -805,6 +805,7 @@ class SemanticAnalyzer {
                         && !KofTime.isTimeNamespace(ie.name())
                         && !KofScheduler.isSchedulerNamespace(ie.name())
                         && !KofTetris.isTetrisNamespace(ie.name())
+                        && !KofMedia.isStaticNamespace(ie.name())
                         && !KofUi.isPalette(ie.name()) && !KofUi.isConstructor(ie.name())
                         && !KofUi.isRouterNamespace(ie.name())
                         && !"Theme".equals(ie.name())
@@ -1280,6 +1281,15 @@ class SemanticAnalyzer {
                         }
                         yield Type.UnknownType.UNKNOWN;
                     }
+                    if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofMedia.isStaticNamespace(rid.name())) {
+                        KofMedia.MediaCall mediaCall = KofMedia.staticCall(rid.name(), mc.methodName(),
+                                mc.arguments().size());
+                        if (mediaCall != null) {
+                            for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                            yield mediaCall.returnType();
+                        }
+                        yield Type.UnknownType.UNKNOWN;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofWeb.isWebNamespace(rid.name())
                             && "app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                         yield KofWeb.APP;
@@ -1304,6 +1314,15 @@ class SemanticAnalyzer {
                         KofWeb.WebCall sseCall = KofWeb.sseConnectionMethod(mc.methodName(), argTypes);
                         if (sseCall != null) yield sseCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (KofMedia.isImageData(recvType) || KofMedia.isAudio(recvType)) {
+                        KofMedia.MediaCall mediaCall = KofMedia.isImageData(recvType)
+                                ? KofMedia.imageDataMethod(mc.methodName(), mc.arguments().size())
+                                : KofMedia.audioMethod(mc.methodName(), mc.arguments().size());
+                        if (mediaCall != null) {
+                            for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                            yield mediaCall.returnType();
+                        }
                     }
                     if (recvType instanceof Type.FunctionType ft) {
                         List<Type> argTypes = new ArrayList<>();

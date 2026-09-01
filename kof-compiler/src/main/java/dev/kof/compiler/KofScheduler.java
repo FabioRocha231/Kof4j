@@ -19,7 +19,8 @@ final class KofScheduler {
     }
     record SchedulerCall(String function, Type returnType, List<Type> parameterTypes) {}
     static boolean supportedOn(Target target) {
-        return target == Target.JVM || target == Target.JS || target.isNative();
+        return target == Target.JVM || target == Target.ANDROID
+                || target == Target.JS || target.isNative();
     }
     static SchedulerCall staticCall(String name, List<Type> argTypes) {
         return switch (name) {

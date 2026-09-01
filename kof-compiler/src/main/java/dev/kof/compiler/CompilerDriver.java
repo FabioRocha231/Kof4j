@@ -1913,15 +1913,6 @@ private Target target = Target.JVM;
                     }
                     yield localIdx;
                 }
-                if (target == Target.ANDROID) {
-                    // ART não tem virtual threads (Java 21) — a semântica de
-                    // spawn não é realizável no alvo hoje
-                    if (currentDiagnostics != null) {
-                        currentDiagnostics.error("", 0, 0, 0,
-                                "spawn: not supported on the Android target yet (no virtual threads on ART)", "AND001");
-                    }
-                    yield localIdx;
-                }
                 LambdaExpr le;
                 if (ss.expression() instanceof LambdaExpr le0) {
                     le = le0;
@@ -2777,19 +2768,10 @@ private Target target = Target.JVM;
                     boolean argsOk = "cancelled".equals(mc.methodName())
                             ? mc.arguments().isEmpty() : !mc.arguments().isEmpty();
                     if (!argsOk) yield localIdx;
-                    // Android: ART não tem o Handle de pthread nativo — gap honesto.
                     // Native: cancel/cancelled/selectAny sobre o handle pthread
                     // (flags de cancel por TID + polling anyOf) — CONC001 fechado.
-                    if (target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    mc.methodName() + ": not supported on the android target yet (AND001)",
-                                    "AND001");
-                        }
-                        yield localIdx;
-                    }
+                    // Android: reusa o caminho JVM (CompletableFuture + platform
+                    // threads no ART) — AND001 fechado 31/08.
                     if ("selectAny".equals(mc.methodName())) {
                         Type firstH = inferExprType(mc.arguments().get(0), locals);
                         Type elemT = new Type.ClassType("kof.concurrent", "Handle",
@@ -2829,19 +2811,9 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && ("poll".equals(mc.methodName()) || "done".equals(mc.methodName()))
                         && mc.arguments().size() == 1
                         && findLocalVar(mc.methodName(), locals) == null) {
-                    // Android: ART não tem o Handle de pthread nativo — gap honesto.
                     // Native: done/poll são leituras não-bloqueantes do flag do
                     // handle (pthread já existe via spawn) — CONC001 fechado p/ estes.
-                    if (target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    mc.methodName() + ": not supported on the android target yet (AND001)",
-                                    "AND001");
-                        }
-                        yield localIdx;
-                    }
+                    // Android: reusa o caminho JVM (Future.isDone/getNow).
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type hE = inferExprType(mc.arguments().get(0), locals);
                     Type rE = Type.UnknownType.UNKNOWN;
@@ -2861,16 +2833,7 @@ private Target target = Target.JVM;
                         && findLocalVar("awaitTimeout", locals) == null) {
                     // awaitTimeout(r, timeoutMs): valor se a task terminar no prazo;
                     // senão lança exceção (capturável via try/catch). G8/CONC residual.
-                    if (target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "awaitTimeout: not supported on the android target yet (AND001)",
-                                    "AND001");
-                        }
-                        yield localIdx;
-                    }
+                    // Android: Future.get(timeout) existe no ART — AND001 fechado.
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type hT = inferExprType(mc.arguments().get(0), locals);
                     Type resT = Type.UnknownType.UNKNOWN;
@@ -2894,16 +2857,6 @@ private Target target = Target.JVM;
                             ? Type.UnknownType.UNKNOWN
                             : toType(mc.typeArguments().get(0));
                     Type chanT = new Type.ClassType("kof.concurrent", "Channel", List.of(elemT));
-                    if (target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "channel: not supported on the android target yet (AND001)",
-                                    "AND001");
-                        }
-                        yield localIdx;
-                    }
                     ops.add(new KofCall(chanT, "kof_channel_new", List.of(),
                             chanT, KofCallKind.FUNCTION));
                     yield localIdx;
@@ -2960,15 +2913,6 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
-                    if (target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "await: not supported on the android target yet (AND001)", "AND001");
-                        }
-                        yield localIdx;
-                    }
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type hT = inferExprType(mc.arguments().get(0), locals);
                     Type resT = Type.UnknownType.UNKNOWN;
@@ -3870,6 +3814,30 @@ private Target target = Target.JVM;
                                 ioCall.function(), ioCall.parameterTypes(), ioCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofMedia.isStaticNamespace(rid.name())) {
+                    KofMedia.MediaCall mediaCall = KofMedia.staticCall(rid.name(), mc.methodName(), mc.arguments().size());
+                    if (mediaCall != null) {
+                        if (target != Target.JVM && target != Target.ANDROID) {
+                            String code = KofMedia.gapCode(mediaCall.function());
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName() + ": not available on the "
+                                                + target + " target yet (" + code + ")",
+                                        code);
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                mediaCall.function(), mediaCall.parameterTypes(),
+                                mediaCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid2 && KofUi.isPalette(rid2.name())) {
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
@@ -4052,6 +4020,23 @@ private Target target = Target.JVM;
                             }
                             ops.add(new KofCall(KofWeb.APP, webCall.function(), webParams,
                                     webCall.returnType(), KofCallKind.FUNCTION));
+                        }
+                        yield localIdx;
+                    }
+                    if (KofMedia.isImageData(recvType) || KofMedia.isAudio(recvType)) {
+                        KofMedia.MediaCall mediaCall = KofMedia.isImageData(recvType)
+                                ? KofMedia.imageDataMethod(mc.methodName(), mc.arguments().size())
+                                : KofMedia.audioMethod(mc.methodName(), mc.arguments().size());
+                        if (mediaCall != null) {
+                            List<Type> mediaParams = new ArrayList<>();
+                            mediaParams.add(Type.PrimitiveType.INT);      // handle (receiver)
+                            for (ExpressionNode arg : mc.arguments()) {
+                                mediaParams.add(inferExprType(arg, locals));
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
+                            ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                    mediaCall.function(), mediaParams,
+                                    mediaCall.returnType(), KofCallKind.FUNCTION));
                         }
                         yield localIdx;
                     }
@@ -5546,6 +5531,12 @@ private Target target = Target.JVM;
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) yield webCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (KofMedia.isImageData(recvType) || KofMedia.isAudio(recvType)) {
+                        KofMedia.MediaCall mediaCall = KofMedia.isImageData(recvType)
+                                ? KofMedia.imageDataMethod(mc.methodName(), mc.arguments().size())
+                                : KofMedia.audioMethod(mc.methodName(), mc.arguments().size());
+                        if (mediaCall != null) yield mediaCall.returnType();
                     }
                     if (KofIo.isIoType(recvType)) {
                         KofIo.IoCall ioCall = KofIo.instanceMethod(recvType, mc.methodName(), mc.arguments().size());

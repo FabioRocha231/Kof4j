@@ -3832,8 +3832,13 @@ class JsBackend implements Backend {
             }
 
             export function kofSpawnResult(value) {
-                // JS single-threaded: o corpo já rodou inline; o handle memoiza
-                return { get: function () { return value; } };
+                // JS single-threaded: o corpo roda agora (sequencial). O alvo JS
+                // já inlina o corpo e passa o valor pronto; o alvo Android passa
+                // a tarefa (new Lambda0() com invoke) — executa o corpo aqui.
+                const result = (value != null && typeof value.invoke === "function")
+                    ? value.invoke()
+                    : value;
+                return { get: function () { return result; } };
             }
 
             export function kofPoll(handle) {
