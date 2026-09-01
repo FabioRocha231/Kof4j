@@ -27,8 +27,10 @@ Princípio mantido: *intenção → Kof → stdlib → runtime/backend → plata
 | `observability.counter(name)` | `(String) -> Int` | novo valor | Incrementa contador nomeado em 1 |
 | `observability.increment(name, delta)` | `(String, Int) -> Int` | novo valor | Incrementa contador em `delta` |
 | `observability.gauge(name, value)` | `(String, Int) -> Void` | — | Define gauge nomeado |
-| `observability.requestId()` | `() -> String` | UUID/hex | Gera ID de requisição (16 bytes aleatórios → 32 hex) |
-| `observability.correlationId()` | `() -> String` | UUID/hex | Alias de `requestId()` — para propagação entre serviços |
+ | `observability.requestId()` | `() -> String` | UUID/hex | Gera ID de requisição (16 bytes aleatórios → 32 hex) |
+ | `observability.correlationId()` | `() -> String` | UUID/hex | Alias de `requestId()` — para propagação entre serviços |
+ | `observability.traceId()` | `() -> String` | 32 hex | ID de trace (W3C Trace Context) — 16 bytes aleatórios |
+ | `observability.spanId()` | `() -> String` | 16 hex | ID de span (W3C Trace Context) — 8 bytes aleatórios |
 
 Todas as chamadas são **disponíveis nos três targets** (JVM/Native/JS) — `supportedOn` retorna `true` sempre; não há `OBS001` em uso normal. Gaps futuros (ex.: export Prometheus) reportarão `OBS00x`.
 
@@ -51,6 +53,11 @@ main() {
     val req = observability.requestId()      // "a3f1c9e2b4d64a8f9c0e1d2f3a4b5c6d"
     val corr = observability.correlationId() // outro ID, propagável em header
     println(req + " " + corr)
+
+    // tracing (W3C Trace Context) — IDs puros, sem store, 3 targets
+    val trace = observability.traceId() // 32 hex
+    val span  = observability.spanId()  // 16 hex
+    println(trace + "-" + span) // ex.: header traceparent: 00-<trace>-<span>-01
 }
 ```
 

@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 760 testes 747 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
+mvn test             → 768 testes 751 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -18,7 +18,7 @@ kof test             → PASS (suíte estruturada `test "nome" { }` nos 3 target
 kof bench            → PASS (harness: compile, run, validate, métricas, baseline)
 kof debug            → PASS (DAP MVP no target JVM)
 kof info             → PASS
-kof lsp              → PASS (hover/completion + diagnostics reais)
+kof lsp              → PASS (hover/completion/references/rename + diagnostics reais)
 kof install          → PASS
 kof c                → PASS (KofCcompiler nativo-only C subset → ELF x86_64 via kof_c)
 kof script           → PASS (KofScript top-level let → KofScriptGlobals, repl, --watch)
@@ -154,6 +154,9 @@ main() {
   schema); `generated`, `unique`, PK não-numérica.
 - Backends SQL: H2/SQLite/MySQL/MariaDB/PostgreSQL via JDBC (JVM).
 - CRUD completo + consultas: `saveAll` (batch), `where` com operadores
+- **Tipagem de coluna (P3-10)**: `where`/`where_op`/`count` com coluna literal
+  que não é campo da entidade → `ORM003` em compile-time (JVM); coluna
+  dinâmica (variável) segue liberada
   (`"="`, `">"`, `"<"`, `">="`, `"<="`, `"!="`...), `count` com filtro,
   `page` (limit/offset) e `deleteAll`.
 - **MongoDB**: `save/find/all/where/delete/count` sobre o driver oficial via
@@ -174,8 +177,9 @@ main() {
   `version.properties`; `scripts/bump-version.sh`.
 - CLI: `build, run, serve, check, test, script, repl, c, fmt, config gen,
   bench, profile, inspect, debug, info, lsp, install, version, init`.
-- `kof lsp` — Language Server via stdio (initialize, didOpen/didChange/
-  didClose → publishDiagnostics do frontend real).
+ - `kof lsp` — Language Server via stdio (initialize, didOpen/didChange/
+   didClose → publishDiagnostics do frontend real, hover, completion,
+   **references + rename** — word-boundary, single-file; `LspServerTest` 4/4).
 - Launchers `bin/kof` (Unix) e `bin/kof.bat` (Windows) com JDK embutido
   (Temurin 21, Tooling API Level 21).
 - `scripts/package.sh` — layout oficial de distribuição, `--jdk` para JDK
@@ -447,7 +451,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (760 declarados = 747 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 01/09 (grep @Test)
+## Testes (768 declarados = 751 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli  medição real 01/09 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -457,7 +461,7 @@ main() { /* ignorado pelo kof test */ }
 | JvmE2ETest | 29 | execução real de bytecode JVM |
 | KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais |
 | OptimizerTest | 21 | passes de otimização da IR |
-| KofOrmE2ETest | 16 | kof.orm: entity, CRUD, where, migrate, unique, MongoDB |
+| KofOrmE2ETest | 18 | kof.orm: entity, CRUD, where (+ORM003 validação de coluna tipada, P3-10), migrate, unique, MongoDB (3 skips condicional) |
 | IoE2ETest | 15 | kof.io multiplatform |
 | ComponentCoreE2ETest | 14 | kof.ui Component: view/onMount/onDispose |
 | CoreRegressionE2ETest | 14 | regressões de uso real (BOM, toInt, ARITH001...) |
@@ -491,7 +495,7 @@ main() { /* ignorado pelo kof test */ }
 | KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
 | KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/JS) |
 | KofWebTlsTest | 5 | TLS/HTTPS: listenSecure + kof.http sobre TLS |
-| PackagesE2ETest | 5 | pacotes/módulos multi-arquivo (import a.b.C) |
+ | PackagesE2ETest | 6 | pacotes/módulos multi-arquivo (import a.b.C + moduleRoot do LCA, P1-4) |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | KofEnumSwitchTest | 4 | switch exaustivo sobre enum + SEM031 |
 | KofEnumTest | 4 | enum: values/valueOf/name, SEM030, mapeamento JVM |
@@ -505,7 +509,7 @@ main() { /* ignorado pelo kof test */ }
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
 | KofMapSetTest | 3 | Map/Set 3 targets (asm próprio no Native) |
-| KofObservabilityTest | 4 | health/metrics/histogram/requestId (JVM/Native/JS; Native histogram = gap OBS002) |
+ | KofObservabilityTest | 5 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS; Native histogram = gap OBS002) |
 | KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
 | KofValidationTest | 3 | 13 predicados de validação (3 targets) |
 | TetrisEasterEggTest | 3 | registro easter egg oculto |
@@ -518,10 +522,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
-| **Total kof-compiler** | **747** | |
-| kof-script | 8 | KofScriptGlobals / repl / --watch |
-| kof-c-compiler | 5 | KofC C subset → ELF |
-| **Total** | **760** (+1 skip condicional; conferir total no CI a cada release) | |
+ | **Total kof-compiler** | **751** | |
+ | kof-script | 8 | KofScriptGlobals / repl / --watch |
+ | kof-c-compiler | 5 | KofC C subset → ELF |
+ | kof-cli | 4 | LSP references + rename (mock) |
+ | **Total** | **768** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -542,7 +547,7 @@ plataforma vazando para a linguagem.
 | lambdas com capturas | ✅ (sem testes dedicados ainda) |
 | args CLI (`main(args)`) | ✅ |
 | default parameters | ✅ |
-| módulos multi-arquivo | planejado |
+| módulos multi-arquivo | ✅ (resolução unificada: import a.b.C + moduleRoot do LCA) |
 | `Process` API | ✅ (`kof.process` + `kof_process_run`) |
 
 Ver as guidelines completas no todo da sessão.
@@ -611,7 +616,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 1. ✅ `Map/Set` + `enum` + `await` + `List.map/filter/reduce` (JVM/Native/JS)
 2. ✅ `Pattern matching` — `switch (x) { case String s: ... }` + `case Point(x,y)` `JVM/Native/JS` `30` `10/10`
 3. ✅ `Nullability` `String?`/`Int?` + `?`-check `Type.NullableType` `jvm/native/js null/hello` (27/08 básica)
-4. `Módulos multi-arquivo` — `kof build <dir>` com resolução unificada (`import a.b.C` file fix done, semântica unificada residual)
+4. ✅ `Módulos multi-arquivo` — `kof build <dir>` com resolução unificada: `import a.b.C` file fix done + `moduleRoot` derivado do **menor ancestral comum** das fontes (3-arg `compileSources` resolve imports cross-diretório sem raiz explícita; `PackagesE2ETest` 6/6)
 
 **P2 — Web completa (próxima listinha):**
 5. ✅ Resposta rica `status(201, body)`/`headerSet("X","y")` `JVM` `201 Created 202 Accepted` `X-Custom/X-Test` `KofWebE2ETest 9/9` (27/08) `Native WEB002` `JS stub`
@@ -621,17 +626,17 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 9. ✅ `kof.http` `timeout`/`retry`/`circuit breaker` — ✅ JVM+JS (30/08; retry repete em exceção+HTTP 5xx, circuito abre após N falhas por 30s com fail-fast, `circuit(0)` recupera; `KofHttpResilienceE2ETest 3/3` JVM+JS) — falta `HTTP/2`
 
 **P3 — Data produção:**
-10. Query DSL tipada `User.query { where age > 18 }`
+10. ✅ (parcial) Query DSL tipada — validação **tipada** de coluna em `orm.where<T>(db,"col",v)`/`where_op`/`count`: literal não-campo → `ORM003` em compile-time (JVM; colunas dinâmicas liberadas; `KofOrmE2ETest` 18). Restante: sintaxe lambda `User.query { where age > 18 }` (parser) — pendente
 11. Connection pooling + `kof.db`/`kof.orm` fora do JVM (JS via WASM, Native ORM sobre SQLite)
 12. ~~MySQL/MariaDB nativo (handshake+query)~~ — ✅ 31/08 (wire protocol: handshake+scramble+auth-switch+COM_QUERY+resultset); restam **prepared statements** + binds `?` no MySQL nativo
 
  **P4 — Observabilidade:**
  13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS; Native `OBS002`). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
- 14. ✅ Health `app.health("/health")` + tracing/OpenTelemetry — ✅ 01/09 `app.health(path)` (built-in, responde `{"status":"UP","ready":true,"alive":true}` **antes dos middlewares** — sonda de load balancer não passa por auth); `observability.health()/readiness()/liveness()` (3 targets). **tracing/OpenTelemetry** pendente
+  14. ✅ Health `app.health("/health")` + tracing leve — ✅ 01/09 `app.health(path)` (built-in, responde `{"status":"UP","ready":true,"alive":true}` **antes dos middlewares** — sonda de load balancer não passa por auth); `observability.health()/readiness()/liveness()` (3 targets). **Tracing W3C**: `observability.traceId()` (32 hex) + `observability.spanId()` (16 hex) — IDs puros, sem store, **3 targets** (JVM `SecureRandom`, JS `Math.random`, Native `getrandom`); `KofObservabilityTest.tracingJvmNativeJs`. **OpenTelemetry** (spans com timing/propagação) pendente
 
  **P5 — DX:**
  15. ✅ `kof fmt` (parser real) + `kof init` + `REPL` — ✅ todos implementados (`Fmt.java`, `init` em `Main.java:694`, `repl` em `Main.java:839`); `fmt` idempotente
- 16. LSP hover/completion/rename + Debugger Native DWARF/JS source maps + VS Code extension — LSP hover/completion ✅; **DWARF/JS source maps + VS Code** pendentes
+  16. ✅ LSP hover/completion/**references**/**rename** + Debugger Native DWARF/JS source maps + VS Code extension — LSP hover/completion ✅ + `textDocument/references` + `textDocument/rename` (word-boundary, single-file; `LspServerTest` 4/4). **DWARF/JS source maps + VS Code** pendentes
 
 ## Roadmap — Estado por Fase (31/08)
 
