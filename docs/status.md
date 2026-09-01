@@ -451,7 +451,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (769 declarados = 752 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli  medição real 01/09 (grep @Test)
+## Testes (769 = 752 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
