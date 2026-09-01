@@ -282,6 +282,11 @@ class KofWebWsE2ETest {
         return Arrays.copyOfRange(frame, offset, offset + (int) len);
     }
 
+private static String closeReason(byte[] payload) {
+        if (payload.length <= 2) return "";
+        return new String(payload, 2, payload.length - 2, StandardCharsets.UTF_8);
+    }
+
     private static int closeCode(byte[] payload) {
         return ((payload[0] & 0xFF) << 8) | (payload[1] & 0xFF);
     }
@@ -516,6 +521,74 @@ class KofWebWsE2ETest {
             byte[] serverFrame = readServerFrame(response.socket.getInputStream());
             assertEquals(0x88, serverFrame[0] & 0xFF);
             assertEquals(1002, closeCode(framePayload(serverFrame)));
+        }
+    }
+
+    @Test
+    void ws_close_one_byte_payload_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x88, 0x81, new byte[]{0x03});
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_close_invalid_code_closes_1002(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            // Code 1005 is reserved and MUST NOT appear on the wire.
+            byte[] close = {0x03, (byte) 0xED};
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x88, 0x82, close);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1002, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_close_invalid_utf8_reason_closes_1007(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            // Code 1000 + reason "0xC3 0x28" (invalid UTF-8 sequence).
+            byte[] close = {0x03, (byte) 0xE8, (byte) 0xC3, 0x28};
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x88, 0x84, close);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            assertEquals(0x88, frame[0] & 0xFF);
+            assertEquals(1007, closeCode(framePayload(frame)));
+        }
+    }
+
+    @Test
+    void ws_close_echoes_code_and_reason(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            byte[] reason = "bye".getBytes(StandardCharsets.UTF_8);
+            byte[] close = new byte[2 + reason.length];
+            close[0] = 0x03; close[1] = (byte) 0xE8; // 1000
+            System.arraycopy(reason, 0, close, 2, reason.length);
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x88, (byte) (0x80 | close.length), close);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            byte[] payload = framePayload(frame);
+            assertEquals(1000, closeCode(payload));
+            assertEquals("bye", closeReason(payload));
+        }
+    }
+
+    @Test
+    void ws_close_zero_byte_payload_acknowledged(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        try (WsResponse response = handshake(port, VALID_HEADERS)) {
+            // Empty CLOSE payload is valid per RFC 6455.
+            writeRawMaskedFrame(response.socket.getOutputStream(), 0x88, 0x80, new byte[0]);
+            byte[] frame = readServerFrame(response.socket.getInputStream());
+            byte[] payload = framePayload(frame);
+            assertEquals(0x88, frame[0] & 0xFF);
+            // Server echoes 1000 (default) with no reason.
+            assertEquals(1000, closeCode(payload));
+            assertEquals("", closeReason(payload));
         }
     }
 }

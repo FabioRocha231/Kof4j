@@ -704,7 +704,40 @@ static boolean hasRuntimeFn(String methodName) {
                             // 5) React
                             if (op == 0x9 /* PING */) { conn.pong(payload); }
                             else if (op == 0xA /* PONG */) { /* ignore */ }
-                            else if (op == 0x8 /* CLOSE */) { conn.close(1000, ""); break frameLoop; }
+                            else if (op == 0x8 /* CLOSE */) {
+                                // RFC 6455 §5.5.1: payload is 0 bytes, OR >=2 bytes
+                                // (2-byte status code + optional UTF-8 reason).
+                                // 1-byte payload is a protocol error.
+                                if (payload.length == 1) {
+                                    conn.close(WsFrame.CLOSE_PROTOCOL_ERROR, "invalid close payload");
+                                    break frameLoop;
+                                }
+                                int peerCode = 1000;
+                                String peerReason = "";
+                                if (payload.length >= 2) {
+                                    peerCode = ((payload[0] & 0xFF) << 8) | (payload[1] & 0xFF);
+                                    if (!WsConnection.isValidCloseCode(peerCode)) {
+                                        conn.close(WsFrame.CLOSE_PROTOCOL_ERROR, "invalid close code");
+                                        break frameLoop;
+                                    }
+                                    if (payload.length > 2) {
+                                        // Strict UTF-8 decode of reason (§5.5.1 + §5.6).
+                                        java.nio.charset.CharsetDecoder dec =
+                                                java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                                                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                                                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+                                        try {
+                                            peerReason = dec.decode(java.nio.ByteBuffer.wrap(payload, 2, payload.length - 2)).toString();
+                                        } catch (java.nio.charset.CharacterCodingException bad) {
+                                            conn.close(WsFrame.CLOSE_INVALID_PAYLOAD, "invalid UTF-8 in close reason");
+                                            break frameLoop;
+                                        }
+                                    }
+                                }
+                                // Echo the peer's code+reason back, then close the connection.
+                                conn.close(peerCode, peerReason);
+                                break frameLoop;
+                            }
                             // TEXT/BINARY/CONT: discard for now (PR5)
                         }
                     } catch (java.net.SocketTimeoutException idle) {

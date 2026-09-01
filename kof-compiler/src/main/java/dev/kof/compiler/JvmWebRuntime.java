@@ -316,14 +316,32 @@ final class JvmWebRuntime {
                         send(WsFrame.encode(0xA, payload, true));
                     }
                     public void close(int code, String reason) {
-                        byte[] body = new byte[2 + (reason == null ? 0 : reason.length())];
+                        byte[] rb = reason == null
+                                ? new byte[0]
+                                : reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        // RFC 6455 §5.5: control payload <= 125; CLOSE has 2 bytes
+                        // for the status code, so the reason UTF-8 must fit in
+                        // 123 bytes to stay within the control frame budget.
+                        if (rb.length > 123) {
+                            throw new IllegalArgumentException(
+                                    "close reason too large: " + rb.length + " bytes (max 123)");
+                        }
+                        byte[] body = new byte[2 + rb.length];
                         body[0] = (byte) ((code >> 8) & 0xFF);
                         body[1] = (byte) (code & 0xFF);
-                        if (reason != null) {
-                            byte[] rb = reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                            System.arraycopy(rb, 0, body, 2, rb.length);
-                        }
+                        System.arraycopy(rb, 0, body, 2, rb.length);
                         send(WsFrame.encode(0x8, body, true));
+                    }
+
+                    // RFC 6455 §7.4.1: which close codes may appear on the wire.
+                    // 1004/1005/1006/1015 are reserved and MUST NOT appear in a
+                    // close frame payload; 0 and codes > 4999 are invalid.
+                    static boolean isValidCloseCode(int code) {
+                        if (code < 1000 || code > 4999) return false;
+                        if (code == 1004 || code == 1005 || code == 1006 || code == 1015) return false;
+                        // 1016-2999 reserved for future use by RFC.
+                        if (code >= 1016 && code <= 2999) return false;
+                        return true;
                     }
 
                     private void send(byte[] frame) {
