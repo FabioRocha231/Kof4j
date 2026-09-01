@@ -757,37 +757,11 @@ final class NativeRuntime {
             .globl kof_spawn
             .type kof_spawn, @function
             kof_spawn:
-                # rdi = task (stmt) -> handle fire-and-forget (nao registrado)
-                # entry rsp≡8; 2 push -> ≡8; subq 24 -> ≡8+24? nao: 16k+8-16-24 = 16k-32 ≡ 0 no call ✓
-                pushq %rbx
-                pushq %r12
-                subq $24, %rsp
-                movq %rdi, %r12
-                movl $32, %edi
-                call kof_alloc
-                movq %rax, %rbx
-                movl $2, 0(%rbx)
-                movl $0, 4(%rbx)
-                movq $0, 8(%rbx)
-                movq $0, 16(%rbx)
-                movl $16, %edi
-                call kof_alloc
-                movq %r12, 0(%rax)
-                movq %rbx, 8(%rax)
-                leaq 8(%rbx), %rdi              # &handle->thread
-                xorl %esi, %esi                 # attr = NULL
-                leaq kof_spawn_trampoline(%rip), %rdx
-                movq %rax, %rcx                 # arg = bloco
-                call pthread_create
-                testl %eax, %eax
-                jz .Lkof_spawn_stmt_ok
-                movq %r12, %rdi
-                call kof_spawn_trampoline
-            .Lkof_spawn_stmt_ok:
-                addq $24, %rsp
-                popq %r12
-                popq %rbx
-                ret
+                # rdi = task (stmt) -> handle REGISTRADO: o fim do main chama
+                # kof_spawn_join_all e aguarda TODAS as tasks — tarefa spawnada
+                # nunca fica órfã (senão o processo sai antes do worker rodar).
+                movl $1, %esi
+                jmp kof_spawn_result
 
             .globl kof_spawn_result
             .type kof_spawn_result, @function

@@ -577,12 +577,22 @@ public class NativeBackend implements Backend {
             case KofBinary kb -> emitBinary(sb, kb);
             case KofUnary ku -> emitUnary(sb, ku);
             case KofReturn kr -> {
+                if (usesConcurrency && "main".equals(currentMethod.name())) {
+                    // join implícito no fim do main — nenhuma tarefa órfã.
+                    // (main sempre termina em um return explícito/implícito,
+                    //  então o join vai no epílogo do return, não no bloco
+                    //  !endsWithReturn — que nunca roda para o main.)
+                    sb.append("    call kof_spawn_join_all\n");
+                }
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rbp, %rsp\n");
                 sb.append("    popq %rbp\n");
                 sb.append("    ret\n");
             }
             case KofReturnVoid rv -> {
+                if (usesConcurrency && "main".equals(currentMethod.name())) {
+                    sb.append("    call kof_spawn_join_all\n");
+                }
                 sb.append("    movq %rbp, %rsp\n");
                 sb.append("    popq %rbp\n");
                 sb.append("    ret\n");

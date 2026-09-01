@@ -323,11 +323,12 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_validation_inRange" -> "(III)Z";
             case "kof_validation_min", "kof_validation_max" -> "(II)Z";
             // ── kof.observability (G5) ────────────────────────────────
-            case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "()Ljava/lang/String;";
+            case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id",
+                    "kof_observability_metrics" -> "()Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness" -> "()Z";
             case "kof_observability_counter" -> "(Ljava/lang/String;)I";
             case "kof_observability_increment" -> "(Ljava/lang/String;I)I";
-            case "kof_observability_gauge" -> "(Ljava/lang/String;I)V";
+            case "kof_observability_gauge", "kof_observability_histogram" -> "(Ljava/lang/String;I)V";
             // ── kof.security G9 (rate limiting / sessions / API keys) ──
             case "kof_sec_rate_limit" -> "(Ljava/lang/String;II)Z";
             case "kof_sec_session_create" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -455,7 +456,8 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_validation_matches", "kof_validation_inRange", "kof_validation_min",
                     "kof_validation_max" -> "I";
             // ── kof.observability (G5) ────────────────────────────────
-            case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "Ljava/lang/String;";
+            case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id",
+                    "kof_observability_metrics" -> "Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
             case "kof_observability_gauge" -> "V";
             // ── kof.media ─────────────────────────────────────────────
