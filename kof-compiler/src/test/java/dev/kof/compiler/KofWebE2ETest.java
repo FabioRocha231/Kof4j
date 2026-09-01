@@ -145,9 +145,6 @@ class KofWebE2ETest {
     }
 
     @Test
-    void helloRoute(@TempDir Path tempDir) throws IOException {
-
-    @Test
     void pathParamAndQuery(@TempDir Path tempDir) throws IOException {
         int port = startServer(tempDir);
         String r = request(port, "GET /users/42?name=mel HTTP/1.1\r\nHost: x\r\nX-Auth: secret\r\n\r\n");

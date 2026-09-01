@@ -470,7 +470,7 @@ main() { /* ignorado pelo kof test */ }
 | BackendParityTest | 10 | paridade JVM/Native/JS |
 | KofLogE2ETest | 10 | kof.log JVM: níveis, stderr, off, JSON, correlation |
 | KofPatternMatchingTest | 10 | switch case String s / Point(x,y) 3 targets |
-| KofWebE2ETest | 10 | stack web nativa (web.app, rotas, JSON, middleware) |
+| KofWebE2ETest | 10 | stack web nativa (web.app, rotas, JSON, middleware, `app.health` bypass) |
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
 | KofDbE2ETest | 9 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
@@ -505,7 +505,7 @@ main() { /* ignorado pelo kof test */ }
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
 | KofMapSetTest | 3 | Map/Set 3 targets (asm próprio no Native) |
-| KofObservabilityTest | 3 | health/metrics/requestId (JVM/Native/JS) |
+| KofObservabilityTest | 4 | health/metrics/histogram/requestId (JVM/Native/JS; Native histogram = gap OBS002) |
 | KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
 | KofValidationTest | 3 | 13 predicados de validação (3 targets) |
 | TetrisEasterEggTest | 3 | registro easter egg oculto |
@@ -627,7 +627,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
  **P4 — Observabilidade:**
  13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS; Native `OBS002`). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
- 14. Health `app.health("/health")` + tracing/OpenTelemetry — `observability.health()/readiness()/liveness()` já existem (3 targets); **tracing/OpenTelemetry** pendente
+ 14. ✅ Health `app.health("/health")` + tracing/OpenTelemetry — ✅ 01/09 `app.health(path)` (built-in, responde `{"status":"UP","ready":true,"alive":true}` **antes dos middlewares** — sonda de load balancer não passa por auth); `observability.health()/readiness()/liveness()` (3 targets). **tracing/OpenTelemetry** pendente
 
  **P5 — DX:**
  15. ✅ `kof fmt` (parser real) + `kof init` + `REPL` — ✅ todos implementados (`Fmt.java`, `init` em `Main.java:694`, `repl` em `Main.java:839`); `fmt` idempotente

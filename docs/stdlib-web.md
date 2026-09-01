@@ -141,6 +141,25 @@ Caminhos relativos do app resolvem contra a raiz do projeto
 (`-Dkof.root`, definido pelo CLI `run`/`serve`). **JVM-only** — Native/JS
 reportam `WEB005` (gap documentado).
 
+### Health (`app.health`) (01/09)
+
+| Chamada | Descrição |
+|---------|-----------|
+| `app.health(path)` | Registra um endpoint de saúde built-in (ex.: `/health`) |
+
+`app.health("/health")` responde com o estado do app em JSON
+(`{"status":"UP","ready":true,"alive":true}` — valor de
+`observability.health()/readiness()/liveness()`) **antes dos middlewares**:
+sondas de load balancer/health-check não passam por auth/middleware. O app
+também pode montar o próprio: `app.get("/health") { return
+observability.health() }`.
+
+```kof
+var app = web.app()
+app.health("/health")   // GET /health → {"status":"UP","ready":true,"alive":true}
+app.listen(8080)
+```
+
 ### WebSocket (`app.ws`, RFC 6455) (30/08)
 
 | Chamada | Descrição |
