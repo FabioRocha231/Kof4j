@@ -4746,6 +4746,7 @@ class JsBackend implements Backend {
 
             const __kofObsCounters = {};
             const __kofObsGauges = {};
+            const __kofObsHistograms = {};
 
             export function kofObservabilityHealth() {
                 return "UP";
@@ -4776,6 +4777,41 @@ class JsBackend implements Backend {
             export function kofObservabilityGauge(name, value) {
                 if (name == null) name = "";
                 __kofObsGauges[name] = value;
+            }
+
+            export function kofObservabilityHistogram(name, value) {
+                if (name == null) name = "";
+                const h = __kofObsHistograms[name] || (__kofObsHistograms[name] = { sum: 0, count: 0 });
+                h.sum += value;
+                h.count += 1;
+            }
+
+            function __kofPromName(name, suffix) {
+                let out = String(name).replace(/[^a-zA-Z0-9_:]/g, "_");
+                if (out.length === 0) out = "k";
+                return out + suffix;
+            }
+
+            export function kofObservabilityMetrics() {
+                let sb = "";
+                const counters = Object.keys(__kofObsCounters).sort();
+                for (const m of counters) {
+                    const n = __kofPromName(m, "");
+                    sb += "# TYPE " + n + " counter\\n" + n + " " + __kofObsCounters[m] + "\\n";
+                }
+                const gauges = Object.keys(__kofObsGauges).sort();
+                for (const m of gauges) {
+                    const n = __kofPromName(m, "");
+                    sb += "# TYPE " + n + " gauge\\n" + n + " " + __kofObsGauges[m] + "\\n";
+                }
+                const hists = Object.keys(__kofObsHistograms).sort();
+                for (const m of hists) {
+                    const n = __kofPromName(m, "");
+                    const h = __kofObsHistograms[m];
+                    sb += "# TYPE " + n + "_count counter\\n" + n + "_count " + h.count + "\\n";
+                    sb += "# TYPE " + n + "_sum gauge\\n" + n + "_sum " + h.sum + "\\n";
+                }
+                return sb;
             }
 
             export function kofObservabilityRequestId() {

@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 755 testes 742 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
+mvn test             → 759 testes 746 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -447,7 +447,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (755 declarados = 742 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 31/08 (grep @Test)
+## Testes (759 declarados = 746 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 01/09 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -474,7 +474,7 @@ main() { /* ignorado pelo kof test */ }
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
 | KofDbE2ETest | 9 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
-| KofMediaE2ETest | 8 | kof.media + serveDir: Image/Audio/WAV, conteúdo binário (não base64) |
+| KofMediaE2ETest | 12 | kof.media + serveDir: Image/Audio/WAV/Video(MP4), Range 206/416, conteúdo binário (não base64) |
 | NativeConfigE2ETest | 8 | kof.config Native (asm): precedência, typed, comentários |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
@@ -518,10 +518,10 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
-| **Total kof-compiler** | **742** | |
+| **Total kof-compiler** | **746** | |
 | kof-script | 8 | KofScriptGlobals / repl / --watch |
 | kof-c-compiler | 5 | KofC C subset → ELF |
-| **Total** | **755** (+1 skip condicional; conferir total no CI a cada release) | |
+| **Total** | **759** (+1 skip condicional; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -595,12 +595,13 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 15. ~~`List.get` native~~ — ✅ verificado `listOf(1,2,3).get(1) → 2` nativo `kof_list_get` bounds OK (caso `List.of` era `listOf`)
 16. Web: status codes/headers customizados por handler: ✅ `kof.web.status(201, body)` + `headerSet("X","y")` em `KofWeb.java:107` + `JvmWebRuntime.java:22` `KOF_WEB_STATUS/HEADERS` + `JvmRuntime.java:489` `kof_web_dispatch` `+wired` `kof_web_build` headers `+wired` `status_text 201 Created 202 Accepted` `JVM: 201/hellox 202/value` `KofWebE2ETest 9/9` (27/08)
 17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS (`Java HttpClient`), Native HTTP002
-18. ~~MySQL/MariaDB no Native: wire protocol~~ — ✅ 31/08: handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset (coldefs/rows/EOF) + **binds `?`** (substituição de literal client-side no COM_QUERY); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE)
+18. ~~MySQL/MariaDB no Native: wire protocol~~ — ✅ 31/08: handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset (coldefs/rows/EOF) + **binds `?`** (substituição de literal client-side no COM_QUERY); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE). **Nota 01/09**: tentativa de COM_STMT_PREPARE/EXECUTE em assembly (protocolo binário: PREPARE OK → skip coldefs/paramdefs/EOF → EXECUTE com nullmap/types/values) foi revertida — o packet EXECUTE saía malformado (servidor não respondia; hang no socket read) e era otimização de wire sem benefício funcional (binds `?` já funcionam via COM_QUERY). Continua gap documentado.
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
 20. ~~Ponto flutuante no Native~~ — ✅ FLT001 fechado: FP é XMM real (`vcvtsi2sd`, `mulsd`); dtoa via snprintf alinhado; `kof_string_to_double` parse completo (fração+expoente).
 21. ~~idem~~
 22. `KofCcompiler` riscv64/aarch64 placeholder (target separation feito `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm`, codegen ainda x86_64 placeholder, `qemu` skip)
 23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
+24. ~~`spawn`-statement (fire-and-forget) no Native não era juntado~~ — ✅ 01/09: o `kof_spawn` (stmt) criava a thread mas **não registrava** o handle na lista que `kof_spawn_join_all` percorre; e `join_all` só era emitido no bloco `!endsWithReturn`, que nunca roda para o main (o driver sempre fecha o main com `KofReturnVoid` → `endsWithReturn`). Resultado: o processo saía antes do worker imprimir. Fix: `kof_spawn` agora delega a `kof_spawn_result` (registra o handle) e `join_all` é emitido no **epílogo do return** de main (idempotente — limpa a lista). `SpawnE2ETest 4/4`
 
 ---
 
@@ -624,9 +625,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 11. Connection pooling + `kof.db`/`kof.orm` fora do JVM (JS via WASM, Native ORM sobre SQLite)
 12. ~~MySQL/MariaDB nativo (handshake+query)~~ — ✅ 31/08 (wire protocol: handshake+scramble+auth-switch+COM_QUERY+resultset); restam **prepared statements** + binds `?` no MySQL nativo
 
-**P4 — Observabilidade:**
-13. Métricas `histogram` + endpoint `/metrics` (Prometheus)
-14. Health `app.health("/health")` + tracing/OpenTelemetry
+ **P4 — Observabilidade:**
+ 13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS; Native `OBS002`). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
+ 14. Health `app.health("/health")` + tracing/OpenTelemetry — `observability.health()/readiness()/liveness()` já existem (3 targets); **tracing/OpenTelemetry** pendente
 
 **P5 — DX:**
 15. `kof fmt` (parser real) + `kof init` + `REPL`
@@ -665,7 +666,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ⚠️ bug pré-existente `spawn→await→spawn` (SIGSEGV no próximo `pthread_create` — ver "Bugs Restantes" #2)
 - ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
 - ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
-- MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; `nativeMysqlWireProtocol`); restam **prepared statements** (bind `?` via COM_STMT_PREPARE)
+- MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; binds `?` via substituição client-side; `nativeMysqlWireProtocol`); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — otimização de wire; tentativa de 01/09 revertida, ver "Bugs Restantes" #18)
 - `native.risc` (riscv64) toolchain estável + `native.arm` (aarch64) placeholder — ELF via cross-as/ld + qemu (codegen ainda x86_64)
 - Debugger — além do MVP JVM (DAP sobre stdio já no JVM; Native DWARF / JS source maps pendentes)
 - KofJS — plataforma web no browser (ES Modules via GraalJS já em alpha)
