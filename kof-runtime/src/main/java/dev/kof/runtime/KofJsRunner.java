@@ -156,12 +156,13 @@ public final class KofJsRunner {
                 + "  <script type=\"module\" src=\"" + entry + "\"></script>\n</body>\n</html>\n";
         Files.writeString(appDir.resolve("index.html"), page);
         Path pagePath = appDir.resolve("index.html").toAbsolutePath();
-        System.err.println("kof: window at " + pagePath);
         Path shim = findWebviewShim();
         if (shim != null) {
             try {
-                // The native webview owns the window: `kof run` stays alive
-                // until the user closes it, like a desktop application.
+                // O webview WebKit/GTK habilita acesso a módulos ESM via file://
+                // (webkit_settings_set_allow_file_access_from_file_urls) — o
+                // caminho file:// funciona aqui. `kof run` fica vivo até a janela
+                // fechar, como um aplicativo desktop.
                 Process webview = new ProcessBuilder(shim.toString(), pagePath.toString()).start();
                 try {
                     webview.waitFor();
@@ -173,10 +174,64 @@ public final class KofJsRunner {
                 System.err.println("kof: native webview failed (" + e.getMessage() + ") — falling back");
             }
         }
+        // Navegador de sistema (Chrome/Firefox): módulos ESM NÃO carregam via
+        // file:// (CORS) — servir o appDir por HTTP em 127.0.0.1 e abrir a URL.
+        serveAndOpen(appDir);
+    }
+
+    /**
+     * Serve {@code appDir} por HTTP em 127.0.0.1 (porta efêmera) e abre o
+     * navegador de sistema. Mantém o servidor vivo pelo tempo de vida do
+     * processo (Ctrl-C encerra) — como um dev-server local.
+     */
+    private static void serveAndOpen(Path appDir) {
+        com.sun.net.httpserver.HttpServer server;
+        try {
+            server = com.sun.net.httpserver.HttpServer.create(
+                    new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        } catch (IOException e) {
+            System.err.println("kof: failed to start local server: " + e.getMessage());
+            return;
+        }
+        server.createContext("/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if (path == null || path.equals("/")) path = "/index.html";
+            Path file = appDir.resolve(path.substring(1)).normalize();
+            if (!file.startsWith(appDir) || !Files.isRegularFile(file)) {
+                exchange.sendResponseHeaders(404, -1);
+                exchange.close();
+                return;
+            }
+            try {
+                byte[] body = Files.readAllBytes(file);
+                exchange.getResponseHeaders().set("Content-Type", mimeOf(file.getFileName().toString()));
+                exchange.sendResponseHeaders(200, body.length);
+                try (java.io.OutputStream os = exchange.getResponseBody()) {
+                    os.write(body);
+                }
+            } catch (IOException e) {
+                exchange.close();
+            }
+        });
+        server.start();
+        int port = server.getAddress().getPort();
+        String url = "http://127.0.0.1:" + port + "/";
+        System.err.println("kof: window at " + url + " (Ctrl-C para encerrar)");
+        openInSystemBrowser(url);
+        try {
+            // mantém o processo (e o servidor) vivo — encerra no Ctrl-C
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        server.stop(0);
+    }
+
+    private static void openInSystemBrowser(String url) {
         try {
             if (java.awt.Desktop.isDesktopSupported()
                     && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                java.awt.Desktop.getDesktop().browse(pagePath.toUri());
+                java.awt.Desktop.getDesktop().browse(java.net.URI.create(url));
                 return;
             }
         } catch (Exception ignored) {
@@ -184,15 +239,24 @@ public final class KofJsRunner {
         try {
             String os = System.getProperty("os.name", "").toLowerCase();
             if (os.contains("win")) {
-                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", pagePath.toString()).start();
+                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start();
             } else if (os.contains("mac")) {
-                new ProcessBuilder("open", pagePath.toString()).start();
+                new ProcessBuilder("open", url).start();
             } else {
-                new ProcessBuilder("xdg-open", pagePath.toString()).start();
+                new ProcessBuilder("xdg-open", url).start();
             }
         } catch (IOException ignored) {
-            System.err.println("kof: open " + pagePath + " to view the window");
+            System.err.println("kof: open " + url + " to view the window");
         }
+    }
+
+    private static String mimeOf(String name) {
+        String n = name.toLowerCase();
+        if (n.endsWith(".html") || n.endsWith(".htm")) return "text/html; charset=utf-8";
+        if (n.endsWith(".mjs") || n.endsWith(".js")) return "text/javascript; charset=utf-8";
+        if (n.endsWith(".css")) return "text/css; charset=utf-8";
+        if (n.endsWith(".map") || n.endsWith(".json")) return "application/json; charset=utf-8";
+        return "application/octet-stream";
     }
 
     private static Path findWebviewShim() {
