@@ -2286,6 +2286,14 @@ private Target target = Target.JVM;
                         }
                     }
                 }
+                // Nome de TIPO builtin (String/Int/Long/…) como receiver de
+                // método estático: não existe valor para empilhar — o KofCall
+                // STATIC abaixo não consome receiver. Empilhar algo aqui
+                // (o fallback aload_0 de antes) desalinha a pilha do call
+                // (frame crash / VerifyError).
+                if (isBuiltinStaticReceiver(ie.name(), locals)) {
+                    yield localIdx;
+                }
                 ops.add(new KofLoadLocal(Type.UnknownType.UNKNOWN, 0));
                 yield localIdx;
             }
@@ -5297,6 +5305,19 @@ private Target target = Target.JVM;
                     Type rv = inferExprType(mc.receiver(), locals);
                     if (isPrimitiveType(rv) || rv instanceof Type.ArrayType) yield BuiltinTypes.STRING;
                 }
+                // String.valueOf(x) / Integer.valueOf(x)…: receiver é o NOME
+                // do tipo builtin (estático). Sem tipo aqui o concat após um
+                // "s = s + String.valueOf(x)" aplicava box+valueOf duplicado
+                // no resultado (frame crash — 3 valueOf na pilha)
+                if (mc.receiver() instanceof IdentifierExpr srid && mc.arguments().size() == 1
+                        && findLocalVar(srid.name(), locals) == null
+                        && switch (srid.name()) {
+                            case "String", "Int", "Integer", "Long", "Float",
+                                    "Double", "Bool", "Boolean" -> true;
+                            default -> false;
+                        }) {
+                    yield BuiltinTypes.STRING;
+                }
                 if ("println".equals(mc.methodName()) || "print".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
                 if ("now".equals(mc.methodName()) && mc.receiver() == null && mc.arguments().isEmpty()) {
                     yield Type.PrimitiveType.LONG;
@@ -6402,6 +6423,24 @@ private Target target = Target.JVM;
      */
     private boolean isLocalVarName(String name, List<IRLocalVariable> locals) {
         return findLocalVar(name, locals) != null;
+    }
+
+    /** Nome de tipo builtin usado como receiver estático (String.valueOf etc.) */
+    private static boolean isBuiltinStaticReceiver(String name, List<IRLocalVariable> locals) {
+        if (findLocalVarStatic(locals, name) != null) return false;
+        return switch (name) {
+            case "String", "Int", "Integer", "Long", "Float", "Double",
+                    "Bool", "Boolean", "Byte", "Short", "Char", "Character",
+                    "Object", "Math", "System" -> true;
+            default -> false;
+        };
+    }
+
+    private static IRLocalVariable findLocalVarStatic(List<IRLocalVariable> locals, String name) {
+        for (IRLocalVariable lv : locals) {
+            if (lv.name().equals(name)) return lv;
+        }
+        return null;
     }
 
     private int findLocalIndex(String name, List<IRLocalVariable> locals) {
