@@ -12,8 +12,9 @@ import java.util.List;
  *
  * <p>Health: {@code health()} → "UP", {@code readiness()}/{@code liveness()} → true.
  * Metrics: {@code counter(name)} increments by 1, {@code increment(name, delta)},
- * {@code gauge(name, value)} stores gauge. Request IDs: {@code requestId()} /
- * {@code correlationId()} generate random hex IDs.
+ * {@code gauge(name, value)} stores gauge, {@code histogram(name, value)} records
+ * sum+count, {@code metrics()} renders all in Prometheus text format. Request
+ * IDs: {@code requestId()} / {@code correlationId()} generate random hex IDs.
  */
 final class KofObservability {
 
@@ -48,6 +49,10 @@ final class KofObservability {
                     ? new ObservabilityCall("kof_observability_increment", INT, List.of(STR, INT)) : null;
             case "gauge" -> argc == 2 && isString(argTypes.get(0)) && isInt(argTypes.get(1))
                     ? new ObservabilityCall("kof_observability_gauge", VOID, List.of(STR, INT)) : null;
+            case "histogram" -> argc == 2 && isString(argTypes.get(0)) && isInt(argTypes.get(1))
+                    ? new ObservabilityCall("kof_observability_histogram", VOID, List.of(STR, INT)) : null;
+            case "metrics" -> argc == 0
+                    ? new ObservabilityCall("kof_observability_metrics", STR, List.of()) : null;
             case "requestId" -> argc == 0
                     ? new ObservabilityCall("kof_observability_request_id", STR, List.of()) : null;
             case "correlationId" -> argc == 0
@@ -57,11 +62,17 @@ final class KofObservability {
     }
 
     static boolean supportedOn(String function, Target target) {
-        return true; // all observability primitives on JVM/Native/JS
+        // histogram/metrics (store + export Prometheus) estão em JVM/JS;
+        // o target Native ainda não tem o store de métricas (OBS002).
+        return !(function.equals("kof_observability_histogram")
+                || function.equals("kof_observability_metrics"))
+                || target != Target.NATIVE;
     }
 
     static String gapCode(String function) {
-        return "OBS001";
+        return function.equals("kof_observability_histogram")
+                || function.equals("kof_observability_metrics")
+                ? "OBS002" : "OBS001";
     }
 
     private static boolean isString(Type t) {

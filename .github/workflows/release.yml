@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
+      bump_sha: ${{ steps.bumpsha.outputs.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,6 +75,10 @@ jobs:
           git commit -m "build: bump version to $(cat VERSION) [skip ci]"
           git push
 
+      - name: Capture bumped commit SHA
+        id: bumpsha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   package-and-release:
     name: Package + Release (${{ matrix.target }})
     needs: test-and-bump
@@ -89,10 +94,13 @@ jobs:
           - os: macos-latest
             target: macos-arm64
     steps:
-      - name: Checkout (bumped main)
+      - name: Checkout (bumped commit, não o trigger)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Sem `ref` o checkout traz o commit que DISPAROU o workflow
+          # (pré-bump) e o pacote saíria com a versão anterior.
+          ref: ${{ needs.test-and-bump.outputs.bump_sha }}
 
       - name: Set up JDK 21 (Tooling API baseline)
         uses: actions/setup-java@v4
@@ -102,6 +110,16 @@ jobs:
 
       - name: Build
         run: mvn clean package -DskipTests
+
+      - name: Sanity check (versão do checkout == versão da release)
+        shell: bash
+        run: |
+          EXPECTED="${{ needs.test-and-bump.outputs.version }}"
+          ACTUAL=$(cat VERSION)
+          echo "release=$EXPECTED checkout=$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED" ] || {
+            echo "::error::VERSION no checkout ($ACTUAL) difere da versão da release ($EXPECTED) — o checkout não trouxe o commit de bump."
+            exit 1; }
 
       - name: Package with embedded JDK
         shell: bash

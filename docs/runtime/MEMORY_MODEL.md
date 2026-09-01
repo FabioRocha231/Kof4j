@@ -1,7 +1,7 @@
 # MEMORY_MODEL.md — Modelo de Memória do Kof
 
-**Data:** 22 de agosto de 2026
-**Status:** Implementado — Fase F.7 + evolução 0.0.5 (allocator com header)
+**Data:** 31 de agosto de 2026
+**Status:** Implementado — Fase F.7 + evolução 0.0.5 (allocator com header) + 0.2.6-beta (free-list `kof_free_head` 27/08; mark-sweep pendente)
 
 ---
 
@@ -111,7 +111,8 @@ sem forwarding pointer) — o header de alocação fica 16 bytes antes do objeto
 
 ## 8. Limitações
 
-1. Sem GC (memória não é liberada automaticamente durante execução)
+1. Sem GC automático (mark-sweep pendente; auto-GC desativado após hang —
+   free-list reusa `mmap`, memória devolvida só no `munmap` fallback — ver §9)
 2. Sem reference counting
 3. Sem weak references
 4. Sem finalização de objetos
@@ -127,3 +128,13 @@ sem forwarding pointer) — o header de alocação fica 16 bytes antes do objeto
 - Reference counting para objetos sem ciclos
 - Weak references
 - Memory compaction
+
+> **Atualizado (0.2.6-beta, 31/08):** a evolução do GC partiu do allocator
+> de header para uma **free-list** (`kof_free_head`) que reusa blocos já
+> `munmap`ados/reativados via `mmap` — reduz o custo de `mmap` por alocação
+> pequena (gargalo nº 1 do `language-state.md`). O **mark-sweep é pendente**:
+> `kof_gc_collect` existe, mas o GC automático foi **desativado após um hang**
+> durante a execução; a memória continua sendo devolvida ao SO no
+> `munmap` fallback (e no exit). O `spawn`/`await` de 31/08 (pthread) exigeu
+> que o allocator virasse **thread-safe** (futex), já que múltiplas threads
+> do programa alocam/concorrem sobre o heap.

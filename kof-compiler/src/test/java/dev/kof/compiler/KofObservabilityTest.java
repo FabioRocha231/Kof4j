@@ -22,6 +22,13 @@ class KofObservabilityTest {
                 val c3 = observability.increment("obsJvmCounter", 3)
                 assert(c3 == 5)
                 observability.gauge("obsJvmGauge", 42)
+                observability.histogram("obsJvmLatency", 10)
+                observability.histogram("obsJvmLatency", 15)
+                val m = observability.metrics()
+                assert(m.contains("obsJvmCounter 5"))
+                assert(m.contains("obsJvmGauge 42"))
+                assert(m.contains("obsJvmLatency_count 2"))
+                assert(m.contains("obsJvmLatency_sum 25"))
                 val r1 = observability.requestId()
                 assert(r1.length() > 0)
                 val r2 = observability.correlationId()
@@ -66,11 +73,35 @@ class KofObservabilityTest {
                 println(observability.counter("obsJsCounter"))
                 println(observability.increment("obsJsCounter", 10))
                 observability.gauge("obsJsGauge", 7)
+                observability.histogram("obsJsLatency", 5)
+                observability.histogram("obsJsLatency", 8)
+                val m = observability.metrics()
+                assert(m.contains("obsJsCounter 12"))
+                assert(m.contains("obsJsGauge 7"))
+                assert(m.contains("obsJsLatency_count 2"))
+                assert(m.contains("obsJsLatency_sum 13"))
                 println(observability.requestId().length() > 0)
                 println(observability.correlationId().length() > 0)
                 println("done")
             }
             """, "UP\ntrue\ntrue\n1\n2\n12\ntrue\ntrue\ndone");
+    }
+
+    @Test
+    void histogramMetricsNativeIsGap(@TempDir Path tmp) throws Exception {
+        // Native ainda não tem o store de métricas (OBS002) — compilação falha
+        // com o gap documentado, sem crash silencioso.
+        Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
+        Files.writeString(file, """
+            main() {
+                observability.histogram("x", 1)
+            }
+            """);
+        Path outDir = tmp.resolve("out-" + System.nanoTime());
+        CompilationResult result = driver.compile(file, outDir, Target.NATIVE);
+        assertFalse(result.success(), "Native histogram deve falhar (OBS002)");
+        String diag = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diag.contains("OBS002"), "gap OBS002: " + diag);
     }
 
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {

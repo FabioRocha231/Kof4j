@@ -1,6 +1,6 @@
 # Idioms — Records
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta
 
 ## What it is
 
@@ -71,7 +71,7 @@ var a = Point(10, 20)      // construtor canônico
 var b = new Point(3, 4)    // também aceito
 ```
 
-## Pattern matching — record destructuring (0.2.0-beta)
+## Pattern matching — record destructuring (0.2.6-beta)
 
 ```kof
 record Point(Int x, Int y)
@@ -120,9 +120,10 @@ var j = json.encode(p)                 // {"x":3,"y":4}
 var d = json.decode<Point>("{\"x\": 10, \"y\": 20}")
 ```
 
-**Limitação:** JSON de objetos/records no target Native não é suportado (diagnostic JSN002).
+**Native:** JSN002/JSN001/JSN003 fechados 31/08 — `json.encode`/`json.decode<T>` de
+objetos/records/arrays funciona também no Native (composição compile-time; FP em XMM).
 
-## Null safety com records (0.2.0-beta)
+## Null safety com records (0.2.6-beta)
 
 ```kof
 Point? maybe = null

@@ -1,6 +1,6 @@
 # 34 — Filesystem (kof.io)
 
-> **Kof 0.2.0-beta — `intention->Kof->frontend->IR->backend->runtime` — kof.io + kof.http (JVM+JS)**
+> **Kof 0.2.6-beta — `intention->Kof->frontend->IR->backend->runtime` — kof.io + kof.http (JVM+JS)**
 
 `kof.io` é a API oficial de filesystem do Kof. Uma única API para JVM e
 Native, Linux, macOS e Windows — sem expor POSIX, `java.nio` ou syscalls.
@@ -109,7 +109,7 @@ sistema operacional nunca é usado.
   sucesso, `false` na falha.
 - `size`: `-1` quando o arquivo não existe.
 - No target **Native**, `readText` de um arquivo inexistente encerra o
-  programa com erro (exceptions recuperáveis no Native ainda não existem).
+  programa com erro (`kof_panic`); no JVM/JS retorna `null`.
   Verifique com `exists()` antes de ler.
 
 ## Comportamento por plataforma

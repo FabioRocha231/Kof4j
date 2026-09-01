@@ -1,8 +1,10 @@
 # kof.ui — Arquitetura
 
-> **Status:** Fase 1 (inspeção) concluída. Fase 2 (Component Core) em implementação.
-> **Última atualização:** 30 de agosto de 2026
-> **Versão:** 0.2.3-beta
+> **Status:** Fase 1 (inspeção) concluída; Fases 2-7 implementadas (Component
+> Core + Navegação/Router — `go/replace/back/forward/param/current/depth`,
+> real no JS, no-op no JVM — 30-31/08); Fases 8-11 em progresso.
+> **Última atualização:** 31 de agosto de 2026
+> **Versão:** 0.2.6-beta
 
 Este documento é o mapa da arquitetura do `kof.ui`: o estado real encontrado na
 inspeção, os problemas, e a fundação que a UI precisa antes de qualquer widget
@@ -244,12 +246,24 @@ O core adiciona as primitivas estruturais faltando, todas com
 `Box`, `Stack`, `Spacer`, `Wrap`, `Grid`, `Center`, `Align` (além do `Row`/
 `Column`/`View` existentes). `Scroll` entra com a camada de layout.
 
-### 2.9 Navegação (Fase 7)
+### 2.9 Navegação (Fase 7) — implementada
 
-`Route`/`Router`/`go`/`back`/`forward`/`replace` + params. Navegar =
-**trocar o componente raiz**: o engine desmonta o antigo (lifecycle correto +
-cleanup) e monta o novo. A espinha de componente do core é o que torna isso
-possível (árvore + lifecycle + cleanup).
+`Router` namespace: `route(name, component)`, `go(name[, param])`,
+`replace(name[, param])`, `back()`, `forward()`, `param()`, `current()`,
+`depth()`. Navegar = **trocar o componente raiz**: o engine desmonta o antigo
+(lifecycle correto + cleanup) e monta o novo. A espinha de componente do core é
+o que torna isso possível (árvore + lifecycle + cleanup).
+
+Detalhes de implementação (alvo JS):
+
+- `kofUiRouterShow` desmonta **qualquer rota montada** que não seja o destino
+  (cobre o bind inicial de `Window.bind`, que monta um componente raiz sem
+  registrar `current`). Padrão suportado: configurar o component (`view`,
+  `onMount`, ...) **antes** de `win.bind`/`Router.go`.
+- `Router.go`/`replace` aceitam 1 ou 2 argumentos (com ou sem param).
+- `back()`/`forward()` usam pilhas de histórico; `forwardStack` é limpo ao
+  navegar para frente.
+- Testes: `RouterE2ETest` (go com lifecycle, back/forward, rota unknown).
 
 ### 2.10 Estrutura de módulos (Fase 11)
 

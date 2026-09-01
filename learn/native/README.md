@@ -1,6 +1,6 @@
 # Multiplatform — Uma Linguagem, Múltiplos Mundos
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
 
 ## A visão
 
@@ -46,7 +46,7 @@ kof build point.kf --target=jvm
 
 ### KofNative (Nativo: x86-64 / riscv64 / aarch64)
 
-O backend nativo gera ELF x86-64 (`native`), riscv64 (`native.risc`) e aarch64 (`native.arm`). x86-64 tem free-list GC (`kof_free_head`, reuso `mmap`); riscv/arm são placeholders cross via `as`/`ld` + qemu.
+O backend nativo gera ELF x86-64 (`native`), riscv64 (`native.risc`) e aarch64 (`native.arm`). x86-64 é estável: free-list GC (`kof_free_head`, reuso `mmap`; mark-sweep pendente), `spawn`/`await` via pthread (31/08 — CONC001 fechado), ponto flutuante XMM real (`FLT001` fechado), JSON completo (objetos/records/arrays — JSN001/002/003 fechados), SQLite nativo e MySQL em progresso (wire protocol, auth scramble SHA-1). riscv/arm são placeholders (codegen ainda x86_64, cross via `as`/`ld` + qemu).
 
 ```kf
 main() = print("Hello, World!")
@@ -66,7 +66,7 @@ kof build main.kf --target=native
 - Distribuição simples (apenas o binário)
 - Ideal para ferramentas CLI e sistemas
 
-### KofScript (0.2.0-beta)
+### KofScript (0.2.6-beta)
 
 `kof script` / `kof repl` — `let`/`const` no topo viram `KofScriptGlobals` persistentes, `--watch` re-executa; targets jvm/native/js.
 
@@ -171,11 +171,11 @@ kof build main.kf --target=native
 
 | Backend | Status | Descrição |
 |---------|--------|-----------|
-| **JVM** | ✅ Funcional | Gera `.class` via ASM |
-| **Nativo** | ✅ Funcional | Gera ELF x86-64 via assembly |
+| **JVM** | ✅ Funcional | Gera `.class` via ASM (bytecode V21, exception table, virtual threads) |
+| **Nativo** | ✅ Funcional | Gera ELF x86-64 via assembly (free-list GC, spawn/pthread, FP XMM, SQLite); riscv/arm placeholders |
 | **Script** | ✅ KofScript (let→Globals, repl, --watch) | Runtime interativo |
-| **KofJS** | ✅ ES Modules (GraalJS) |
-| **KofC** | ✅ C subset nativo-only | Backend JavaScript |
+| **KofJS** | ✅ alpha | ES Modules via GraalJS embarcada; `kof.http` por interop Java HttpClient |
+| **KofC** | ✅ nativo-only | C subset → ELF x86-64 |
 
 ## Arquitetura do compilador
 

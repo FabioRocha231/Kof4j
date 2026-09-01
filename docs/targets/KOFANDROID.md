@@ -1,9 +1,11 @@
 # KofAndroid — o target Android da Kof
 
-> **Status: Fase 1 implementada.** `kof build --target android` gera o
+> **Status: Fases 1 e 2 implementadas (31/08).** `kof build --target android` gera o
 > projeto Maven + APK pipeline com o host Activity escrito EM KOF
 > (`dev/kof/android-host.kf`) — zero Java, zero Kotlin, zero Gradle no
 > projeto gerado; dependências resolvidas pelo Kof (ExternalClasspath).
+> Fase 2: label/permissões derivados do programa, `--apk` standalone
+> (aapt2/d8/apksigner direto do CLI) e release signing `--keystore`.
 > A base de compilador que isso exige está funcional: herança de classes
 > externas, `super(...)`/`super.metodo()` com INVOKESPECIAL correto,
 > chamadas encadeadas em receivers externos, construtores e campos
@@ -179,11 +181,20 @@ class MainActivity extends Activity { ... }
 O label do app é a primeira `Window("...")` do programa. O ícone é
 vetorial (`res/drawable/ic_launcher_kof.xml`) — nenhum binário gerado.
 
-### Fase 2 — refinamentos
+### Fase 2 — implementada (31/08): refinamentos
 
-- ícone/label derivados do programa (hoje: label fixa "Kof App");
-- modo standalone sem Maven chamando aapt2/d8/apksigner direto do CLI;
-- release signing parametrizável (`--keystore`).
+- ✅ **label derivado do programa**: título da primeira `Window("...")` vira
+  `android:label` do manifesto (`AndroidProjectWriter.detectAppLabel`);
+- ✅ **permissões declarativas**: `@Permissions([...])` numa classe Kof vira
+  `<uses-permission>` no manifesto (`detectPermissions`);
+- ✅ **modo standalone sem Maven**: `kof build --target android --apk` chama
+  `aapt2 → d8 → zip → zipalign → apksigner` direto do CLI (build-tools 34 +
+  `ANDROID_HOME`);
+- ✅ **release signing parametrizável**: `--keystore <ks> [--storepass <p>]
+  [--keypass <p>] [--alias <a>]` — sem `--keystore`, mantém o debug keystore
+  local gerado na primeira vez;
+- ícone: default vetorial do Kof (`res/drawable/ic_launcher_kof.xml`);
+  override declarativo por metadado segue planejado (nenhum binário gerado).
 
 ## Restrições e gaps (diagnosticados em compile-time)
 
@@ -192,7 +203,7 @@ alvos; o alvo que não consegue realizá-la diz isso na hora, com código.**
 
 | Código | Situação | Motivo |
 |--------|----------|--------|
-| `AND001` | `spawn { ... }` | ART não tem virtual threads (Java 21) |
+| ~~`AND001`~~ | ~~`spawn { ... }`~~ | ✅ **fechado 31/08**: ART não tem virtual threads (Java 21), mas o runtime cai em **platform threads** quando `Thread.startVirtualThread` não existe — `spawn`/`await`/`cancel`/`cancelled`/`selectAny`/`awaitTimeout`/`channel`/`scheduler` compilam e rodam (bytecode: `CompletableFuture` + `new Thread` + `LinkedBlockingQueue`; KofJS do WebView: sequencial). `KofConcurrency2Test`/`AndroidInteropE2ETest` |
 | `AND002` | `kof.web` (servidor embutido) | app mobile não escuta porta; usar interop |
 | `AND003` | reflexão dinâmica sobre classes Kof | desugaring/R8 pode remover símbolos |
 | `AND004` | android.jar ausente no ExternalClasspath | host Activity não incluída (warning) |
@@ -224,7 +235,8 @@ parâmetro do backend — não um segundo backend.
 
 1. `Target.ANDROID` no enum + dispatch no CLI (`--target android`) com as
    validações `AND*` antes da emissão (reuso do JvmBackend).
-2. Gerador do projeto Gradle + manifesto + assets (`AndroidProjectWriter`).
+2. Gerador do projeto Maven (pom.xml, zero Gradle) + manifesto + assets
+   (`AndroidProjectWriter`).
 3. Host Activity + bridge WebView ↔ handles do `kof.ui` (reusar runtime.mjs).
 4. E2E: build → assembleDebug em CI com emulator smoke test.
 5. Fase 2: standalone aapt2/d8/apksigner.

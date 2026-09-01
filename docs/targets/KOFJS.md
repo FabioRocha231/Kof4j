@@ -170,17 +170,21 @@ kof.time/kof.io.
 - Classes, herança, construtores, records, interfaces (type-level)
 - List, String API, arrays, JSON (encode/decode com binding)
 - Exceções (try/catch/finally), lambdas **com capturas**, if-expressões
-- kof.time, kof.io (via `kof_platform`), `kof run --target=js`
+- kof.time (now/sleep; scheduler via `setInterval` — 27/08), kof.io (via `kof_platform`), `kof run --target=js`
+- **kof.http** via interop `Java HttpClient` no `KofJsRunner` (+ fetch
+  fallback); **retry/circuit breaker em paridade com o JVM** (30/08)
+- `spawn` sequencial (statement/expressão; async real = CONC003)
 - **kof.ui**: widgets, layout, estilo, eventos — renderização em webview
-  nativo (WebKitGTK) e browser (`index.html` estático)
+  nativo (WebKitGTK) e browser (`index.html` estático); **Fase 7 Router**
+  (`go/replace/back/forward/param/current/depth` — 31/08)
 
 **Em andamento / futuro:**
 - UI declarativa (components) e layout avançado
 - WebKit embutido multiplataforma (Windows WebView2 / macOS WKWebView)
-- `async/await` quando a semântica Kof for definida
+- `async/await` real no event-loop (CONC003 — spawn sequencial cobre
+  statement/expressão)
 - Interoperabilidade (`js.import(...)` — sintaxe futura)
-- Source maps precisos (posições na IR)
-- HTTP no runtime web
+- Source maps precisos (posições na IR) — debugging JS (Fase 6)
 
 ## Debugging
 

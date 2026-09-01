@@ -156,7 +156,15 @@ class KofConfigE2ETest {
                 main() {
                     println(config.int("server.port", 8080))
                     println(config.str("app.name", "fallback"))
+                    println(config.str("db.url", "MISS"))
                 }
+                """);
+        // kof.config com interpolação ${key} no CWD de execução
+        Path cfg = tempDir.resolve("kof.config");
+        Files.writeString(cfg, """
+                server.port = 10000
+                db.host = localhost
+                db.url = jdbc:pg://${db.host}/app
                 """);
         // Native: config implementado em asm (kof_config_lookup) — roda de verdade
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
@@ -166,25 +174,41 @@ class KofConfigE2ETest {
         try {
             ProcessBuilder pb = new ProcessBuilder(bin.toString());
             pb.redirectErrorStream(true);
+            pb.directory(tempDir.toFile());
             Process p = pb.start();
             String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
                     .replace("\r\n", "\n").trim();
             int ec = p.waitFor();
             assertEquals(0, ec, "Native exit: " + output);
-            assertTrue(output.contains("8080"), "Native output: " + output);
+            assertTrue(output.contains("10000"), "Native output: " + output);
+            assertTrue(output.contains("jdbc:pg://localhost/app"),
+                    "Native interpolação: " + output);
         } catch (InterruptedException e) {
             throw new IOException("Interrupted while running native binary", e);
         }
-        // JS: config via process.env
+        // JS: config via arquivo (kof_platform.readFile) — o runner JS herda
+        // o CWD do processo de teste, então o kof.config vai no CWD
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
         assertTrue(jsResult.success(), "JS should support config: " + jsResult.diagnostics().getDiagnostics());
-        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+        Path cwdConfig = Path.of("kof.config").toAbsolutePath();
+        Files.writeString(cwdConfig, """
+                server.port = 10000
+                db.host = localhost
+                db.url = jdbc:pg://${db.host}/app
+                """);
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+             java.io.ByteArrayOutputStream errBuf = new java.io.ByteArrayOutputStream()) {
             Path jsEntry = findJsEntry(tempDir.resolve("js-out"));
             int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
-                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+                    java.io.InputStream.nullInputStream(), errBuf);
             String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
-            assertEquals(0, ec, "JS exit code, output: " + out);
-            assertTrue(out.contains("8080"), "JS output: " + out);
+            String err = errBuf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "JS exit code, out: " + out + " err: " + err);
+            assertTrue(out.contains("10000"), "JS output: " + out);
+            assertTrue(out.contains("jdbc:pg://localhost/app"),
+                    "JS interpolação, out: " + out + " err: " + err);
+        } finally {
+            Files.deleteIfExists(cwdConfig);
         }
     }
 

@@ -8,7 +8,7 @@ Implementar estruturas de dados que a linguagem já fornece.
 
 Linked lists manuais (`Node` + `next`), arrays dinâmicos manuais, hashmaps
 manuais, string builders manuais — quando `List<T>`, `Map<K,V>`, `Set<T>` e `+`
-já resolvem o problema (0.2.0-beta, 3 targets).
+já resolvem o problema (0.2.6-beta, 3 targets).
 
 ## Bad example
 
@@ -28,13 +28,16 @@ class Registry {
 
 Workaround histórico (removido 27/08): `List.get` manual com bounds check — agora `l.get(i)` já faz via `kof_list_get`.
 
+Outros workarounds manuais que existiam por gaps de target e hoje estão obsoletos:
+parser JSON manual no Native (JSN001/002/003 fechados 31/08 — `json.encode`/`json.decode<T>` de objetos/records/arrays nos 3 targets) e aritmética/formatação FP manual no Native (FLT001 fechado 31/08 — float/double real em XMM).
+
 ## Why it is bad
 
 A implementação manual carrega: alocação, encadeamento, contagem, bounds,
 iteração — tudo que o programador teria que manter e testar. O domínio é
 "uma coleção", não "nós encadeados".
 
-## Preferred approach (0.2.0-beta)
+## Preferred approach (0.2.6-beta)
 
 ```kof
 class Registry {
@@ -59,7 +62,7 @@ var nomes = users.map((u: User) -> u.name)
 var pares = nums.filter((x: Int) -> x % 2 == 0)
 ```
 
-## Estruturas manuais comuns → alternativa (0.2.0-beta)
+## Estruturas manuais comuns → alternativa (0.2.6-beta)
 
 | Manual | Alternativa Kof |
 |---|---|

@@ -1,6 +1,6 @@
 # 37 — KofJS: o caminho da Web
 
-> **Kof 0.2.0-beta — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
 
 KofJS é o target `js` da Kof: a mesma linguagem, o mesmo frontend e a
 mesma Kof IR gerando **ES Modules (ECMAScript 2022+)** — sem Node.js, sem
@@ -54,17 +54,22 @@ o backend; o código Kof é o mesmo (`intention->Kof->frontend->IR->backend->run
 
 ## O que funciona hoje (estado real)
 
+Backend **alpha**. KofJS gera ES Modules rodados na GraalJS embutida do Kof
+— sem Node.js; `kof.http` vem por interop com o `Java HttpClient`.
+
 | Área | Estado |
 |------|--------|
 | Linguagem completa (classes, herança, generics, exceptions, List, JSON) | ✅ |
 | Lambdas com capturas | ✅ (3 alvos) |
+| `spawn` (concorrência) | ✅ sequencial (spawn statement/expr; async real = CONC003 parcial) |
+| `kof http` client (get/post/put/delete/patch/options + timeout/retry/circuit) | ✅ (interop Java HttpClient) |
+| `kof.ui`: cores, temas, widgets, layout, estilo, eventos | ✅ (JS render) |
+| Router (`Router.route/go/replace/back/forward/...`) | ✅ (JS real; 31/08) |
+| Webview nativo `bin/kof-webview` (WebKitGTK embutido) | ✅ Linux |
 | `kof run --target=js` (GraalJS embarcado) | ✅ |
 | `kof build --target=js` + `index.html` (deploy estático) | ✅ |
-| `kof.ui`: cores, temas, widgets, layout, estilo, eventos | ✅ (JS render) |
-| Webview nativo `bin/kof-webview` (WebKitGTK embutido) | ✅ Linux |
-| Interatividade (cliques, edição) dentro da janela | ✅ |
-| `spawn` (concorrência) | — (só JVM) |
-| io no browser (`kof_platform`) | ~ (console; io real só no runner embarcado) |
+| `kof.db` | ❌ (DB001) |
+| io de arquivos no browser | ~ (io real só no runner embarcado; browser cai em erro claro) |
 
 ## Aplicação de exemplo: contador
 

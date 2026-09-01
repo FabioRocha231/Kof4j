@@ -228,7 +228,8 @@ class JsonE2ETest {
 
 
     @Test
-    void floatSupportedOnJvmRejectedOnNative(@TempDir Path tempDir) throws IOException {
+    void floatSupportedOnJvmAndNative(@TempDir Path tempDir) throws IOException {
+        // JSN001 fechado: encode de Float funciona nos 3 targets
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
             main() {
@@ -238,9 +239,8 @@ class JsonE2ETest {
         CompilationResult jvm = driver.compile(source, tempDir.resolve("jvm-out"), Target.JVM);
         assertTrue(jvm.success(), "Float encode should work on JVM");
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native-out"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "Float encode should be rejected on Native");
-        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.code().equals("JSN001")), "Should report JSN001");
+        assertTrue(nativeResult.success(), "Float encode should work on Native (JSN001): "
+                + nativeResult.diagnostics().getDiagnostics());
     }
 
     @Test

@@ -1,6 +1,6 @@
 # Kof Common Patterns
 
-**Version:** 0.2.0-beta (27 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## CRUD Entity (record + primary constructor)
 
@@ -9,7 +9,7 @@ record User(String name, String email)
 var u = User("Mel", "mel@kof.dev")
 ```
 
-## Service Pattern — prefer funções top-level (0.2.0-beta)
+## Service Pattern — prefer funções top-level (0.2.6-beta)
 
 ```kof
 // Kof não precisa de Service/Repository ceremony — função top-level é idiomática
@@ -41,21 +41,34 @@ handle(String method, String path, String body): String {
     return "Not found"
 }
 
-// Nativa (idiomática 0.2.0-beta)
+// Nativa (idiomática 0.2.6-beta) — JVM
 var app = web.app()
 app.get("/users") { return json.encode(users) }
 app.get("/users/:id") { return param("id") }
 app.post("/users") { var u = json.decode<User>(body()); return json.encode(u) }
+return status(201, json.encode(u))   // status code customizado
+headerSet("X-Custom", "value")       // header customizado
+app.use { ... }                      // middleware
+app.ws("/chat") { wsSend("echo: " + wsMessage()) }        // WebSocket
+app.sse("/events") { sse.send("tick"); sse.event("ev", "dados"); sse.close() }  // SSE
 app.listen(8080)
+app.listenSecure(8443)               // TLS
 ```
 
-## HTTP client (0.2.0-beta)
+`web.app()` completo no JVM (rotas `get/post/put/delete/patch/options`, `status(201, body)`,
+`headerSet`, `app.use`, WebSocket `app.ws`, SSE `app.sse` com `sse.send/event/close`,
+`listenSecure` TLS) — 30/08. Native/JS: WEB001.
+
+## HTTP client (0.2.6-beta)
 
 ```kof
 var html = http.get("https://example.com")
 var resp = http.post(api, json.encode(body), "Content-Type: application/json")
 if (http.status(url) == 200) { println(resp) }
-http.timeout(30)
+http.timeout(30)    // ms
+http.retry(3)       // repete em exceção + HTTP 5xx
+http.circuit(5)     // abre circuito após N falhas por 30s; circuit(0) recupera
+// verbos: get/post/put/delete/patch/options
 // JVM + JS (Java HttpClient interop); Native HTTP002
 ```
 
@@ -71,7 +84,7 @@ try {
     println("Cleanup")
 }
 
-// Ausência como valor — String? (0.2.0-beta)
+// Ausência como valor — String? (0.2.6-beta)
 String? maybe = find("key")
 if (maybe != null) {
     println(maybe)
@@ -80,7 +93,7 @@ if (maybe != null) {
 }
 ```
 
-## Collections — higher-order (0.2.0-beta)
+## Collections — higher-order (0.2.6-beta)
 
 ```kof
 var nomes = users.map((u: User) -> u.name)
@@ -91,7 +104,7 @@ var soma = nums.reduce((a: Int, b: Int) -> a + b, 0)
 var x = listOf(1,2,3).get(1)   // 2
 ```
 
-## Record pattern destructuring (0.2.0-beta)
+## Record pattern destructuring (0.2.6-beta)
 
 ```kof
 record Point(Int x, Int y)
@@ -146,7 +159,7 @@ class Entity implements Serializable {
 }
 ```
 
-## KofScript global (0.2.0-beta)
+## KofScript global (0.2.6-beta)
 
 ```kof
 let x = 5

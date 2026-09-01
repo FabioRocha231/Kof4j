@@ -28,6 +28,9 @@ final class NativeRuntime {
         emitAlloc(sb);
         emitFree(sb);
         emitGc(sb);
+        emitConcurrency(sb);
+        emitChannel(sb);
+        emitScheduler(sb);
         emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
@@ -49,6 +52,7 @@ final class NativeRuntime {
         emitStringStartsWith(sb);
         emitStringEndsWith(sb);
         emitStringIndexOf(sb);
+        emitStringLastIndexOf(sb);
         emitStringTrim(sb);
         emitStringCase(sb);
         emitStringReplace(sb);
@@ -62,6 +66,7 @@ final class NativeRuntime {
         emitIoTimeFunctions(sb);
         emitKofTimeFunctions(sb);
         emitCacheFunctions(sb);
+        emitVkStubs(sb);
         emitLogFunctions(sb);
         emitConfigFunctions(sb);
         emitIoFileFunctions(sb);
@@ -402,26 +407,30 @@ final class NativeRuntime {
                 pushq %rbp
                 movq %rsp, %rbp
                 pushq %rbx
-                subq $88, %rsp
+                pushq %r12
+                subq $80, %rsp
+                leaq -72(%rbp), %r12
                 cvtss2sd %xmm0, %xmm0
-                leaq -64(%rbp), %rbx
-                movq %rbx, %rdi
+                movq %r12, %rdi
                 movq $64, %rsi
                 leaq .Lfmt_float(%rip), %rdx
                 movl $1, %eax
+                movq %rsp, %rbx
+                andq $-16, %rsp             # alinha para snprintf
                 call snprintf
-                movq %rbx, %rdi
-                xorq %rdx, %rdx
+                movq %rbx, %rsp
+                xorl %edx, %edx
             .Lkof_flt_str_len:
-                cmpb $0, (%rdi,%rdx)
+                cmpb $0, (%r12,%rdx)
                 je .Lkof_flt_str_gotlen
                 incq %rdx
                 jmp .Lkof_flt_str_len
             .Lkof_flt_str_gotlen:
                 movl %edx, %esi
-                movq %rbx, %rdi
+                movq %r12, %rdi
                 call kof_string_from_literal
-                addq $88, %rsp
+                addq $80, %rsp
+                popq %r12
                 popq %rbx
                 popq %rbp
                 ret
@@ -436,25 +445,29 @@ final class NativeRuntime {
                 pushq %rbp
                 movq %rsp, %rbp
                 pushq %rbx
-                subq $88, %rsp
-                leaq -64(%rbp), %rbx
-                movq %rbx, %rdi
+                pushq %r12
+                subq $80, %rsp
+                leaq -72(%rbp), %r12
+                movq %r12, %rdi
                 movq $64, %rsi
                 leaq .Lfmt_double(%rip), %rdx
                 movl $1, %eax
+                movq %rsp, %rbx
+                andq $-16, %rsp             # alinha para snprintf
                 call snprintf
-                movq %rbx, %rdi
-                xorq %rdx, %rdx
+                movq %rbx, %rsp
+                xorl %edx, %edx
             .Lkof_dbl_str_len:
-                cmpb $0, (%rdi,%rdx)
+                cmpb $0, (%r12,%rdx)
                 je .Lkof_dbl_str_gotlen
                 incq %rdx
                 jmp .Lkof_dbl_str_len
             .Lkof_dbl_str_gotlen:
                 movl %edx, %esi
-                movq %rbx, %rdi
+                movq %r12, %rdi
                 call kof_string_from_literal
-                addq $88, %rsp
+                addq $80, %rsp
+                popq %r12
                 popq %rbx
                 popq %rbp
                 ret
@@ -465,6 +478,7 @@ final class NativeRuntime {
         sb.append("""
             .section .bss
             .balign 8
+            kof_alloc_lock: .space 40          # pthread_mutex_t (zero-init = default)
             kof_free_head: .quad 0
             .globl kof_gc_head
             .balign 8
@@ -486,7 +500,25 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                movq %rdi, %r12
+                subq $24, %rsp
+                movq %rdi, (%rsp)                # tamanho solicitado
+                leaq kof_alloc_lock(%rip), %rsi  # &lock
+                xorl %eax, %eax                  # esperado 0
+            .Lkof_alloc_lock_try:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)        # 0->1 atomically?
+                testl %eax, %eax
+                jz .Lkof_alloc_locked
+                # ocupado: futex wait
+                movl $1, %edx                    # val=1
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax                  # SYS_futex WAIT
+                syscall
+                jmp .Lkof_alloc_lock_try
+            .Lkof_alloc_locked:
+                movq (%rsp), %r12
                 addq $7, %r12
                 andq $~7, %r12
                 addq $32, %r12
@@ -515,6 +547,16 @@ final class NativeRuntime {
                 addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
+                movq %rax, (%rsp)                # preserva retorno
+                leaq kof_alloc_lock(%rip), %rdi
+                movl $0, (%rdi)
+                movl $1, %esi                    # FUTEX_WAKE, 1 waiter
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                syscall
+                movq (%rsp), %rax
+                addq $24, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -560,6 +602,16 @@ final class NativeRuntime {
                 addq $32, %rax
                 incq .Lkof_alloc_count(%rip)
                 addq %r12, .Lkof_alloc_bytes(%rip)
+                movq %rax, (%rsp)                # preserva retorno
+                leaq kof_alloc_lock(%rip), %rdi
+                movl $0, (%rdi)
+                movl $1, %esi                    # FUTEX_WAKE, 1 waiter
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                syscall
+                movq (%rsp), %rax
+                addq $24, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -567,6 +619,13 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_alloc_fail:
+                leaq kof_alloc_lock(%rip), %rdi
+                movl $0, (%rdi)
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                syscall
                 leaq .Lstr_alloc_fail(%rip), %rdi
                 call kof_panic
             """);
@@ -588,6 +647,736 @@ final class NativeRuntime {
                 incq .Lkof_free_count(%rip)
                 addq %rsi, .Lkof_free_bytes(%rip)
             .Lkof_free_done:
+                ret
+            """);
+    }
+
+    /**
+     * CONC001: spawn/await no Native via pthread.
+     * Handle (32 bytes): 0=tag(2), 4=done, 8=pthread_t, 16=result.
+     * Bloco do trampolim (16 bytes): 0=task, 8=handle.
+     * kof_spawn_track adiciona o handle na lista global; o fim do main
+     * chama kof_spawn_join_all (join implicito, sem tarefa orfa).
+     */
+    private static void emitConcurrency(StringBuilder sb) {
+        sb.append("""
+            .section .bss
+            .balign 8
+            kof_spawn_handles: .quad 0          # cabeca da lista (no: [next, handle])
+            kof_spawn_count: .quad 0
+            kof_cancelled_flags: .space 256     # cancel cooperativo por TID % 256
+            .section .text
+            .globl kof_spawn_trampoline
+            .type kof_spawn_trampoline, @function
+            kof_spawn_trampoline:
+                # rdi = bloco {task, handle}
+                # 2 pushes -> site do call rsp ≡ 0 (mesmo padrão do pthread_create
+                # em kof_spawn_handle_new). Sem subq: mantém pthread_self e o
+                # call *task no alinhamento que já funciona.
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                # limpa a flag de cancel deste TID (slot pode ser de worker
+                # anterior reutilizado; mod 256).
+                call pthread_self               # TID em rax
+                movabs $0x9E3779B97F4A7C15, %r10
+                mulq %r10                       # rdx = (TID*phi) >> 64
+                shrq $56, %rdx                  # slot 0..255
+                leaq kof_cancelled_flags(%rip), %r10
+                movb $0, (%r10,%rdx,1)
+                movq 0(%rbx), %rdi              # task
+                movq 8(%rbx), %r12              # handle (0 p/ stmt)
+                movq 8(%rdi), %rax              # task vtable
+                movq (%rax), %rax               # vtable[0] = invoke
+                call *%rax
+                testq %r12, %r12
+                jz .Lkof_spawn_thr_done
+                movq %rax, 16(%r12)             # handle->result
+                movl $1, 4(%r12)                # handle->done = 1
+            .Lkof_spawn_thr_done:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_spawn_handle_new
+            .type kof_spawn_handle_new, @function
+            kof_spawn_handle_new:
+                # rdi = task, esi = wants_result -> handle
+                # entry ≡8; 4 push -> ≡8; subq 24 -> ≡8-24? 16k+8-32-24 = 16k-48 ≡ 0 no call ✓
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                subq $24, %rsp
+                movq %rdi, %r13
+                movl %esi, %r14d
+                movl $32, %edi
+                call kof_alloc
+                movq %rax, %rbx                 # handle
+                movl $2, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movq $0, 16(%rbx)
+                # bloco do trampolim
+                movl $16, %edi
+                call kof_alloc
+                movq %r13, 0(%rax)              # task
+                movq %rbx, 8(%rax)              # handle
+                leaq 8(%rbx), %rdi              # &handle->thread
+                xorl %esi, %esi                 # attr = NULL
+                leaq kof_spawn_trampoline(%rip), %rdx
+                movq %rax, %rcx                 # arg = bloco
+                call pthread_create
+                testl %eax, %eax
+                jz .Lkof_spawn_ok
+                # falha no pthread: roda inline (degradacao segura)
+                movq %r13, %rdi
+                call kof_spawn_trampoline
+                movl $1, 4(%rbx)
+                jmp .Lkof_spawn_next
+            .Lkof_spawn_ok:
+                # adiciona o handle na lista global p/ join implicito
+                movl $16, %edi
+                call kof_alloc
+                leaq kof_spawn_handles(%rip), %rcx
+                movq (%rcx), %rdx               # head atual
+                movq %rbx, 8(%rax)              # no->handle
+                movq %rdx, 0(%rax)              # no->next
+                movq %rax, (%rcx)
+                incq kof_spawn_count(%rip)
+            .Lkof_spawn_next:
+                addq $24, %rsp
+                movq %rbx, %rax                 # retorna handle
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_spawn
+            .type kof_spawn, @function
+            kof_spawn:
+                # rdi = task (stmt) -> handle REGISTRADO: o fim do main chama
+                # kof_spawn_join_all e aguarda TODAS as tasks — tarefa spawnada
+                # nunca fica órfã (senão o processo sai antes do worker rodar).
+                movl $1, %esi
+                jmp kof_spawn_result
+
+            .globl kof_spawn_result
+            .type kof_spawn_result, @function
+            kof_spawn_result:
+                # rdi = task -> handle registrado (await/join depois)
+                movl $1, %esi
+                jmp kof_spawn_handle_new
+
+            .globl kof_await
+            .type kof_await, @function
+            kof_await:
+                # rdi = handle -> valor (join da thread)
+                testq %rdi, %rdi
+                jz .Lkof_await_null
+                cmpl $2, 0(%rdi)
+                jne .Lkof_await_null
+                cmpq $0, 8(%rdi)
+                je .Lkof_await_val
+                pushq %rdi                      # rsp: ≡8 -> ≡0 no call (ABI)
+                movq 8(%rdi), %rdi              # pthread_join(tid, NULL)
+                xorl %esi, %esi
+                call pthread_join
+                popq %rdi                       # restaura handle base
+            .Lkof_await_val:
+                movq 16(%rdi), %rax
+                ret
+            .Lkof_await_null:
+                xorl %eax, %eax
+                ret
+
+            .globl kof_spawn_join_all
+            .type kof_spawn_join_all, @function
+            kof_spawn_join_all:
+                # join implicito: percorre a lista e aguarda todas as tasks
+                pushq %rbx
+                pushq %r12
+                subq $8, %rsp
+                movq kof_spawn_handles(%rip), %rbx
+            .Lkof_join_loop:
+                testq %rbx, %rbx
+                jz .Lkof_join_done
+                movq 8(%rbx), %r12              # handle
+                cmpq $0, 8(%r12)
+                je .Lkof_join_next
+                movq 8(%r12), %rdi              # tid
+                xorl %esi, %esi                 # retval = NULL
+                call pthread_join
+            .Lkof_join_next:
+                movq 0(%rbx), %rbx              # next
+                jmp .Lkof_join_loop
+            .Lkof_join_done:
+                addq $8, %rsp
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_await_timeout(handle, timeoutMs): valor se a task terminar no prazo;
+            # senão lança (kof_throw_string -> try/catch do usuário) ou panic.
+            # Polling 1ms (o handle já existe; sem join para não bloquear demais).
+            .Lstr_await_timeout: .asciz "awaitTimeout: estourou o tempo limite"
+            .globl kof_await_timeout
+            .type kof_await_timeout, @function
+            kof_await_timeout:
+                # rdi = handle, esi = timeoutMs (>=0)
+                # entry rsp≡8; 2 push -> rsp≡0? nao: 16k+8-8-8 = 16k-8 ≡ 8 no call ✓
+                pushq %rbx
+                pushq %r12
+                testq %rdi, %rdi
+                jz .Lkat_zero
+                cmpl $2, 0(%rdi)
+                jne .Lkat_zero
+                movq %rdi, %rbx
+                movl %esi, %r12d                    # iterações restantes (~1ms cada)
+            .Lkat_poll:
+                cmpl $1, 4(%rbx)                    # done?
+                je .Lkat_result
+                testl %r12d, %r12d
+                jle .Lkat_timeout
+                movl $1000, %edi
+                call usleep
+                decl %r12d
+                jmp .Lkat_poll
+            .Lkat_result:
+                movq 16(%rbx), %rax
+                popq %r12
+                popq %rbx
+                ret
+            .Lkat_timeout:
+                leaq .Lstr_await_timeout(%rip), %rdi
+                call kof_throw_string               # longjmp p/ o try; panic se não houver
+            .Lkat_zero:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            # CONC001 (residual): done/poll não-bloqueantes sobre o handle.
+            # Handle: 0=tag(2), 4=done, 8=pthread_t, 16=result. x86 TSO
+            # garante visibilidade do store do worker p/ um load simples.
+            .globl kof_done
+            .type kof_done, @function
+            kof_done:
+                # rdi = handle -> 1 se a tarefa terminou, 0 caso contrário.
+                # movzbl: zero-estende p/ rax de 64 bits (bool limpo)
+                testq %rdi, %rdi
+                jz .Lkof_done_zero
+                cmpl $2, 0(%rdi)
+                jne .Lkof_done_zero
+                movzbl 4(%rdi), %eax
+                ret
+            .Lkof_done_zero:
+                xorl %eax, %eax
+                ret
+
+            .globl kof_poll
+            .type kof_poll, @function
+            kof_poll:
+                # rdi = handle -> valor se pronto, 0 se ainda não (não bloqueia)
+                testq %rdi, %rdi
+                jz .Lkof_poll_zero
+                cmpl $2, 0(%rdi)
+                jne .Lkof_poll_zero
+                cmpl $1, 4(%rdi)
+                jne .Lkof_poll_zero
+                movq 16(%rdi), %rax
+                ret
+            .Lkof_poll_zero:
+                xorl %eax, %eax
+                ret
+
+            # cancel(handle): marca a flag do TID do handle (cooperativo).
+            # sem calls -> alinhamento irrelevante.
+            .globl kof_cancel
+            .type kof_cancel, @function
+            kof_cancel:
+                # rdi = handle -> 1 se marcou, 0 se handle nulo/inválido
+                testq %rdi, %rdi
+                jz .Lkof_cancel_no
+                cmpl $2, 0(%rdi)
+                jne .Lkof_cancel_no
+                movq 8(%rdi), %rax              # TID
+                testq %rax, %rax
+                jz .Lkof_cancel_no              # nunca disparou: sem TID
+                movabs $0x9E3779B97F4A7C15, %r10
+                mulq %r10                       # rdx = (TID*phi) >> 64
+                shrq $56, %rdx                  # slot 0..255
+                leaq kof_cancelled_flags(%rip), %r10
+                movb $1, (%r10,%rdx,1)
+                movq $1, %rax                   # rax 64b limpo (movl deixaria altos do mulq)
+                ret
+            .Lkof_cancel_no:
+                xorl %eax, %eax
+                ret
+
+            # cancelled(): a flag do TID ATUAL foi marcada?
+            # 1 call (pthread_self) -> rsp≡8 na entrada, ok.
+            .globl kof_cancelled
+            .type kof_cancelled, @function
+            kof_cancelled:
+                call pthread_self               # TID em rax
+                movabs $0x9E3779B97F4A7C15, %r10
+                mulq %r10                       # rdx = (TID*phi) >> 64
+                shrq $56, %rdx                  # slot 0..255
+                leaq kof_cancelled_flags(%rip), %r10
+                movzbl (%r10,%rdx,1), %eax
+                ret
+
+            # selectAny(list): valor do primeiro handle pronto; senão
+            # aguarda (polling 1ms) até um terminar — paridade JVM anyOf.
+            # frame: 2 push + subq 16 -> rsp≡8 nos calls.
+            .globl kof_select_any
+            .type kof_select_any, @function
+            kof_select_any:
+                pushq %rbx                      # list
+                pushq %r12                      # index
+                subq $16, %rsp                  # -8(%rsp)=size
+                movq %rdi, %rbx
+                testq %rbx, %rbx
+                jz .Lkof_sel_no
+                call kof_list_size              # rsp≡8
+                testq %rax, %rax
+                jz .Lkof_sel_no
+                movq %rax, -8(%rsp)            # size
+                xorl %r12d, %r12d
+            .Lkof_sel_scan:
+                movq -8(%rsp), %rax             # rax = size
+                cmpq %rax, %r12                 # r12 - rax = index - size
+                jge .Lkof_sel_wait              # index >= size -> aguarda e re-escaneia
+                movq %rbx, %rdi
+                movl %r12d, %esi
+                call kof_list_get               # rsp≡8
+                testq %rax, %rax
+                jz .Lkof_sel_next
+                cmpl $2, 0(%rax)
+                jne .Lkof_sel_next
+                cmpl $1, 4(%rax)
+                jne .Lkof_sel_next
+                mfence                          # visibilidade do done/result escrito pelo worker
+                movq 16(%rax), %rax             # pronto: devolve resultado
+                addq $16, %rsp
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_sel_next:
+                incq %r12
+                jmp .Lkof_sel_scan
+            .Lkof_sel_wait:
+                movl $1000, %edi                # usleep(1ms)
+                call usleep                     # rsp≡8
+                xorl %r12d, %r12d               # RE-SCAN: reset index (senão loopa p/ sempre)
+                jmp .Lkof_sel_scan
+            .Lkof_sel_no:
+                xorl %eax, %eax
+                addq $16, %rsp
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    private static void emitChannel(StringBuilder sb) {
+        sb.append("""
+            # Canais tipados: FIFO de lista ligada + mutex futex + polling.
+            # Struct (56B): 0=head  8=tail  16=count(int)  20=lock(4B)
+            # No (16B): 0=value  8=next.  head=frente (de onde recebe),
+            # tail=tras (onde envia). lock/unlock inline (tecnica de kof_alloc).
+            # receive vazio: libera o lock e dorme 1ms (usleep) — sem perder wake.
+            .globl kof_channel_new
+            .type kof_channel_new, @function
+            kof_channel_new:
+                pushq %rbx
+                movl $56, %edi
+                call kof_alloc
+                movq %rax, %rbx
+                xorl %eax, %eax
+                movq %rax, 0(%rbx)               # head = 0 (vazio; sentinel NULL)
+                movq %rax, 8(%rbx)               # tail = 0
+                movl $0, 16(%rbx)                # count
+                movl $0, 20(%rbx)                # lock
+                movq %rbx, %rax                  # retorna o canal (rax foi zerado!)
+                popq %rbx
+                ret
+
+            .globl kof_channel_send
+            .type kof_channel_send, @function
+            kof_channel_send:
+                # rdi = chan, rsi = value. chan em r13 (movl $16,%edi clobbera rdi!).
+                # entry rsp≡8; 4 push + subq 8 = ≡0 no call (ABI).
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %rbp
+                subq $8, %rsp
+                movq %rdi, %r13                  # r13 = chan
+                movq %rsi, %rbp                  # rbp = value
+                leaq 20(%r13), %rsi             # &lock
+                xorl %eax, %eax
+            .Lchan_send_lock:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lchan_send_locked
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lchan_send_lock
+            .Lchan_send_locked:
+                movl $16, %edi
+                call kof_alloc                   # no em rax
+                movq %rbp, 0(%rax)               # no.value
+                xorq %rdx, %rdx
+                movq %rdx, 8(%rax)               # no.next = 0
+                movq 8(%r13), %r12               # r12 = tail
+                testq %r12, %r12
+                je .Lchan_send_empty             # vazio: head=tail=no
+                movq %rax, 8(%r12)               # tail->next = no
+                movq %rax, 8(%r13)               # tail = no
+                jmp .Lchan_send_count
+            .Lchan_send_empty:
+                movq %rax, 0(%r13)               # head = no
+                movq %rax, 8(%r13)               # tail = no
+            .Lchan_send_count:
+                addl $1, 16(%r13)                # count++
+                leaq 20(%r13), %rdi
+                movl $0, (%rdi)                   # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                xorl %eax, %eax
+                addq $8, %rsp
+                popq %rbp
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_channel_receive
+            .type kof_channel_receive, @function
+            kof_channel_receive:
+                # rdi = chan -> value (polling 1ms se vazio). chan em r13.
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %r13                  # r13 = chan
+                leaq 20(%r13), %rsi             # &lock
+                xorl %eax, %eax
+            .Lchan_recv_lock:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lchan_recv_locked
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lchan_recv_lock
+            .Lchan_recv_locked:
+                cmpl $0, 16(%r13)                # count?
+                je .Lchan_recv_empty
+                movq 0(%r13), %rax               # no = head
+                movq 0(%rax), %r12               # value
+                movq 8(%rax), %rbx               # next
+                movq %rbx, 0(%r13)               # head = next
+                decl 16(%r13)                    # count--
+                movq %rax, %rdi
+                call kof_free                    # libera o no
+                leaq 20(%r13), %rdi
+                movl $0, (%rdi)                  # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall                          # clobbera rax — resultado depois!
+                movq %r12, %rax                  # resultado (apos o syscall)
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lchan_recv_empty:
+                leaq 20(%r13), %rdi
+                movl $0, (%rdi)                  # libera o lock antes de dormir
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                movl $1000, %edi
+                call usleep
+                jmp .Lchan_recv_lock
+            """);
+    }
+
+    private static void emitScheduler(StringBuilder sb) {
+        sb.append("""
+            # SCHED001 fechado: scheduler.every/at/cancel no Native.
+            # Job (48B): 0=next 8=task 16=ms(int) 20=active(int) 24=id(string) 32=pthread_t
+            # Thread por job: usleep(ms) + invoke(task) enquanto active.
+            # cancel(id): marca active=0 (a thread sai na proxima checagem).
+            # at(cron, fn): MVP igual JVM — ignora o cron, roda a cada 60s.
+            .section .bss
+            .balign 8
+            kof_sched_head: .quad 0
+            kof_sched_seq: .long 0
+            kof_sched_lock: .long 0
+            .section .rodata
+            .Lstr_job_prefix: .ascii "job-"
+            .section .text
+
+            # macro-ish: lock/unlock inline (tecnica kof_alloc: futex spin)
+            .globl kof_sched_trampoline
+            .type kof_sched_trampoline, @function
+            kof_sched_trampoline:
+                # rdi = job. 3 pushes -> ≡0 no call (ABI).
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+            .Lsched_loop:
+                leaq kof_sched_lock(%rip), %rsi
+                xorl %eax, %eax
+            .Lsched_lk:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lsched_lkd
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lsched_lk
+            .Lsched_lkd:
+                movl 20(%rbx), %r12d              # active
+                movq 8(%rbx), %r13                # task
+                movl $0, (%rsi)                   # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                testl %r12d, %r12d
+                jz .Lsched_done
+                movl 16(%rbx), %edi               # ms -> us (clamp evita overflow)
+                cmpl $2147483, %edi
+                jle .Lsched_us_ok
+                movl $2147483000, %edi
+            .Lsched_us_ok:
+                imull $1000, %edi
+                call usleep
+                # re-checa active apos dormir (cancel pode ter chegado)
+                leaq kof_sched_lock(%rip), %rsi
+                xorl %eax, %eax
+            .Lsched_lk2:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lsched_lkd2
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lsched_lk2
+            .Lsched_lkd2:
+                movl 20(%rbx), %r12d
+                movl $0, (%rsi)                   # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                testl %r12d, %r12d
+                jz .Lsched_done
+                movq %r13, %rdi                   # task
+                movq 8(%rdi), %rax                # vtable
+                movq (%rax), %rax                 # invoke
+                call *%rax
+                jmp .Lsched_loop
+            .Lsched_done:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_scheduler_every
+            .type kof_scheduler_every, @function
+            kof_scheduler_every:
+                # edi = ms, rsi = task -> id String. 4 push + subq 8 -> ≡0 no call.
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %rbp
+                subq $8, %rsp
+                movl %edi, %r13d                   # ms
+                movq %rsi, %r12                    # task
+                # seq++ (lock)
+                leaq kof_sched_lock(%rip), %rsi
+                xorl %eax, %eax
+            .Lsched_new_lk:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lsched_new_lkd
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lsched_new_lk
+            .Lsched_new_lkd:
+                incl kof_sched_seq(%rip)
+                movl kof_sched_seq(%rip), %ebp     # seq
+                movl $0, (%rsi)                    # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                # id = "job-" + int_to_string(seq)
+                leaq .Lstr_job_prefix(%rip), %rdi
+                movl $4, %esi
+                call kof_string_from_literal
+                pushq %rax
+                movl %ebp, %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                popq %rdi
+                call kof_string_concat
+                movq %rax, %rbp                    # id
+                # job = alloc(48)
+                movl $48, %edi
+                call kof_alloc
+                movq %rax, %rbx
+                xorq %rdx, %rdx
+                movq %rdx, 0(%rbx)                 # next = 0
+                movq %r12, 8(%rbx)                 # task
+                movl %r13d, 16(%rbx)               # ms
+                movl $1, 20(%rbx)                  # active
+                movq %rbp, 24(%rbx)                # id
+                movq %rdx, 32(%rbx)                # tid
+                # push na lista (lock)
+                leaq kof_sched_lock(%rip), %rsi
+                xorl %eax, %eax
+            .Lsched_push_lk:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lsched_push_lkd
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lsched_push_lk
+            .Lsched_push_lkd:
+                movq kof_sched_head(%rip), %rax
+                movq %rax, 0(%rbx)                 # job->next = head
+                movq %rbx, kof_sched_head(%rip)    # head = job
+                movl $0, (%rsi)                    # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                # pthread_create(&job->tid, 0, trampoline, job)
+                leaq 32(%rbx), %rdi
+                xorl %esi, %esi
+                leaq kof_sched_trampoline(%rip), %rdx
+                movq %rbx, %rcx
+                call pthread_create
+                movq %rbp, %rax                    # id
+                addq $8, %rsp
+                popq %rbp
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_scheduler_at
+            .type kof_scheduler_at, @function
+            kof_scheduler_at:
+                # rdi = cron (ignorado no MVP), rsi = task -> roda a cada 60s
+                movq %rsi, %rax
+                movl $60000, %edi
+                movq %rax, %rsi
+                jmp kof_scheduler_every
+
+            .globl kof_scheduler_cancel
+            .type kof_scheduler_cancel, @function
+            kof_scheduler_cancel:
+                # rdi = id String: acha o job na lista e marca active=0
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %r12                    # id
+                leaq kof_sched_lock(%rip), %rsi
+                xorl %eax, %eax
+            .Lsched_can_lk:
+                movl $1, %edx
+                lock cmpxchg %edx, (%rsi)
+                testl %eax, %eax
+                jz .Lsched_can_lkd
+                movl $1, %edx
+                xorq %r10, %r10
+                xorq %r8, %r8
+                xorq %r9, %r9
+                movq $202, %rax
+                syscall
+                jmp .Lsched_can_lk
+            .Lsched_can_lkd:
+                movq kof_sched_head(%rip), %rbx
+            .Lsched_can_walk:
+                testq %rbx, %rbx
+                jz .Lsched_can_unlock
+                movq %r12, %rdi
+                movq 24(%rbx), %rsi
+                call kof_string_equals             # rax=1 se igual
+                testl %eax, %eax
+                jnz .Lsched_can_found
+                movq 0(%rbx), %rbx
+                jmp .Lsched_can_walk
+            .Lsched_can_found:
+                movl $0, 20(%rbx)                  # active = 0
+            .Lsched_can_unlock:
+                leaq kof_sched_lock(%rip), %rsi
+                movl $0, (%rsi)                    # unlock
+                movl $1, %esi
+                movq $202, %rax
+                xorl %edx, %edx
+                xorq %r10, %r10
+                xorq %r9, %r9
+                syscall
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
                 ret
             """);
     }
@@ -1633,6 +2422,46 @@ final class NativeRuntime {
             kof_json_encode_bool:
                 jmp kof_bool_to_string
 
+            .globl kof_json_encode_double
+            .type kof_json_encode_double, @function
+            kof_json_encode_double:
+                # xmm0 = double -> KofString* com o texto (%g via snprintf)
+                pushq %rbp
+                movq %rsp, %rbp
+                pushq %rbx
+                pushq %r12
+                subq $80, %rsp
+                leaq -72(%rbp), %r12        # buffer (acima do rsp real, no frame)
+                movq %r12, %rdi
+                movq $64, %rsi
+                leaq .Lfmt_double(%rip), %rdx
+                movl $1, %eax
+                movq %rsp, %rbx
+                andq $-16, %rsp             # alinha para snprintf
+                call snprintf
+                movq %rbx, %rsp             # restaura rsp real
+                xorl %edx, %edx
+            .Lkof_je_dbl_len:
+                cmpb $0, (%r12,%rdx)
+                je .Lkof_je_dbl_gotlen
+                incq %rdx
+                jmp .Lkof_je_dbl_len
+            .Lkof_je_dbl_gotlen:
+                movl %edx, %esi
+                movq %r12, %rdi
+                call kof_string_from_literal
+                addq $80, %rsp
+                popq %r12
+                popq %rbx
+                popq %rbp
+                ret
+
+            .globl kof_json_encode_float
+            .type kof_json_encode_float, @function
+            kof_json_encode_float:
+                cvtss2sd %xmm0, %xmm0
+                jmp kof_json_encode_double
+
             .globl kof_json_encode_string
             .type kof_json_encode_string, @function
             kof_json_encode_string:
@@ -1877,6 +2706,110 @@ final class NativeRuntime {
             .type kof_json_decode_long, @function
             kof_json_decode_long:
                 jmp kof_json_decode_int
+
+            .globl kof_json_decode_double
+            .type kof_json_decode_double, @function
+            kof_json_decode_double:
+                # rdi = KofString* json -> xmm0 = double do primeiro token
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $192, %rsp             # token em 0(%rsp), KofString em 128(%rsp)
+                movq %rdi, %rbx
+                testq %rbx, %rbx
+                jz .Lkof_jdd_zero
+                movl 16(%rbx), %r15d        # len
+                xorq %r12, %r12             # pos
+            .Lkof_jdd_skip:
+                cmpl %r15d, %r12d
+                jge .Lkof_jdd_zero
+                movzbl 24(%rbx,%r12), %eax
+                cmpb $32, %al
+                je .Lkof_jdd_skip_inc
+                cmpb $9, %al
+                je .Lkof_jdd_skip_inc
+                cmpb $10, %al
+                je .Lkof_jdd_skip_inc
+                cmpb $13, %al
+                je .Lkof_jdd_skip_inc
+                jmp .Lkof_jdd_scan
+            .Lkof_jdd_skip_inc:
+                incq %r12
+                jmp .Lkof_jdd_skip
+            .Lkof_jdd_scan:
+                xorq %r13, %r13             # len do token
+            .Lkof_jdd_loop:
+                cmpl %r15d, %r12d
+                jge .Lkof_jdd_build
+                movzbl 24(%rbx,%r12), %eax
+                cmpb $43, %al               # '+'
+                je .Lkof_jdd_take
+                cmpb $45, %al               # '-'
+                je .Lkof_jdd_take
+                cmpb $46, %al               # '.'
+                je .Lkof_jdd_take
+                cmpb $101, %al              # 'e'
+                je .Lkof_jdd_take
+                cmpb $69, %al               # 'E'
+                je .Lkof_jdd_take
+                cmpb $48, %al
+                jb .Lkof_jdd_build
+                cmpb $57, %al
+                ja .Lkof_jdd_build
+            .Lkof_jdd_take:
+                cmpq $127, %r13
+                jge .Lkof_jdd_build
+                leaq 24(%rbx), %rax
+                movzbl (%rax,%r12), %eax
+                movb %al, (%rsp,%r13)
+                incq %r13
+                incq %r12
+                jmp .Lkof_jdd_loop
+            .Lkof_jdd_build:
+                testq %r13, %r13
+                jz .Lkof_jdd_zero
+                movb $0, (%rsp,%r13)        # NUL-terminate
+                # KofString temporario em 128(%rsp): tag/len/data
+                movq $1, 128(%rsp)          # tag string
+                movq $0, 136(%rsp)
+                movl %r13d, 144(%rsp)       # len
+                xorq %r14, %r14
+            .Lkof_jdd_copy:
+                cmpq %r13, %r14
+                jge .Lkof_jdd_call
+                movzbl (%rsp,%r14), %eax
+                movb %al, 152(%rsp,%r14)
+                incq %r14
+                jmp .Lkof_jdd_copy
+            .Lkof_jdd_call:
+                movb $0, 152(%rsp,%r13)
+                leaq 128(%rsp), %rdi
+                call kof_string_to_double
+                addq $192, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_jdd_zero:
+                xorpd %xmm0, %xmm0
+                addq $192, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_float
+            .type kof_json_decode_float, @function
+            kof_json_decode_float:
+                call kof_json_decode_double
+                cvtsd2ss %xmm0, %xmm0
+                ret
 
             .globl kof_json_decode_list
             .type kof_json_decode_list, @function
@@ -2376,13 +3309,14 @@ final class NativeRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
+                pushq %r15
                 testq %rdi, %rdi
                 jz .Lkof_str_to_dbl_zero
                 movq %rdi, %rbx
                 movl 16(%rbx), %r12d
-                xorq %r13, %r13
-                xorl %ecx, %ecx
-                xorl %r14d, %r14d
+                xorq %r13, %r13            # parte inteira acumulada
+                xorl %ecx, %ecx            # cursor
+                xorl %r14d, %r14d          # neg
                 cmpl $0, %r12d
                 je .Lkof_str_to_dbl_done
                 movzbl 24(%rbx), %eax
@@ -2392,10 +3326,14 @@ final class NativeRuntime {
                 movl $1, %r14d
             .Lkof_str_to_dbl_int:
                 cmpl %r12d, %ecx
-                jge .Lkof_str_to_dbl_convert
+                jge .Lkof_str_to_dbl_frac
                 movzbl 24(%rbx,%rcx), %eax
                 cmpl $46, %eax
-                je .Lkof_str_to_dbl_convert
+                je .Lkof_str_to_dbl_frac
+                cmpb $101, %al
+                je .Lkof_str_to_dbl_exp
+                cmpb $69, %al
+                je .Lkof_str_to_dbl_exp
                 movq $10, %rax
                 imulq %r13, %rax
                 movzbl 24(%rbx,%rcx), %edx
@@ -2405,13 +3343,86 @@ final class NativeRuntime {
                 movq %rax, %r13
                 incl %ecx
                 jmp .Lkof_str_to_dbl_int
-            .Lkof_str_to_dbl_convert:
-                vcvtsi2sd %r13, %xmm0, %xmm0
+            .Lkof_str_to_dbl_frac:
+                vcvtsi2sd %r13, %xmm0, %xmm0      # xmm0 = parte inteira
+                incl %ecx                          # pula o '.'
+                movsd .Lkof_dbl_one(%rip), %xmm2   # scale = 1.0
+            .Lkof_str_to_dbl_frac_loop:
+                cmpl %r12d, %ecx
+                jge .Lkof_str_to_dbl_finish
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $101, %al
+                je .Lkof_str_to_dbl_exp
+                cmpb $69, %al
+                je .Lkof_str_to_dbl_exp
+                cmpb $48, %al
+                jb .Lkof_str_to_dbl_finish
+                cmpb $57, %al
+                ja .Lkof_str_to_dbl_finish
+                movsd %xmm2, %xmm3                 # peso atual
+                divsd .Lkof_dbl_ten(%rip), %xmm2   # scale /= 10
+                movsd %xmm2, %xmm3                 # peso = scale/10 (apos o ponto)
+                movzbl 24(%rbx,%rcx), %eax
+                subl $48, %eax
+                vcvtsi2sd %eax, %xmm4, %xmm4       # digito
+                mulsd %xmm3, %xmm4                 # digito * peso
+                addsd %xmm4, %xmm0                 # acc += ...
+                incl %ecx
+                jmp .Lkof_str_to_dbl_frac_loop
+            .Lkof_str_to_dbl_exp:
+                # expoente: 'e'/'E' [+-] digits — aplica por multiplicacao
+                incl %ecx
+                xorl %r15d, %r15d                  # exp neg?
+                xorq %r13, %r13                    # exp value
+                cmpl %r12d, %ecx
+                jge .Lkof_str_to_dbl_finish
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $45, %al
+                jne .Lkof_str_to_dbl_exp_pos
+                movl $1, %r15d
+                incl %ecx
+                jmp .Lkof_str_to_dbl_exp_digits
+            .Lkof_str_to_dbl_exp_pos:
+                cmpb $43, %al
+                jne .Lkof_str_to_dbl_exp_digits
+                incl %ecx
+            .Lkof_str_to_dbl_exp_digits:
+                cmpl %r12d, %ecx
+                jge .Lkof_str_to_dbl_exp_apply
+                movzbl 24(%rbx,%rcx), %eax
+                cmpb $48, %al
+                jb .Lkof_str_to_dbl_exp_apply
+                cmpb $57, %al
+                ja .Lkof_str_to_dbl_exp_apply
+                imulq $10, %r13
+                subl $48, %eax
+                movslq %eax, %rax
+                addq %rax, %r13
+                incl %ecx
+                jmp .Lkof_str_to_dbl_exp_digits
+            .Lkof_str_to_dbl_exp_apply:
+                movsd .Lkof_dbl_one(%rip), %xmm1
+            .Lkof_str_to_dbl_exp_mul:
+                testq %r13, %r13
+                jz .Lkof_str_to_dbl_exp_sign
+                mulsd .Lkof_dbl_ten(%rip), %xmm1
+                decq %r13
+                jmp .Lkof_str_to_dbl_exp_mul
+            .Lkof_str_to_dbl_exp_sign:
+                testl %r15d, %r15d
+                jz .Lkof_str_to_dbl_exp_mul2
+                divsd %xmm1, %xmm0
+                jmp .Lkof_str_to_dbl_finish
+            .Lkof_str_to_dbl_exp_mul2:
+                mulsd %xmm1, %xmm0
+                jmp .Lkof_str_to_dbl_finish
+            .Lkof_str_to_dbl_finish:
                 testl %r14d, %r14d
                 jz .Lkof_str_to_dbl_done
                 movsd .Lkof_dbl_neg(%rip), %xmm1
                 mulsd %xmm1, %xmm0
             .Lkof_str_to_dbl_done:
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
@@ -2708,6 +3719,72 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_idx_notfound:
+                movl $-1, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                 popq %r12
+                 popq %rbx
+                 ret
+             """);
+     }
+
+    /** lastIndexOf: varre do fim para o início; retorna -1 se não achar. */
+    private static void emitStringLastIndexOf(StringBuilder sb) {
+        sb.append("""
+            .globl kof_string_last_index_of
+            .type kof_string_last_index_of, @function
+            kof_string_last_index_of:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl 16(%rbx), %r13d
+                movl 16(%r12), %r14d
+                testl %r14d, %r14d
+                jz .Lkof_lidx_found_end
+                cmpl %r13d, %r14d
+                jg .Lkof_lidx_notfound
+                movl %r13d, %r15d
+                subl %r14d, %r15d
+            .Lkof_lidx_outer:
+                testl %r15d, %r15d
+                js .Lkof_lidx_notfound
+                xorl %ecx, %ecx
+            .Lkof_lidx_inner:
+                cmpl %r14d, %ecx
+                jge .Lkof_lidx_found
+                movl %r15d, %eax
+                addl %ecx, %eax
+                movzbl 24(%rbx,%rax), %eax
+                movzbl 24(%r12,%rcx), %edx
+                cmpl %edx, %eax
+                jne .Lkof_lidx_next
+                incq %rcx
+                jmp .Lkof_lidx_inner
+            .Lkof_lidx_next:
+                decl %r15d
+                jmp .Lkof_lidx_outer
+            .Lkof_lidx_found:
+                movl %r15d, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_lidx_found_end:
+                movl %r13d, %eax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lkof_lidx_notfound:
                 movl $-1, %eax
                 popq %r15
                 popq %r14
@@ -3787,6 +4864,186 @@ final class NativeRuntime {
                 movl $1, %esi
                 call kof_array_alloc
                 jmp .Ljba_done
+
+            # helper: parser FP minimalista sobre (rbx=json, r13=pos)
+            # -> xmm0 = valor, r13 = pos apos o token. Aceita [-+0-9.eE].
+            .Ljad_f64_at:
+                pushq %rbx
+                subq $192, %rsp             # token em 0(%rsp), KofString em 128(%rsp)
+                movq %rbx, %r10             # salva rbx (json) em r10
+                xorq %rbx, %rbx             # len do token
+            .Ljad_f64_loop:
+                cmpl 16(%r10), %r13d
+                jge .Ljad_f64_build
+                movl 16(%r10), %eax
+                cmpl %eax, %r13d
+                jge .Ljad_f64_build
+                movzbl 24(%r10,%r13), %eax
+                cmpb $43, %al
+                je .Ljad_f64_take
+                cmpb $45, %al
+                je .Ljad_f64_take
+                cmpb $46, %al
+                je .Ljad_f64_take
+                cmpb $101, %al
+                je .Ljad_f64_take
+                cmpb $69, %al
+                je .Ljad_f64_take
+                cmpb $48, %al
+                jb .Ljad_f64_build
+                cmpb $57, %al
+                ja .Ljad_f64_build
+            .Ljad_f64_take:
+                cmpq $127, %rbx
+                jge .Ljad_f64_build
+                movzbl 24(%r10,%r13), %eax
+                movb %al, (%rsp,%rbx)
+                incq %rbx
+                incq %r13
+                jmp .Ljad_f64_loop
+            .Ljad_f64_build:
+                testq %rbx, %rbx
+                jz .Ljad_f64_zero
+                movq $1, 128(%rsp)          # tag string (header nao sobrescreve o token)
+                movq $0, 136(%rsp)
+                movl %ebx, 144(%rsp)        # len
+                xorq %rcx, %rcx
+            .Ljad_f64_copy:
+                cmpq %rbx, %rcx
+                jge .Ljad_f64_call
+                movzbl (%rsp,%rcx), %eax
+                movb %al, 152(%rsp,%rcx)
+                incq %rcx
+                jmp .Ljad_f64_copy
+            .Ljad_f64_call:
+                movb $0, 152(%rsp,%rbx)
+                leaq 128(%rsp), %rdi
+                call kof_string_to_double
+                addq $192, %rsp
+                popq %rbx
+                ret
+            .Ljad_f64_zero:
+                xorpd %xmm0, %xmm0
+                addq $192, %rsp
+                popq %rbx
+                ret
+
+            .globl kof_json_decode_double_array
+            .type kof_json_decode_double_array, @function
+            kof_json_decode_double_array:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $32, %rsp
+                movq %rdi, %rbx
+                movl 16(%rbx), %r15d
+                xorq %r13, %r13
+            .Ljda_skip0:
+                cmpl %r15d, %r13d
+                jge .Ljda_empty
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $91, %al                # '['
+                je .Ljda_open
+                incq %r13
+                jmp .Ljda_skip0
+            .Ljda_open:
+                incq %r13
+                xorq %r14, %r14              # count
+            .Ljda_count:
+                cmpl %r15d, %r13d
+                jge .Ljda_alloc
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $93, %al                # ']'
+                je .Ljda_alloc
+                cmpb $44, %al                # ','
+                je .Ljda_cnext
+                cmpb $32, %al
+                je .Ljda_cws
+                cmpb $10, %al
+                je .Ljda_cws
+                cmpb $9, %al
+                je .Ljda_cws
+                incq %r14                    # qualquer char de numero conta
+            .Ljda_cvskip:
+                cmpl %r15d, %r13d
+                jge .Ljda_alloc
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $44, %al
+                je .Ljda_cnext2
+                cmpb $93, %al
+                je .Ljda_alloc
+                incq %r13
+                jmp .Ljda_cvskip
+            .Ljda_cnext2:
+                incq %r13
+                jmp .Ljda_count
+            .Ljda_cws:
+                incq %r13
+                jmp .Ljda_count
+            .Ljda_cnext:
+                incq %r13
+                jmp .Ljda_count
+            .Ljda_alloc:
+                movl %r14d, %edi
+                movl $8, %esi
+                call kof_array_alloc
+                movq %rax, %r12
+                xorq %r13, %r13
+            .Ljda_rescan0:
+                cmpl %r15d, %r13d
+                jge .Ljda_done
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $91, %al
+                je .Ljda_rescan1
+                incq %r13
+                jmp .Ljda_rescan0
+            .Ljda_rescan1:
+                incq %r13
+                xorq %r14, %r14              # idx
+            .Ljda_fill:
+                cmpl %r15d, %r13d
+                jge .Ljda_done
+                movzbl 24(%rbx,%r13), %eax
+                cmpb $93, %al
+                je .Ljda_done
+                cmpb $44, %al
+                je .Ljda_fnext
+                cmpb $32, %al
+                je .Ljda_fws
+                cmpb $10, %al
+                je .Ljda_fws
+                cmpb $9, %al
+                je .Ljda_fws
+                call .Ljad_f64_at            # xmm0 = valor, r13 ja avancado
+                movq %r14, %rcx
+                shlq $3, %rcx
+                addq $24, %rcx
+                addq %r12, %rcx
+                movsd %xmm0, (%rcx)
+                incq %r14
+                jmp .Ljda_fill
+            .Ljda_fnext:
+                incq %r13
+                jmp .Ljda_fill
+            .Ljda_fws:
+                incq %r13
+                jmp .Ljda_fill
+            .Ljda_done:
+                movq %r12, %rax
+                addq $32, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Ljda_empty:
+                xorl %edi, %edi
+                movl $8, %esi
+                call kof_array_alloc
+                jmp .Ljda_done
             """);
     }
 
@@ -4990,7 +6247,17 @@ final class NativeRuntime {
                 ret
 
             # kof_config_lookup(rdi=key KofString*) -> KofString*|0
+            # público: raw + interpolação ${key} (P2)
             kof_config_lookup:
+                call kof_config_lookup_raw
+                testq %rax, %rax
+                jz .Lkcl_null
+                movq %rax, %rdi
+                call kof_config_interpolate
+            .Lkcl_null:
+                ret
+
+            kof_config_lookup_raw:
                 pushq %rbx
                 pushq %r12
                 pushq %r13
@@ -5068,7 +6335,7 @@ final class NativeRuntime {
             # ---- wrappers publicos ----
 
             kof_config_get:
-                jmp kof_config_interpolate
+                jmp kof_config_lookup
 
             # P2 (docs/stdlib-config.md §8.2): interpolação ${key}.
             # rdi = valor KofString* -> resolve referências a outras chaves.
@@ -5081,7 +6348,9 @@ final class NativeRuntime {
                 pushq %r13
                 pushq %r14
                 pushq %r15
-                subq $24, %rsp               # spills: [0]=start [8]=end [16]=sufixo
+                subq $32, %rsp               # spills: [0]=start [8]=end [16]=sufixo
+                                             # push x5 (40) + 32 = 72 -> rsp%16==8
+                                             # na entrada de calls: OK (padrao SysV)
                 testq %rdi, %rdi
                 jz .Lkci_ret
                 movq %rdi, %r12
@@ -5162,7 +6431,7 @@ final class NativeRuntime {
             .Lkci_done:
                 movq %r12, %rax
             .Lkci_ret:
-                addq $24, %rsp
+                addq $32, %rsp
                 popq %r15
                 popq %r14
                 popq %r13
@@ -5290,6 +6559,8 @@ final class NativeRuntime {
                 jmp .Lcb_tle_loop
             .Lcb_dispatch:
                 subq %r9, %r10               # len aparado
+                leaq (%rdx), %rsi            # rsi = data do valor (contrato ci_match)
+                addq %r9, %rsi               # + trim esquerdo
                 # true / yes / 1 -> 1
                 cmpq $4, %r10
                 jne .Lcb_chk3
@@ -5868,6 +7139,176 @@ final class NativeRuntime {
             .kof_cache_find_done:
                 movq %r12, %rax
             .kof_cache_find_ret:
+                popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    // M32.3: Vulkan compute REAL no native via libvkchain.so (C, RADV validado).
+    // A cadeia completa (instance/device/pipeline/buffers/cmd/dispatch) vive na
+    // libvkchain.so — aqui só dlopen+dlsym de 3 símbolos. Se a lib não existe
+    // ou o init falha (sem ICD, sem spv), degrada: available=0 → HAL usa os
+    // goldens CPU. O programa nunca cai.
+    private static void emitVkStubs(StringBuilder sb) {
+        sb.append("""
+            .section .rodata
+            .Lvklib1:  .asciz "libvkchain.so"
+            .Lvklib2:  .asciz "./libvkchain.so"
+            .Lvksinit: .asciz "vkchain_init"
+            .Lvksdisp: .asciz "vkchain_dispatch"
+            .Lvksr:    .asciz "vkchain_fail_reason"
+            .Lvkspv:   .asciz "KOF_GPU_SPV"
+            .Lvkspvd:  .asciz "gpu/shaders/matmul.spv"
+            .Lvkna:    .asciz "libvkchain.so nao encontrada (GPU002)"
+            .Lvksym:   .asciz "libvkchain: simbolo faltando (GPU003)"
+            .Lvkif:    .asciz "libvkchain: init falhou (GPU004)"
+            .Lvkok:    .asciz "libvkchain carregada"
+
+            .section .bss
+            .lcomm g_vk_lib, 8
+            .lcomm g_vk_finit, 8
+            .lcomm g_vk_fdisp, 8
+            .lcomm g_vk_fr, 8
+            .lcomm g_vk_ok, 4
+            .lcomm g_vk_err, 8
+
+            .section .text
+            .globl kof_vk_available
+            .type kof_vk_available, @function
+            kof_vk_available:
+                cmpl $0, g_vk_ok(%rip)
+                jne 9f
+                # lazy init: dlopen(RTLD_NOW) nos 2 nomes + dlsym*3 + vkchain_init(spv)
+                pushq %rbx
+                leaq .Lvklib1(%rip), %rdi
+                movl $2, %esi
+                call dlopen@PLT
+                testq %rax, %rax
+                jnz 1f
+                leaq .Lvklib2(%rip), %rdi
+                movl $2, %esi
+                call dlopen@PLT
+                testq %rax, %rax
+                jnz 1f
+                leaq .Lvkna(%rip), %rax
+                jmp .Lvkf
+            1:  movq %rax, g_vk_lib(%rip)
+                leaq .Lvksinit(%rip), %rsi
+                movq %rax, %rdi
+                call dlsym@PLT
+                testq %rax, %rax
+                jz .Lvkf1
+                movq %rax, g_vk_finit(%rip)
+            .Lvkf1:
+                leaq .Lvksdisp(%rip), %rsi
+                movq g_vk_lib(%rip), %rdi
+                call dlsym@PLT
+                testq %rax, %rax
+                jz .Lvkfsym
+                movq %rax, g_vk_fdisp(%rip)
+            .Lvkf1b:
+                leaq .Lvksr(%rip), %rsi
+                movq g_vk_lib(%rip), %rdi
+                call dlsym@PLT
+                testq %rax, %rax
+                jz .Lvkfsym
+                movq %rax, g_vk_fr(%rip)
+            .Lvkf2b:
+                cmpq $0, g_vk_finit(%rip)
+                je .Lvkfsym
+                cmpq $0, g_vk_fdisp(%rip)
+                je .Lvkfsym
+                cmpq $0, g_vk_fr(%rip)
+                je .Lvkfsym
+                leaq .Lvkspv(%rip), %rdi
+                call getenv@PLT
+                testq %rax, %rax
+                jnz 2f
+                leaq .Lvkspvd(%rip), %rax
+            2:  movq %rax, %rdi
+                call *g_vk_finit(%rip)
+                testl %eax, %eax
+                jnz .Lvkf2
+                movl $1, g_vk_ok(%rip)
+                leaq .Lvkok(%rip), %rax
+                jmp .Lvkf
+            .Lvkfsym:
+                leaq .Lvksym(%rip), %rax
+                jmp .Lvkf
+            .Lvkf2:
+                leaq .Lvkif(%rip), %rax
+            .Lvkf:
+                movq %rax, g_vk_err(%rip)
+                movl g_vk_ok(%rip), %eax
+                popq %rbx
+                ret
+            9:  movl g_vk_ok(%rip), %eax
+                ret
+            .globl kof_vk_fail_reason
+            .type kof_vk_fail_reason, @function
+            # retorna KofString* (converte o char* da lib via kof_io_make_string)
+            kof_vk_fail_reason:
+                pushq %rbx
+                pushq %r12
+                movq g_vk_err(%rip), %rax
+                testq %rax, %rax
+                jnz 1f
+                leaq .Lvkok(%rip), %rax
+            1:  movq %rax, %rdi
+                movq %rax, %rbx
+                call strlen@PLT
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_io_make_string
+                popq %r12
+                popq %rbx
+                ret
+            # kof_vk_dispatch(rdi=a, rsi=b, rdx=c, rcx=m, r8d=n, r9d=k)
+            # args Kof: KofArray* (dados INLINE em +24) — o C quer int* → lea +24. Lazy init.
+            .globl kof_vk_dispatch
+            .type kof_vk_dispatch, @function
+            kof_vk_dispatch:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $32, %rsp
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movq %rdx, %r13
+                movl %ecx, %r14d
+                movl %r8d, %r15d
+                movl %r9d, 0(%rsp)
+            .Lvk_d_lazy:
+                cmpl $0, g_vk_ok(%rip)
+                jne 1f
+                movq %rdi, 8(%rsp)
+                call kof_vk_available
+                movq 8(%rsp), %rdi
+                testl %eax, %eax
+                jz .Lvk_d_fb
+            1:  leaq 24(%rbx), %rdi
+                leaq 24(%r12), %rsi
+                leaq 24(%r13), %rdx
+                movl %r14d, %ecx
+                movl %r15d, %r8d
+                movl 0(%rsp), %r9d
+                call *g_vk_fdisp(%rip)
+                addq $32, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lvk_d_fb:
+                movl $-1, %eax
+                addq $32, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
                 popq %r12
                 popq %rbx
                 ret
@@ -6863,7 +8304,7 @@ final class NativeRuntime {
                 syscall
                 testq %rax, %rax
                 je .Lio_rmdir_ok
-                movq $-1, %rax
+                xorl %eax, %eax
                 popq %rbx
                 ret
             .Lio_rmdir_ok:
@@ -7151,9 +8592,18 @@ final class NativeRuntime {
             .Ldb_slots: .zero 512
             .Ldb_types: .zero 64
             .Ldb_count: .quad 0
-            .Ldb_mysql_buf: .zero 65536
+            .Ldb_mysql_buf: .zero 16384
             .Ldb_mysql_names: .zero 1024
             .Ldb_mysql_seq: .zero 1
+            # estado do reader de pacotes (query):
+            #   .Ldb_mysql_fd    — fd atual
+            #   .Ldb_mysql_ppos  — offset do payload atual (buf+4)
+            #   .Ldb_mysql_pend  — fim do payload atual
+            #   .Ldb_mysql_next  — 1 se o próximo pacote já está em buf
+            .Ldb_mysql_fd: .quad 0
+            .Ldb_mysql_ppos: .quad 0
+            .Ldb_mysql_pend: .quad 0
+            .Ldb_mysql_next: .long 0
             .section .data
             .Ldb_mysql_plugin: .asciz "mysql_native_password"
             .Ldb_mysql_empty: .asciz ""
@@ -7433,8 +8883,8 @@ final class NativeRuntime {
                 incq %r8
                 jmp .Lscr_copy_st2
             .Lscr_copy_st2_done:
-                movq %r8, %rdx
                 leaq 36(%rsp), %rsi
+                movq %r8, %rdx
                 call kof_sec_sha1_internal
                 # result = stage1 XOR stage3
                 xorl %ecx, %ecx
@@ -7477,6 +8927,248 @@ final class NativeRuntime {
                 shll $16, %edx
                 orl %edx, %eax
                 addq $4, %rsi
+                ret
+
+            # kof_db_mysql_render(rdi=value) → rax: literal SQL p/ bind.
+            # Int (rdx<0x1000000) -> decimais; String (rdi>=0x1000000) -> 'escaped'
+            # (MySQL: ' -> '' e \\ -> \\\\).
+            .globl kof_db_mysql_render
+            .type kof_db_mysql_render, @function
+            kof_db_mysql_render:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $4096, %rsp
+                cmpq $0x1000000, %rdi
+                jb .Ldb_rnd_int
+            .Ldb_rnd_str:
+                movq %rdi, %rbx
+                movl 16(%rbx), %r12d
+                leaq 24(%rbx), %rsi
+                movq %rsp, %r13               # scratch start
+                movq %rsp, %r14              # out cursor
+                xorl %ecx, %ecx
+            .Ldb_rnd_esc:
+                cmpl %r12d, %ecx
+                jge .Ldb_rnd_esc_done
+                movzbl (%rsi,%rcx), %eax
+                cmpb $'\'', %al
+                je .Ldb_rnd_dbl
+                cmpb $'\\', %al
+                je .Ldb_rnd_dbl
+                movb %al, (%r14)
+                incq %r14
+            .Ldb_rnd_next:
+                incl %ecx
+                jmp .Ldb_rnd_esc
+            .Ldb_rnd_dbl:
+                movb %al, (%r14)
+                incq %r14
+                movb %al, (%r14)
+                incq %r14
+                jmp .Ldb_rnd_next
+            .Ldb_rnd_esc_done:
+                movq %r14, %r15
+                subq %r13, %r15                  # escaped len
+                leal 2(%r15), %r12d              # novo len (com aspas)
+                leal 25(%r12d), %edi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r12d, 16(%rbx)
+                movl $0, 20(%rbx)
+                movb $39, 24(%rbx)               # ' (abre)
+                leaq 25(%rbx), %rdi
+                movq %r13, %rsi
+                movq %r15, %rdx
+                call kof_memcpy
+                leaq 23(%rbx,%r12), %rdi         # fecha em data[len-1] = 24+len-1
+                movb $39, (%rdi)                 # ' (fecha)
+                incq %rdi
+                movb $0, (%rdi)                  # NUL em 24+len
+                movq %rbx, %rax
+                jmp .Ldb_rnd_done
+            .Ldb_rnd_int:
+                movl %edi, %edi
+                call kof_int_to_string
+                movq %rax, %rbx
+            .Ldb_rnd_done:
+                addq $4096, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # kof_db_mysql_replace_q(rdi=sql, rsi=literal) → rax: troca o 1º '?'
+            # por literal (buffer bruto). Sem '?': devolve sql inalterado.
+            .globl kof_db_mysql_replace_q
+            .type kof_db_mysql_replace_q, @function
+            kof_db_mysql_replace_q:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $4096, %rsp
+                movq %rdi, %rbx                 # sql
+                movq %rsi, %r12                 # literal
+                movl 16(%rbx), %r13d            # sql len
+                leaq 24(%rbx), %r14             # sql data
+                # acha o 1º '?'
+                xorl %ecx, %ecx
+            .Ldb_rq_scan:
+                cmpl %r13d, %ecx
+                jge .Ldb_rq_none
+                cmpb $'?', (%r14,%rcx)
+                jne .Ldb_rq_adv
+                jmp .Ldb_rq_found
+            .Ldb_rq_adv:
+                incl %ecx
+                jmp .Ldb_rq_scan
+            .Ldb_rq_none:
+                movq %rbx, %rax
+                jmp .Ldb_rq_done
+            .Ldb_rq_found:
+                movl %ecx, %r15d                # idx
+                movq %rsp, %r8                   # out
+                # copia sql[0..idx)
+                xorl %esi, %esi
+            .Ldb_rq_c1:
+                cmpl %r15d, %esi
+                jge .Ldb_rq_c1_done
+                movzbl (%r14,%rsi), %eax
+                movb %al, (%r8)
+                incq %r8
+                incl %esi
+                jmp .Ldb_rq_c1
+            .Ldb_rq_c1_done:
+                # copia literal (forward)
+                xorl %esi, %esi
+            .Ldb_rq_c2:
+                cmpl 16(%r12), %esi
+                jge .Ldb_rq_c2_done
+                movzbl 24(%r12,%rsi), %eax
+                movb %al, (%r8)
+                incq %r8
+                incl %esi
+                jmp .Ldb_rq_c2
+            .Ldb_rq_c2_done:
+                # copia sql[idx+1..end)
+                leal 1(%r15d), %esi
+            .Ldb_rq_c3:
+                cmpl %r13d, %esi
+                jge .Ldb_rq_c3_done
+                movzbl (%r14,%rsi), %eax
+                movb %al, (%r8)
+                incq %r8
+                incl %esi
+                jmp .Ldb_rq_c3
+            .Ldb_rq_c3_done:
+                movq %r8, %r13
+                movq %rsp, %r14
+                subq %r14, %r13                 # novo len
+                leal 25(%r13), %edi
+                call kof_alloc
+                movq %rax, %rbx
+                movl $1, 0(%rbx)
+                movl $0, 4(%rbx)
+                movq $0, 8(%rbx)
+                movl %r13d, 16(%rbx)
+                movl $0, 20(%rbx)
+                leaq 24(%rbx), %rdi
+                movq %rsp, %rsi
+                movq %r13, %rdx
+                call kof_memcpy
+                movq %rbx, %rax
+            .Ldb_rq_done:
+                addq $4096, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+
+            # kof_db_mysql_reset(rdi=fd): zera o estado do reader de pacotes.
+            .globl kof_db_mysql_reset
+            .type kof_db_mysql_reset, @function
+            kof_db_mysql_reset:
+                movq %rdi, .Ldb_mysql_fd(%rip)
+                leaq .Ldb_mysql_buf(%rip), %rax
+                movq %rax, .Ldb_mysql_ppos(%rip)
+                movq %rax, .Ldb_mysql_pend(%rip)
+                ret
+
+            # kof_db_mysql_next: lê o PRÓXIMO pacote do stream (buf interno).
+            # rsi = ponteiro do payload (buf+4 do pacote), rax = len do payload.
+            # rax = 0 em fim de stream / erro. Clobbers rax rsi rdx rcx r8 r9
+            # r10 r11 (leaf: sem call interno além de kof_net_read).
+            .globl kof_db_mysql_next
+            .type kof_db_mysql_next, @function
+            kof_db_mysql_next:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq .Ldb_mysql_ppos(%rip), %r12   # start do pacote não lido
+                movq .Ldb_mysql_pend(%rip), %rbx   # fim dos dados válidos
+                cmpq %rbx, %r12
+                jb .Ldb_mynxt_extract
+            .Ldb_mynxt_read:
+                movq .Ldb_mysql_fd(%rip), %rdi
+                leaq .Ldb_mysql_buf(%rip), %rsi
+                movl $16384, %edx
+                call kof_net_read
+                testq %rax, %rax
+                jle .Ldb_mynxt_fail
+                leaq .Ldb_mysql_buf(%rip), %r12            # ppos = inicio do buf
+                leaq .Ldb_mysql_buf(%rip), %rbx
+                addq %rax, %rbx                             # pend = buf + rlen
+                movq %rbx, .Ldb_mysql_pend(%rip)
+                jmp .Ldb_mynxt_extract
+            .Ldb_mynxt_extract:
+                movzbl (%r12), %eax
+                movzbl 1(%r12), %ecx
+                shll $8, %ecx
+                orl %ecx, %eax
+                movzbl 2(%r12), %ecx
+                shll $16, %ecx
+                orl %ecx, %eax
+                cmpl $0xFFFFFF, %eax
+                je .Ldb_mynxt_fail                 # chunk de 16MB — fora de escopo
+                leaq 4(%r12), %rsi                 # payload
+                leaq .Ldb_mysql_buf(%rip), %r13
+                addq $16384, %r13                  # buf end
+                addq $4, %r12                      # pula o header
+                addq %rax, %r12                    # + payload
+                cmpq %r13, %r12
+                ja .Ldb_mynxt_fail
+                movq %r12, .Ldb_mysql_ppos(%rip)   # próximo não lido
+                # return: rsi=payload, rax=len
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Ldb_mynxt_fail:
+                xorl %eax, %eax
+                popq %r13
+                popq %r12
+                popq %rbx
                 ret
 
             # resolve "db<N>" → sqlite3* em rax (leaf: clobbera rsi/rdx/rax/rcx)
@@ -7614,7 +9306,102 @@ final class NativeRuntime {
             .Ldb_at_simple_done:
                 testq %r11, %r11
                 jz .Ldb_no_at_simple
+                # user:pass@ — extrai userinfo e monta KofStrings (r14=user, r15=pass)
+                leaq 8(%r12), %rdi
+                subq $32, %rsp
+                movq %rdi, 0(%rsp)       # u0
+                leaq (%r11), %rdx        # len userinfo = @ - u0
+                subq %rdi, %rdx
+                movq %rdx, 24(%rsp)
+                xorl %r8d, %r8d          # colon (0 se ausente)
+            .Ldb_up_find_colon:
+                cmpq %rdx, %r8
+                jge .Ldb_up_find_colon_done
+                cmpb $':', 0(%rdi,%r8)
+                je .Ldb_up_find_colon_done
+                incq %r8
+                jmp .Ldb_up_find_colon
+            .Ldb_up_find_colon_done:
+                movq %r8, 8(%rsp)        # colon offset (0 se ausente)
+                movq %r11, 16(%rsp)      # '@' (kof_alloc faz syscall: recarregar depois)
+                # NUL no fim do user (muta o buffer da URL in-place)
+                testq %r8, %r8
+                jz .Ldb_up_term_at
+                movb $0, (%rdi,%r8)
+                jmp .Ldb_up_term_done
+            .Ldb_up_term_at:
+                movb $0, (%r11)
+            .Ldb_up_term_done:
+                # pass = [colon+1, @) -> r15
+                testq %r8, %r8
+                jz .Ldb_up_nopass
+                leaq 1(%rdi,%r8), %rsi   # colon+1 (ptr real)
+                movq %r11, %rdx
+                subq %rsi, %rdx
+                jle .Ldb_up_nopass
+                leal 25(%rdx), %edi
+                call kof_alloc
+                movl $1, 0(%rax)
+                movl $0, 4(%rax)
+                movq $0, 8(%rax)
+                movq 0(%rsp), %rsi
+                movq 8(%rsp), %r8
+                leaq 1(%rsi,%r8), %rsi   # colon+1
+                movq 16(%rsp), %rdx
+                subq %rsi, %rdx
+                movl %edx, 16(%rax)
+                movl $0, 20(%rax)
+                xorl %ecx, %ecx
+            .Ldb_up_pcopy:
+                cmpl %edx, %ecx
+                jge .Ldb_up_pcopy_done
+                movzbl (%rsi,%rcx), %edi
+                movb %dil, 24(%rax,%rcx)
+                incl %ecx
+                jmp .Ldb_up_pcopy
+            .Ldb_up_pcopy_done:
+                movb $0, 24(%rax,%rdx)
+                movq %rax, %r15
+            .Ldb_up_nopass:
+                # user = [u0, colon ou @) -> r14
+                movq 0(%rsp), %rsi
+                movq 8(%rsp), %rdx
+                testq %rdx, %rdx
+                jz .Ldb_up_nocolon
+                # com colon: len = colon; rdx precisa ser u0+colon p/ o subq abaixo
+                addq %rsi, %rdx
+                jmp .Ldb_up_ulen
+            .Ldb_up_nocolon:
+                movq %r11, %rdx            # '@' absoluto
+            .Ldb_up_ulen:
+                subq %rsi, %rdx
+                jle .Ldb_up_nouser
+                leal 25(%rdx), %edi
+                movq %rdx, 24(%rsp)      # salva len (kof_alloc clobbera edx)
+                call kof_alloc
+                movq 24(%rsp), %rdx
+                movl $1, 0(%rax)
+                movl $0, 4(%rax)
+                movq $0, 8(%rax)
+                movq 0(%rsp), %rsi
+                movl %edx, 16(%rax)
+                movl $0, 20(%rax)
+                xorl %ecx, %ecx
+            .Ldb_up_ucopy:
+                cmpl %edx, %ecx
+                jge .Ldb_up_ucopy_done
+                movzbl (%rsi,%rcx), %edi
+                movb %dil, 24(%rax,%rcx)
+                incl %ecx
+                jmp .Ldb_up_ucopy
+            .Ldb_up_ucopy_done:
+                movb $0, 24(%rax,%rdx)
+                movq %rax, %r14
+            .Ldb_up_nouser:
+                movq 16(%rsp), %r11   # syscall clobberou r11
+                addq $32, %rsp
                 leaq 1(%r11), %r10
+                jmp .Ldb_no_at
             .Ldb_no_at_simple:
             .Ldb_no_at:
                 movq %r10, %rsi
@@ -7781,7 +9568,7 @@ final class NativeRuntime {
                 nop
             .Ldb_scramble_done:
                 leaq .Ldb_mysql_buf(%rip), %r8
-                movl $0x00088201, 4(%r8)
+                movl $0x00088209, 4(%r8)   # +0x0008 CLIENT_CONNECT_WITH_DB (db no auth)
                 movl $0x01000000, 8(%r8)
                 movb $0x21, 12(%r8)
                 leaq 13(%r8), %rdi
@@ -7831,8 +9618,6 @@ final class NativeRuntime {
                 movb $0, (%rdi)
                 incq %rdi
             .Ldb_auth_db2:
-                movb $0, (%rdi)
-                incq %rdi
                 testq %r13, %r13
                 jz .Ldb_auth_db_empty
                 movq %r13, %rax
@@ -7909,13 +9694,21 @@ final class NativeRuntime {
                 subl %esi, %eax          # seedlen = pacote - offset (should be 21, but use 20 without terminator)
                 movl $20, %edx
                 movq %r13, %rsi
-                # out do scramble em 8(%rsp)... usar o stack livre
+                # sem pass: responde vazio
+                testq %r15, %r15
+                jz .Ldb_switch_no_scramble2
+                # out do scramble em .Ldb_mysql_names+32; seed NOVA do switch em r13
                 leaq .Ldb_mysql_names+32(%rip), %rdi
-                leaq .Ldb_mysql_names(%rip), %rsi
+                movq %r13, %rsi
                 movl $20, %edx
                 movq %r15, %rcx
                 call kof_db_mysql_scramble
-                # AuthSwitchResponse: just the 20-byte scramble (no plugin name)
+                jmp .Ldb_switch_scramble_done2
+            .Ldb_switch_no_scramble2:
+                leaq .Ldb_mysql_names+32(%rip), %rdi
+                movl $0, 0(%rdi)
+            .Ldb_switch_scramble_done2:
+                # AuthSwitchResponse: 20-byte scramble (sem plugin name), seq 3
                 leaq .Ldb_mysql_buf(%rip), %r8
                 leaq .Ldb_mysql_names+32(%rip), %rsi
                 leaq 4(%r8), %rdi
@@ -8026,6 +9819,7 @@ final class NativeRuntime {
                 ret
 
             # kof_db_close(id: KofString) — handles both sqlite and mysql fd
+            # (2 pushes apos andq: call em rsp≡0 — SSE do sqlite3_close exige)
             .globl kof_db_close
             .type kof_db_close, @function
             kof_db_close:
@@ -8033,6 +9827,7 @@ final class NativeRuntime {
                 movq %rsp, %rbp
                 andq $-16, %rsp
                 pushq %rbx
+                pushq %r12
                 movq %rdi, %rbx
                 call kof_db_type
                 cmpl $2, %eax
@@ -8052,6 +9847,7 @@ final class NativeRuntime {
                 movq %rax, %rdi
                 call kof_net_close
             .Ldb_close_ret:
+                popq %r12
                 popq %rbx
                 movq %rbp, %rsp
                 popq %rbp
@@ -8115,9 +9911,7 @@ final class NativeRuntime {
                 movb %al, 1(%r13)
                 shrl $8, %eax
                 movb %al, 2(%r13)
-                movb .Ldb_mysql_seq(%rip), %al
-                movb %al, 3(%r13)
-                incb .Ldb_mysql_seq(%rip)
+                movb $0, 3(%r13)
                 movq %r12, %rdi
                 movq %r13, %rsi
                 leaq 5(%rcx), %rdx
@@ -8283,6 +10077,39 @@ final class NativeRuntime {
                 call sqlite3_changes
                 jmp .Ldb_exec_done\\n
             .Ldb_exec_mysql\\n:
+                # binds '?' -> literais (COM_QUERY não suporta ?)
+                .if \\n >= 1
+                movq %r13, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 2
+                movq %r14, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 3
+                movq %r15, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
                 # COM_QUERY: [len 3][seq 0][0x03][sql]
                 leaq .Ldb_mysql_buf(%rip), %r13
                 movb $0x03, 4(%r13)
@@ -8297,9 +10124,7 @@ final class NativeRuntime {
                 movb %al, 1(%r13)
                 shrl $8, %eax
                 movb %al, 2(%r13)
-                movb .Ldb_mysql_seq(%rip), %al
-                movb %al, 3(%r13)
-                incb .Ldb_mysql_seq(%rip)
+                movb $0, 3(%r13)
                 movq 32(%rsp), %rdi
                 movq %r13, %rsi
                 leaq 5(%rcx), %rdx
@@ -8512,7 +10337,40 @@ final class NativeRuntime {
                 movq %r14, %rax
                 jmp .Ldb_query_done\\n
             .Ldb_query_mysql\\n:
-                # COM_QUERY + parse do resultset (M1: um read por pacote)
+                # binds '?' -> literais (COM_QUERY não suporta ?)
+                .if \\n >= 1
+                movq %r13, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 2
+                movq %r14, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 3
+                movq %r15, %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rdi
+                call kof_db_mysql_render
+                movq %rax, %rsi
+                movq %r12, %rdi
+                call kof_db_mysql_replace_q
+                movq %rax, %r12
+                .endif
+                # COM_QUERY + parse do resultset pacote a pacote
                 leaq .Ldb_mysql_buf(%rip), %r13
                 movb $0x03, 4(%r13)
                 leaq 24(%r12), %rsi
@@ -8526,60 +10384,71 @@ final class NativeRuntime {
                 movb %al, 1(%r13)
                 shrl $8, %eax
                 movb %al, 2(%r13)
-                movb .Ldb_mysql_seq(%rip), %al
-                movb %al, 3(%r13)
-                incb .Ldb_mysql_seq(%rip)
+                movb $0, 3(%r13)
                 movq 32(%rsp), %rdi
                 movq %r13, %rsi
                 leaq 5(%rcx), %rdx
                 call kof_net_write
+                # reader de pacotes: reset + 1º pacote
                 movq 32(%rsp), %rdi
-                movq %r13, %rsi
-                movl $65536, %edx
-                call kof_net_read
+                call kof_db_mysql_reset
+                call kof_db_mysql_next
                 testq %rax, %rax
                 jle .Ldb_query_bad\\n
-                cmpb $0xFF, 4(%r13)
+                movq %rsi, 24(%rsp)          # salva payload (kof_list_new clobbera rsi)
+                cmpb $0xFF, (%rsi)
                 je .Ldb_query_bad\\n
                 call kof_list_new
                 movq %rax, %r14
-                # parse: col count (lenenc) no payload
-                leaq 4(%r13), %rsi
+                movq 24(%rsp), %rsi          # restaura payload
+                # col count (lenenc) do 1º pacote
                 call kof_db_mysql_lenenc
                 movl %eax, %r13d
+                # column definitions: um pacote por coluna
                 xorl %ebx, %ebx
-                # column definitions: 4 lenenc strings (def/schema/table/org) + name
             .Ldb_mysql_cols\\n:
                 cmpl %r13d, %ebx
                 jge .Ldb_mysql_cols_done\\n
+                call kof_db_mysql_next
+                testq %rax, %rax
+                jle .Ldb_query_bad\\n
+                # pula cat, schema, table, org_table (4 lenenc: len + addq p/ dados)
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 call kof_db_mysql_lenenc
+                addq %rax, %rsi
                 # name = lenenc string: len em eax, dados em rsi
                 call kof_db_mysql_lenenc
                 movq %rsi, .Ldb_mysql_names(,%rbx,8)
                 movl %eax, .Ldb_mysql_names+512(,%rbx,4)
-                addq %rax, %rsi
-                # pula org_name (lenenc) + bloco fixo (12 bytes)
+                # pula org_name (lenenc)
                 call kof_db_mysql_lenenc
-                addq $12, %rsi
+                addq %rax, %rsi
                 incq %rbx
                 jmp .Ldb_mysql_cols\\n
             .Ldb_mysql_cols_done\\n:
-                # EOF apos colunas: 0xFE
+                # pacote apos colunas: 0x00 (OK, sem resultset) ou 0xFE (EOF)
+                call kof_db_mysql_next
+                testq %rax, %rax
+                jle .Ldb_query_done\\n
+                cmpb $0x00, (%rsi)
+                je .Ldb_query_mydone\\n
+                jmp .Ldb_mysql_rows\\n
+            .Ldb_mysql_rows\\n:
+                call kof_db_mysql_next
+                testq %rax, %rax
+                jle .Ldb_query_mydone\\n
                 movzbl (%rsi), %eax
+                cmpb $0xFF, %al
+                je .Ldb_query_mydone\\n
                 cmpb $0xFE, %al
-                je .Ldb_mysql_eof\\n
-                call kof_db_mysql_lenenc
-            .Ldb_mysql_eof\\n:
-                incq %rsi
-                movq %rsi, 40(%rsp)
-            .Ldb_mysql_row\\n:
-                movq 40(%rsp), %rsi
-                movzbl (%rsi), %eax
-                cmpb $0xFE, %al
-                je .Ldb_query_done\\n
+                je .Ldb_query_mydone\\n
+                # pacote de linha: monta o JSON object (cursor do pacote em 24(%rsp))
+                movq %rsi, 24(%rsp)
                 call kof_json_builder_new
                 movq %rax, %r15
                 movq %r15, %rdi
@@ -8608,16 +10477,15 @@ final class NativeRuntime {
                 movl $58, %esi
                 call kof_json_builder_char
                 # valor: lenenc; NULL = 0xFB
-                movq 40(%rsp), %rsi
+                movq 24(%rsp), %rsi
                 movzbl (%rsi), %eax
                 cmpb $0xFB, %al
                 je .Ldb_mysql_null\\n
                 call kof_db_mysql_lenenc
-                movq %rsi, %r12
-                addq %rax, %r12
-                movq %rax, %rdx
-                movq %rsi, %rdi
-                movq %r12, 40(%rsp)
+                leaq (%rsi,%rax), %r10
+                movq %r10, 24(%rsp)           # cursor = fim dos dados
+                movq %rsi, %rdi               # rdi = src (dados)
+                movq %rax, %rsi               # rsi = len (make_string: rdi=src, rsi=len)
                 call kof_io_make_string
                 movq %rax, %r12
                 xorl %r10d, %r10d
@@ -8650,9 +10518,9 @@ final class NativeRuntime {
                 movq %r15, %rdi
                 movq %rax, %rsi
                 call kof_json_builder_str
-                movq 40(%rsp), %rsi
+                movq 24(%rsp), %rsi
                 incq %rsi
-                movq %rsi, 40(%rsp)
+                movq %rsi, 24(%rsp)
             .Ldb_mysql_val\\n:
                 incl %ebx
                 jmp .Ldb_mysql_col\\n
@@ -8665,9 +10533,11 @@ final class NativeRuntime {
                 movq %r14, %rdi
                 movq %rax, %rsi
                 call kof_list_add
-                jmp .Ldb_mysql_row\\n
+                jmp .Ldb_mysql_rows\\n
             .Ldb_query_bad\\n:
                 call kof_list_new
+            .Ldb_query_mydone\\n:
+                movq %r14, %rax
             .Ldb_query_done\\n:
                 addq $40, %rsp
                 popq %r15
@@ -8870,6 +10740,26 @@ final class NativeRuntime {
             Store_get:
                 xorl %eax, %eax
                 ret
+            // ── Fase 7: Router (no-ops — UI é KofJS) ──
+            kof_ui_route_register:
+                ret
+            kof_ui_router_go1:
+            kof_ui_router_go2:
+            kof_ui_router_replace1:
+            kof_ui_router_replace2:
+            kof_ui_router_back:
+            kof_ui_router_forward:
+                xorl %eax, %eax           # false (não navegou)
+                ret
+            kof_ui_router_param:
+            kof_ui_router_current:
+                leaq .Lkrtr_empty(%rip), %rdi
+                movl $0, %esi
+                jmp kof_string_from_literal
+            kof_ui_router_depth:
+                xorl %eax, %eax
+                ret
+            .Lkrtr_empty: .asciz ""
             """);
     }
 

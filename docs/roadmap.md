@@ -1,7 +1,7 @@
 # Kof — Roadmap de Longo Prazo
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta
 
 ---
 
@@ -55,7 +55,8 @@ Objetivos:
 - possibilidade de utilizar frameworks legados como Spring, Hibernate etc.;
 - backend principal durante a consolidação inicial.
 
-Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 658 testes 27/08)
+Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 747 testes 31/08;
+web stack nativa com WebSocket/SSE e `kof.http` retry/circuit — 30/08)
 
 ### KofNative — Binário Nativo
 
@@ -70,7 +71,14 @@ Objetivos:
 - reutilização da mesma semântica da linguagem;
 - mesma aplicação podendo ser compilada para JVM ou Native.
 
-Estado atual: ✅ estável x86_64 (free-list `kof_free_head` + `kof_gc_collect` 27/08) + `native.riscv64` (riscv64 via `riscv64-linux-gnu-as`, `.option arch,rv64g`, `li a7 214/64/93` — toolchain estável) + `native.aarch64` (placeholder, target separation done `Target.java:1`)
+Estado atual: ✅ estável x86_64 (free-list `kof_free_head` com reuso mmap; GC
+mark-sweep pendente — auto-GC desativado após hang, memória devolvida só no
+`munmap` fallback; `spawn`/`await` via `pthread_create` + trampoline +
+`pthread_join` com allocator thread-safe (futex) — 31/08; FP real em XMM —
+FLT001; JSON objetos/records + arrays FP — JSN001/002/003; SQLite nativo `.so`
+direto; MySQL wire protocol WIP) + `native.risc` (riscv64: toolchain
+`riscv64-linux-gnu-as/ld` + qemu; codegen ainda x86_64 placeholder) +
+`native.arm` (aarch64: toolchain + qemu; codegen ainda x86_64 placeholder)
 
 ### KofJS — Web
 
@@ -104,7 +112,7 @@ A intenção é semelhante à filosofia do Flutter:
 Estado atual: 🟡 alpha — pipeline `.kf → Kof IR → KofJS → .mjs` funcional com
 execução na engine JS embarcada do próprio Kof (sem Node.js). Classes,
 herança, List `map/filter/reduce`, String API, JSON, exceções, pattern matching
-`case String s` + `Point(x,y)`, `String?` básica, `kof.time`/`kof.io`/`kof.http` (via `Java HttpClient` interop) e `kof run
+`case String s` + `Point(x,y)`, `String?` básica, `kof.time`/`kof.io`/`kof.http` (via `Java HttpClient` interop + fetch fallback; retry/circuit em paridade com o JVM — 30/08; scheduler via `setInterval` — 27/08; `spawn` sequencial, async real = CONC003) e `kof run
 --target=js` funcionam. A plataforma web (HTML/CSS/JS, browser) é a próxima
 fase. Ver: `docs/targets/KOFJS.md`.
 
@@ -120,7 +128,7 @@ kof run arquivo.kf
 
 A implementação interna poderá evoluir para interpretação, compilação incremental, JIT ou execução híbrida, mas a decisão será tomada posteriormente com base em benchmarks.
 
-Estado atual: ✅ implementado (0.2.0-beta): `kof script app.kf [--watch]` + `kof repl` (top-level `let` → `KofScriptGlobals`; Windows SIGPIPE fix). `KofCcompiler` (`kof c`) compila C subset → ELF x86_64 nativo (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`).
+Estado atual: ✅ implementado (0.2.6-beta): `kof script app.kf [--watch]` + `kof repl` (top-level `let` → `KofScriptGlobals`; Windows SIGPIPE fix). `KofCcompiler` (`kof c`) compila C subset → ELF x86_64 nativo (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`).
 
 ---
 
@@ -190,40 +198,60 @@ api "/users" {
 }
 ```
 
-Estado atual: 🟡 parcial — HTTP/rotas (`kof.web` + TLS `listenSecure`),
-JSON, configuração (`kof.config` free-list Native), logging (`kof.log` Native), segurança
-(`kof.security` + G9), concorrência (`spawn` + `await`/`Handle<T>`), `kof.http` (JVM+JS), `List map/filter/reduce`, `Box<T>`, pattern matching e `String?` implementados (0.2.0-beta).
-Faltam: WebSocket/SSE, HTTP client no Native (HTTP002), RPC,
-eventos/filas/pub-sub fora do JVM, cache, tracing, scheduling/cron, Native aarch64 codegen.
+Estado atual: 🟡 parcial — HTTP/rotas (`kof.web` + TLS `listenSecure` +
+**WebSocket `app.ws`** + **SSE `sse.*`** — 30/08, JVM), JSON (completo nos 3
+targets, 31/08), configuração (`kof.config` asm Native), logging (`kof.log`
+asm Native), segurança (`kof.security` + G9), **cache (`kof.cache`, 3
+targets — 30/08)**, **`kof.http` retry/circuit breaker (JVM+JS — 30/08)**,
+concorrência (`spawn` + `await`/`Handle<T>` — JVM virtual threads, Native
+pthread 31/08, JS sequencial), `List map/filter/reduce`, `Box<T>`, pattern
+matching e `String?` implementados (0.2.6-beta).
+Faltam: HTTP client no Native (HTTP002), RPC (gRPC — ver abaixo),
+eventos/filas/pub-sub fora do JVM (MQ001
+Native), tracing, web no Native/JS (WEB002/WEB001), MySQL nativo completo,
+RISC/ARM codegen, GC mark-sweep.
 Ver `docs/plan-spring-independence.md` (Fases 5-14).
 
-### Concorrência — fila residual (0.2.0-beta)
+**gRPC no `kof.web` (novo, 31/08 — planejado)**: comunicação gRPC como
+primeira classe na plataforma web — `app.grpc { service ... }` com stubs
+gerados a partir de `.proto`, server streaming + unary sobre HTTP/2 no JVM
+(`io.grpc` via `kof.web`), e client `grpc.call(endpoint, method, msg)`.
+Escopo: Fase web (mesma família de `app.ws`/`sse.*`); codegen `.proto` → IR
+Kof; parity JVM primeiro, Native/JS depois.
 
-Estado 0.2.0-beta: concorrência real **JVM** (virtual threads) + **JS** sequencial; Native é
-CONC001 e JS `spawn` é CONC003 — ambos explícitos em compile-time.
+### Concorrência — fila residual (0.2.6-beta, 31/08)
+
+Estado 0.2.6-beta: concorrência real **JVM** (virtual threads) + **Native**
+(pthread, CONC001 fechado 31/08: spawn/await + `done`/`poll`/`cancel`/
+`cancelled`/`selectAny` — cancel cooperativo por TID, selectAny por polling
+1ms) + **JS** sequencial (stmt/expr/cancel/selectAny; o `CONC003` restante é
+async event-loop real). ⚠️ Bug pré-existente separado: `spawn→await→spawn`
+corrompe a pilha da main (SIGSEGV no próximo `pthread_create`); reproduz sem
+o feature de cancel/select (suspeito: `pthread_join` no `kof_await`).
 
 | Item | Descrição | Prioridade |
 |------|-----------|------------|
-| Unwrap de `ExecutionException` | `kof_await` re-lança a causa original em vez do wrapper — mensagens limpas em try/catch | alta |
-| `await` com timeout | `await r, timeoutMs` → `null`/exceção no estouro; hoje bloqueia para sempre | alta |
-| Cancelamento | `cancel(r)` cooperativo via flag no handle | média |
-| Espera múltipla | `select(h1, h2, ...)` → primeiro handle pronto (estilo Go) | média |
-| Port Native | worker threads + scheduler + fila de tarefas em asm (o pedaço mais caro — depende de futex/clone syscall) | P2 |
-| Port JS | spawn sobre Promises/event-loop; await nativo via microtask | P2 |
-| Scheduler/cron | `every(30s) { }`, `at("0 3 * * *") { }` sobre virtual threads (G8-residual) | P2 |
-| Canais tipados | `channel<Int>()` com send/receive bloqueantes entre tasks | P3 |
+| ~~Unwrap de `ExecutionException`~~ | ✅ 31/08 — `kof_await` re-lança a causa original (JVM) | — |
+| ~~`await` com timeout~~ | ✅ 31/08 — `awaitTimeout(r, ms)`: valor no prazo, exceção capturável via `try/catch` no estouro (JVM `Future.get(ms)` + Native polling 1ms com deadline; JS sequencial = paridade) | — |
+| ~~Cancelamento~~ | ✅ 31/08 — `cancel(r)`/`cancelled()` cooperativo via flag no handle (JVM + Native por TID) | — |
+| ~~Espera múltipla~~ | ✅ 31/08 — `selectAny(h1, h2, ...)` → primeiro handle pronto (JVM + Native + JS) | — |
+| ~~`done`/`poll`~~ | ✅ 31/08 — não-bloqueantes sobre o handle (JVM + Native) | — |
+| ~~Port Native~~ | ✅ 31/08 — `pthread_create` + trampoline + `pthread_join` + allocator thread-safe (futex); join implícito (CONC001 fechado) | — |
+| Port JS | spawn sobre Promises/event-loop; await nativo via microtask (CONC003) | P2 |
+| ~~Scheduler/cron~~ | ✅ 31/08 — `every`/`at` JVM (`ScheduledExecutor`) + JS (`setInterval`) + **Native SCHED001** (thread por job, `usleep` ms→us + flag `active`, `cancel(id)` cooperativo) | — |
+| ~~Canais tipados~~ | ✅ 31/08 — `channel<Int>()` com `send`/`receive` (JVM `LinkedBlockingQueue` bloqueante + Native FIFO futex + JS array sequencial) | — |
 
 Critério de "100%": os três targets executando os mesmos programas
 concorrentes com golden diff vazio (mesmo padrão da métrica 1 do plano).
 
-### Linguagem — fila residual (P1/P2, 0.2.0-beta)
+### Linguagem — fila residual (P1/P2, 0.2.6-beta)
 
 | Item | Status | Plano |
 |------|--------|-------|
-| pattern matching | ✅ 0.2.0-beta — `switch (x) { case String s: ... }` + `case Point(x,y)` em JVM/Native/JS | guards e destructuring aninhado pendentes |
-| null safety | ✅ 0.2.0-beta — `String?` básica com `?`-check em compile-time; **sem Option no core** | checks avançados pendentes |
-| higher-order em coleções | ✅ 0.2.0-beta — `List map/filter/reduce` em JVM/Native/JS | `Map/Set` já ✅ 0.1.0 |
-| módulos multi-arquivo | ✅ 0.2.0-beta — `import a.b.C` file handling fix (`CompilerDriver.java:243`) para projetos grandes (`a/b/C.kf`) | semântica unificada de visibilidade/import residual |
+| pattern matching | ✅ 0.2.6-beta — `switch (x) { case String s: ... }` + `case Point(x,y)` em JVM/Native/JS | guards e destructuring aninhado pendentes |
+| null safety | ✅ 0.2.6-beta — `String?` básica com `?`-check em compile-time; **sem Option no core** | checks avançados pendentes |
+| higher-order em coleções | ✅ 0.2.6-beta — `List map/filter/reduce` em JVM/Native/JS | `Map/Set` já ✅ 0.1.0 |
+| módulos multi-arquivo | ✅ 0.2.6-beta — `import a.b.C` file handling fix (`CompilerDriver.java:243`) para projetos grandes (`a/b/C.kf`) | semântica unificada de visibilidade/import residual |
 
 ---
 
@@ -253,7 +281,7 @@ security {
 
 Estado atual: ✅ implementado (v1, docs/security.md)
 
-**Implementado (0.2.0-beta, inclui 0.0.5):**
+**Implementado (0.2.6-beta, inclui 0.0.5):**
 - `kof.security` com API idiomática: `passwords`, `crypto`, `jwt`,
   `secrets`, `security`, `auth` + G9 (`rateLimit`, `sessionCreate`, `apiKeyGenerate`).
 - Password hashing PBKDF2-HMAC-SHA256 (600k iterações, salt, constant-time,
@@ -266,9 +294,11 @@ Estado atual: ✅ implementado (v1, docs/security.md)
 
 **Pendente:**
 - OAuth2/OIDC client (arquitetura preparada em docs/security.md §2.3);
-- sessions / rate limiting / audit logging;
-- JWT e passwords no Native (dependem do binding — HMAC asm já existe);
+- audit logging;
 - integração com database (planejado).
+
+*(sessions, rate limiting e API keys fechadas em G9 — 3 targets;
+JWT/passwords/SHA-512/AES-GCM no Native fechados em asm — G10.)*
 
 ---
 
@@ -455,9 +485,11 @@ Estado atual: ✅ JVM funcional, Native funcional
 
 APIs nativas para log, metric, trace, health, audit. Integração com OpenTelemetry.
 
-Estado atual: 🟡 parcial — `kof.log` com níveis, JSON estruturado e
-correlation ID no JVM (LOG001 fora dele). Faltam métricas, tracing,
-health checks e integração OpenTelemetry.
+Estado atual: 🟡 parcial — `kof.log` com níveis (JVM: JSON estruturado +
+correlation ID; Native: asm, UTC — LOG001 no JS) e `kof.observability`
+(health/readiness/liveness, counter/increment/gauge, requestId/
+correlationId — 3 targets). Faltam: histogram + endpoint `/metrics`
+(Prometheus), tracing/OpenTelemetry e `app.health("/health")`.
 
 ---
 
@@ -472,7 +504,7 @@ kof-security / kof-concurrency / kof-io / kof-ui
 
 Mas NÃO criar dezenas de módulos prematuramente. Primeiro definir contratos, tipos e arquitetura.
 
-Estado atual: 🟡 em progresso — já existem como namespaces da stdlib (0.2.0-beta):
+Estado atual: 🟡 em progresso — já existem como namespaces da stdlib (0.2.6-beta):
 `kof.web` (JVM, `kof.http` JVM+JS), `kof.io`, `kof.time`, `kof.config` (JVM+Native free-list), `kof.log` (JVM+Native),
 `kof.security` (3 targets, G9), `kof.db` + `kof.orm` (JVM; SQLite native + `kof_db_mysql_scramble`), `kof.validation`/`kof.observability`/`kof.mq` (3 targets),
 `kof.process`, `kof.ui` + `KofScript`/`KofCcompiler`. A organização em módulos separados virá depois dos
@@ -564,7 +596,7 @@ contratos estabilizarem.
   - kof_free (no-op, documentado) ✅
   - kof_memstats para debug ✅
   - MEMORY_MODEL.md documentado ✅
-> **Atualizado (0.2.0-beta):** interfaces (F.5), exceptions reais (F.6, JVM +
+> **Atualizado (0.2.6-beta):** interfaces (F.5), exceptions reais (F.6, JVM +
 > Native unwinding) e memory management (free-list `kof_free_head` + `kof_gc_collect` 27/08; `mmap` + reuso) estão implementados.
 
 ### Fase 1 — Core
@@ -649,17 +681,17 @@ contratos estabilizarem.
 
 ---
 
-## 17. Distribuição e Tooling (0.2.0-beta)
+## 17. Distribuição e Tooling (0.2.6-beta)
 
 O Kof é uma plataforma distribuível, não apenas um JAR:
 
 - distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
-- versionamento centralizado (`VERSION` 0.2.0-beta → pom/properties via `scripts/bump-version.sh`);
-- releases single-job (`release.yml` package+release, JDK 21 fix 27/08) por push na `main` (testes 658 → package 3 plataformas → GitHub Release);
+- versionamento centralizado (`VERSION` 0.2.6-beta → pom/properties via `scripts/bump-version.sh`);
+- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 747 → bump → package 3 plataformas → GitHub Release);
 - `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
 - editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);
-- `kof build/run/serve/check/test/bench/debug/info/lsp/install/script/repl/c` PASS; `kof fmt` planejado.
+- `kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version` PASS (18 comandos; `fmt` e `config gen` 31/08).
 
 Referências: `docs/distribution/`, `docs/tooling/`.
 
@@ -697,9 +729,12 @@ estratégia.
 ## 19.5 Kof Debugger (componente oficial de tooling)
 
 Debugging de primeira classe: o programador depura **código Kof**,
-independentemente do target. Fase 1 (DebugInfo na IR com source location
-por op) implementada; JVM LineNumberTable + SourceFile gerados; DAP e
-kof-debug planejados. Ver: `docs/debugger-architecture.md`,
+independentemente do target. Fases 1-3 implementadas: DebugInfo na IR com
+source location por op, JVM LineNumberTable/SourceFile/LocalVariableTable
+gerados e **`kof debug` MVP funcional** (DAP over stdio + JDWP cru: launch,
+breakpoints por linha Kof, `stopped`, stack trace com funções/linhas Kof,
+continue, disconnect). Fases 4-7 (Kof Editor, Native DWARF, JS source
+maps, avançado) planejadas. Ver: `docs/debugger-architecture.md`,
 `docs/debugging.md`, `docs/debug-adapter.md`.
 
 ## 20. Princípios de Design

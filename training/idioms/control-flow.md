@@ -1,6 +1,6 @@
 # Idioms — Control Flow
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.0-beta
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta
 
 ## What it is
 
@@ -84,7 +84,7 @@ for (var n in nums) {
 }
 ```
 
-## switch (0.2.0-beta: pattern matching)
+## switch (0.2.6-beta: pattern matching)
 
 ```kof
 switch (x) {

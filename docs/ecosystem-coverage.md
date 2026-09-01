@@ -4,11 +4,11 @@
 > plataforma moderna (checklist derivado do ecossistema Spring, usado como
 > **matriz de capacidades**, não como especificação de API).
 >
-> **Data:** 27 de agosto de 2026 · **Versão:** 0.2.0-beta
+> **Data:** 31 de agosto de 2026 · **Versão:** 0.2.6-beta
 > **Método:** auditoria do repositório (código + testes + docs) — ver §2.
-> **Build:** `mvn clean package` PASS, `mvn test` 658 (650 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.0-beta, `release.yml` single job JDK 21 fix, Windows SIGPIPE fix.
+> **Build:** `mvn clean package` PASS, `mvn test` 747 734 kof-compiler +8 kof-script +5 kof-c-compiler), golden 16/16, integration 9/9, `scripts/package.sh` PASS, `VERSION` 0.2.6-beta, `release.yml` 2 jobs (`test-and-bump` → `package-and-release`) × 3 plataformas, Windows SIGPIPE fix.
 > **Resultado:** nenhuma implementação nova foi feita neste documento —
-> apenas inventário, matriz, gaps, prioridade e estratégia (0.2.0-beta acrescenta targets `native.riscv64`/`native.aarch64`, free-list GC, pattern matching, `String?`, `KofScriptGlobals`, `KofCcompiler`).
+> apenas inventário, matriz, gaps, prioridade e estratégia. 0.2.6-beta acrescenta targets `native.risc`/`native.arm`, free-list GC, pattern matching, `String?`, `KofScriptGlobals`, `KofCcompiler`; 30-31/08 acrescenta spawn Native (pthread/CONC001), FP XMM (FLT001), JSON completo no Native (JSN001/002/003), WebSocket/SSE JVM, `kof.cache` 3 targets, `kof.http` retry/circuit (JVM+JS), `kof fmt`/`kof config gen`, UI Fase 7 Router, SQLite nativo `.so` direto.
 
 ---
 
@@ -54,23 +54,24 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 | `kof.time` | `now()`, `sleep` (JVM/Native/JS), `interval`/`cancel` (JVM) | KofTime.java | KofTimeE2ETest (5) |
 | `kof.json` | `json.encode/decode<T>` | JvmRuntime/NativeRuntime/JsBackend | JsonE2ETest (14) |
 | `kof.security` | `passwords.*`, `crypto.*`, `jwt.*`, `secrets.*`, `security.*`, `auth.*` | KofSecurity.java | KofSecurityTest (22) |
-| `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8) |
-| `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) — JVM+JS (JS via `Java HttpClient` interop) | KofHttp.java + KofJsRunner | KofHttpE2ETest (4, JVM+JS) |
+| `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `status(code, body)`, `headerSet`, `app.sse`, `app.ws`, `param/query/header/body/method/path` | KofWeb.java + JvmWebRuntime.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8), KofWebWsE2ETest (28), KofWsFrameTest (7), KofWebSseE2ETest (10) |
+| `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) + `retry`/`circuit` (30/08, janela 30s, fail-fast) — JVM+JS (JS via `Java HttpClient` interop + fetch fallback) | KofHttp.java + JvmWebRuntime.java + KofJsRunner | KofHttpE2ETest (4, JVM+JS), KofHttpResilienceE2ETest (3, JVM+JS) |
+| `kof.cache` | `cache.get/set/set(key,v,ttl)/ttl/delete/clear` (Map + TTL) — JVM/Native/JS (30/08) | JvmCacheRuntime.java / NativeRuntime (asm) | KofCacheE2ETest (5, x3 targets) |
 | `kof.mq` | `mq.publish/subscribe/unsubscribe`, `queue/push/pop/size` (JVM + JS; Native MQ001) | KofMq.java | KofMqE2ETest (4) |
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
 | `kof.test` | `assert(cond[, msg])`, `test "nome" { }` (runner sintetizado), `kof test` | CompilerDriver/CLI | AssertE2ETest (5), StructuredTestE2ETest (11) |
 | `kof.ui` | `Color/Theme/Palette`, `Window/Label/Button/Input`, `Column/Row/View/Style`, eventos por lambda com capturas, webview nativo | KofUi.java, JsBackend (runtime), kof-webview.c | UiE2ETest (14), WindowE2ETest (3) |
 | `kof.config` | `config.get/env/has`, `config.str/int/long/bool(name, fallback)` — JVM/Native (arquivo+profiles+env) + JS (env) | KofConfig.java | KofConfigE2ETest (8) |
 | `kof.log` | `log.debug/info/warn/error`, níveis (default INFO), `off`, warn→stderr | KofLog.java | KofLogE2ETest (7), NativeLogE2ETest (17) |
-| `kof.cli` | `kof build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/version` | kof-cli | Bench, KofDebug E2E |
+| `kof.cli` | 18 comandos: `kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version` (`fmt` + `config gen` 31/08) | kof-cli | Bench, KofDebug E2E |
 
 ## 2.3 kof.security — inventário (6 namespaces, dispatch compile-time)
 
 | Namespace | Chamada | JVM | Native | JS |
 |-----------|---------|-----|--------|----|
-| `passwords` | `hash/verify/needsRehash` (PBKDF2-HMAC-SHA256 600k) | ✅ | ❌ SECN001 | ✅ |
-| `crypto` | `sha256`, `sha512`, `hmacSha256`, `encryptAesGcm/decryptAesGcm`, `randomHex`, `randomInt` | ✅ (sha512/AES-GCM) | ✅ sha256/hmac/random; ❌ sha512 SECN003, AES-GCM SECN002 | ✅ |
-| `jwt` | `create(claims, secret[, ttl])`, `verify(token, secret[, iss, aud])`, `secret()` (HS256 fixo, iat/exp) | ✅ | ❌ SECN004 (diagnóstico em compile-time — G7 fechado) | ✅ |
+| `passwords` | `hash/verify/needsRehash` (PBKDF2-HMAC-SHA256 600k) | ✅ | ✅ asm (G10, 25/08) | ✅ |
+| `crypto` | `sha256`, `sha512`, `hmacSha256`, `encryptAesGcm/decryptAesGcm`, `randomHex`, `randomInt` | ✅ (sha512/AES-GCM) | ✅ asm: sha256/sha512/hmac/AES-GCM/random (G10, 25/08) | ✅ |
+| `jwt` | `create(claims, secret[, ttl])`, `verify(token, secret[, iss, aud])`, `secret()` (HS256 fixo, iat/exp) | ✅ | ✅ asm (G10, 25/08) | ✅ |
 | `secrets` | `get(name)`, `get(name, fallback)` (env `KOF_*`), `redact(value)` | ✅ | ✅ (`/proc/self/environ`) | ✅ |
 | `security` | `constantTimeEquals`, `csrfToken/csrfValid`, `corsAllowed`, headers (CSP/HSTS/nosniff/Frame/Referrer), `randomHex/randomInt`, `redact` | ✅ | ✅ constant-time/redact; ❌ csrf/cors/headers | ✅ constant-time/redact; ❌ csrf/cors/headers |
 | `auth` (web) | `secret(token)`, `token()`, `authenticated()`, `claims()`, `user()`, `hasRole(r)`, `hasPermission(p)` (Bearer JWT + ThreadLocal por request) | ✅ | ❌ | ❌ |
@@ -83,14 +84,20 @@ Documentação: `docs/security.md`; testes: `KofSecurityTest` (22).
 
 - `web.app()` → rotas `app.get/post/put/delete/patch/options(path) { }`,
   middleware `app.use { }`, `app.listen(port)` (bloqueante, virtual
-  threads), `app.port()`, `app.close()`.
+  threads), `app.port()`, `app.close()`; `status(code, body)`/`headerSet`
+  (27/08).
+- **WebSocket** `app.ws("/chat") { }` — handshake RFC 6455 + frame codec com
+  máscara (30/08); **SSE** `sse.send/event/close` (30/08) — ambos JVM;
+  `KofRuntime.close` fecha os descritores.
 - Contexto: `param/query/header/body/method/path` (ThreadLocal por request).
 - Path params `:id`; query e headers case-insensitive; Content-Type
   automático (JSON se `{`/`[`); 404/500; middlewares em cadeia.
 - Engine: `WebRoute/WebRequest` gerados no KofRuntime; `KofHttpServer`
   (legado `kof serve`, `ReflectiveHandler`).
-- Targets: JVM ✅; Native ❌ (sem `kof_web_*` no asm); JS ❌ WEB001.
-- Tests: `KofWebE2ETest` (9, sockets reais), `KofHttpServerTest` (8).
+- Targets: JVM ✅ (incl. ws/sse); Native ❌ WEB002 (sem `kof_web_*` no asm);
+  JS ❌ WEB001.
+- Tests: `KofWebE2ETest` (9, sockets reais), `KofHttpServerTest` (8),
+  `KofWebWsE2ETest` (11), `KofWsFrameTest` (7), `KofWebSseE2ETest` (7).
 - Docs: `docs/stdlib-web.md`.
 
 ## 2.5 Runtimes
@@ -101,17 +108,18 @@ Documentação: `docs/security.md`; testes: `KofSecurityTest` (22).
 | Native | `NativeRuntime.java` (asm x86-64, sem libc) | strings, listas, json, io, sec (parcial), net (símbolos), time, print |
 | JS | `JsBackend` gera `kof-runtime.mjs` + `kof-runtime-io.mjs`; `kof-runtime` module = `KofJsRunner` (GraalJS embarcado) | linguagem, io via `kof_platform`, sec, ui (DOM/webview) |
 
-## 2.6 Testes (658 JUnit: 650 kof-compiler +8 kof-script +5 kof-c-compiler) — por módulo (27/08)
+## 2.6 Testes (747 JUnit: 734 kof-compiler +8 kof-script +5 kof-c-compiler) — por módulo (27/08)
 
 Security (22) · CompilerDriver (190) · Native E2E (50) · KofJS E2E (35) ·
-JVM E2E (29) · Optimizer (21) · Io (15) · Json (14) · CoreRegression (12) ·
+JVM E2E (29) · Optimizer (21) · Io (15) · Json (14 + completo 7) · CoreRegression (14) ·
 BackendParity (10) · Exceptions (9) · Web E2E (9) · HttpServer (8) ·
-**KofConfig (8)** · **KofLog (7+Native 7)** · Idiomatic (7+6) · Ui (6) · Assert (5) ·
-FunctionSyntax (4) · Lambda (4) · **KofTime (4)** · **KofMq (4)** ·
-**KofHttp (4, JVM+JS)** · TuringComplete (3) · **KofOrm (16, E2E MariaDB/Postgres + MongoDB + SQLite native)** ·
-**KofDb (8, + MySQL scramble)`** · Spawn (3) · Window (3) · IRStatistics (2) · DebugInfo (2) ·
-NativeDebug (5) · StructuredTest (11) · AndroidInterop (11) · **KofScript (8)** · **KofCcompiler (5)**.
-Golden: `tests/golden/` 16/16 (8 casos × jvm+native). Integration: `tests/run-integration.sh` 9/9. `mvn test` 658.
+**KofConfig (8 + Native 8)** · **KofLog (10 + Native 7)** · Idiomatic (7+6) · Ui (14) · Assert (5) ·
+FunctionSyntax (4) · Lambda (4) · **KofTime (5)** · **KofMq (4)** ·
+**KofHttp (4, JVM+JS) + Resilience (3, JVM+JS 30/08)** · TuringComplete (3) · **KofOrm (12+, E2E MariaDB/Postgres + MongoDB + SQLite native)** ·
+**KofDb (8, + SQLite `.so` + MySQL scramble WIP)** · Spawn (3) · Window (3) · IRStatistics (2) · DebugInfo (2) ·
+NativeDebug (5) · StructuredTest (11) · AndroidInterop (11) · **KofScript (8)** · **KofCcompiler (5)** ·
+**KofWs (11) + KofWsFrame (7) + KofSse (7) + KofCache (5, x3 targets) + Router (E2E)** (30-31/08).
+Golden: `tests/golden/` 16/16 (8 casos × jvm+native). Integration: `tests/run-integration.sh` 9/9. `mvn test` 747.
 
 ## 2.7 Benchmarks (37, em 17 categorias, `kof bench` PASS)
 
@@ -138,7 +146,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | events | `PLANNED` (event bus) | — | — | — | — | roadmap.md |
 | validation | ✅ `kof.validation` (required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max) — JVM/Native/JS | y | y | y | KofValidationTest | stdlib.md |
 | scheduling | ✅ `kof.time` now/sleep (JVM/Native/JS) + interval/cancel (JVM) | y | y (now/sleep) | y (now/sleep) | KofTimeE2ETest | stdlib.md |
-| caching | `PLANNED` | — | — | — | — | roadmap.md |
+| caching | ✅ `kof.cache` (get/set/ttl/delete/clear; 30/08) | y | y (asm) | y | KofCacheE2ETest (5, x3) | roadmap.md |
 | transactions | ✅ `transaction {}` (JVM; commit/rollback real) | y | – DB001 | – DB001 | KofDbE2ETest | future/DATABASE_VISION.md |
 | resource management | `PARTIAL` (try/finally real) | y | y | — | ExceptionsE2ETest | language-state.md |
 | profiles/environments | `PARTIAL` (profile file + env; o resto em kof.config) | y | – CONFIG001 | – CONFIG001 | KofConfigE2ETest | — |
@@ -152,16 +160,16 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | REST verbs | get/post/put/delete/patch/options | y | – | – | KofWebE2ETest | web |
 | JSON body | automático (Content-Type) | y | – | – | KofWebE2ETest | web |
 | middleware | `app.use` | y | – | – | KofWebE2ETest | web |
-| HTTP client | ✅ `kof.http` (get/post/put/delete/patch/options/status/timeout, headers, JSON; HTTP002 Native) | y | – HTTP002 | y (GraalJS `Java HttpClient`) | KofHttpE2ETest (4, JVM+JS) | http.md |
+| HTTP client | ✅ `kof.http` (get/post/put/delete/patch/options/status/timeout + retry/circuit, headers, JSON; HTTP002 Native) | y | – HTTP002 | y (GraalJS `Java HttpClient` + fetch) | KofHttpE2ETest (4) + KofHttpResilienceE2ETest (3, JVM+JS) | http.md |
 | typed path/query/body | `PLANNED` (hoje strings) | — | — | — | — | web |
-| status codes custom | `PLANNED` | — | — | — | — | web |
-| headers de resposta custom | `PLANNED` | — | — | — | — | web |
+| status codes custom | ✅ `status(201, body)` (27/08) | y | – WEB002 | – WEB001 | KofWebE2ETest | web |
+| headers de resposta custom | ✅ `headerSet("X","y")` (27/08) | y | – WEB002 | – WEB001 | KofWebE2ETest | web |
 | cookies | `PLANNED` | — | — | — | — | roadmap.md |
 | multipart | `PLANNED` | — | — | — | — | — |
 | content negotiation | `PLANNED` | — | — | — | — | — |
 | error handling | 404/500 + mensagem | y | – | – | KofWebE2ETest | web |
-| WebSocket | `PLANNED` | — | — | — | — | roadmap.md |
-| SSE | `PLANNED` | — | — | — | — | — |
+| WebSocket | ✅ JVM (RFC 6455 handshake/frame codec/máscara + hardening: RSV/opcodes/control/UTF-8/fragmentação/close; BINARY `1003`) | y | – WEB004 | – WEB004 | KofWebWsE2ETest (28) + KofWsFrameTest (7) | stdlib-web.md |
+| SSE | ✅ JVM (`sse.send/event/close`; CRLF/LF/CR normalization, event name sanitization) | y | – WEB003 | – WEB003 | KofWebSseE2ETest (10) | stdlib-web.md |
 | gRPC / GraphQL / SOAP | `EXTERNAL`/`PLANNED` (interop) | — | — | — | — | roadmap.md |
 | REST documentation (OpenAPI) | `PLANNED` | — | — | — | — | roadmap.md |
 | HATEOAS | `NA` (sem framework pesado) | — | — | — | — | — |
@@ -170,7 +178,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` + MySQL handshake `kof_db_mysql_scramble` (27/08) | y | y (SQLite + MySQL scramble) | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
+| SQL / JDBC | ✅ `kof.db` (SQL-first) + SQLite nativo via `.so` direto + MySQL wire protocol (handshake+scramble+auth-switch+COM_QUERY+resultset, 31/08) | y | y (SQLite + MySQL wire) | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
 | `db.connect/query/transaction` | ✅ (+ `query<T>` tipado) | y | y | – DB001 | KofDbE2ETest | DATABASE_VISION.md |
 | prepared statements | ✅ (binds `?`) | y | y | – DB001 | KofDbE2ETest | — |
 | connection pools | `PLANNED` | — | — | — | — | — |
@@ -198,11 +206,11 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| password hashing (PBKDF2 600k) | `DONE` | y | – SECN001 | y | KofSecurityTest | security.md |
-| SHA-256 / SHA-512 / HMAC | `DONE` | y | y sha256/hmac; – sha512 SECN003 | y | KofSecurityTest | security.md |
-| AES-GCM | `DONE` (JVM) | y | – SECN002 | – SECN002 | KofSecurityTest | security.md |
+| password hashing (PBKDF2 600k) | `DONE` | y | y (asm, G10) | y | KofSecurityTest | security.md |
+| SHA-256 / SHA-512 / HMAC | `DONE` | y | y (asm, G10) | y | KofSecurityTest | security.md |
+| AES-GCM | `DONE` (JVM) | y (asm, G10) | – SECN002 | KofSecurityTest | security.md |
 | SecureRandom | `DONE` | y | y (getrandom) | y | KofSecurityTest | security.md |
-| JWT (HS256, exp/iss/aud) | `DONE` (JVM/JS) | y | – SECN004 (compile-time) | y | KofSecurityTest | security.md |
+| JWT (HS256, exp/iss/aud) | `DONE` | y | y (asm, G10) | y | KofSecurityTest | security.md |
 | secrets (`secrets.get`, env) | `DONE` | y | y | y | KofSecurityTest | security.md |
 | constant-time comparison | `DONE` | y | y | y | KofSecurityTest | security.md |
 | redaction | `DONE` | y | y | y | KofSecurityTest | security.md |
@@ -238,10 +246,10 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| HTTP integrations | `PLANNED` (client) | — | — | — | — | — |
+| HTTP integrations | ✅ `kof.http` client (JVM+JS; HTTP002 Native) | y | – HTTP002 | y | KofHttpE2ETest | http.md |
 | file adapters | `DONE` (kof.io) | y | y | y | IoE2ETest | stdlib/IO.md |
-| retry / timeout | `PLANNED` | — | — | — | — | — |
-| circuit breaker / bulkhead | `PLANNED` | — | — | — | — | — |
+| retry / timeout | ✅ `kof.http` `retry`/`timeout` (JVM+JS, 30/08) | y | – HTTP002 | y | KofHttpResilienceE2ETest | http.md |
+| circuit breaker / bulkhead | ✅ circuit breaker `kof.http` (30/08, 30s window, fail-fast); bulkhead `PLANNED` | y | – HTTP002 | y | KofHttpResilienceE2ETest | http.md |
 | idempotency | `PLANNED` | — | — | — | — | — |
 
 ## 3.8 Batch
@@ -292,7 +300,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| `kof` CLI completo | `DONE` (build/run/serve/check/test/bench/profile/inspect/debug/info/lsp/install/script/repl/c) | y (native.riscv64/aarch64) | y (free-list) | y (GraalJS) | — | tooling/ |
+| `kof` CLI completo | `DONE` (18 comandos: build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version — `fmt` + `config gen` 31/08) | y (native.risc/native.arm) | y (free-list + pthread) | y (GraalJS) | — | tooling/ |
 | `kof script` / `kof repl` | `DONE` (top-level `let` → `KofScriptGlobals`, `--watch`, SIGPIPE fix) | y | y | y | KofScript | stdlib.md |
 | `kof c` (KofCcompiler) | `DONE` (C subset `while/if/deref &/*` → ELF x86_64) | — | y x86_64 native-only | — | KofCCompilerTest | architecture.md |
 | command parsing (em Kof) | `PLANNED` (`kof.cli` como lib) | — | — | — | — | roadmap.md |
@@ -329,7 +337,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | # | Gap | Impacto | Local proposto |
 |---|-----|---------|----------------|
 | G1 | ~~**Database/SQL** inexistente~~ — ✅ **nível 0 implementado**: `kof.db` (JDBC JVM, SQLite nativo, MySQL WIP) + `kof.orm` (entity, CRUD, where, migrate, MongoDB) | apps reais com persistência no JVM/Native-SQLite | próximo: query DSL tipada, pools, kof.db fora do JVM |
-| G2 | ~~**HTTP client** inexistente~~ — ✅ **implementado**: `kof.http` client (get/post/put/delete/patch/options/status/timeout, headers; HTTP002 no Native/JS) | integrações, testes, frontend | ✅ fechado — `KofHttpE2ETest` (3) |
+| G2 | ~~**HTTP client** inexistente~~ — ✅ **implementado**: `kof.http` client (get/post/put/delete/patch/options/status/timeout + retry/circuit 30/08, headers; HTTP002 no Native) | integrações, testes, frontend | ✅ fechado — `KofHttpE2ETest` (4, JVM+JS) + `KofHttpResilienceE2ETest` (3) |
 | G3 | ~~Configuration~~ — ✅ `kof.config` implementado (arquivo > env > profile > default, typed `str/int/long/bool`); **CONFIG001 nativo fechado** (asm `/proc/self/environ`); JS reporta CONF001 | — | JS (P1) |
 | G4 | ~~**Validation** inexistente~~ — ✅ **implementado**: `kof.validation` (13 predicados nos 3 targets) | — | `KofValidationTest` (3/3) |
 | G5 | ~~**Observabilidade runtime parcial**~~ — ✅ **implementado**: `kof.observability` (health/readiness/liveness, counter/increment/gauge, requestId/correlationId — JVM/Native/JS; `KofObservabilityTest` 3/3) | — | `KofObservabilityTest` |
@@ -432,14 +440,16 @@ Princípios mantidos:
 6. ~~G4~~ — ✅ `kof.validation` (13 predicados nos 3 targets; `KofValidationTest` 3/3).
 7. ~~G5~~ — ✅ `kof.observability` (health/readiness/liveness, counter/increment/gauge, requestId/correlationId — JVM/Native/JS; `KofObservabilityTest` 3/3).
 8. ~~G8~~ — ✅ `kof.time.sleep` + `interval`/`cancel` (JVM); Native/JS TIME001.
-9. G10 — security no Native (jwt, passwords, sha512, aesgcm) + config/log.
+9. ~~G10~~ — ✅ security no Native (PBKDF2, SHA-512, JWT HS256, AES-GCM em asm — `KofSecurityTest` E2E nativos) + config/log (asm).
 10. ~~G9~~ — ✅ rate limiting, sessions, API keys (`security.rateLimit`, `sessionCreate`/`sessionGet`/`sessionDestroy`, `apiKeyGenerate`/`apiKeyValid` — JVM/Native/JS; `KofSecurityG9Test` 3/3).
 11. ~~G12~~ — ✅ TLS/HTTPS (`web.listenSecure(port)` — JVM, `SSLServerSocket` + self-signed; `kof.http` HTTPS trust-all; `KofWebTlsTest` 5/5; Native/JS `WEB002`).
 
 ## P1
 
 messaging (`kof.concurrent.Queue`, event bus, adapters Kafka/AMQP),
-caching, resilience (retry/timeout/circuit breaker), WebSocket/SSE,
+~~caching~~ — ✅ `kof.cache` (30/08, 3 targets),
+~~resilience (retry/timeout/circuit breaker)~~ — ✅ `kof.http` (30/08, JVM+JS; HTTP002 no Native),
+~~WebSocket/SSE~~ — ✅ JVM (30/08; `KofWebWsE2ETest`/`KofWebSseE2ETest`),
 GraphQL/gRPC (interop), HTTP/2.
 
 ## P2

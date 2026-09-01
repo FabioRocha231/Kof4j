@@ -315,18 +315,37 @@ Ver: [learn/34-file-system.md](learn/34-file-system.md) e
 
 Kof é uma **distribuição**: instale e receba compilador, CLI, runtime,
 stdlib, tooling, editor support e um OpenJDK embutido. **Nenhuma instalação
-externa de Java é necessária.**
+externa de Java é necessária** — e não precisa saber a versão para instalar.
+
+1. Baixe o pacote do **seu** sistema em
+   [GitHub Releases](https://github.com/KofLang/Kof4j/releases/latest):
+   `linux-x86_64.tar.gz` / `macos-arm64.tar.gz` / `windows-x86_64.zip`.
+2. Extraia e adicione o `bin` ao `PATH`:
 
 ```bash
-# Baixe o artefato do GitHub Releases e extraia:
-tar -xzf kof-0.1.0-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.1.0-linux-x86_64/bin:$PATH"
+# Linux
+tar -xzf kof-*-linux-x86_64.tar.gz
+export PATH="$PWD/$(ls -d kof-*-linux-x86_64 | head -1)/bin:$PATH"
 
-kof version        # kof 0.1.0
-kof info           # ambiente completo (JVM embutida, Tooling API 21, targets)
+# macOS (Apple Silicon)
+tar -xzf kof-*-macos-arm64.tar.gz
+export PATH="$PWD/$(ls -d kof-*-macos-arm64 | head -1)/bin:$PATH"
+
+# Windows (PowerShell)
+Expand-Archive .\kof-*-windows-x86_64.zip
+$DIR = (Get-ChildItem -Directory -Filter "kof-*-windows-x86_64" | Select-Object -First 1).FullName
+$env:PATH = "$DIR\bin;$env:PATH"
 ```
 
-Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) e
+3. Confira:
+
+```bash
+kof version   # kof <versão da release>
+kof info      # ambiente completo (JVM embutida, Tooling API 21, targets)
+```
+
+Ver: [docs/distribution/INSTALL.md](docs/distribution/INSTALL.md) (guia
+completo com cada sistema, checksum e solução de problemas) e
 [docs/distribution/ARCHITECTURE.md](docs/distribution/ARCHITECTURE.md).
 
 ---

@@ -242,6 +242,12 @@ GETFIELD Point.name Ljava/lang/String;  # String name
 > **Atualizado (0.0.5):** herança (F.3), virtual dispatch via vtable (F.4)
 > e dispatch de interfaces (F.5) estão implementados em JVM e Native.
 > O header real é de 16 bytes: type_id(4) + flags(4) + method_table_ptr(8).
+>
+> **Atualizado (0.2.6-beta, 31/08):** os objetos são alocados na free-list
+> `kof_free_head` (reuso `mmap`); o allocator é **thread-safe** (futex) por
+> causa do `spawn` em pthreads. GC mark-sweep ainda pendente (ver
+> MEMORY_MODEL.md §9) — a flag MARKED do header continua reservada para
+> essa fase.
 
 ## 8. Herança (Histórico — implementada em F.3)
 

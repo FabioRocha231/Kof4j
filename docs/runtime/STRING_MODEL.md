@@ -123,8 +123,12 @@ kof_null_error() disponível para detecção futura.
 > (`kof_string_concat`) e `==`/`!=` comparam conteúdo (`kof_string_equals`)
 > em JVM e Native. A API completa (charAt, substring, contains, startsWith,
 > endsWith, indexOf, trim, toUpperCase, toLowerCase, replace, split) está
-> disponível.
-Operator `+` para strings requer detecção de tipo no CompilerDriver (futuro).
+> disponível (detecção de tipo de `+` já resolvida no CompilerDriver).
+>
+> **Atualizado (0.2.6-beta, 31/08):** `kof_print_string` passou a **guardar
+> `null`** (antes: segfault em `println(null)`); a conversão de ponto
+> flutuante para string (dtoa) usa `snprintf` alinhado, com FP real em XMM
+> no Native — parte do fechamento do JSN001/FLT001.
 
 ---
 

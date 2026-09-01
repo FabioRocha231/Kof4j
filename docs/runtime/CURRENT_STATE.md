@@ -1,7 +1,7 @@
 # CURRENT_STATE.md — Estado do Runtime do Kof
 
-**Data:** 21 de agosto de 2026
-**Status:** Fase F concluída — Runtime + Object Model completos
+**Data:** 31 de agosto de 2026
+**Status:** Fase F concluída + 0.2.6-beta (free-list GC, spawn pthread, FP XMM, JSON completo)
 
 ---
 
@@ -179,7 +179,10 @@ As funções de runtime nativas são geradas pelo `NativeRuntime.java` no compil
 | Boxing/Unboxing | ✅ | No-op nativo (slots 64-bit); JVM via valueOf |
 | Type casting | ✅ | `as` (no-op nativo, sem verificação) |
 | instanceof | ✅ | `kof_super_table` |
-| GC | ❌ | Memória devolvida ao SO no exit |
+| GC | ⚠️ | free-list `kof_free_head` (reuso `mmap`); mark-sweep pendente; auto-GC desativado após hang — memória devolvida só no `munmap` fallback |
+| `spawn`/`await` (concorrência) | ✅ | `pthread_create` + trampoline + `pthread_join` + allocator thread-safe (futex) — 31/08 (CONC001) |
+| FP (Float/Double) | ✅ | XMM real (`vcvtsi2sd`/`mulsd`), dtoa via `snprintf` — 31/08 (FLT001) |
+| JSON objetos/arrays | ✅ | objetos/records + arrays `Int/Long/Bool/String/Double` — 31/08 (JSN001/002/003) |
 | Default methods em interfaces | ⚠️ | Suporte parcial |
 
 ---
