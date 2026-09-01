@@ -4096,15 +4096,12 @@ private Target target = Target.JVM;
                         }
                         KofIo.IoCall ioCall = KofIo.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
                         if (ioCall != null) {
-                            // receiver File/Path/Directory é apagado pra String path
-                            // em runtime; os args passam pela conversão formal
-                            // (int literal → long slot no readRange, etc.) — sem
-                            // isso o JvmBackend empilha I onde o descriptor quer J
-                            // e o visitMaxs crasha (frame bug)
-                            List<Type> formalAll = new ArrayList<>();
-                            formalAll.add(BuiltinTypes.STRING);
-                            formalAll.addAll(ioCall.parameterTypes());
-                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), formalAll,
+                            // receiver File/Path/Directory é apagado pra String
+                            // path em runtime (empilhado acima); os METHOD args
+                            // alinham com ioCall.parameterTypes() — a conversão
+                            // formal (int literal → long slot no readRange)
+                            // evita o frame bug I/J no visitMaxs
+                            localIdx = emitArgumentsWithFormalTypes(mc.arguments(), ioCall.parameterTypes(),
                                     ops, owner, localIdx, locals);
                             List<Type> ioParams = new ArrayList<>();
                             ioParams.add(BuiltinTypes.STRING);
