@@ -203,7 +203,7 @@ alvos; o alvo que não consegue realizá-la diz isso na hora, com código.**
 
 | Código | Situação | Motivo |
 |--------|----------|--------|
-| `AND001` | `spawn { ... }` | ART não tem virtual threads (Java 21) |
+| ~~`AND001`~~ | ~~`spawn { ... }`~~ | ✅ **fechado 31/08**: ART não tem virtual threads (Java 21), mas o runtime cai em **platform threads** quando `Thread.startVirtualThread` não existe — `spawn`/`await`/`cancel`/`cancelled`/`selectAny`/`awaitTimeout`/`channel`/`scheduler` compilam e rodam (bytecode: `CompletableFuture` + `new Thread` + `LinkedBlockingQueue`; KofJS do WebView: sequencial). `KofConcurrency2Test`/`AndroidInteropE2ETest` |
 | `AND002` | `kof.web` (servidor embutido) | app mobile não escuta porta; usar interop |
 | `AND003` | reflexão dinâmica sobre classes Kof | desugaring/R8 pode remover símbolos |
 | `AND004` | android.jar ausente no ExternalClasspath | host Activity não incluída (warning) |

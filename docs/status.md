@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 747 testes 734 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
+mvn test             → 755 testes 742 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -321,6 +321,52 @@ main() {
   a API legada `handle(...)` continua funcionando.
 - Ver: `docs/stdlib-web.md` e `KofWebE2ETest` (9 testes E2E com sockets reais).
 
+### Media (`kof.media`) — arquivos, não strings
+
+A linguagem NÃO transporta imagem/áudio como `String` gigante (nem base64
+literal no fonte, nem data-URI colado à mão — o padrão que o
+Kof-editor-theme-maker era forçado a adotar com `pageCss(): String` e
+`kofPngData(): String`). O app trata o ARQUIVO:
+
+```kof
+main() {
+    var app = web.app()
+    app.serveDir("/img", "assets")      // GET /img/logo.png → bytes do disco, image/png
+    app.get("/thumb") {
+        var img = Image.open("assets/logo.png")   // javax.imageio
+        img.saveAs("assets/thumb.jpg", "jpeg")
+        return "w=" + img.width() + " h=" + img.height()
+    }
+    app.get("/rec") {
+        var m = Mic.record(2)            // javax.sound.sampled (16kHz mono PCM)
+        m.saveWav("assets/gravacao.wav")
+        return "ms=" + m.durationMs()
+    }
+    app.listen(8080)
+}
+```
+
+- **`Image`** (`ImageData`): `open` (PNG/JPEG/GIF/BMP), `width/height/format`,
+  `save`, `saveAs(path, fmt)`, `bytes`/`bytesAs`, `dataUri` (opcional, em
+  runtime — nunca literal no fonte), `close`.
+- **`Audio`**: `openWav`/`saveWav` (WAV RIFF PCM 16-bit), `sampleRate`,
+  `durationMs`, `pcmBytes`.
+- **`Mic`**: `record(seconds)` do microfone padrão, `list()`.
+- **`app.serveDir(prefix, dir)`** (`web`): fallback de rotas dinâmicas —
+  devolve o ARQUIVO em binário com content-type pela extensão (HTML/CSS/JS/
+  imagens/áudio/fontes/PDF...), `Cache-Control`, e proteção contra path
+  traversal. Sem isso, o app só tinha `String` por rota → CSS/HTML/imagens
+  viravam strings concatenadas e base64 colado no fonte.
+- Caminhos relativos resolvem contra a raiz do projeto (`-Dkof.root`,
+  definido pelo CLI `run`/`serve` como o diretório do `.kf`).
+- **Targets**: JVM (javax.imageio + javax.sound). **Gaps honestos**:
+  câmera (MEDIA002 — sem lib externa no JVM; `Mic`/`Image` cobrem o que a
+  plataforma dá), mic sem hardware (MEDIA003 — erro claro, não crash),
+  paridade Native/JS (MEDIA001).
+- Ver: `KofMediaE2ETest` (8 testes: serving binário byte-a-byte, content-type,
+  traversal bloqueado, 404, dimensões reais, conversão PNG→JPEG, WAV
+  info/copy, mic sem hardware).
+
 ### Configuração nativa (`kof.config`)
 
 ```kof
@@ -387,7 +433,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (747 declarados = 734 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 31/08 (grep @Test)
+## Testes (755 declarados = 742 kof-compiler +8 kof-script +5 kof-c-compiler  medição real 31/08 (grep @Test)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -414,6 +460,7 @@ main() { /* ignorado pelo kof test */ }
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
 | KofDbE2ETest | 9 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
+| KofMediaE2ETest | 8 | kof.media + serveDir: Image/Audio/WAV, conteúdo binário (não base64) |
 | NativeConfigE2ETest | 8 | kof.config Native (asm): precedência, typed, comentários |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
@@ -457,10 +504,10 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
-| **Total kof-compiler** | **734** | |
+| **Total kof-compiler** | **742** | |
 | kof-script | 8 | KofScriptGlobals / repl / --watch |
 | kof-c-compiler | 5 | KofC C subset → ELF |
-| **Total** | **747** (+1 skip condicional; conferir total no CI a cada release) | |
+| **Total** | **755** (+1 skip condicional; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -586,7 +633,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - `kof.security` v1 (JVM/Native/JS); web security G9 — rateLimit, sessões, API keys (3 targets)
 - `kof.validation` (13 predicados, 3 targets); `kof.observability` (health/métricas/request IDs, 3 targets); `kof.ui` widgets com render KofJS
 - `kof.process` execução de processos externos; `process.spawn` stdin/stdout vivos (F10, JVM/JS)
-- **Concorrência**: `spawn`/`await` JVM (virtual threads) + **Native (pthread — CONC001 fechado 31/08)** + JS sequencial; `done`/`poll` não-bloqueantes; `cancel`/`cancelled` cooperativo (JVM + Native por TID); `selectAny` (JVM + Native + JS); `awaitTimeout(r, ms)` — valor no prazo, exceção capturável no estouro (JVM + Native; JS sequencial = paridade); `channel<T>()` com `send`/`receive` (JVM LinkedBlockingQueue + Native FIFO futex + JS array); `scheduler.every/at/cancel` (JVM `ScheduledExecutor` + JS `setInterval` + **Native SCHED001**: thread por job com trampoline `usleep` ms→us + flag `active` futex) — `KofConcurrency2Test` 15/15, `SpawnE2ETest` 4/4
+- **Concorrência**: `spawn`/`await` JVM (virtual threads) + **Native (pthread — CONC001 fechado 31/08)** + **Android (platform threads — AND001 fechado 31/08, ART sem virtual threads → fallback)** + JS sequencial; `done`/`poll` não-bloqueantes; `cancel`/`cancelled` cooperativo (JVM + Native por TID); `selectAny` (JVM + Native + JS); `awaitTimeout(r, ms)` — valor no prazo, exceção capturável no estouro (JVM + Native; JS sequencial = paridade); `channel<T>()` com `send`/`receive` (JVM LinkedBlockingQueue + Native FIFO futex + JS array); `scheduler.every/at/cancel` (JVM `ScheduledExecutor` + JS `setInterval` + **Native SCHED001**: thread por job com trampoline `usleep` ms→us + flag `active` futex) — `KofConcurrency2Test` 15/15, `SpawnE2ETest` 4/4
+- **`kof.media` (31/08)** — gestão de arquivos multimídia sem base64 literal: `Image.open/save/saveAs/dataUri` (javax.imageio, PNG/JPEG/GIF/BMP), `Audio.openWav/saveWav` (WAV RIFF PCM 16-bit), `Mic.record` (javax.sound.sampled); `web` `app.serveDir(prefix, dir)` serve ARQUIVO do disco com content-type correto + proteção de path-traversal; raiz do app via `-Dkof.root` (CLI `run`/`serve`). Gaps: câmera (MEDIA002), sem hardware de mic (MEDIA003) — `KofMediaE2ETest` 8/8
+- **KofAndroid Fase 2 (31/08)** — `--apk` standalone (aapt2/d8/zipalign/apksigner direto do CLI) + release signing `--keystore/--storepass/--keypass/--alias` + label/permissões derivados do programa (`detectAppLabel`/`@Permissions`)
 - enum nos 3 targets + switch exaustivo (SEM031); Map/Set nos 3 targets (COL001 fechado)
 - otimizador de IR sempre ativo; pattern matching (switch com tipos + destructuring, 3 targets); null safety básica (`String?`, 3 targets); higher-order em coleções (map/filter/reduce, 3 targets); módulos multi-arquivo (`import a.b.C`)
 - KofScript — top-level let/const (`KofScriptGlobals`, repl, `--watch`); KofC compiler — C subset → ELF x86_64 (`kof c`)
@@ -598,8 +647,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ### Em desenvolvimento
 
 - Standard Library (contratos em estabilização)
-- Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); Android `AND001`; ⚠️ bug pré-existente `spawn→await→spawn` (SIGSEGV no próximo `pthread_create` — ver "Bugs Restantes" #2)
-- KofAndroid — Fase 1 ✅ (projeto Maven, host em Kof); Fase 2 pendente
+- Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ⚠️ bug pré-existente `spawn→await→spawn` (SIGSEGV no próximo `pthread_create` — ver "Bugs Restantes" #2)
+- ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
+- **`kof.media` residual (31/08)**: câmera (MEDIA002 — sem lib externa no JVM); paridade Native/JS (hoje JVM: javax.imageio/sound); mic sem hardware (MEDIA003)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; `nativeMysqlWireProtocol`); restam **prepared statements** (bind `?` via COM_STMT_PREPARE)
 - `native.risc` (riscv64) toolchain estável + `native.arm` (aarch64) placeholder — ELF via cross-as/ld + qemu (codegen ainda x86_64)
 - Debugger — além do MVP JVM (DAP sobre stdio já no JVM; Native DWARF / JS source maps pendentes)
