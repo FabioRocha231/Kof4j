@@ -1911,7 +1911,7 @@ class JsBackend implements Backend {
         return switch (ku.op()) {
             case NEG -> new JsIr.JsUnary("-", operand);
             case NOT -> new JsIr.JsConditional(operand, new JsIr.JsNumber("0"), new JsIr.JsNumber("1"));
-            case I2L, I2F, I2D, L2F, L2D, F2D, D2F -> operand;
+            case I2L, I2F, I2D, I2C, L2F, L2D, F2D, D2F -> operand;
         };
     }
 

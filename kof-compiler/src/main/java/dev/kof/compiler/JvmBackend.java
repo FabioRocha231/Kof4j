@@ -757,6 +757,8 @@ class JvmBackend implements Backend {
                 mv.visitInsn(I2F);
             } else if (ku.op() == KofUnaryOp.I2D) {
                 mv.visitInsn(I2D);
+            } else if (ku.op() == KofUnaryOp.I2C) {
+                mv.visitInsn(I2C);
             } else if (ku.op() == KofUnaryOp.L2F) {
                 mv.visitInsn(L2F);
             } else if (ku.op() == KofUnaryOp.L2D) {
