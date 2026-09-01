@@ -7036,6 +7036,19 @@ private Target target = Target.JVM;
     }
 
     private boolean hasReturnValue(ExpressionNode expr, List<IRLocalVariable> locals) {
+        boolean rv = hasReturnValueInner(expr, locals);
+        if (Boolean.getBoolean("kof.trace.pop") && expr instanceof MethodCallExpr mc
+                && "add".equals(mc.methodName())) {
+            System.err.println("[hrv] add → " + rv);
+            if (rv) {
+                StackTraceElement[] st = new Exception().getStackTrace();
+                for (int z = 0; z < Math.min(3, st.length); z++) System.err.println("   at " + st[z]);
+            }
+        }
+        return rv;
+    }
+
+    private boolean hasReturnValueInner(ExpressionNode expr, List<IRLocalVariable> locals) {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
