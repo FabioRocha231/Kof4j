@@ -1662,7 +1662,13 @@ private Target target = Target.JVM;
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
                     localIdx = emitExpression(es.expression(), ops, owner, localIdx, locals);
-                    if (hasReturnValue(es.expression(), locals)) ops.add(new KofPop());
+                    if (hasReturnValue(es.expression(), locals)) {
+                        if (Boolean.getBoolean("kof.trace.pop")) {
+                            System.err.println("[pop] " + es.expression());
+                            new Exception("[pop-site]").printStackTrace(System.err);
+                        }
+                        ops.add(new KofPop());
+                    }
                 }
                 yield localIdx;
             }
@@ -7095,6 +7101,18 @@ private Target target = Target.JVM;
             if (semanticAnalyzer != null) {
                 SymbolTable.MethodSymbol resolved = semanticAnalyzer.getResolvedMethod(mc);
                 if (resolved != null) {
+                    // add/set/clear de coleção builtin: o JVM backend já
+                    // descarta o valor no emit (POP) — um KofPop extra aqui
+                    // vira stack underflow no merge de frames (COMP002)
+                    String oc = resolved.ownerClass();
+                    if (("List".equals(oc) || "ArrayList".equals(oc) || "java/util/List".equals(oc)
+                            || "Map".equals(oc) || "HashMap".equals(oc)
+                            || "Set".equals(oc) || "HashSet".equals(oc))
+                            && ("add".equals(mc.methodName()) || "push".equals(mc.methodName())
+                                || "append".equals(mc.methodName()) || "set".equals(mc.methodName())
+                                || "clear".equals(mc.methodName()) || "put".equals(mc.methodName()))) {
+                        return false;
+                    }
                     Type resolvedType = resolved.returnType();
                     if (Type.isVoid(resolvedType)) return false;
                     return !(resolvedType instanceof Type.UnknownType);
@@ -7102,6 +7120,16 @@ private Target target = Target.JVM;
             }
             Type t = inferExprType(mc, locals);
             if (t instanceof Type.UnknownType || Type.isVoid(t)) return false;
+            // add/push/append/set/clear/put de coleção: o emit do backend
+            // já descarta o valor (POP no kof_list_add/kof_map_put) — sem
+            // KofPop aqui (underflow no merge de frames, COMP002).
+            if (mc.receiver() instanceof IdentifierExpr) {
+                String mn = mc.methodName();
+                if ("add".equals(mn) || "push".equals(mn) || "append".equals(mn)
+                        || "set".equals(mn) || "clear".equals(mn) || "put".equals(mn)) {
+                    return false;
+                }
+            }
             return true;
         }
         return true;

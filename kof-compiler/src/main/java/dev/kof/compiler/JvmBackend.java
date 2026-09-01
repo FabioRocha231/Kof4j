@@ -888,10 +888,11 @@ class JvmBackend implements Backend {
                 }
                 case "kof_list_add" -> {
                     emitBoxIfPrimitive(mv, elemType);
-                    // ArrayList.add empilha boolean; o IR emite KofPop logo
-                    // após (descarte de statement) — NÃO popar aqui, senão
-                    // o KofPop extra quebra o frame do ASM (underflow).
+                    // ArrayList.add empilha boolean; o emit descarta — o IR
+                    // não deve adicionar KofPop para add/set/clear
+                    // (hasReturnValue = false), senão underflow no frame.
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z", false);
+                    mv.visitInsn(POP);
                 }
                 case "kof_list_get" -> {
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;", false);
