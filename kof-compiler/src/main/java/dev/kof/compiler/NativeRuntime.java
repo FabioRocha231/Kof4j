@@ -8087,6 +8087,85 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
+            # ── M32-gguf: leitura com offset p/ arquivos grandes (sem carregar o todo)
+            # kof_io_read_range(rdi=path KofString*, rsi=offset, rdx=len) → Int[]|0
+            # kof_io_read_range_path idêntica (o File receiver resolve o path em
+            # compile-time; no native as duas caem no mesmo corpo)
+            .globl kof_io_read_range
+            .type kof_io_read_range, @function
+            kof_io_read_range:
+            .globl kof_io_read_range_path
+            .type kof_io_read_range_path, @function
+            kof_io_read_range_path:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                subq $8, %rsp
+                movq %rdi, %rbx      # path KofString*
+                movq %rsi, %r14      # offset
+                movq %rdx, %r15      # len
+                # openat(AT_FDCWD=-100, path+24, O_RDONLY=0, 0)
+                movq $-100, %rdi
+                leaq 24(%rbx), %rsi
+                xorl %edx, %edx
+                xorl %r10d, %r10d
+                movq $257, %rax
+                syscall
+                testq %rax, %rax
+                js .Lio_range_err
+                movq %rax, %r12      # fd
+                # buf = kof_alloc(len)
+                movq %r15, %rdi
+                call kof_alloc
+                movq %rax, %r13      # buf
+                # pread(fd, buf, len, offset)
+                movq %r12, %rdi
+                movq %r13, %rsi
+                movq %r15, %rdx
+                movq %r14, %r10
+                movq $17, %rax
+                syscall
+                movq %rax, %r14      # lidos (reusa o slot do offset)
+                # close(fd)
+                movq %r12, %rdi
+                movq $3, %rax
+                syscall
+                # Int[] elemsize 4
+                movl %r14d, %edi
+                movq $4, %rsi
+                call kof_array_alloc
+                movq %rax, %r12      # array (fd slot já não precisa)
+                # spread byte → Int
+                xorq %rcx, %rcx
+            .Lio_range_spread:
+                cmpq %r14, %rcx
+                jge .Lio_range_done
+                movb (%r13,%rcx), %al
+                movzbl %al, %eax
+                movl %eax, 24(%r12,%rcx,4)
+                incq %rcx
+                jmp .Lio_range_spread
+            .Lio_range_done:
+                movq %r12, %rax
+                addq $8, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lio_range_err:
+                xorl %eax, %eax
+                addq $8, %rsp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
             .globl kof_io_write_bytes
             .type kof_io_write_bytes, @function
             kof_io_write_bytes:

@@ -110,8 +110,8 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_io_read_text" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_io_write_text", "kof_io_append_text" -> "(Ljava/lang/String;Ljava/lang/String;)I";
             case "kof_io_read_bytes" -> "(Ljava/lang/String;)[I";
-            case "kof_io_read_range" -> "(Ljava/lang/String;JI)[I";
-            case "kof_io_read_range_path" -> "(Ljava/lang/String;JI)[I";
+            case "kof_io_read_range" -> "(Ljava/lang/String;JJ)[I";
+            case "kof_io_read_range_path" -> "(Ljava/lang/String;JJ)[I";
             case "kof_io_write_bytes", "kof_io_append_bytes" -> "(Ljava/lang/String;[I)I";
             case "kof_io_delete", "kof_io_dir_create", "kof_io_dir_create_dirs", "kof_io_dir_delete"
                     -> "(Ljava/lang/String;)I";
@@ -2282,16 +2282,17 @@ static boolean hasRuntimeFn(String methodName) {
                     }
                 }
 
-                public static int[] kof_io_read_range(String path, long offset, int len) {
+                public static int[] kof_io_read_range(String path, long offset, long len) {
                     return kof_io_read_range_path(path, offset, len);
                 }
 
-                public static int[] kof_io_read_range_path(String path, long offset, int len) {
+                public static int[] kof_io_read_range_path(String path, long offset, long len) {
+                    int ilen = (int) Math.min(len, Integer.MAX_VALUE);
                     try {
-                        byte[] b = new byte[len];
-                        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(p(path), "r")) {
+                        byte[] b = new byte[ilen];
+                        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(p(path).toFile(), "r")) {
                             raf.seek(offset);
-                            int read = raf.read(b, 0, len);
+                            int read = raf.read(b, 0, ilen);
                             int[] out = new int[read < 0 ? 0 : read];
                             for (int i = 0; i < out.length; i++) out[i] = b[i] & 0xFF;
                             return out;
