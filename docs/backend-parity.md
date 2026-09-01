@@ -52,6 +52,7 @@
 | `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM asm |
 | `kof.db`/`kof.orm` | ✅ | ✅/ORM001 | DB001/ORM001 | SQLite nativo; MySQL `kof_db_mysql_scramble` |
 | `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
+| `app.sse` / `app.ws` | ✅ JVM | WEB003/WEB004 | WEB003/WEB004 | SSE/WS E2E; BINARY `1003` no WS |
 | `switch` pattern matching `case String s` | ✅ | ✅ | ✅ | 0.2.0-beta |
 | `switch` record destructuring `Point(x,y)` | ✅ | ✅ | ✅ | 0.2.0-beta |
 | `String?` null safety básica | ✅ | ✅ | ✅ | 0.2.0-beta (`Type?`) |

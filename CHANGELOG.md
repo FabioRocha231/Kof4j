@@ -7,6 +7,23 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## [Unreleased]
+
+### Fixed
+- `kof.http` retry agora trata respostas HTTP 5xx como retentáveis dentro da
+  janela configurada; o E2E de resiliência (`KofHttpResilienceE2ETest`) foi
+  destravado (sintaxe `main(args: List<String>)` e descritores
+  `kof_http_retry_set`/`kof_http_circuit_set` corrigidos).
+
+### Changed
+- WebSocket JVM (`app.ws`) agora valida RSV, opcodes reservados, control frames
+  (FIN e payload <= 125), comprimento estendido, UTF-8 estrito, handshake key/
+  version/método e close handshake (códigos válidos, eco de code+reason).
+- WebSocket JVM (`app.ws`) agora suporta fragmentação RFC 6455 com
+  `MAX_MESSAGE_BYTES`; BINARY retorna `1003 Unsupported Data`.
+- SSE JVM (`app.sse`) normaliza CRLF/LF/CR em payloads multi-linha e rejeita
+  nomes de evento com CR/LF.
+
 ## [0.1.0] - 2026-08-25
 
 Primeira release estável da plataforma base — P0 (ecossistema) e P1

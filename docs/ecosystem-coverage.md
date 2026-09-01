@@ -54,7 +54,7 @@ JSN00x, WEB001) — nunca divergência silenciosa.
 | `kof.time` | `now()`, `sleep` (JVM/Native/JS), `interval`/`cancel` (JVM) | KofTime.java | KofTimeE2ETest (5) |
 | `kof.json` | `json.encode/decode<T>` | JvmRuntime/NativeRuntime/JsBackend | JsonE2ETest (14) |
 | `kof.security` | `passwords.*`, `crypto.*`, `jwt.*`, `secrets.*`, `security.*`, `auth.*` | KofSecurity.java | KofSecurityTest (22) |
-| `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8) |
+| `kof.web` | `web.app()`, `app.get/post/.../use/listen/port/close`, `app.sse`, `app.ws`, `param/query/header/body/method/path` | KofWeb.java + KofHttpServer.java | KofWebE2ETest (9), KofHttpServerTest (8), KofWebSseE2ETest (10), KofWebWsE2ETest (28) |
 | `kof.http` (client) | `http.get/post/put/delete/patch/options/status/timeout` (headers, JSON) — JVM+JS (JS via `Java HttpClient` interop) | KofHttp.java + KofJsRunner | KofHttpE2ETest (4, JVM+JS) |
 | `kof.mq` | `mq.publish/subscribe/unsubscribe`, `queue/push/pop/size` (JVM + JS; Native MQ001) | KofMq.java | KofMqE2ETest (4) |
 | `kof.concurrent` | `spawn expr` / `spawn { }` (join implícito) | JvmRuntime | SpawnE2ETest (3) |
@@ -160,8 +160,8 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | multipart | `PLANNED` | — | — | — | — | — |
 | content negotiation | `PLANNED` | — | — | — | — | — |
 | error handling | 404/500 + mensagem | y | – | – | KofWebE2ETest | web |
-| WebSocket | `PLANNED` | — | — | — | — | roadmap.md |
-| SSE | `PLANNED` | — | — | — | — | — |
+| WebSocket | ✅ JVM (RFC 6455 frames/fragmentation/close/handshake); BINARY `1003`; dispatch p/ handler pendente; Native/JS `WEB004` | JVM | — | — | `KofWebWsE2ETest` (28), `KofWsFrameTest` (7) | stdlib-web.md |
+| SSE | ✅ JVM (CRLF/LF/CR normalization, event name sanitization); Native/JS `WEB003` | JVM | — | — | `KofWebSseE2ETest` (10) | stdlib-web.md |
 | gRPC / GraphQL / SOAP | `EXTERNAL`/`PLANNED` (interop) | — | — | — | — | roadmap.md |
 | REST documentation (OpenAPI) | `PLANNED` | — | — | — | — | roadmap.md |
 | HATEOAS | `NA` (sem framework pesado) | — | — | — | — | — |

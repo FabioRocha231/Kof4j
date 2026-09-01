@@ -1,8 +1,8 @@
 # stdlib web — Stack Web Nativa do Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; `kof.http` JVM+JS)
-**Status:** implementado (Fase 1 do plano de independência do Spring) — `kof serve` + `kof.http` JVM+JS
+**Última atualização:** 1 de setembro de 2026
+**Versão:** 0.2.6-beta
+**Status:** implementado (JVM) — `kof serve`, `kof.http`, `app.sse`, `app.ws`
 
 ---
 
@@ -85,9 +85,28 @@ Cria uma aplicação. O valor retornado (`kof.web.App`) é um handle; em runtime
 | `app.delete(path) { ... }` | DELETE |
 | `app.patch(path) { ... }` | PATCH |
 | `app.options(path) { ... }` | OPTIONS |
+| `app.sse(path) { sse.send(...) }` | SSE (JVM) |
+| `app.ws(path) { ... }` | WebSocket (JVM) |
 
 O corpo `{ ... }` é um lambda trailing — o handler da rota. Um handler pode
 também ser passado explicitamente: `app.get("/x", handler)`.
+
+### SSE
+
+`app.sse(path) { sse.send(...) }` abre um stream `text/event-stream` no JVM.
+`sse.send(data)` emite uma linha `data:` (e normaliza CRLF/LF/CR antes de
+quebrar payloads multi-linha); `sse.event(name, data)` emite `event:` + `data:`
+e rejeita nomes com CR/LF; `sse.close()` encerra a conexão.
+
+### WebSocket
+
+`app.ws(path) { ... }` implementa o handshake RFC 6455 e o frame loop no JVM:
+RSV/opcodes reservados, control frames (FIN e payload <= 125), masking,
+comprimentos estendidos, UTF-8 estrito, handshake key/version/método, close
+handshake com eco do código/reason, PING/PONG e fragmentação com limite de
+mensagem (`MAX_FRAME_BYTES` 1 MiB, `MAX_MESSAGE_BYTES` 8 MiB). Frames BINARY
+retornam `1003 Unsupported Data`; o dispatch de mensagens para o handler Kof
+(`wsMessage`/`wsSend`) e a API binária oficial seguem pendentes.
 
 - `path` suporta segmentos com parâmetro: `/users/:id` (prefixo `:`).
 - O handler retorna `String` (corpo da resposta, 200) ou `null` (404).

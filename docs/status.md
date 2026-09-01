@@ -513,9 +513,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 **P2 — Web completa (próxima listinha):**
 5. ✅ Resposta rica `status(201, body)`/`headerSet("X","y")` `JVM` `201 Created 202 Accepted` `X-Custom/X-Test` `KofWebE2ETest 9/9` (27/08) `Native WEB002` `JS stub`
 6. ✅ `kof.cache` `get/set/set(key,v,ttl)/ttl/delete/clear` — ✅ JVM/Native/JS (30/08; fix nativo: clobber de `%rax/%rdi` em `set_ttl/get/ttl` + `println(null)` segfault; `KofCacheE2ETest 5/5 x3 targets`)
-7. `WebSocket` `app.ws("/chat") { }` + `SSE`
+7. ✅ `WebSocket` `app.ws("/chat") { }` + `SSE` (JVM) — handshake/frames/fragmentação/close RFC 6455 + hardening SSE; Native/JS `WEB004`/`WEB003`
 8. `Scheduler` `every(30s) { }`/`at("0 3 * * *") { }` sobre virtual threads (JVM `every/at/cancel` `kof_scheduler_every` `ScheduledExecutor` + JS `setInterval` `kofSchedulerEvery` `27/08` `scheduler.every(100) job-1` `JVM:job-1 JS:kofSchedulerEvery` `KofTimeE2ETest 5/0` `Native SCHED001`)
-9. `kof.http` client já ✅, falta `HTTP/2`/`retry`/`timeout`/`circuit breaker`
+9. ✅ `kof.http` client + `retry`/`timeout`/`circuit breaker` (JVM; `KofHttpResilienceE2ETest`), falta `HTTP/2`
 
 **P3 — Data produção:**
 10. Query DSL tipada `User.query { where age > 18 }`
