@@ -327,7 +327,42 @@ private static String closeReason(byte[] payload) {
         String response = request(port, "GET /ws HTTP/1.1\r\nHost: x\r\n"
                 + VALID_HEADERS.replace("Version: 13", "Version: 8")
                 + "\r\n");
-        assertTrue(response.startsWith("HTTP/1.1 400 Bad Request"), response);
+        // RFC 6455 §4.4: server MUST respond 426 with Sec-WebSocket-Version: 13.
+        assertTrue(response.startsWith("HTTP/1.1 426 Upgrade Required"), response);
+        assertTrue(response.contains("Sec-WebSocket-Version: 13"), response);
+    }
+
+    @Test
+    void handshake_rejects_post_method_with_405(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        String response = request(port, "POST /ws HTTP/1.1\r\nHost: x\r\n"
+                + VALID_HEADERS + "\r\n");
+        assertTrue(response.startsWith("HTTP/1.1 405 Method Not Allowed"), response);
+        assertTrue(response.contains("Allow: GET"), response);
+    }
+
+    @Test
+    void handshake_rejects_malformed_key(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        // Not valid Base64.
+        String headers = "Upgrade: websocket\r\n"
+                + "Connection: Upgrade\r\n"
+                + "Sec-WebSocket-Version: 13\r\n"
+                + "Sec-WebSocket-Key: !!!notbase64!!!\r\n";
+        String response = request(port, "GET /ws HTTP/1.1\r\nHost: x\r\n" + headers + "\r\n");
+        assertTrue(response.startsWith("HTTP/1.1 400"), response);
+    }
+
+    @Test
+    void handshake_rejects_short_key(@TempDir Path tempDir) throws Exception {
+        int port = startServer(tempDir, wsApp());
+        // Base64 of "hi" = "aGk=" (2 bytes decoded, not 16).
+        String headers = "Upgrade: websocket\r\n"
+                + "Connection: Upgrade\r\n"
+                + "Sec-WebSocket-Version: 13\r\n"
+                + "Sec-WebSocket-Key: aGk=\r\n";
+        String response = request(port, "GET /ws HTTP/1.1\r\nHost: x\r\n" + headers + "\r\n");
+        assertTrue(response.startsWith("HTTP/1.1 400"), response);
     }
 
     @Test

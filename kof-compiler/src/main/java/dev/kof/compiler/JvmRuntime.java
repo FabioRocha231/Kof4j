@@ -580,16 +580,50 @@ static boolean hasRuntimeFn(String methodName) {
 
                     boolean hasUpgrade = containsToken(upgradeVal, "websocket");
                     boolean hasConnection = containsToken(connectionVal, "upgrade");
-                    boolean valid = hasUpgrade
-                            && hasConnection
-                            && "13".equals(version)
-                            && key != null;
-
-                    if (!valid) {
-                        java.io.OutputStream out = client.getOutputStream();
-                        out.write("HTTP/1.1 400 Bad Request\\r\\n\\r\\n"
+                    // Method gate (RFC 6455 §4.1): upgrade MUST come over GET.
+                    if (!"GET".equalsIgnoreCase(req.method)) {
+                        java.io.OutputStream hsOut = client.getOutputStream();
+                        hsOut.write(("HTTP/1.1 405 Method Not Allowed\\r\\nAllow: GET\\r\\n\\r\\n")
                                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                        out.flush();
+                        hsOut.flush();
+                        return;
+                    }
+                    // Version gate: anything other than 13 advertises 13 in
+                    // the 426 response so clients can re-handshake correctly.
+                    if (!"13".equals(version)) {
+                        java.io.OutputStream hsOut = client.getOutputStream();
+                        hsOut.write(("HTTP/1.1 426 Upgrade Required\\r\\n"
+                                + "Sec-WebSocket-Version: 13\\r\\n\\r\\n")
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        hsOut.flush();
+                        return;
+                    }
+                    if (!hasUpgrade || !hasConnection || key == null) {
+                        java.io.OutputStream hsOut = client.getOutputStream();
+                        hsOut.write("HTTP/1.1 400 Bad Request\\r\\n\\r\\n"
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        hsOut.flush();
+                        return;
+                    }
+                    // RFC 6455 §4.1: client MUST send a 16-byte nonce
+                    // Base64-encoded. Reject anything else BEFORE accepting
+                    // the connection so a client cannot trigger the SHA-1
+                    // path with garbage.
+                    byte[] decodedKey;
+                    try {
+                        decodedKey = java.util.Base64.getDecoder().decode(key.trim());
+                    } catch (IllegalArgumentException badBase64) {
+                        java.io.OutputStream hsOut = client.getOutputStream();
+                        hsOut.write("HTTP/1.1 400 Bad Request\\r\\n\\r\\n"
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        hsOut.flush();
+                        return;
+                    }
+                    if (decodedKey.length != 16) {
+                        java.io.OutputStream hsOut = client.getOutputStream();
+                        hsOut.write("HTTP/1.1 400 Bad Request\\r\\n\\r\\n"
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        hsOut.flush();
                         return;
                     }
 
