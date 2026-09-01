@@ -68,9 +68,9 @@ class KofHttpResilienceE2ETest {
     private String runApp(Path tempDir, String[] args) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-                main(args) {
-                    var base = args[0]
-                    var closedUrl = args[1]
+                main(args: List<String>) {
+                    var base = args.get(0)
+                    var closedUrl = args.get(1)
                     http.retry(2)
                     var a = http.get(base + "/flaky")
                     println("retry=" + a)
@@ -124,7 +124,7 @@ class KofHttpResilienceE2ETest {
     @Test
     void retrySucceedsAfterFlakyFailures(@TempDir Path tempDir) throws IOException {
         startServer();
-        String out = runApp(tempDir, new String[]{"http://127.0.0.1:" + basePort()});
+        String out = runApp(tempDir, new String[]{"http://127.0.0.1:" + basePort(), "http://127.0.0.1:1"});
         assertTrue(out.contains("retry=ok-3"), "retry should succeed on 3rd attempt, got: " + out);
         assertEquals(3, flakyHits.get(), "flaky server should have been hit exactly 3 times");
     }

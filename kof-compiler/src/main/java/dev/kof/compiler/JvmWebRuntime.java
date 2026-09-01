@@ -566,6 +566,12 @@ final class JvmWebRuntime {
                             java.net.http.HttpClient client2 = isHttps2 ? KOF_HTTP_CLIENT_INSECURE : java.net.http.HttpClient.newHttpClient();
                             java.net.http.HttpResponse<String> r = client2
                                     .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                            int sc = r.statusCode();
+                            if (sc >= 500 && sc <= 599 && attempt + 1 < attempts) {
+                                last = new java.io.IOException("retryable HTTP " + sc + ": " + url);
+                                kof_http_circuit_record_failure();
+                                continue;
+                            }
                             kof_http_circuit_record_success();
                             return r.body();
                         } catch (Exception e) {
