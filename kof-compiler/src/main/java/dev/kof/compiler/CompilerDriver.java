@@ -7105,6 +7105,10 @@ private Target target = Target.JVM;
                     // descarta o valor no emit (POP) — um KofPop extra aqui
                     // vira stack underflow no merge de frames (COMP002)
                     String oc = resolved.ownerClass();
+                    if (Boolean.getBoolean("kof.trace.pop")) {
+                        System.err.println("[resolved] owner=" + oc + " ret=" + resolved.returnType()
+                                + " mn=" + mc.methodName());
+                    }
                     if (("List".equals(oc) || "ArrayList".equals(oc) || "java/util/List".equals(oc)
                             || "Map".equals(oc) || "HashMap".equals(oc)
                             || "Set".equals(oc) || "HashSet".equals(oc))
