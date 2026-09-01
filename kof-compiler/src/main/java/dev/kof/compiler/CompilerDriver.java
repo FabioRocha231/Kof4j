@@ -1662,13 +1662,7 @@ private Target target = Target.JVM;
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
                     localIdx = emitExpression(es.expression(), ops, owner, localIdx, locals);
-                    if (hasReturnValue(es.expression(), locals)) {
-                        if (Boolean.getBoolean("kof.trace.pop")) {
-                            System.err.println("[pop] " + es.expression());
-                            new Exception("[pop-site]").printStackTrace(System.err);
-                        }
-                        ops.add(new KofPop());
-                    }
+                    if (hasReturnValue(es.expression(), locals)) ops.add(new KofPop());
                 }
                 yield localIdx;
             }
@@ -7036,31 +7030,21 @@ private Target target = Target.JVM;
     }
 
     private boolean hasReturnValue(ExpressionNode expr, List<IRLocalVariable> locals) {
-        boolean rv = hasReturnValueInner(expr, locals);
-        if (Boolean.getBoolean("kof.trace.pop") && expr instanceof MethodCallExpr mc
-                && "add".equals(mc.methodName())) {
-            System.err.println("[hrv] add → " + rv);
-            if (rv) {
-                StackTraceElement[] st = new Exception().getStackTrace();
-                for (int z = 0; z < Math.min(3, st.length); z++) System.err.println("   at " + st[z]);
-            }
-        }
-        return rv;
+        return hasReturnValueInner(expr, locals);
     }
 
     private boolean hasReturnValueInner(ExpressionNode expr, List<IRLocalVariable> locals) {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
-            if (Boolean.getBoolean("kof.trace.pop") && "add".equals(mc.methodName())) {
-                System.err.println("[hrv-in] receiver=" + mc.receiver().getClass().getSimpleName()
-                        + " recvName=" + (mc.receiver() instanceof IdentifierExpr r ? r.name() : "?")
-                        + " recvType=" + (mc.receiver() != null ? inferExprType(mc.receiver(), locals) : "null"));
-            }
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
             // cache.* primeiro: cache.delete é void e o nome colide com o
             // File.delete do Io (que o check genérico abaixo não sabe tipar
             // com receiver Unknown) — sem isto o Pop extra diverge o frame
-            if (mc.receiver() instanceof IdentifierExpr rid && KofCache.isCacheNamespace(rid.name())) {
+            // idem emit: `cache` pode ser VARIÁVEL LOCAL List (kof_list_add) —
+            // só é namespace builtin se não for local/param (frame COMP002:
+            // pop duplo em cache.add(...) com local chamado "cache")
+            if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                    && KofCache.isCacheNamespace(rid.name())) {
                 List<Type> cacheArgTypes = new ArrayList<>();
                 for (ExpressionNode arg : mc.arguments()) cacheArgTypes.add(inferExprType(arg, locals));
                 KofCache.CacheCall cc = KofCache.staticCall(mc.methodName(), cacheArgTypes);
@@ -7123,10 +7107,6 @@ private Target target = Target.JVM;
                     // descarta o valor no emit (POP) — um KofPop extra aqui
                     // vira stack underflow no merge de frames (COMP002)
                     String oc = resolved.ownerClass();
-                    if (Boolean.getBoolean("kof.trace.pop")) {
-                        System.err.println("[resolved] owner=" + oc + " ret=" + resolved.returnType()
-                                + " mn=" + mc.methodName());
-                    }
                     if (("List".equals(oc) || "ArrayList".equals(oc) || "java/util/List".equals(oc)
                             || "Map".equals(oc) || "HashMap".equals(oc)
                             || "Set".equals(oc) || "HashSet".equals(oc))
