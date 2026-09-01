@@ -1,6 +1,6 @@
 # 21 — Java Interoperability
 
-> **Status: parcial — bytecode JVM compatível, chamada Java direta funcional (0.2.0-beta)**
+> **Status: parcial — bytecode JVM compatível, chamada Java direta funcional (0.2.6-beta)**
 >
 > O compilador gera bytecode JVM padrão compatível com Java (chamar e ser chamado, libs, annotations). A sintaxe `import java.util.*` + `new ArrayList<String>()` já funciona; `super.metodo()` contra classes do classpath (`.jar`/`.aar`) resolve descritores via `CompilerDriver.setExternalClasspath`.
 
@@ -8,7 +8,9 @@
 
 Kof não precisa reimplementar o ecossistema Java para utilizá-lo.
 
-O bytecode gerado por Kof é bytecode JVM padrão. Isso significa que qualquer biblioteca Java funciona automaticamente.
+O bytecode gerado por Kof é bytecode JVM padrão — **V21**, com exception
+table real (try/catch no `.class`) e virtual threads para `spawn`. Isso
+significa que qualquer biblioteca Java funciona automaticamente.
 
 ## Usando Java Collections
 

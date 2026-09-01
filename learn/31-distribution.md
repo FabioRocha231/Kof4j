@@ -1,17 +1,19 @@
 # 31 — Distribuição
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — targets jvm/native/native.risc/native.arm/js/android + kofc**
 
 ## Kof é uma plataforma, não apenas um JAR
 
-A partir do 0.2.0-beta, o Kof se comporta como uma linguagem distribuível:
+A partir do 0.2.x-beta, o Kof se comporta como uma linguagem distribuível:
 
 ```text
-Kof 0.2.0-beta
+Kof 0.2.6-beta
         ├── Compiler
-        ├── CLI (build/run/script/c/test/bench/debug/info/lsp)
+        ├── CLI (build/run/serve/check/test/script/repl/c/fmt/config gen/bench/
+        │    profile/inspect/debug/info/lsp/install/version)
         ├── Runtime (JVM + Native free-list + JS + KofScript + KofC)
-        ├── Standard Library (kof.io, kof.http, kof_db, kof.security...)
+        ├── Standard Library (kof.io, kof.http, kof.db, kof.orm, kof.security,
+        │    kof.web, kof.cache, kof.scheduler, kof.config, kof.mq, kof.log...)
         ├── Tooling
         ├── Language Server / editor support
         ├── Embedded OpenJDK
@@ -36,7 +38,7 @@ kof/
 ├── tooling/         # definições consumidas por editores
 ├── editor/          # grammar TextMate oficial
 ├── docs/
-└── VERSION          # 0.2.0-beta (fonte única)
+└── VERSION          # 0.2.6-beta (fonte única)
 ```
 
 O `kof-webview` é compilado por `scripts/build-webview.sh` (Linux, requer
@@ -56,8 +58,8 @@ Verificação:
 
 ```bash
 kof info
-# Kof 0.2.0-beta
-# Targets: jvm, native, native.risc, native.arm, js, kofc
+# Kof 0.2.6-beta
+# Targets: jvm, native, js (alpha)
 # JVM: Eclipse Temurin 21.0.x (embedded)
 ```
 
@@ -85,15 +87,21 @@ runtime absorvem isso com **free-list GC** (`kof_free_head`, reuso via `mmap`; m
 
 ## Instalação
 
+Baixe o pacote do **seu** sistema em
+[GitHub Releases](https://github.com/KofLang/Kof4j/releases/latest)
+(`linux-x86_64.tar.gz` / `macos-arm64.tar.gz` / `windows-x86_64.zip`).
+O nome muda a cada release — use o globo `*` para não depender da versão:
+
 ```bash
-tar -xzf kof-0.2.0-beta-linux-x86_64.tar.gz
-export PATH="$PWD/kof-0.2.0-beta-linux-x86_64/bin:$PATH"
+tar -xzf kof-*-linux-x86_64.tar.gz
+export PATH="$PWD/$(ls -d kof-*-linux-x86_64 | head -1)/bin:$PATH"
 kof info
 kof script --repl   # testa KofScript
 kof c --help        # testa KofC
 ```
 
 Verificar integridade: `sha256sum -c SHA256SUMS`.
+Guia completo por sistema: [INSTALL.md](../docs/distribution/INSTALL.md).
 
 ## Referências
 

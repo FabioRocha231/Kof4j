@@ -1,7 +1,7 @@
 # Auditoria de Complexidade
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; 6 targets; free-list GC; `VERSION` 0.2.0-beta)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes; 7 targets: jvm, native x86_64, native.risc/arm, js, kofc, android; free-list GC; `VERSION` 0.2.6-beta)
 
 ---
 
@@ -17,25 +17,26 @@ Não queremos acumular features até virar outro Java.
 
 ### Código do Compilador
 
-| Arquivo | Linhas | Função |
+| Arquivo | Linhas (31/08) | Função |
 |---------|--------|--------|
-| Lexer.java | ~420 | Análise léxica (pattern matching `case` + `String?`) |
-| Parser.java | ~920 | Análise sintática (pattern matching, `String?`, `let` KofScript) |
-| SemanticAnalyzer.java | ~560 | Análise semântica (pattern matching, `String?`, `CompilerDriver.java:243` import fix) |
-| CompilerDriver.java | ~900 | Lowering IR (free-list alloc, `substituteTypeVariable` `Box<T>`, `KofScriptGlobals`) |
-| JvmBackend.java | ~400 | Backend JVM (V21, LineNumberTable, `Java HttpClient` for JS) |
-| NativeBackend.java | ~700 | Backend Native (x86_64 + riscv64 `.option arch,rv64g`, `li a7 214/64/93`) |
-| NativeRuntime.java | ~750 | Runtime nativo (free-list `kof_free_head` + `kof_gc_collect`, `kof_db_mysql_scramble`) |
-| JsBackend.java | ~500 | Backend JS (GraalJS, pattern matching, `kof.http` interop) |
-| KofCcompiler.java | ~200 | C subset (`kof c`) → ELF x86_64 |
-| KofScript.java | ~150 | KofScript (`let` → `KofScriptGlobals`, REPL) |
-| IRNodes.java | ~170 | Representação intermediária (+ KofDebugInfo) |
-| Type.java | ~90 | Sistema de tipos (`Type?` nullable) |
-| SymbolTable.java | ~120 | Tabela de símbolos |
-| ClassLayout.java | ~140 | Layout de memória |
-| Outros | ~600 | Utilidades + Optimizer |
+| Lexer.java | ~480 | Análise léxica (pattern matching `case` + `String?`) |
+| Parser.java | ~1.720 | Análise sintática (pattern matching, `String?`, `let` KofScript, lambda trailing) |
+| SemanticAnalyzer.java | ~1.870 | Análise semântica (pattern matching, `String?`, `CompilerDriver.java:243` import fix) |
+| CompilerDriver.java | ~7.520 | Lowering IR (free-list alloc, `substituteTypeVariable` `Box<T>`, `KofScriptGlobals`, stdlib dispatch) |
+| JvmBackend.java | ~1.320 | Backend JVM (V21, LineNumberTable, web ws/sse, `Java HttpClient` for JS) |
+| NativeBackend.java | ~1.800 | Backend Native (x86_64; toolchain riscv64/aarch64) |
+| NativeRuntime.java | ~15.340 | Runtime nativo — maior parte é assembly embutido (free-list `kof_free_head`, spawn pthread 31/08, FP XMM, JSON objetos/arrays, config/log/security/cache asm, `kof_db_mysql_scramble`) |
+| JsBackend.java | ~5.280 | Backend JS (GraalJS, CORE_RUNTIME DOM/UI, `kof.http` interop) |
+| KofCCompiler + Lexer/Parser/AST/Emitter | ~710 | C subset (`kof c`) → ELF x86_64 |
+| KofScript.java | ~610 | KofScript (`let` → `KofScriptGlobals`, REPL) |
+| IRNodes.java | ~250 | Representação intermediária (+ KofDebugInfo) |
+| Type.java | ~140 | Sistema de tipos (`Type?` nullable) |
+| SymbolTable.java | ~210 | Tabela de símbolos |
+| ClassLayout.java | ~110 | Layout de memória |
+| Optimizer.java | ~610 | Otimizador de IR (sempre ativo) |
+| Outros | ~10.000 | Geração de runtime JVM (`JvmRuntime`/`JvmWebRuntime`...), descritores stdlib (`KofWeb`, `KofSecurity`, `KofUi`, `KofDb`...), utilidades |
 
-**Total:** ~14.500 linhas de código do compilador (0.2.0-beta, 27/08)
+**Total:** ~46.600 linhas no `kof-compiler` (main; ~51.800 somando `kof-cli`/`kof-script`/`kof-c-compiler`) (0.2.6-beta, 31/08) — o peso vem de assembly nativa embutida e do runtime JVM gerado, não de lógica Java.
 
 ### O que é necessariamente complexo
 
@@ -75,15 +76,15 @@ Não queremos acumular features até virar outro Java.
 
 ### No Compilador
 
-1. **Parser**: 888 linhas — razoável para um parser completo
-2. **SemanticAnalyzer**: 522 linhas — razoável para análise semântica
-3. **CompilerDriver**: 838 linhas — poderia ser simplificado
-4. **NativeBackend**: 652 linhas — complexo mas necessário
+1. **Parser**: 1.720 linhas — cresceu com pattern matching, lambda trailing, `let` KofScript
+2. **SemanticAnalyzer**: 1.874 linhas — razoável para análise semântica (inclui `supportedOn`/diagnostics de gap)
+3. **CompilerDriver**: 7.521 linhas — lowering + dispatch da stdlib inteira; candidato prioritário a extração de helpers
+4. **NativeBackend**: 1.803 linhas — complexo mas necessário (x86_64 + toolchains)
 
 ### No Runtime
 
-1. **NativeRuntime**: 654 linhas — função assembly é verbosa mas necessária
-2. **21 funções de runtime** — razoável para o subconjunto atual
+1. **NativeRuntime**: 15.341 linhas — assembly embutido é verboso mas necessário (free-list, spawn pthread, FP XMM, JSON, config/log/security/cache/db em asm)
+2. **Funções de runtime** — subconjunto amplo mas cada função cobre um módulo da stdlib
 
 ---
 
@@ -99,12 +100,16 @@ Não queremos acumular features até virar outro Java.
 
 ## Conclusão
 
-O Kof atual tem ~13.000 linhas de compilador. Isso é comparável a:
+O Kof atual tem ~46.600 linhas no `kof-compiler` (31/08), das quais ~15.300 são
+assembly nativa embutida em `NativeRuntime.java` e ~10.000 são templates de
+runtime JVM gerado — a lógica Java "pura" do frontend/backends permanece na
+escala de dezenas de milhares, comparável a:
 - Lua: ~20.000 linhas
 - Zig: ~150.000 linhas
 - Go: ~1.500.000 linhas
 
-Kof é pequeno. O objetivo é manter assim.
+Kof é pequeno. O objetivo é manter assim — e o crescimento recente veio da
+implementação nativa (asm), não de camadas Java extras.
 
 **Regra:** antes de adicionar uma feature, perguntar:
 1. "Isso resolve um problema real?"

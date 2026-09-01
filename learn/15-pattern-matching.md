@@ -1,26 +1,22 @@
 # 15 — Pattern Matching
 
-> **Status: implementado (JVM / Native / JS) — 0.2.0-beta**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta**
 >
-> `switch case String s` (type pattern) e destructuring de records `case Point(x, y):` funcionam nos três targets. Parser + Semantic + CompilerDriver com `Native rbx→rcx` fix e `JS typeof`. `instanceof String s` também funciona como statement.
+> `switch case String s` (type pattern) e destructuring de records `case Point(x, y):` funcionam nos três targets. Parser + Semantic + CompilerDriver com `Native rbx→rcx` fix e `JS typeof`.
+>
+> **Atenção:** o padrão com variável (`case String s`) existe **só dentro de `switch`**. A forma `if (obj instanceof String s)` **não é suportada** — `instanceof` é um operador booleano simples e não faz *binding* de variável; para capturar, use `switch` com `case` ou `as` (cast).
 
-## instanceof com padrão
+## `instanceof` (checagem de tipo)
+
+`instanceof` verifica o tipo (booleano) — ele **não** declara uma variável:
 
 ```kf
 main() {
     Object obj = "kof"
-    if (obj instanceof String s) {
+    if (obj instanceof String) {
+        var s = obj as String
         println("é uma string: " + s)
     }
-}
-```
-
-Em vez de:
-
-```kf
-if (obj instanceof String) {
-    String s = (String) obj
-    println("é uma string: " + s)
 }
 ```
 
@@ -29,12 +25,16 @@ Runnable — `kof run --target=jvm|native|js`:
 ```kf
 main() {
     Object o = "kof"
-    if (o instanceof String s) {
+    if (o instanceof String) {
+        var s = o as String
         assert(s == "kof")
         println(s)
     }
 }
 ```
+
+Para capturar a variável tipada num único passo, use o pattern de `switch`
+(seção seguinte).
 
 ## switch com padrões — type pattern
 
@@ -93,7 +93,11 @@ main() {
 
 Compile e rode nos três targets — a cadeia `intention->Kof->frontend->IR->backend->runtime` mantém a semântica: o frontend normaliza `Ponto(x, y)` para `PatternExpr`, o IR emite `instanceof`+`checkcast`+`getfield` (JVM) / loads diretos (Native) / `typeof`+field access (JS).
 
-## Padrões em sealed hierarchies
+## Padrões em sealed hierarchies (planejado)
+
+`sealed ... permits` ainda não é consumido pelo parser (ver cap. 10). O
+exemplo ilustra como o pattern de `switch` cobriria a hierarquia quando sealed
+for implementado:
 
 ```kf
 sealed class Resultado<T> permits Sucesso<T>, Erro<T> {}

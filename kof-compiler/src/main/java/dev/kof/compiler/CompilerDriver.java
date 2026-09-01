@@ -386,6 +386,7 @@ private Target target = Target.JVM;
             if (d instanceof EnumDeclarationNode en) BuiltinTypes.registerEnum(en.name());
         }
             unit = desugarTests(unit);
+            discoveredConfigKeys.clear();
             if (target == Target.ANDROID) {
                 unit = appendAndroidHostIfNeeded(unit);
             }
@@ -847,6 +848,100 @@ private Target target = Target.JVM;
     private final java.util.List<TestInfo> discoveredTests = new java.util.ArrayList<>();
     private boolean testHarnessMode = false;
     private int lambdaCounter = 0;
+
+    /** Uma chave de config descoberta em compile-time (kof config gen). */
+    public record ConfigKeyInfo(String method, String key, String defaultLiteral,
+                                String file, int line) {
+        /** Tipo declarado do valor, para o template gerado. */
+        public String typeHint() {
+            return switch (method) {
+                case "int" -> "Int";
+                case "long" -> "Long";
+                case "bool" -> "Bool";
+                case "str", "required", "get" -> "String";
+                default -> "String";
+            };
+        }
+
+        public boolean hasDefault() {
+            return defaultLiteral != null;
+        }
+
+        public ConfigKeyInfo {
+            // "..." no source vira conteúdo sem aspas aqui (vem da AST);
+            // null = sem default (required/get)
+            defaultLiteral = normalizeDefault(defaultLiteral);
+        }
+        private static String normalizeDefault(String d) {
+            if (d == null) return null;
+            return d.replaceFirst("^\"", "").replaceFirst("\"$", "");
+        }
+    }
+
+    private final java.util.List<ConfigKeyInfo> discoveredConfigKeys = new java.util.ArrayList<>();
+    private final java.util.Set<String> discoveredConfigKeySet = new java.util.LinkedHashSet<>();
+
+    /** Chaves de config descobertas na última compilação (ordem de uso). */
+    public java.util.List<ConfigKeyInfo> discoveredConfigKeys() {
+        return List.copyOf(discoveredConfigKeys);
+    }
+
+    /**
+     * Registra `config.method("chave"[, default])` em compile-time (P3 —
+     * kof config gen). Só aceita chave como literal de string; chave
+     * computada não aparece no template (nada é inferido em runtime).
+     */
+    private void recordConfigKey(MethodCallExpr mc) {
+        List<ExpressionNode> args = mc.arguments();
+        if (args.isEmpty()) return;
+        if (!(args.get(0) instanceof LiteralExpr le)
+                || le.kind() != ConcreteLiteralKind.STRING) {
+            return;
+        }
+        String key = le.value();
+        String def = null;
+        if (args.size() >= 2 && args.get(1) instanceof LiteralExpr dl) {
+            def = switch (dl.kind()) {
+                case ConcreteLiteralKind.STRING -> "\"" + dl.value() + "\"";
+                case ConcreteLiteralKind.INT, ConcreteLiteralKind.LONG,
+                        ConcreteLiteralKind.BOOLEAN, ConcreteLiteralKind.FLOAT,
+                        ConcreteLiteralKind.DOUBLE -> dl.value();
+                default -> null;
+            };
+        }
+        String method = "required".equals(mc.methodName()) || "get".equals(mc.methodName())
+                ? "required" : mc.methodName();
+        String dedupe = method + "|" + key + "|" + def;
+        if (discoveredConfigKeySet.add(dedupe)) {
+            SourcePosition pos = mc.position();
+            discoveredConfigKeys.add(new ConfigKeyInfo(method, key, def,
+                    pos != null ? pos.file() : "", pos != null ? pos.line() : 0));
+        }
+    }
+
+    /**
+     * Gera um template `kof.config` a partir das chaves descobertas na
+     * última compilação — para deploy (docs/stdlib-config.md §8.2 P3).
+     * Chaves com default viram comentário (o programa já tem valor);
+     * required/get sem default viram linha ativa.
+     */
+    public String generateConfigTemplate() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# kof.config — gerado por kof config gen\n");
+        sb.append("# Chaves usadas pelo programa (em ordem de primeiro uso).\n");
+        sb.append("# Chaves com default estão comentadas — descomente para sobrescrever.\n\n");
+        for (ConfigKeyInfo k : discoveredConfigKeys) {
+            if (k.hasDefault()) {
+                sb.append("# ").append(k.key()).append(" = ")
+                  .append(k.defaultLiteral().isEmpty() ? "" : k.defaultLiteral())
+                  .append("\n");
+            } else {
+                sb.append("# REQUIRED (sem default no código):\n")
+                  .append(k.key()).append(" = \n");
+            }
+        }
+        return sb.toString();
+    }
 
     /**
      * Synthetic lambda class. Captured outer locals become private final
@@ -1796,10 +1891,18 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (target.isNative()) {
-                    if (currentDiagnostics != null) {
-                        currentDiagnostics.error("", 0, 0, 0,
-                                "spawn: not supported on the Native target yet (JVM supports it)", "CONC001");
-                    }
+                    // CONC001 fechado: pthread_create no runtime nativo
+                    LambdaExpr leN = ss.expression() instanceof LambdaExpr l1 ? l1
+                            : new LambdaExpr(ss.position(), List.of(),
+                                    List.of(new ExpressionStmt(ss.position(), ss.expression())));
+                    Type.FunctionType ftN = new Type.FunctionType(List.of(), Type.PrimitiveType.VOID, null);
+                    String lambdaClassN = lambdaClass(leN, ftN, List.of());
+                    Type taskTypeN = new Type.ClassType("", lambdaClassN, List.of());
+                    ops.add(new KofNewObject(taskTypeN, List.of()));
+                    ops.add(new KofDup());
+                    ops.add(new KofCall(taskTypeN, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                    ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_spawn", List.of(taskTypeN), Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (target == Target.JS) {
@@ -1807,15 +1910,6 @@ private Target target = Target.JVM;
                     if (currentDiagnostics != null) {
                         currentDiagnostics.error("", 0, 0, 0,
                                 "spawn: not supported on the js target yet (CONC003)", "CONC003");
-                    }
-                    yield localIdx;
-                }
-                if (target == Target.ANDROID) {
-                    // ART não tem virtual threads (Java 21) — a semântica de
-                    // spawn não é realizável no alvo hoje
-                    if (currentDiagnostics != null) {
-                        currentDiagnostics.error("", 0, 0, 0,
-                                "spawn: not supported on the Android target yet (no virtual threads on ART)", "AND001");
                     }
                     yield localIdx;
                 }
@@ -2674,17 +2768,10 @@ private Target target = Target.JVM;
                     boolean argsOk = "cancelled".equals(mc.methodName())
                             ? mc.arguments().isEmpty() : !mc.arguments().isEmpty();
                     if (!argsOk) yield localIdx;
-                    if (target.isNative() || target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001" : "AND001";
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    mc.methodName() + ": not supported on the " + target
-                                            + " target yet (" + code + ")", code);
-                        }
-                        yield localIdx;
-                    }
+                    // Native: cancel/cancelled/selectAny sobre o handle pthread
+                    // (flags de cancel por TID + polling anyOf) — CONC001 fechado.
+                    // Android: reusa o caminho JVM (CompletableFuture + platform
+                    // threads no ART) — AND001 fechado 31/08.
                     if ("selectAny".equals(mc.methodName())) {
                         Type firstH = inferExprType(mc.arguments().get(0), locals);
                         Type elemT = new Type.ClassType("kof.concurrent", "Handle",
@@ -2724,18 +2811,9 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && ("poll".equals(mc.methodName()) || "done".equals(mc.methodName()))
                         && mc.arguments().size() == 1
                         && findLocalVar(mc.methodName(), locals) == null) {
-                    // sem threads no alvo não há Handle real: gap honesto
-                    if (target.isNative() || target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001" : "AND001";
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    mc.methodName() + ": not supported on the " + target
-                                            + " target yet (" + code + ")", code);
-                        }
-                        yield localIdx;
-                    }
+                    // Native: done/poll são leituras não-bloqueantes do flag do
+                    // handle (pthread já existe via spawn) — CONC001 fechado p/ estes.
+                    // Android: reusa o caminho JVM (Future.isDone/getNow).
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type hE = inferExprType(mc.arguments().get(0), locals);
                     Type rE = Type.UnknownType.UNKNOWN;
@@ -2748,6 +2826,39 @@ private Target target = Target.JVM;
                             new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
                             "kof_" + mc.methodName(),
                             List.of(hE), ret, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "awaitTimeout".equals(mc.methodName())
+                        && mc.arguments().size() == 2
+                        && findLocalVar("awaitTimeout", locals) == null) {
+                    // awaitTimeout(r, timeoutMs): valor se a task terminar no prazo;
+                    // senão lança exceção (capturável via try/catch). G8/CONC residual.
+                    // Android: Future.get(timeout) existe no ART — AND001 fechado.
+                    localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                    Type hT = inferExprType(mc.arguments().get(0), locals);
+                    Type resT = Type.UnknownType.UNKNOWN;
+                    if (hT instanceof Type.ClassType ct && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        resT = ct.typeArguments().get(0);
+                    }
+                    localIdx = emitExpression(mc.arguments().get(1), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(
+                            new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                            "kof_await_timeout", List.of(hT, Type.PrimitiveType.INT),
+                            resT, KofCallKind.FUNCTION));
+                    yield localIdx;
+                }
+                if (mc.receiver() == null && "channel".equals(mc.methodName())
+                        && mc.arguments().isEmpty()
+                        && findLocalVar("channel", locals) == null) {
+                    // Canais tipados (concorrência): channel<T>() -> Channel<T>
+                    // FIFO thread-safe; c.send(v) enfileira, c.receive() retira.
+                    Type elemT = mc.typeArguments().isEmpty()
+                            ? Type.UnknownType.UNKNOWN
+                            : toType(mc.typeArguments().get(0));
+                    Type chanT = new Type.ClassType("kof.concurrent", "Channel", List.of(elemT));
+                    ops.add(new KofCall(chanT, "kof_channel_new", List.of(),
+                            chanT, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
@@ -2763,16 +2874,24 @@ private Target target = Target.JVM;
                                 KofCallKind.FUNCTION));
                         yield localIdx;
                     }
-                    if (target != Target.JVM) {
-                        if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001"
-                                    : target == Target.ANDROID ? "AND001" : "CONC003";
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "spawn expr: not supported on the " + target + " target yet (" + code + ")",
-                                    code);
-                        }
+                    if (target.isNative()) {
+                        // CONC001: spawn-expr com handle real (pthread)
+                        ExpressionNode bodyN = mc.arguments().get(0);
+                        Type resultTN = inferExprType(bodyN, locals);
+                        Type handleTN = new Type.ClassType("kof.concurrent", "Handle", List.of(resultTN));
+                        LambdaExpr leN2 = bodyN instanceof LambdaExpr l2 ? l2
+                                : new LambdaExpr(bodyN.position() != null ? bodyN.position() : mc.position(),
+                                        List.of(), List.of(new ExpressionStmt(
+                                                bodyN.position() != null ? bodyN.position() : mc.position(), bodyN)));
+                        Type.FunctionType ftN2 = new Type.FunctionType(List.of(), resultTN, null);
+                        String lambdaClassN2 = lambdaClass(leN2, ftN2, List.of());
+                        Type taskTypeN2 = new Type.ClassType("", lambdaClassN2, List.of());
+                        ops.add(new KofNewObject(taskTypeN2, List.of()));
+                        ops.add(new KofDup());
+                        ops.add(new KofCall(taskTypeN2, "<init>", List.of(),
+                                Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                        ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                "kof_spawn_result", List.of(taskTypeN2), handleTN, KofCallKind.FUNCTION));
                         yield localIdx;
                     }
                     ExpressionNode body = mc.arguments().get(0);
@@ -2794,17 +2913,6 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
-                    if (target.isNative() || target == Target.ANDROID) {
-                        if (currentDiagnostics != null) {
-                            String code = target.isNative() ? "CONC001" : "AND001";
-                            currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
-                                    mc.position() != null ? mc.position().line() : 0,
-                                    mc.position() != null ? mc.position().column() : 0, 0,
-                                    "await: not supported on the " + target + " target yet (" + code + ")",
-                                    code);
-                        }
-                        yield localIdx;
-                    }
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     Type hT = inferExprType(mc.arguments().get(0), locals);
                     Type resT = Type.UnknownType.UNKNOWN;
@@ -3032,6 +3140,16 @@ private Target target = Target.JVM;
                                     case "int":
                                         ops.add(new KofCall(BuiltinTypes.STRING, "kof_int_to_string",
                                                 List.of(Type.PrimitiveType.INT), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
+                                    case "double":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_double_to_string",
+                                                List.of(Type.PrimitiveType.DOUBLE), BuiltinTypes.STRING,
+                                                KofCallKind.FUNCTION));
+                                        break;
+                                    case "float":
+                                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_float_to_string",
+                                                List.of(Type.PrimitiveType.FLOAT), BuiltinTypes.STRING,
                                                 KofCallKind.FUNCTION));
                                         break;
                                     default: // string
@@ -3502,6 +3620,7 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) {
                             localIdx = emitExpression(arg, ops, owner, localIdx, locals);
                         }
+                        recordConfigKey(mc);
                         ops.add(new KofCall(KofConfig.CONFIG, cfgCall.function(), cfgCall.parameterTypes(),
                                 cfgCall.returnType(), KofCallKind.FUNCTION));
                     }
@@ -3530,6 +3649,32 @@ private Target target = Target.JVM;
                         }
                         ops.add(new KofCall(KofCache.CACHE, cacheCall.function(), cacheCall.parameterTypes(),
                                 cacheCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
+                            && KofGpu.isGpuNamespace(rid.name())) {
+                    List<Type> argTypes = new ArrayList<>();
+                    for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    KofGpu.GpuCall gpuCall = KofGpu.staticCall(mc.methodName(), argTypes);
+                    if (gpuCall != null) {
+                        if (!KofGpu.supportedOn(target)) {
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName()
+                                                + ": not available on the " + target
+                                                + " target yet (GPU001)",
+                                        "GPU001");
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofGpu.GPU, gpuCall.function(), gpuCall.parameterTypes(),
+                                gpuCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
@@ -3669,6 +3814,30 @@ private Target target = Target.JVM;
                                 ioCall.function(), ioCall.parameterTypes(), ioCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr rid && KofMedia.isStaticNamespace(rid.name())) {
+                    KofMedia.MediaCall mediaCall = KofMedia.staticCall(rid.name(), mc.methodName(), mc.arguments().size());
+                    if (mediaCall != null) {
+                        if (target != Target.JVM && target != Target.ANDROID) {
+                            String code = KofMedia.gapCode(mediaCall.function());
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0,
+                                        0,
+                                        rid.name() + "." + mc.methodName() + ": not available on the "
+                                                + target + " target yet (" + code + ")",
+                                        code);
+                            }
+                            yield localIdx;
+                        }
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                mediaCall.function(), mediaCall.parameterTypes(),
+                                mediaCall.returnType(), KofCallKind.FUNCTION));
+                    }
+                    yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid2 && KofUi.isPalette(rid2.name())) {
                     yield localIdx;
                 } else if (mc.receiver() instanceof IdentifierExpr rid3 && KofUi.isConstructor(rid3.name())) {
@@ -3684,6 +3853,17 @@ private Target target = Target.JVM;
                     if (uiCall != null && "kof_ui_theme_dark".equals(uiCall.function())) {
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
                         yield localIdx;
+                    }
+                    yield localIdx;
+                } else if (mc.receiver() instanceof IdentifierExpr ridRt && KofUi.isRouterNamespace(ridRt.name())) {
+                    // Fase 7 (docs/ui/architecture.md §2.9): Router.*
+                    KofUi.UiCall routerCall = KofUi.staticMethod("Router", mc.methodName(), mc.arguments().size());
+                    if (routerCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) {
+                            localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                        }
+                        ops.add(new KofCall(KofUi.COMPONENT, routerCall.function(), routerCall.parameterTypes(),
+                                routerCall.returnType(), KofCallKind.FUNCTION));
                     }
                     yield localIdx;
                 } else if (mc.receiver() != null) {
@@ -3843,6 +4023,22 @@ private Target target = Target.JVM;
                         }
                         yield localIdx;
                     }
+                    if (KofMedia.isHandleType(recvType)) {
+                        KofMedia.MediaCall mediaCall =
+                                KofMedia.handleMethod(recvType, mc.methodName(), mc.arguments().size());
+                        if (mediaCall != null) {
+                            List<Type> mediaParams = new ArrayList<>();
+                            mediaParams.add(Type.PrimitiveType.INT);      // handle (receiver)
+                            for (ExpressionNode arg : mc.arguments()) {
+                                mediaParams.add(inferExprType(arg, locals));
+                                localIdx = emitExpression(arg, ops, owner, localIdx, locals);
+                            }
+                            ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
+                                    mediaCall.function(), mediaParams,
+                                    mediaCall.returnType(), KofCallKind.FUNCTION));
+                        }
+                        yield localIdx;
+                    }
                     if (KofIo.isIoType(recvType)) {
                         if (KofIo.isIdentityMethod(mc.methodName())) {
                             yield localIdx;
@@ -3928,6 +4124,23 @@ private Target target = Target.JVM;
                             }
                             ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
                                     hm.function(), params, hm.returnType(), KofCallKind.FUNCTION));
+                            yield localIdx;
+                        }
+                    }
+                    if (BuiltinTypes.isChannel(recvType)) {
+                        // Canais tipados: c.send(v) enfileira; c.receive() retira.
+                        // O receiver (Channel) está empilhado; o elemento vai
+                        // após — o backend faz a ordem (send: chan,elem; receive: chan).
+                        Type elemT = BuiltinTypes.channelElement(recvType);
+                        if ("send".equals(mc.methodName()) && mc.arguments().size() == 1) {
+                            localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(recvType, "kof_channel_send", List.of(elemT),
+                                    Type.PrimitiveType.VOID, KofCallKind.INSTANCE));
+                            yield localIdx;
+                        }
+                        if ("receive".equals(mc.methodName()) && mc.arguments().isEmpty()) {
+                            ops.add(new KofCall(recvType, "kof_channel_receive", List.of(),
+                                    elemT, KofCallKind.INSTANCE));
                             yield localIdx;
                         }
                     }
@@ -4952,6 +5165,16 @@ private Target target = Target.JVM;
                         leftType = Type.PrimitiveType.BOOL;
                         continue;
                     }
+                    // aritmética promove: int/long → long etc. (o lowering
+                    // usa commonNumericType; a inferência precisa casar)
+                    Type rType = inferExprType(be.right(), locals);
+                    if (switch (be.operator()) {
+                        case "+", "-", "*", "/", "%" -> true;
+                        default -> false;
+                    } && isNumeric(leftType) && isNumeric(rType)) {
+                        leftType = commonNumericType(leftType, rType);
+                        continue;
+                    }
                     leftType = leftType;
                 }
                 yield leftType;
@@ -5060,6 +5283,13 @@ private Target target = Target.JVM;
                     KofUi.UiCall uiCall = KofUi.staticMethod(rid3.name(), mc.methodName(), mc.arguments().size());
                     if (uiCall != null) yield uiCall.returnType();
                 }
+                if (mc.receiver() instanceof IdentifierExpr ridR && KofUi.isRouterNamespace(ridR.name())) {
+                    KofUi.UiCall routerCall = KofUi.staticMethod("Router", mc.methodName(), mc.arguments().size());
+                    if (routerCall != null) {
+                        for (ExpressionNode arg : mc.arguments()) inferExprType(arg, locals);
+                        yield routerCall.returnType();
+                    }
+                }
                 if ("listOf".equals(mc.methodName()) && mc.receiver() == null) {
                     yield new Type.ClassType("kof", "List", List.of(listOfElementType(mc, locals)));
                 }
@@ -5107,7 +5337,18 @@ private Target target = Target.JVM;
                         && mc.arguments().size() == 1 && findLocalVar("done", locals) == null) {
                     yield Type.PrimitiveType.BOOL;
                 }
-if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
+                    Type t = inferExprType(mc.arguments().get(0), locals);
+                    if (t instanceof Type.ClassType ct
+                            && "kof.concurrent".equals(ct.packageName())
+                            && !ct.typeArguments().isEmpty()) {
+                        yield ct.typeArguments().get(0);
+                    }
+                    yield Type.UnknownType.UNKNOWN;
+                }
+                if (mc.receiver() == null && "awaitTimeout".equals(mc.methodName())
+                        && mc.arguments().size() == 2
+                        && findLocalVar("awaitTimeout", locals) == null) {
                     Type t = inferExprType(mc.arguments().get(0), locals);
                     if (t instanceof Type.ClassType ct
                             && "kof.concurrent".equals(ct.packageName())
@@ -5289,6 +5530,11 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) yield webCall.returnType();
                         yield Type.UnknownType.UNKNOWN;
+                    }
+                    if (KofMedia.isHandleType(recvType)) {
+                        KofMedia.MediaCall mediaCall =
+                                KofMedia.handleMethod(recvType, mc.methodName(), mc.arguments().size());
+                        if (mediaCall != null) yield mediaCall.returnType();
                     }
                     if (KofIo.isIoType(recvType)) {
                         KofIo.IoCall ioCall = KofIo.instanceMethod(recvType, mc.methodName(), mc.arguments().size());
@@ -6376,31 +6622,13 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     private boolean jsonSupported(Type type, boolean isDecode) {
         Type check = BuiltinTypes.isList(type) ? listElementType(type) : type;
         if (check instanceof Type.PrimitiveType pt && ("float".equals(pt.name()) || "double".equals(pt.name()))) {
-            if (target.isNative()) {
-                if (currentDiagnostics != null) {
-                    currentDiagnostics.error("", 0, 0, 0,
-                            "json: Float/Double is not supported on the Native target yet (use int, long, bool or String)",
-                            "JSN001");
-                }
-                return false;
-            }
+            // JSN001 fechado: encode/decode float/double no Native
+            // (kof_json_encode_double + kof_string_to_double, FP XMM).
             return true;
         }
         if (isDecode && type instanceof Type.ArrayType at) {
             // JSN003 fechado: int/long/bool/string[] tem decoders nativos.
-            if (!(at.componentType() instanceof Type.PrimitiveType ap
-                    && ("float".equals(ap.name()) || "double".equals(ap.name())))) {
-                return true;
-            }
-            // arrays de float/double permanecem sob o gap FP
-            if (target.isNative()) {
-                if (currentDiagnostics != null) {
-                    currentDiagnostics.error("", 0, 0, 0,
-                            "json.decode: Float/Double arrays are not supported on the Native target yet",
-                            "JSN001");
-                }
-                return false;
-            }
+            // JSN001: float/double[] também decodifica no Native.
             return true;
         }
         if (check instanceof Type.ClassType && target.isNative() && !BuiltinTypes.isList(type)
@@ -6667,6 +6895,20 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
         if (expr instanceof AssignmentExpr) return false;
         if (expr instanceof MethodCallExpr mc) {
             if ("print".equals(mc.methodName()) || "println".equals(mc.methodName())) return false;
+            // cache.* primeiro: cache.delete é void e o nome colide com o
+            // File.delete do Io (que o check genérico abaixo não sabe tipar
+            // com receiver Unknown) — sem isto o Pop extra diverge o frame
+            if (mc.receiver() instanceof IdentifierExpr rid && KofCache.isCacheNamespace(rid.name())) {
+                List<Type> cacheArgTypes = new ArrayList<>();
+                for (ExpressionNode arg : mc.arguments()) cacheArgTypes.add(inferExprType(arg, locals));
+                KofCache.CacheCall cc = KofCache.staticCall(mc.methodName(), cacheArgTypes);
+                if (cc == null) return true;
+                return !(cc.returnType() instanceof Type.PrimitiveType pt && "void".equals(pt.name()));
+            }
+            // gpu.*: todas as funções retornam valor (bool/str/int)
+            if (mc.receiver() instanceof IdentifierExpr rid && KofGpu.isGpuNamespace(rid.name())) {
+                return true;
+            }
             if (mc.receiver() != null && KofIo.instanceMethod(Type.UnknownType.UNKNOWN,
                     mc.methodName(), mc.arguments().size()) != null) {
                 return true;
@@ -7006,6 +7248,12 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
             }
             body = List.of(new IRBasicBlock(0, ops));
             locals = localVars;
+        } else if (!isInterface && !isAbstractMethod(method)) {
+            // corpo vazio em classe concreta: sem Code attribute o JVM rejeita
+            // a classe (Absent Code attribute) — emite corpo com return default
+            List<KofOperation> ops = new ArrayList<>(List.of(Type.isVoid(returnType)
+                    ? new KofReturnVoid() : new KofReturn(returnType)));
+            body = List.of(new IRBasicBlock(0, ops));
         }
         KofDebugInfo debugInfo = currentDebugPositions.isEmpty()
                 ? KofDebugInfo.EMPTY
@@ -7310,7 +7558,7 @@ if (mc.receiver() == null && "__kof_await".equals(mc.methodName())) {
     }
 
     private boolean isAbstractMethod(MethodDeclarationNode method) {
-        return method.body() == null || method.body().isEmpty();
+        return method.body() == null;
     }
 
     /**

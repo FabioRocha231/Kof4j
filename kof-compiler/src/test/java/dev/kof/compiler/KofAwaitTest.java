@@ -49,7 +49,8 @@ class KofAwaitTest {
     }
 
     @Test
-    void awaitNativeGap(@TempDir Path tmp) throws Exception {
+    void awaitNativeRuns(@TempDir Path tmp) throws Exception {
+        // CONC001 fechado (31/08): spawn-expr/await com pthread no Native
         Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, """
                 String t() { return "x" }
@@ -60,9 +61,14 @@ class KofAwaitTest {
                 }
                 """);
         CompilationResult result = driver.compile(file, tmp.resolve("out"), Target.NATIVE);
-        assertFalse(result.success(), "Native spawn-expr/await deve reportar CONC001");
-        assertTrue(result.diagnostics().getDiagnostics().stream().anyMatch(d -> "CONC001".equals(d.code())),
-                "Esperado CONC001: " + result.diagnostics().getDiagnostics());
+        assertTrue(result.success(), "Native spawn-expr/await deve compilar: "
+                + result.diagnostics().getDiagnostics());
+        Path bin = tmp.resolve("out").resolve("Default/Main");
+        ProcessBuilder pb = new ProcessBuilder(bin.toString()).redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        assertEquals(0, p.waitFor(), "exit code, output: " + output);
+        assertTrue(output.contains("x"), "await devolve o valor: " + output);
     }
 
     @Test

@@ -1,6 +1,6 @@
 # 16 — Lambdas
 
-> **Status: implementado (JVM / Native / JS) — 0.2.0-beta — com capturas**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — com capturas**
 >
 > Lambdas `(x: Int) -> expr` com capturas (box `BoxN`) funcionam nos três targets; `map/filter/reduce` em `List<T>` usam lambdas capturando.
 
@@ -27,12 +27,17 @@ var nomesLongos = nomes.filter((nome: String) -> nome.length() > 3)
 // ["Carlos"]
 ```
 
-## Method references
+## Method references (planejado)
+
+A referência a método `::nome` ainda não é suportada — `::` é reconhecido no
+lexer, mas o parser não a consome, e `List`/arrays não expõem `forEach`.
+Use um lambda explicitamente por enquanto:
 
 ```kf
-var nomes = ["Ana", "Bob", "Carlos"];
-
-nomes.forEach(::println);
+var nomes = listOf("Ana", "Bob", "Carlos")
+for (var nome in nomes) {
+    println(nome)
+}
 ```
 
 ## Closures

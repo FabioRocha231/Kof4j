@@ -9,7 +9,6 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
-import org.junit.jupiter.api.Disabled;
 
 
 /**
@@ -170,7 +169,6 @@ class KofDbE2ETest {
         runJvm(source, tempDir.resolve("out"), "{\"x\":42}");
     }
 
-    @Disabled("WIP: regressão do query nativo sob investigação (alinhamento/alloc)")
     @Test
     void nativeSqliteRoundtrip(@TempDir Path tempDir) throws IOException {
         assumeTrue(isLinux(), "Native SQLite requires Linux + libsqlite3");
@@ -200,6 +198,52 @@ class KofDbE2ETest {
             int ec = p.waitFor();
             assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
             assertEquals("{\"id\":7,\"name\":\"Nativa\"}", output, "Native SQLite query output");
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
+    @Test
+    void nativeMysqlWireProtocol(@TempDir Path tempDir) throws IOException {
+        assumeTrue(isLinux(), "Native MySQL requires Linux");
+        // WIP MySQL wire protocol (handshake + auth switch + COM_QUERY + resultset).
+        // Requer um MySQL/MariaDB real (porta configurável via env KOF_MYSQL_PORT,
+        // default 13306; credenciais root/kofpass, db test). Pula se indisponível.
+        int port;
+        try { port = Integer.parseInt(System.getenv().getOrDefault("KOF_MYSQL_PORT", "13306")); }
+        catch (NumberFormatException e) { port = 13306; }
+        boolean up;
+        try (java.net.Socket s = new java.net.Socket()) {
+            s.connect(new java.net.InetSocketAddress("127.0.0.1", port), 500);
+            up = s.isConnected();
+        } catch (Exception e) { up = false; }
+        assumeTrue(up, "MySQL server not reachable on 127.0.0.1:" + port);
+        Path source = tempDir.resolve("M.kf");
+        Files.writeString(source, """
+            main() {
+                var db = db.connect("mysql://root:kofpass@127.0.0.1:%d/test")
+                db.execute(db, "create table if not exists u(id int, name varchar(50))")
+                db.execute(db, "delete from u")
+                db.execute(db, "insert into u values (?, ?)", 7, "Nativa")
+                var rows = db.query(db, "select id, name from u where id = ?", 7)
+                for (var r in rows) {
+                    println(r)
+                }
+                db.close(db)
+            }
+            """.formatted(port));
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Native compile should succeed: " + result.diagnostics().getDiagnostics());
+        Path binFile = tempDir.resolve("out/Default/Main");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Exit code should be 0, output: '" + output + "'");
+            assertEquals("{\"id\":7,\"name\":\"Nativa\"}", output, "Native MySQL query output");
         } catch (InterruptedException e) {
             throw new IOException("Interrupted while running native binary", e);
         }

@@ -31,30 +31,32 @@ kof-<version>-<os>-<arch>.tar.gz   # Linux / macOS
 kof-<version>-<os>-<arch>.zip      # Windows
 ```
 
-Exemplos reais:
+O `<os>-<arch>` vem da matriz do workflow de release (um pacote por
+plataforma). Exemplos reais:
 
 ```text
-kof-0.0.5-alpha-linux-x86_64.tar.gz
-kof-0.0.5-alpha-windows-x86_64.zip
-kof-0.0.5-alpha-macos-x86_64.tar.gz
-kof-0.0.5-alpha-linux-aarch64.tar.gz   # planejado
-kof-0.0.5-alpha-macos-aarch64.tar.gz   # planejado
+kof-0.2.6-beta-linux-x86_64.tar.gz
+kof-0.2.6-beta-macos-arm64.tar.gz
+kof-0.2.6-beta-windows-x86_64.zip
 ```
 
-## 3. Matriz de plataformas
+> O nome carrega a **versão da release** (ex.: `0.2.6-beta`). O usuário não
+> precisa decorar a versão: o guia de instalação usa o globo
+> `kof-*-<os>-<arch>.tar.gz`.
 
-| Plataforma | Estado |
-|-----------|--------|
-| Linux x86_64 | IMPLEMENTED (backend nativo e JVM testados) |
-| Windows x86_64 | PACKAGING READY (CI gera o zip; execução JVM) |
-| macOS x86_64 | PACKAGING READY (CI gera o tar.gz) |
-| Linux ARM64 | PACKAGING ARCHITECTURE READY (empacotamento suporta; runtime nativo não validado) |
-| macOS ARM64 | PACKAGING ARCHITECTURE READY (idem) |
-| Windows ARM64 | PLANNED |
+## 3. Matriz de plataformas (workflow `release.yml`)
 
-A arquitetura de empacotamento não exige mudanças estruturais para adicionar
-um novo target: o script mapeia `os`/`arch` e o CI apenas adiciona a linha na
-matriz.
+| Runner | Target | Artefato |
+|--------|--------|----------|
+| `ubuntu-latest` | `linux-x86_64` | `kof-<v>-linux-x86_64.tar.gz` |
+| `windows-latest` | `windows-x86_64` | `kof-<v>-windows-x86_64.zip` |
+| `macos-latest` | `macos-arm64` | `kof-<v>-macos-arm64.tar.gz` |
+
+> **macOS é publicado para Apple Silicon (`arm64`).** Não há pacote
+> `macos-x86_64`. O mapeamento `os`/`arch` do script (`linux`/`macos`/
+> `windows` × `x86_64`/`arm64`) suporta qualquer combinação futura — para
+> publicar uma nova plataforma basta adicionar uma linha na matriz do
+> workflow.
 
 ## 4. Layout do pacote
 
@@ -62,14 +64,15 @@ matriz.
 kof-<version>-<os>-<arch>/
 ├── bin/
 │   ├── kof            # launcher Unix
-│   └── kof.bat        # launcher Windows
+│   ├── kof.bat        # launcher Windows
+│   └── kof-webview    # shell do kof.ui (quando disponível)
 ├── lib/
 │   └── kof.jar        # CLI + compiler + tooling (autocontido)
 ├── jdk/               # OpenJDK embutido (apenas com --jdk)
 ├── tooling/
 ├── editor/
 │   └── kof.tmLanguage.json
-├── docs/
+├── docs/              # README, LICENSE, arquitetura, tooling, distribuição
 └── VERSION
 ```
 

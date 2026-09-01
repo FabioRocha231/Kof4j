@@ -1,6 +1,6 @@
 # 11 — Generics
 
-> **Status: implementado (JVM / Native / JS) — 0.2.0-beta — erasure + `Box<T>` com `T` primitivo**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — erasure + `Box<T>` com `T` primitivo**
 >
 > Generics por erasure funcionam nos três targets; `Box<Int>` com `substituteTypeVariable` + `kof_int_to_string` nativo já está em 0.2.0.
 
@@ -27,9 +27,15 @@ String texto = lista.get(0);  // sem cast
 ### Classes genéricas
 
 ```kf
-class Caixa<T>(T valor) {
-    T get() {
-        return this.valor;
+class Box<T> {
+    T value
+
+    set(T v) {
+        value = v
+    }
+
+    get(): T {
+        return value
     }
 }
 ```
@@ -37,25 +43,36 @@ class Caixa<T>(T valor) {
 Uso:
 
 ```kf
-var caixaTexto = new Caixa<String>("olá");
-var caixaNumero = new Caixa<Int>(42);
+var caixaTexto = new Box<String>()
+caixaTexto.set("olá")
+var caixaNumero = new Box<Int>()
+caixaNumero.set(42)
+println(caixaNumero.get())   // 42 — Box<T> com T primitivo
 ```
+
+`Box<T>` com `T` primitivo (`Box<Int>`) funciona nos três targets — no Native
+o `get()` que devolve `T` tem o tipo substituído em compile-time
+(`substituteTypeVariable`), então `println(b.get())` imprime o valor e não
+vira segfault.
 
 ### Métodos genéricos
 
+Os parâmetros de tipo vêm **depois** do nome da função:
+
 ```kf
-<T> T primeiro(List<T> lista) {
-    return lista.get(0);
+identity<T>(T x): T {
+    return x
+}
+
+main() {
+    println(identity(42))     // 42
+    println(identity("hi"))   // hi
 }
 ```
 
-### Bounds
+### Bounds (planejado)
 
-```kf
-<T extends Comparable<T>> T maximo(T a, T b) {
-    return a.maiorQue(b) ? a : b;
-}
-```
+`extends` em parâmetros de tipo ainda não é resolvido em compile-time.
 
 ## Variância (planejado)
 

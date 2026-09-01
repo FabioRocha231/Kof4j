@@ -1,6 +1,6 @@
 # Kof Array Reference
 
-**Version:** 0.2.0-beta
+**Version:** 0.2.6-beta
 
 ## Creation
 

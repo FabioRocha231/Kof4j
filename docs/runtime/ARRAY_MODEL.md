@@ -221,6 +221,11 @@ kof_null_error() disponível para detecção.
 
 ---
 
+> **Atualizado (0.2.6-beta, 31/08):** arrays de `Double`/`Float` entram no
+> fluxo do JSON nativo (`Double[]`/`Float[]` no decode — JSN001), com FP em
+> XMM (`vcvtsi2sd`/`mulsd`); a alocação de arrays segue na free-list
+> `kof_free_head` (thread-safe com o `spawn` em pthreads).
+
 ## 11. Limitações Conhecidas
 
 1. Sem inicialização de array com literais (`[1, 2, 3]`) — apenas `new Type[size]`

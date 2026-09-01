@@ -1,60 +1,94 @@
 # 01 — Instalação
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes**
+> **Kof 0.2.6-beta — 30 ago 2026.** Este guia não depende da versão: os
+> comandos funcionam em qualquer release.
 
-## Instalação oficial (recomendado)
+## O que é o Kof (e o que você NÃO precisa instalar)
 
-O Kof é distribuído como uma plataforma autocontida. O pacote oficial
-inclui compilador, CLI, runtime, stdlib, tooling e um **OpenJDK embutido** —
-não é necessário instalar Java separadamente.
+O Kof é uma **distribuição autocontida**. O pacote oficial já traz
+compilador, CLI, runtime, standard library, tooling de editor **e um
+OpenJDK embutido**.
 
-1. Baixe o artefato do GitHub Releases (ex.: `kof-0.2.0-beta-linux-x86_64.tar.gz`).
-2. Verifique a integridade:
+- **NÃO** instale Java, Maven, Node.js ou nada antes.
+- **NÃO** precisa saber qual é a versão para instalar.
 
-   ```bash
-   sha256sum -c SHA256SUMS
-   ```
+## Passo 1 — Baixe o pacote do SEU sistema
 
-3. Extraia e adicione ao PATH:
+Abra <https://github.com/KofLang/Kof4j/releases/latest>. A release mais
+recente lista 3 pacotes. Baixe **um** — o do seu sistema:
 
-   ```bash
-   tar -xzf kof-0.2.0-beta-linux-x86_64.tar.gz
-   export PATH="$PWD/kof-0.2.0-beta-linux-x86_64/bin:$PATH"
-   ```
+| Seu sistema | Baixe o arquivo com |
+|-------------|---------------------|
+| **Linux** (64 bits) | `linux-x86_64.tar.gz` |
+| **macOS** (Apple Silicon) | `macos-arm64.tar.gz` |
+| **Windows** (64 bits) | `windows-x86_64.zip` |
 
-4. Verifique:
+O arquivo tem ~230 MB. O nome começa com `kof-<versão>-<sistema>` — a
+versão muda a cada release; o `kof version` mostra qual é depois.
 
-   ```bash
-   kof version   # 0.2.0-beta
-   kof info
-   ```
+> Sem certeza de qual é o seu? Rode `uname -m` (Linux/macOS: `x86_64` =
+> Intel/AMD, `arm64` = Apple Silicon) ou, no Windows, verifique em
+> **Configurações → Sistema → Acerca** (a maioria dos PCs atuais é
+> `x64` = Intel/AMD).
 
-O `kof info` mostra a versão (`0.2.0-beta`), Tooling API (21), target, JVM (embutida, quando
-aplicável) e a localização da instalação. `Targets: jvm, native, native.risc, native.arm, js, kofc`.
+## Passo 2 — Extrair e ativar
 
-## Build a partir do código-fonte (para desenvolvedores)
+### Linux
 
 ```bash
-git clone https://github.com/KofLang/Kof4j.git
-cd Kof4j
-mvn clean package -DskipTests
-bin/kof version   # 0.2.0-beta
+tar -xzf kof-*-linux-x86_64.tar.gz                       # extrai
+DIR=$(ls -d kof-*-linux-x86_64 | head -1)                # acha a pasta
+export PATH="$PWD/$DIR/bin:$PATH"                        # ativa
+kof version                                              # confere
 ```
 
-Em builds de desenvolvimento, o launcher `bin/kof` usa o `java` do sistema
-(JDK 21+). No pacote oficial, o JDK embutido é usado automaticamente.
+Para valer sempre, adicione ao `~/.bashrc` (ou `~/.zshrc`):
 
-## Criando seu primeiro projeto
-
-Crie a estrutura:
-
-```
-meu-projeto/
-├── src/
-│   └── main.kf
+```bash
+echo 'export PATH="$HOME/<pasta>/kof-*-linux-x86_64/bin:$PATH"' >> ~/.bashrc
 ```
 
-No arquivo `main.kf`:
+### macOS (Apple Silicon)
+
+```bash
+tar -xzf kof-*-macos-arm64.tar.gz
+DIR=$(ls -d kof-*-macos-arm64 | head -1)
+export PATH="$PWD/$DIR/bin:$PATH"
+kof version
+```
+
+Para valer sempre, adicione ao `~/.zshrc`:
+
+```bash
+echo 'export PATH="$HOME/<pasta>/kof-*-macos-arm64/bin:$PATH"' >> ~/.zshrc
+```
+
+### Windows (PowerShell)
+
+```powershell
+Expand-Archive .\kof-*-windows-x86_64.zip                # extrai
+$DIR = (Get-ChildItem -Directory -Filter "kof-*-windows-x86_64" |
+        Select-Object -First 1).FullName                 # acha a pasta
+$env:PATH = "$DIR\bin;$env:PATH"                          # ativa
+kof version                                               # confere
+```
+
+Para valer sempre: **Variáveis de Ambiente → PATH → Novo** →
+`C:\...\kof-<versão>-windows-x86_64\bin`. Reabra o PowerShell depois.
+
+## Passo 3 — Conferir
+
+```bash
+kof version        # ex.: kof 0.2.6-beta
+kof info           # ambiente completo (JVM embutida, targets, instalação)
+```
+
+Se `kof info` mostrar `JVM: ... (embedded)`, o JDK embutido está em uso —
+nada de Java externo foi necessário.
+
+## Seu primeiro programa
+
+Crie `main.kf`:
 
 ```kf
 main() {
@@ -62,71 +96,76 @@ main() {
 }
 ```
 
-## Compilando
+Rode:
 
 ```bash
-kof build src/
+kof run main.kf              # JVM (padrão)
+kof run main.kf --target=native   # binário ELF x86-64
+kof run main.kf --target=js       # GraalJS embutido
 ```
 
-Gera classes JVM na pasta de saída padrão (`build/classes`).
-
-Para nativo (Linux x86-64):
-
-```bash
-kof build src/ --target=native        # x86-64
-kof build src/ --target=native.risc   # riscv64 (via riscv64-linux-gnu-as/ld + qemu)
-kof build src/ --target=native.arm    # aarch64 (via aarch64-linux-gnu-as/ld + qemu)
-kof build src/ --target=js            # ES Modules (GraalJS)
-```
-
-## Rodando
-
-```bash
-kof run main.kf                       # jvm
-kof run main.kf --target=native       # nativo x86-64
-kof run main.kf --target=js           # js
-kof script main.kf                    # KofScript direto (let/const → KofScriptGlobals)
-kof script --repl                     # REPL
-kof c hello.c --run                   # KofC: C subset → ELF nativo-only
-```
-
-Resultado:
+Saída:
 
 ```
 Hello, World!
 ```
 
-## Comandos da CLI (0.2.0-beta)
+## Targets da plataforma
+
+`kof build`/`run` aceitam `--target`:
+
+| Target | O que gera | Observação |
+|--------|-----------|------------|
+| `jvm` (padrão) | `.class` | estável |
+| `native` | ELF x86-64 | estável; precisa de `as`/`ld` só no source |
+| `native.risc` | ELF riscv64 | placeholder (qemu) |
+| `native.arm` | ELF aarch64 | placeholder (qemu) |
+| `js` | ES Modules | alpha (GraalJS embutido) |
+| `android` | projeto Android + APK | fase 1 |
+
+A cadeia `intenção → Kof → IR → backend → runtime` é a mesma para todos —
+`--target` só troca o backend.
+
+## Comandos da CLI (resumo)
 
 | Comando | Descrição |
 |---------|-----------|
-| `kof build <dir>` | Compila para JVM (padrão) |
-| `kof build <dir> --target=native` | Compila para nativo x86-64 |
-| `kof build <dir> --target=native.risc` | Compila para riscv64 |
-| `kof build <dir> --target=native.arm` | Compila para aarch64 |
-| `kof build <dir> --target=js` | Compila para ES Modules |
-| `kof run <arquivo> [--target jvm|native|native.risc|native.arm|js]` | Compila e executa |
-| `kof script <file.ks|kf> [--watch] [--target ...]` | KofScript direto + REPL (`--repl`) |
-| `kof c <file.c> [--run] [--output <bin>]` | KofC C subset → ELF nativo-only |
-| `kof serve <arquivo>` | Web server HTTP básico |
-| `kof check <arquivo\|dir>` | Type-check sem emitir código |
-| `kof test <arquivo\|dir> [--target ...]` | Testes |
-| `kof info [--json]` | Relatório do ambiente |
+| `kof run <f.kf> [--target ...] [args]` | compila e executa |
+| `kof build <dir> [--target ...]` | compila para o target |
+| `kof serve <f.kf>` | sobe app web (`web.app()`) |
+| `kof test <f.kf\|dir>` | roda testes |
+| `kof check <f.kf\|dir>` | type-check sem emitir |
+| `kof script <f.kf>` / `kof repl` | execução direta / REPL |
+| `kof fmt <f.kf>` | formata |
+| `kof info` / `kof version` | ambiente / versão |
 | `kof lsp` | Language Server (stdio) |
-| `kof version` | Mostra a versão (`0.2.0-beta`) |
 
-> A cadeia `intention->Kof->frontend->IR->backend->runtime` vale para todos os targets — `kof build --target=...` só troca o backend.
+Detalhes: [32-cli-tooling.md](32-cli-tooling.md).
 
-## Status atual
+## Build a partir do código-fonte (contribuidores)
 
-> **O compilador está funcional — 0.2.0-beta, 658 testes.** A CLI compila `.kf` com
-> records, classes, interfaces, funções, pattern matching (`case String s` + `Point(x,y)`), `String?`, `List map/filter/reduce`, `kof.http` (JVM+JS). O backend JVM gera `.class`
-> funcionais. O backend nativo gera ELF x86-64/riscv64/aarch64 (free-list GC em x86-64). `KofScript` (`let`→`KofScriptGlobals`) e `KofC` são nativos do pipeline. A distribuição oficial é
-> autocontida (JDK embutido, tooling e editor support).
+```bash
+git clone https://github.com/KofLang/Kof4j.git
+cd Kof4j
+mvn clean package -DskipTests
+mkdir -p lib && cp kof-cli/target/kof-cli-$(cat VERSION).jar lib/kof.jar
+bin/kof version
+```
+
+Em builds de desenvolvimento, o launcher usa o `java` do sistema (JDK 21+).
+No pacote oficial, o JDK embutido é usado automaticamente.
+
+## Problemas comuns
+
+| Sintoma | Corretivo |
+|---------|-----------|
+| `kof: command not found` | o `PATH` não está ativo — rode o `export PATH=...` de novo ou reabra o terminal |
+| `'kof' não é reconhecido` (Windows) | adicione `...\bin` ao PATH permanente e **reabra** o PowerShell |
+| Versão errada | `which kof` (Linux/macOS) / `Get-Command kof` (Windows) — outro `bin` está antes no PATH |
 
 ## Referências
 
-- [docs/distribution/INSTALL.md](../docs/distribution/INSTALL.md)
+- [docs/distribution/INSTALL.md](../docs/distribution/INSTALL.md) — guia completo oficial
 - [docs/distribution/ARCHITECTURE.md](../docs/distribution/ARCHITECTURE.md)
 
 ## Próximo passo

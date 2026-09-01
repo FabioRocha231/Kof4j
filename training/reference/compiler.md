@@ -1,6 +1,6 @@
 # Kof Compiler Reference
 
-**Version:** 0.2.0-beta (27 Aug 2026) — 658 tests
+**Version:** 0.2.6-beta (31 Aug 2026) — 747 tests
 
 ## Compilation Pipeline
 
@@ -15,11 +15,11 @@ Semantic Analysis → Typed AST (isAssignable com null narrowing, record destruc
     ↓
 Kof IR (backend-agnostic) → Optimizer (constant folding, branch simplification)
     ↓
-┌─────────┬──────────┬──────┬──────────┬──────┐
-│  JVM    │ Native   │ JS   │ KofScript│ KofC │
-│  (ASM)  │ x86_64/  │ ES   │ JIT      │ C→ELF│
-│         │ risc/arm*│      │          │      │
-└─────────┴──────────┴──────┴──────────┴──────┘
+┌─────────┬──────────┬──────┬──────────┬──────┬─────────┐
+│  JVM    │ Native   │ JS   │ KofScript│ KofC │ Android │
+│  (ASM)  │ x86_64/  │ ES   │ JIT      │ C→ELF│ JVM→APK │
+│         │ risc/arm*│      │          │      │ (Fase 1)│
+└─────────┴──────────┴──────┴──────────┴──────┴─────────┘
 ```
 
 * native.risc/arm placeholder
@@ -28,18 +28,30 @@ Kof IR (backend-agnostic) → Optimizer (constant folding, branch simplification
 
 | Command | Description |
 |---------|-------------|
-| `kof build <dir> [--target jvm|native|native.risc|native.arm|js]` | Compile all .kf files |
-| `kof run <file.kf>` | Run a Kof program (JVM/Native/JS) |
-| `kof script <file.ks>` | KofScript top-level let → KofScriptGlobals + JIT |
-| `kof c <file.c>` | KofC C subset → ELF x86_64 |
-| `kof serve <file.kf>` | Start HTTP server |
-| `kof check <file>` | Type-check only |
-| `kof test <dir> --target ...` | Structured tests |
-| `kof version` | Show version (0.2.0-beta) |
+| `kof build <dir> [--target jvm\|native\|native.risc\|native.arm\|js\|android] [--output <dir>] [--release] [--apk]` | Compile all .kf files |
+| `kof run <file.kf\|dir> [--target jvm\|native\|native.risc\|native.arm\|js\|android] [args...]` | Compile and run (JVM/Native/JS/Android) |
+| `kof serve <file.kf> [--port] [--host]` | Start HTTP server (web.app + API legada handle) |
+| `kof check <file.kf\|dir>` | Type-check only |
+| `kof test <file.kf\|dir> [--target jvm\|native\|js]` | Structured tests `test "nome" { }` nos 3 targets |
+| `kof script <file.ks> [--watch] [--inspect]` | KofScript top-level let → KofScriptGlobals + JIT |
+| `kof repl` | REPL incremental KofScript |
+| `kof c <file.c> [-o outDir]` | KofC C subset → ELF x86_64 (nativo-only) |
+| `kof fmt <file.kf\|dir>` | Formatter via parser real (KofFormatter), idempotente |
+| `kof config gen <file.kf\|dir> [--output <arquivo>]` | Gera template `kof.config` a partir das chaves `config.*` do código |
+| `kof bench [paths...] [--iterations N] [--quick] [--baseline <file>]` | Benchmark harness com baselines |
+| `kof profile <file.kf> [--target ...]` | Execução + métricas (CPU, RSS, GC) |
+| `kof inspect <file.kf> [--json]` | IR statistics (ops antes/depois do otimizador) |
+| `kof debug <file.kf>` | DAP MVP no target JVM |
+| `kof info [--json]` | Environment report |
+| `kof install <dir>` | Instala este build como distribuição |
+| `kof lsp` | Language Server (stdio, LSP 3.x) |
+| `kof version` | Show version (0.2.6-beta) |
+
+18 comandos. `kof fmt` e `kof config gen` implementados (0.2.6-beta).
 
 Fixes 27/08:
 - `CompilerDriver.expandKofImports` trata `import a.b.C` (arquivo) além de `a.b.*` (pasta) — projetos grandes com `a/b/C.kf` agora geram ambos os `.class`.
-- `NativeRuntime` free-list GC (`kof_free_head`, `kof_gc_collect` mark-sweep, `kof_gc_tick`).
+- `NativeRuntime` free-list GC (`kof_free_head`, `kof_gc_collect` mark-sweep; auto-GC desligado) + spawn/await via pthread (31/08).
 
 ## Backend Targets
 
@@ -52,8 +64,10 @@ Fixes 27/08:
 ### Native
 - Generates x86_64 Linux ELF binaries
 - Uses Linux syscalls directly (no libc)
-- Free-list allocator + mark-sweep GC (conservador)
-- MySQL handshake com SHA-1 scramble
+- Free-list allocator thread-safe (lock futex) + `kof_gc_collect` mark-sweep conservador; auto-GC desligado (GC mark-sweep automático ainda pendente)
+- Ponto flutuante em XMM real (FLT001 fechado 31/08); JSON completo de objetos/arrays (JSN001/002/003 fechados 31/08)
+- `spawn`/`await` via pthread (CONC001 fechado 31/08)
+- MySQL handshake com SHA-1 scramble (WIP)
 - Runtime functions: kof_alloc, kof_free, kof_gc_*, kof_print, kof_string_*, kof_array_*, kof_list_*, kof_net_*, kof_db_mysql_scramble, etc.
 
 ### Native RISC-V / ARM
@@ -69,6 +83,10 @@ Fixes 27/08:
 
 ### KofC
 - C subset (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → x86_64 via `as`/`ld`
+
+### Android
+- Fase 1: `AndroidProjectWriter` — saída JVM (bytecode) + KofJS para assets → APK de debug (aapt2/d8/apksigner via Maven; host Activity em Kof)
+- Gaps: `AND001` spawn/await, `AND002` kof.web, `AND003` reflexão, `AND004` android.jar
 
 ## IR Operations
 

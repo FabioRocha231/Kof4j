@@ -109,6 +109,9 @@ final class KofWeb {
             case "listen" -> argTypes.size() == 1
                     ? new WebCall("kof_web_listen", VOID, List.of(STR, argTypes.get(0)))
                     : null;
+            case "serveDir" -> argTypes.size() == 2
+                    ? new WebCall("kof_web_serve_dir", VOID, List.of(STR, STR, STR))
+                    : null;
             case "listenSecure" -> argTypes.size() == 1
                     ? new WebCall("kof_web_listen_secure", VOID, List.of(STR, INT))
                     : null;

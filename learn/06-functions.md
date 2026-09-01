@@ -1,6 +1,6 @@
 # 06 — Funções
 
-> **Status: implementado (JVM / Native / JS / KofScript) — 0.2.0-beta**
+> **Status: implementado (JVM / Native / JS / KofScript) — 0.2.6-beta**
 >
 > Funções de nível superior, métodos, expression bodies e default parameters funcionam nos três targets (JVM, Native, KofJS) + KofScript (`let`→`KofScriptGlobals`). Target separation `native.risc/arm` preserva a mesma IR.
 
@@ -35,7 +35,7 @@ void imprimir(String mensagem, Int vezes) {
 ## Default parameters
 
 ```kf
-greet(String name = "world") {
+void greet(String name = "world") {
     println("hello " + name)
 }
 
@@ -71,20 +71,24 @@ Int dobro(Int valor) {
 }
 ```
 
-## Funções de nível superior como valores (0.2.0)
+## Funções como valores (0.2.0)
 
-Lambdas com capturas já permitem passar funções como valores — a base para `map/filter/reduce`:
+Lambdas são valores de primeira classe — se guardam em variável e se passam
+como argumento (é assim que `map/filter/reduce` funcionam, ver cap. 12):
 
 ```kf
-Int aplicar(Int x, f: (Int) -> Int) {
-    return f(x)
-}
-
 main() {
-    var r = aplicar(5, (x: Int) -> x * 2)  // 10
-    println(r)
+    var dobro = (x: Int) -> x * 2
+    println(dobro(5))                                  // 10
+
+    var nums = listOf(1, 2, 3)
+    var dobrados = nums.map((x: Int) -> x * 2)         // [2, 4, 6]
+    println(dobrados.get(0))                           // 2
 }
 ```
+
+Não existe tipo de função anotado como parâmetro de uma função declarada —
+a função chega como lambda anônimo no ponto de chamada.
 
 No KofScript, `let`/`const` no topo são alias para `var`/`val` e viram `KofScriptGlobals` para estado entre células/REPL.
 

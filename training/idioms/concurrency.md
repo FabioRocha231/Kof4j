@@ -1,6 +1,6 @@
 # Idioms — Concurrency
 
-**Status:** available (JVM + JS) · **Introduced:** 0.0.5-alpha · **Updated:** 0.2.0-beta · **Native:** CONC001 (planned)
+**Status:** available (3 targets) · **Introduced:** 0.0.5-alpha · **Updated:** 0.2.6-beta (31/08: CONC001 fechado) · **JS:** sequencial (CONC003 parcial)
 
 ## What it is
 
@@ -19,7 +19,7 @@ main() {
     println("fim")
 }
 
-// Com resultado (0.2.0-beta)
+// Com resultado (0.2.6-beta)
 main() {
     val r = spawn trabalho()   // Handle<T> tipado
     var v = await r            // bloqueia; T com unboxing de primitivos
@@ -27,13 +27,12 @@ main() {
 }
 ```
 
-## Semântica real (verificada — 0.2.0-beta, 658 testes)
+## Semântica real (verificada — 0.2.6-beta, 747 testes)
 
-- a tarefa roda em paralelo (JVM: virtual threads; JS: via KofJsRunner);
-- o programa **espera as tarefas antes de sair** (join implícito);
+- a tarefa roda em paralelo: JVM virtual threads; **Native `pthread_create` + trampoline + `pthread_join` (CONC001 fechado 31/08)**; JS sequencial (statement e expressão cobrem; async real = CONC003 parcial);
+- o programa **espera as tarefas antes de sair** (join implícito: `kof_spawn_join_all` no fim do main no Native);
 - `val r = spawn f()` devolve `Handle<T>` tipado; `await r` com unboxing;
 - exceção na tarefa não derruba o programa;
-- **Native ainda não suporta** (diagnostic CONC001) — use JVM ou JS.
 - **KofScript** `let` top-level também suporta spawn/await via KofScriptGlobals.
 
 ## When to use
@@ -46,7 +45,7 @@ main() {
 ## When not to use
 
 - quando a ordem importa e não há sincronização.
-- Native — CONC001; use JVM/JS.
+- JS para paralelismo real de CPU (execução sequencial; CONC003 parcial).
 
 ## BAD — expor plataforma
 
@@ -67,19 +66,23 @@ var v = await r
 ## GOOD — kof.time interval como scheduler
 
 ```kof
-// kof.time + spawn para periódicas (JS/JVM)
-var id = kof.time.interval(() -> println("tick"), 1000)
+// periódicas: interval/cancel apenas JVM (TIME001 no Native/JS)
+var id = time.interval(1000, () -> println("tick"))
 ```
+
+Para `every`/`at` programados, `kof.scheduler` existe em JVM/JS
+(`Native SCHED001`): `scheduler.every(100) { ... }`, `scheduler.at("0 3 * * *") { ... }`, `scheduler.cancel(id)`.
 
 ## WHY
 
 `spawn` expressa intenção. Thread/Runnable/Executor são mecanismos da
 plataforma — a decisão de como executar pertence ao runtime.
 
-## Limitações honestas (0.2.0-beta)
+## Limitações honestas (0.2.6-beta)
 
-- Native: **CONC001** — use JVM/JS por enquanto;
-- filas produtor/consumidor: `kof.mq` / `kof.concurrent.Queue` são alternativas via `kof.mq`;
+- ~~Native: CONC001~~ — ✅ fechado 31/08 (pthread_create + trampoline + await/pthread_join + allocator thread-safe futex + join implícito);
+- JS: execução sequencial — `spawn`/`await` cobrem statement e expressão; async real de event-loop = CONC003 parcial;
+- filas produtor/consumidor: `kof.mq` (Native: MQ001);
 - lambdas com captura funcionam em spawn (BoxN).
 
 ## Anti-patterns relacionados

@@ -10,13 +10,14 @@ interface Comparavel {
 }
 ```
 
-## Implementando uma interface (com pattern matching 0.2.0)
+## Implementando uma interface
 
 ```kf
 class Produto(String nome, Double preco) implements Comparavel {
     Bool maiorQue(Comparavel outro) {
-        if (outro instanceof Produto outroProduto) {  // type pattern funciona
-            return this.preco > outroProduto.preco
+        if (outro instanceof Produto) {
+            var p = outro as Produto
+            return this.preco > p.preco
         }
         return false
     }
@@ -40,12 +41,13 @@ interface Editavel<T> extends Listavel<T> {
 
 ## Status atual
 
-✅ Parser reconhece interfaces
-✅ Lowering para interfaces funciona
-✅ Gera classe com flag `ACC_INTERFACE`
-✅ Métodos com flag `ACC_ABSTRACT`
-⚠️ Corpo dos métodos não é gerado
-⚠️ Implementação de interface ainda em desenvolvimento
+✅ Parser e análise semântica reconhecem interfaces
+✅ Implementação (`implements`) funciona e é validada em compile-time
+✅ JVM: gera interface padrão com métodos `ACC_ABSTRACT` (chamadas via interface com retorno primitivo corrigidas)
+✅ Native: gera vtable (dispatch virtual) para as implementações
+✅ KofJS: interfaces são de nível de tipo — chamadas são reduzidas a dispatch estrutural por nome de método
+
+Funciona nos três targets (JVM, Native, KofJS).
 
 ## Multiplatform
 

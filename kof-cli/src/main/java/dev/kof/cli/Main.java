@@ -33,6 +33,7 @@ public final class Main {
             case "init" -> System.exit(init(args));
             case "c" -> c(args);
             case "fmt" -> System.exit(Fmt.run(args));
+            case "config" -> config(args);
             case "version" -> System.out.println("kof " + KofVersion.version());
             default -> { System.err.println("unknown: " + args[0]); printUsage(); }
         }
@@ -154,6 +155,7 @@ public final class Main {
         }
         List<String> javaArgs = new ArrayList<>();
         javaArgs.add(javaExecutable());
+        javaArgs.add("-Dkof.root=" + file.toAbsolutePath().normalize().getParent());
         javaArgs.add("-cp");
         javaArgs.add(tempDir.toString());
         javaArgs.add(className);
@@ -198,9 +200,9 @@ public final class Main {
     }
 
 private static void build(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
+        if (args.length < 2) { System.err.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk] [--classpath <jars>] [--keystore <ks> [--storepass <p>] [--keypass <p>] [--alias <a>]]");
         if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
-            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk]");
+            System.out.println("usage: kof build <source-dir> [--target jvm|native|js|android] [--output <dir>] [--release] [--apk] [--classpath <jars>] [--keystore <ks> [--storepass <p>] [--keypass <p>] [--alias <a>]]");
             return;
         } return; }
         Path src = Path.of(args[1]);
@@ -209,6 +211,10 @@ private static void build(String[] args) {
         boolean release = false;
         boolean apk = false;
         String classpath = null;
+        String keystore = null;
+        String storepass = null;
+        String keypass = null;
+        String keyalias = null;
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             if (arg.startsWith("--target=")) {
@@ -229,6 +235,22 @@ private static void build(String[] args) {
                 classpath = arg.substring("--classpath=".length());
             } else if (arg.equals("--classpath") && i + 1 < args.length) {
                 classpath = args[++i];
+            } else if (arg.startsWith("--keystore=")) {
+                keystore = arg.substring("--keystore=".length());
+            } else if (arg.equals("--keystore") && i + 1 < args.length) {
+                keystore = args[++i];
+            } else if (arg.startsWith("--storepass=")) {
+                storepass = arg.substring("--storepass=".length());
+            } else if (arg.equals("--storepass") && i + 1 < args.length) {
+                storepass = args[++i];
+            } else if (arg.startsWith("--keypass=")) {
+                keypass = arg.substring("--keypass=".length());
+            } else if (arg.equals("--keypass") && i + 1 < args.length) {
+                keypass = args[++i];
+            } else if (arg.startsWith("--alias=")) {
+                keyalias = arg.substring("--alias=".length());
+            } else if (arg.equals("--alias") && i + 1 < args.length) {
+                keyalias = args[++i];
             }
         }
         CompilerDriver driver = new CompilerDriver();
@@ -253,16 +275,18 @@ private static void build(String[] args) {
         if (!module.success()) System.exit(1);
         // target android + --apk: pipeline direto (sem Maven) usando o SDK
         if (target == Target.ANDROID && apk) {
-            runApkPipeline(out);
+            runApkPipeline(out, keystore, storepass, keypass, keyalias);
         }
     }
 
     /**
      * Pipeline APK standalone (#6/#7): chama os binários oficiais do SDK
-     * direto — d8 → aapt2 → zip → zipalign → apksigner. Debug keystore
-     * gerado localmente na primeira vez.
+     * direto — d8 → aapt2 → zip → zipalign → apksigner. Sem --keystore,
+     * gera debug keystore local na primeira vez; com --keystore, assina
+     * com o keystore do usuário (release signing parametrizável).
      */
-    private static void runApkPipeline(Path projDir) {
+    private static void runApkPipeline(Path projDir, String keystore, String storepass,
+                                       String keypass, String keyalias) {
         String androidHome = System.getenv("ANDROID_HOME");
         if (androidHome == null || androidHome.isBlank()) {
             System.err.println("--apk: ANDROID_HOME não definido; gere o projeto e use 'mvn verify'");
@@ -276,11 +300,12 @@ private static void build(String[] args) {
         }
         Path build = projDir.resolve("target");
         Path apkDir = build.resolve("apk");
+        boolean userKs = keystore != null && !keystore.isBlank();
         try {
             Files.createDirectories(apkDir);
-            // debug keystore local
-            Path ks = build.resolve("debug.keystore");
-            if (!Files.exists(ks)) {
+            // debug keystore local (só quando o usuário não passou --keystore)
+            Path ks = userKs ? Path.of(keystore) : build.resolve("debug.keystore");
+            if (!userKs && !Files.exists(ks)) {
                 run(List.of("keytool", "-genkeypair", "-keystore", ks.toString(),
                         "-alias", "androiddebugkey", "-storepass", "android",
                         "-keypass", "android", "-keyalg", "RSA", "-validity", "9999",
@@ -304,10 +329,20 @@ private static void build(String[] args) {
             run(List.of(bt.resolve("zipalign").toString(), "-f", "4",
                     apkDir.resolve("base.apk").toString(),
                     apkDir.resolve("aligned.apk").toString()), projDir);
-            run(List.of(bt.resolve("apksigner").toString(), "sign",
-                    "--ks", ks.toString(), "--ks-pass", "pass:android",
-                    "--out", build.resolve("kof-app.apk").toString(),
-                    apkDir.resolve("aligned.apk").toString()), projDir);
+            String sp = userKs && storepass != null ? storepass : "android";
+            String kp = userKs && keypass != null ? keypass : sp;
+            List<String> sign = new ArrayList<>(List.of(
+                    bt.resolve("apksigner").toString(), "sign",
+                    "--ks", ks.toString(), "--ks-pass", "pass:" + sp,
+                    "--key-pass", "pass:" + kp));
+            if (userKs && keyalias != null && !keyalias.isBlank()) {
+                sign.add("--ks-key-alias");
+                sign.add(keyalias);
+            }
+            sign.add("--out");
+            sign.add(build.resolve("kof-app.apk").toString());
+            sign.add(apkDir.resolve("aligned.apk").toString());
+            run(sign, projDir);
             System.out.println("APK gerado: " + build.resolve("kof-app.apk"));
         } catch (Exception e) {
             System.err.println("pipeline apk falhou: " + e.getMessage());
@@ -408,6 +443,8 @@ private static void build(String[] args) {
         System.out.println("                          compile, run, validate output, collect metrics, compare baseline");
         System.out.println("  profile <file.kf> [--target jvm|native|js|android] [args...]   run + execution metrics (CPU, RSS, GC)");
         System.out.println("  inspect <file.kf> [--json]   IR statistics: ops before/after optimization");
+        System.out.println("  config gen <file.kf|dir> [--target jvm|native|js] [--output <arquivo>]");
+        System.out.println("                          gera template kof.config a partir das chaves config.* do código");
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");
@@ -481,6 +518,67 @@ private static void build(String[] args) {
         } catch (IOException e) {
             System.err.println("lsp: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    /**
+     * kof config gen <file.kf|dir> [--target jvm|native|js] [--output <arquivo>]
+     * (docs/stdlib-config.md §8.2 P3): compila (JVM, só análise) e gera um
+     * template kof.config com as chaves descobertas em compile-time.
+     * Defaults viram comentário; required sem default vira linha ativa.
+     */
+    private static void config(String[] args) {
+        if (args.length < 3 || !"gen".equals(args[1])) {
+            System.err.println("usage: kof config gen <file.kf|dir> [--target jvm|native|js] [--output <arquivo>]");
+            System.exit(1);
+            return;
+        }
+        Path src = Path.of(args[2]);
+        if (!Files.exists(src)) { System.err.println("not found: " + src); System.exit(1); return; }
+        Target target = Target.JVM;
+        Path output = null;
+        for (int i = 3; i < args.length; i++) {
+            if ("--target".equals(args[i]) && i + 1 < args.length) {
+                target = parseTarget(args[++i]);
+            } else if ("--output".equals(args[i]) && i + 1 < args.length) {
+                output = Path.of(args[++i]);
+            }
+        }
+        // compile-only: chaves são coletadas em compile-time, nada é executado
+        Path tmp;
+        try { tmp = Files.createTempDirectory("kof-config-gen-"); }
+        catch (IOException e) { System.err.println("temp dir: " + e.getMessage()); System.exit(1); return; }
+        try {
+            CompilerDriver driver = new CompilerDriver();
+            List<Path> files = Files.isDirectory(src) ? collect(src) : List.of(src);
+            if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
+            // multi-arquivo: um módulo só (chaves são do programa inteiro)
+            CompilationResult result = files.size() == 1
+                    ? driver.compile(files.get(0), tmp, target)
+                    : driver.compileSources(files, tmp, target, Files.isDirectory(src) ? src : src.getParent());
+            if (!result.success()) {
+                System.err.println("compilation failed:");
+                for (var d : result.diagnostics().getDiagnostics()) {
+                    System.err.println("  " + d);
+                }
+                System.exit(1);
+                return;
+            }
+            String template = driver.generateConfigTemplate();
+            if (output != null) {
+                Files.writeString(output, template);
+                System.out.println("wrote " + output);
+            } else {
+                System.out.print(template);
+            }
+            if (driver.discoveredConfigKeys().isEmpty()) {
+                System.err.println("(nenhuma chave config.* literal encontrada no código)");
+            }
+        } catch (IOException e) {
+            System.err.println("error: " + e.getMessage());
+            System.exit(1);
+        } finally {
+            cleanup(tmp);
         }
     }
 
@@ -1038,7 +1136,9 @@ private static void build(String[] args) {
                     }
                     cleanup(tempDir);
                 }));
-                executeProcess(List.of(javaExecutable(), "-cp", tempDir.toString(), className), tempDir);
+                executeProcess(List.of(javaExecutable(),
+                        "-Dkof.root=" + file.toAbsolutePath().normalize().getParent(),
+                        "-cp", tempDir.toString(), className), tempDir);
                 return;
             }
             dev.kof.compiler.KofHttpServer server = new dev.kof.compiler.KofHttpServer(

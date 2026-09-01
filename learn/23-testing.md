@@ -1,6 +1,6 @@
 # 23 — Testes
 
-> **Status: implementado — `test "nome" { }`, `kof test` + `assert` — 0.2.0-beta, 658 testes**
+> **Status: implementado — `test "nome" { }`, `kof test` + `assert` — 0.2.6-beta, 736 testes**
 >
 > Testar Kof é escrever Kof. A suíte estruturada declara casos com
 > `test "nome" { }`; `kof test` roda cada teste isolado e reporta
@@ -108,52 +108,15 @@ main() {
 ## JUnit (não usar)
 
 O ecossistema Java/JUnit **não** faz parte da linguagem — sem annotations,
-sem framework. O teste Kof é a linguagem.
-        var user = new User("Mel", "mel@example.com");
-        assertEquals("Mel", user.name());
-        assertEquals("mel@example.com", user.email());
-    }
-
-    @Test
-    void deveFalharSeNomeNulo() {
-        assertThrows(NullPointerException.class, () -> {
-            new User(null, "email@test.com");
-        });
-    }
-}
-```
-
-## Assertions
-
-```kf
-assertEquals(esperado, atual);
-assertTrue(condicao);
-assertFalse(condicao);
-assertNull(valor);
-assertNotNull(valor);
-assertThrows(TipoExcecao.class, () -> { ... });
-```
-
-## Testes parametrizados (planejado)
-
-```kf
-@ParameterizedTest
-@ValueSource(ints = {1, 2, 3, 4, 5})
-void deveSerPositivo(Int numero) {
-    assertTrue(numero > 0);
-}
-```
+sem framework. O teste Kof é a linguagem: `test "nome" { assert(...) }` é a
+unidade de teste em qualquer target.
 
 ## Executando testes
 
 ```bash
-mvn test
-```
-
-Ou com a CLI:
-
-```bash
-java -jar kof-cli.jar test src/test/
+kof test src/test/                        # diretório — um programa por arquivo
+kof test math.kf                          # arquivo único
+kof test src/test/ --target native        # target
 ```
 
 ## Próximo passo

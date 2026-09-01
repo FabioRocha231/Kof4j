@@ -20,6 +20,7 @@ public class NativeBackend implements Backend {
     private IRClass currentClass = null;
     private boolean usesDb = false;
     private boolean usesMysql = false;
+    private boolean usesConcurrency = false;
     private final Map<String, String> functionMangleMap = new HashMap<>();
     private final Map<String, ClassLayout> layoutCache = new HashMap<>();
     private Map<String, IRClass> allClassesMap = new HashMap<>();
@@ -256,6 +257,10 @@ public class NativeBackend implements Backend {
                                     || kc.methodName().equals("kof_db_connect2")) {
                                 usesMysql |= connectsToMysql(i, ops);
                             }
+                        }
+                        if (op instanceof KofCall kc && (kc.methodName().equals("kof_spawn")
+                                || kc.methodName().equals("kof_spawn_result"))) {
+                            usesConcurrency = true;
                         }
                     }
                 }
@@ -518,6 +523,10 @@ public class NativeBackend implements Backend {
         }
 
         if (!endsWithReturn) {
+            if (usesConcurrency && "main".equals(method.name())) {
+                // join implícito: nenhuma tarefa spawnada fica orfa
+                sb.append("    call kof_spawn_join_all\n");
+            }
             sb.append("    movq %rbp, %rsp\n");
             sb.append("    popq %rbp\n");
             sb.append("    ret\n");
@@ -1277,6 +1286,16 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        if (kc.kind() == KofCallKind.INSTANCE && "lastIndexOf".equals(kc.methodName())) {
+            String[] regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = kc.parameterTypes().size() - 1; i >= 0; i--) {
+                sb.append("    popq ").append(regs[i + 1]).append("\n");
+            }
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_last_index_of\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (kc.kind() == KofCallKind.INSTANCE && "trim".equals(kc.methodName())) {
             sb.append("    popq %rdi\n");
             sb.append("    call kof_string_trim\n");
@@ -1334,13 +1353,107 @@ public class NativeBackend implements Backend {
             return;
         }
         if ("kof_string_to_int".equals(kc.methodName())
-                || "kof_string_to_long".equals(kc.methodName())
-                || "kof_string_to_double".equals(kc.methodName())
-                || "kof_string_to_float".equals(kc.methodName())) {
+                || "kof_string_to_long".equals(kc.methodName())) {
             String fn = kc.methodName();
             sb.append("    popq %rdi\n");
             sb.append("    call ").append(fn).append("\n");
             sb.append("    pushq %rax\n");
+            return;
+        }
+        // retorno FP vive em xmm0 — preservar os bits na pilha
+        if ("kof_string_to_double".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_to_double\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_string_to_float".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_to_float\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // JSN001: json.decode<Double>/decode<Float> retorna em xmm0
+        if ("kof_json_decode_double".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_json_decode_double\n");
+            sb.append("    movq %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_json_decode_float".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_json_decode_float\n");
+            sb.append("    movd %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // JSN001: json.encode(double) recebe em xmm0 (bits na pilha)
+        if ("kof_json_encode_double".equals(kc.methodName())) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    call kof_json_encode_double\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_json_encode_float".equals(kc.methodName())) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    call kof_json_encode_float\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_json_decode_double_array".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_json_decode_double_array\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // CONC001: spawn/await no Native
+        if ("kof_spawn".equals(kc.methodName()) || "kof_spawn_result".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(kc.methodName()).append("\n");
+            if ("kof_spawn_result".equals(kc.methodName())) sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_await".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_await\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // CONC001 (residual): done/poll não-bloqueantes — 1 arg (handle), valor em rax
+        if ("kof_done".equals(kc.methodName()) || "kof_poll".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(kc.methodName()).append("\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // cancel(handle) -> bool; selectAny(list) -> valor pronto
+        if ("kof_cancel".equals(kc.methodName()) || "kof_select_any".equals(kc.methodName())) {
+            sb.append("    popq %rdi\n");
+            sb.append("    call ").append(kc.methodName()).append("\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_cancelled".equals(kc.methodName())) {
+            sb.append("    call kof_cancelled\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        // awaitTimeout(handle, ms): 2 args (handle em rdi, ms em esi); valor em rax
+        if ("kof_await_timeout".equals(kc.methodName())) {
+            sb.append("    popq %r12\n");
+            sb.append("    popq %rdi\n");
+            sb.append("    movl %r12d, %esi\n");
+            sb.append("    call kof_await_timeout\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if ("kof_spawn_join_all".equals(kc.methodName())) {
+            sb.append("    call kof_spawn_join_all\n");
             return;
         }
         if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
@@ -1389,8 +1502,9 @@ public class NativeBackend implements Backend {
                 // Pop this
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
-                // Push stack args back
-                for (int s = 0; s < stackArgs; s++) {
+                // Push stack args back (arg6 por último → fica no topo da
+                // stack → 16(%rbp) no callee; SysV exige essa ordem)
+                for (int s = stackArgs - 1; s >= 0; s--) {
                     int off = 256 + s * 8;
                     sb.append("    pushq -").append(off).append("(%rbp)\n");
                 }
@@ -1403,6 +1517,12 @@ public class NativeBackend implements Backend {
             }
             String ctorLabel = resolveCalleeName(kc);
             sb.append("    call ").append(ctorLabel).append("\n");
+            if (stackArgs > 0) {
+                // callee é caller-clean: remove os stack args empilhados de
+                // volta. O pop subsequente do consumidor desempilha o push
+                // duplicado do receptor (mesmo contrato do caminho <=5 args).
+                sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+            }
             return;
         }
 
@@ -1419,6 +1539,24 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 sb.append("    call ").append(collFn).append("\n");
+                if (!Type.isVoid(kc.returnType())) {
+                    sb.append("    pushq %rax\n");
+                }
+                return;
+            }
+        }
+        if (kc.kind() == KofCallKind.INSTANCE && BuiltinTypes.isChannel(kc.ownerType())) {
+            // Canais: receiver (Channel) + args na pilha; asm: chan=rdi, value=rsi.
+            String chFn = kc.methodName().startsWith("kof_channel_") ? kc.methodName() : null;
+            if (chFn != null) {
+                int argCount = kc.parameterTypes().size();
+                String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                for (int i = argCount - 1; i >= 0; i--) {
+                    sb.append("    popq ").append(intRegs[i + 1]).append("\n");
+                }
+                sb.append("    popq %rax\n");
+                sb.append("    movq %rax, %rdi\n");
+                sb.append("    call ").append(chFn).append("\n");
                 if (!Type.isVoid(kc.returnType())) {
                     sb.append("    pushq %rax\n");
                 }
@@ -1449,8 +1587,11 @@ public class NativeBackend implements Backend {
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 int stackArgs = Math.max(0, argCount - 5);
                 if (stackArgs > 0) {
+                    // salva stack args em slots do frame (ordem: argN no slot alto)
                     for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
                         sb.append("    popq %r10\n");
+                        sb.append("    movq %r10, -").append(off).append("(%rbp)\n");
                     }
                 }
                 for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
@@ -1459,8 +1600,10 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 if (stackArgs > 0) {
-                    for (int s = 0; s < stackArgs; s++) {
-                        sb.append("    pushq %r10\n");
+                    // arg6 por último → topo → 16(%rbp) no callee
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
+                        sb.append("    pushq -").append(off).append("(%rbp)\n");
                     }
                 }
                 sb.append("    movq 8(%rax), %rbx\n");
@@ -1483,8 +1626,11 @@ public class NativeBackend implements Backend {
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 int stackArgs = Math.max(0, argCount - 5);
                 if (stackArgs > 0) {
+                    // salva stack args em slots do frame (ordem: argN no slot alto)
                     for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
                         sb.append("    popq %r10\n");
+                        sb.append("    movq %r10, -").append(off).append("(%rbp)\n");
                     }
                 }
                 for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
@@ -1493,8 +1639,10 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 if (stackArgs > 0) {
-                    for (int s = 0; s < stackArgs; s++) {
-                        sb.append("    pushq %r10\n");
+                    // arg6 por último → topo → 16(%rbp) no callee
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
+                        sb.append("    pushq -").append(off).append("(%rbp)\n");
                     }
                 }
                 sb.append("    movq 8(%rax), %rbx\n");
@@ -1581,7 +1729,9 @@ public class NativeBackend implements Backend {
             sb.append("    movq %rax, %rdi\n");
         }
         sb.append("    call ").append(sanitizeName(clazz.name())).append("_main\n");
-        sb.append("    movq $60, %rax\n");
+        // M32.3: SYS_exit_group (231) — SYS_exit (60) só mata a thread
+        // chamadora; com threads do driver Vulkan o processo fica pendurado.
+        sb.append("    movq $231, %rax\n");
         sb.append("    xorq %rdi, %rdi\n");
         sb.append("    syscall\n");
     }
@@ -1614,24 +1764,15 @@ public class NativeBackend implements Backend {
         boolean needsDynamic = true;
         String os = System.getProperty("os.name", "").toLowerCase();
         if (needsDynamic && os.contains("linux")) {
+            java.util.List<String> cmdL = new java.util.ArrayList<>(java.util.Arrays.asList(
+                    "ld", "-o", binFile.toString(), objFile.toString(),
+                    "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "-lc"));
             if (usesDb) {
-                String[] extra = usesMysql
-                        ? new String[]{"-l:libsqlite3.so.0", "-l:libmariadb.so.3"}
-                        : new String[]{"-l:libsqlite3.so.0"};
-                String[] cmd = new String[7 + extra.length];
-                cmd[0] = "ld";
-                cmd[1] = "-o";
-                cmd[2] = binFile.toString();
-                cmd[3] = objFile.toString();
-                cmd[4] = "-dynamic-linker";
-                cmd[5] = "/lib64/ld-linux-x86-64.so.2";
-                cmd[6] = "-lc";
-                System.arraycopy(extra, 0, cmd, 7, extra.length);
-                runCommand(cmd, "ld");
-            } else {
-                runCommand(new String[]{"ld", "-o", binFile.toString(), objFile.toString(),
-                        "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "-lc"}, "ld");
+                cmdL.add(usesMysql ? "-l:libsqlite3.so.0" : "-l:libsqlite3.so.0");
+                if (usesMysql) cmdL.add("-l:libmariadb.so.3");
             }
+            if (usesConcurrency) cmdL.add("-l:libpthread.so.0");
+            runCommand(cmdL.toArray(new String[0]), "ld");
         } else {
             if (usesDb) {
                 String os2 = System.getProperty("os.name", "").toLowerCase();

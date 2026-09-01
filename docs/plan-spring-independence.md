@@ -1,7 +1,7 @@
 # Plano — Kof Spring Starter + Independência do Spring
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes; `kof.http` JVM+JS; free-list Native)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes; `kof.http` JVM+JS com retry/circuit; web ws/sse JVM; free-list + pthread spawn Native)
 
 > Este documento transforma a especificação "Kof Spring Starter + Independência
 > do Spring" em um plano executável por fases, com critérios de aceite e ordem
@@ -57,8 +57,8 @@ Stack Kof-native (mapeamento de referência, sem copiar APIs):
 
 | Capacidade | Spring (referência) | Kof-native |
 |------------|--------------------|------------|
-| HTTP/routing | Spring MVC/WebFlux | `web.app()` + rotas (em andamento) |
-| JSON | Jackson | `json.encode/decode` (JVM; nativo JSN00x) |
+| HTTP/routing | Spring MVC/WebFlux | `web.app()` + rotas ✅ (JVM; WebSocket/SSE 30/08) |
+| JSON | Jackson | `json.encode/decode` (3 targets, 31/08) |
 | DI | Spring Context | compile-time / runtime Kof |
 | Config | Spring Configuration | `kof.config` tipado |
 | Database | Spring Data/Hibernate | `db.query<T>` + `transaction {}` |
@@ -92,35 +92,31 @@ Evoluir `kof serve` para a stack web completa. Critérios de aceite:
 - [x] `kof serve <file.kf>` executa programas `web.app()`; API legada
       `handle(...)` continua funcionando.
 - [x] Testes E2E (subprocesso + sockets reais) verdes; `mvn test` verde
-      (658 em 0.2.0-beta, 459/459 na época incluindo os 9 de `KofWebE2ETest`; ver `docs/status.md:10-28`).
+      (747 em 0.2.6-beta; 459/459 na época incluindo os 9 de `KofWebE2ETest`; ver `docs/status.md:10-28`).
 - [x] Docs: `docs/stdlib-web.md`, `docs/status.md`, `docs/http.md`, README.
 
 Implementado em: `KofWeb` (tabela compile-time), `Parser` (lambda trailing),
 `SemanticAnalyzer`/`CompilerDriver` (dispatch `web.*` + contexto de request),
 `JvmRuntime` (engine HTTP gerado), CLI `kof serve` (detecção de `main()`).
 
-Gaps documentados: status codes/headers customizados (fase posterior);
-target `js` reporta `WEB001`; target `native` sem servidor web ainda.
+Gaps documentados: target `native` sem servidor web (WEB002); target `js`
+relata `WEB001`. Fechados desde então (27-30/08): status codes/headers
+customizados (`status(201, body)`/`headerSet`), **WebSocket** `app.ws("/chat") { }`
+(handshake RFC 6455 + frame codec com máscara — `KofWebWsE2ETest` 11/11) e
+**SSE** `sse.send/event/close` (`KofWebSseE2ETest` 7/7), `KofRuntime.close`
+(descriutores ws).
 
-### Fase 2 — JSON nativo completo ✅ (concluída em 23/08/2026)
+### Fase 2 — JSON nativo completo ✅ (concluída em 31/08/2026)
 
-- [x] JVM: Float/Double em `json.encode`/`json.decode` (JSN001 fechado no JVM;
-      Native mantém o gap documentado).
+- [x] JVM: Float/Double em `json.encode`/`json.decode` (JSN001 fechado no JVM).
 - [x] Decode de arrays (`Int[]`, `Long[]`, `Bool[]`, `String[]`, `Double[]`)
-      no JVM (JSN003 fechado no JVM; `List<User>` já funcionava).
-- [ ] Native: encode/decode de objetos e records (JSN002) — gap documentado.
+      no JVM (JSN003; `List<User>` já funcionava).
+- [x] Native: encode/decode de objetos e records (JSN002 — composição em
+      compile-time, 31/08).
+- [x] Native: Float/Double (JSN001 — aritmética FP em XMM + parser
+      fração/expoente, 31/08).
+- [x] Testes de paridade JVM/Native (`JsonE2ETest` 14 + `JsonCompleteE2ETest` 7).
 - [x] Jackson continua funcionando via interop (inalterado).
-- [x] Testes (`JsonCompleteE2ETest`, 7 E2E) + `JsonE2ETest` atualizado.
-
-### Fase 2 — JSON nativo completo
-
-- [ ] JVM: Float/Double em `json.encode`/`json.decode` (remove JSN001 no JVM).
-- [ ] Decode de `List<User>` / arrays de objetos no JVM (JSN003).
-- [ ] Native: encode/decode de objetos e records (JSN002) ou gap documentado
-      e priorizado.
-- [ ] Native: Float/Double.
-- [ ] Testes de paridade JVM/Native.
-- [ ] Jackson continua funcionando via interop (teste de interoperabilidade).
 
 ### Fase 3 — Configuração nativa (`kof.config`) ✅ (concluída em 23/08/2026)
 
@@ -138,9 +134,14 @@ target `js` reporta `WEB001`; target `native` sem servidor web ainda.
       info/debug → stdout, warn/error → stderr.
 - [x] Structured logging (JSON via `KOF_LOG_JSON=1`) + correlation ID por
       request web (requestId no JSON).
-- [ ] Métricas, health checks, tracing hooks — planned.
-- [x] Testes (`KofLogE2ETest`, 7 E2E) + docs `docs/stdlib-logging.md`.
-- [x] Native/JS reportam `LOG001` em compile-time.
+- [x] Native: implementação asm própria (data civil Hinnant, env scan próprio;
+      timestamp UTC) — `NativeLogE2ETest` 7.
+- [x] Métricas/health: `kof.observability` (health/readiness/liveness,
+      counter/increment/gauge, requestId/correlationId — 3 targets).
+- [ ] Tracing hooks + endpoint `/metrics` (Prometheus) + `app.health` — planned.
+- [x] Testes (`KofLogE2ETest`, 10 E2E JVM + `NativeLogE2ETest` 7) + docs
+      `docs/stdlib-logging.md`.
+- [x] JS reporta `LOG001` em compile-time.
 
 ### Fase 5 — Database + Transactions ✅ (concluída em 23/08/2026)
 
@@ -150,38 +151,55 @@ target `js` reporta `WEB001`; target `native` sem servidor web ainda.
 - [x] `transaction { ... }` com commit/rollback automáticos.
 - [x] H2 em memória nos testes (dependência test-scope); JDBC por
       interoperabilidade JVM.
+- [x] Native: SQLite via link direto da `.so` (roundtrip E2E); MySQL wire
+      protocol em progresso (auth scramble SHA-1 + parse `user:pass@`, 31/08).
 - [x] Native/JS reportam `DB001` em compile-time.
-- [x] Testes (`KofDbE2ETest`, 7 E2E) + docs `docs/stdlib-database.md`.
-- [ ] Connection pooling, migrações — planned.
+- [x] Testes (`KofDbE2ETest`, 9 E2E) + docs `docs/stdlib-database.md`.
+- [x] Migrações versionadas via `kof.orm` (`orm.migrate`, tabela
+      `kof_migrations`).
+- [ ] Connection pooling — planned.
 
 ### Fase 5 — Database + Transactions
 
-- [ ] `db.query<T>("select ... where id = ?", id)` sobre JDBC (interop JVM).
-- [ ] `transaction { ... }` com commit/rollback automáticos.
+- [x] `db.query<T>("select ... where id = ?", id)` sobre JDBC (interop JVM).
+- [x] `transaction { ... }` com commit/rollback automáticos.
 - [ ] Connection pooling e configuração tipada.
 - [ ] Hibernate suportado como backend opcional via interop (teste).
-- [ ] Testes + docs `docs/stdlib-database.md`.
+- [x] Testes + docs `docs/stdlib-database.md`.
 
 ### Fase 6 — Concurrency completa
 
-- [ ] `await`, filas (`kof.concurrent.Queue`), canais, cancellation, timeouts.
+- [x] `spawn` no Native (CONC001 fechado 31/08): `pthread_create` +
+      trampoline + `pthread_join` + allocator thread-safe (futex), join
+      implícito.
+- [x] `await`/handles tipados `Handle<T>` com unboxing (JVM, 0.1.0); JS
+      sequencial (stmt/expr; async real = CONC003).
+- [ ] Filas (`kof.concurrent.Queue`), canais, cancellation, timeouts.
 - [ ] Structured concurrency e supervision sem expor Thread/Executor.
-- [ ] Scheduler nativo para `spawn` no Native (CONC001).
 - [ ] Testes + docs `docs/stdlib-concurrency.md`.
 
-### Fase 7 — Security nativa
+### Fase 7 — Security nativa (v1 ✅ 25/08; docs/security.md)
 
-- [ ] Password hashing, JWT, sessions, cookies, CSRF, CORS, security headers,
-      rate limiting, TLS.
-- [ ] Auth/authorization declarativa.
+- [x] Password hashing (PBKDF2-HMAC-SHA256 600k), JWT (HS256, exp/iss/aud),
+      crypto (SHA-256/512, HMAC, AES-GCM) — JVM/Native (asm)/JS; gaps com
+      diagnóstico (SECN00x).
+- [x] Sessions, rate limiting, API keys (`security.sessionCreate/rateLimit/
+      apiKeyGenerate` — 3 targets, G9).
+- [x] CSRF, CORS, security headers (JVM).
+- [x] TLS (`web.listenSecure` JVM — G12).
+- [ ] Auth/authorization declarativa (hoje: `auth.*` no contexto web).
 - [ ] Spring Security como alternativa de interop (teste), nunca requisito.
 - [ ] Testes + docs `docs/stdlib-security.md`.
 
 ### Fase 8 — Validation + Scheduling + Events
 
-- [ ] Validação nativa sem jakarta.validation.
-- [ ] `schedule/every/after` sem `@Scheduled`.
-- [ ] Eventos/filas/pub-sub com backends Kafka/RabbitMQ/JMS/NATS opcionais.
+- [x] Validação nativa sem jakarta.validation: `kof.validation` (13
+      predicados nos 3 targets — `KofValidationTest`).
+- [x] Parcial: `kof.time` `now/sleep` (3 targets) + `interval`/`every`/`at`
+      JVM (`ScheduledExecutor`) + JS (`setInterval`) — 27/08; Native
+      SCHED001.
+- [x] Parcial: `kof.mq` pub/sub + queue (JVM/JS; Native MQ001).
+- [ ] Backends Kafka/RabbitMQ/JMS/NATS opcionais.
 - [ ] Testes + docs.
 
 ### Fase 9 — DI nativa + Application lifecycle
@@ -309,4 +327,4 @@ Conflitos adicionais encontrados e corrigidos durante a implementação de
   `.` (ex.: `config.int`, `config.bool`, `config.long`).
 
 Estado final desta rodada (histórico 23/08): 486 testes, 485 PASS, 1 em progresso na sessão
-paralela (`defaultParameters` no target JS). **Atual 0.2.0-beta (27/08): `mvn test` 658 (650+8+5), golden 16/16, integration 9/9** — ver `docs/status.md:10-28`.
+paralela (`defaultParameters` no target JS). **Atual 0.2.6-beta (27/08): `mvn test` 747 (734+8+5), golden 16/16, integration 9/9** — ver `docs/status.md:10-28`.

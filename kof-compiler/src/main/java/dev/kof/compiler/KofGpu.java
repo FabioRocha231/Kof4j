@@ -1,0 +1,48 @@
+package dev.kof.compiler;
+
+import java.util.List;
+
+/**
+ * M32.2: namespace gpu.* — FFI Vulkan compute.
+ * gpu.dispatchMatmul(a, b, c, m, n, k) → int (0 = ok, != 0 = fallback CPU)
+ * gpu.available() → bool (device compute inicializado)
+ * Os arrays são Int[] (ponto fixo de milésimos, coerente com o runtime Kof).
+ */
+final class KofGpu {
+    private KofGpu() {}
+    static final Type GPU = new Type.ClassType("kof.gpu", "Gpu", List.of());
+    private static final Type INT = Type.PrimitiveType.INT;
+    private static final Type BOOL = Type.PrimitiveType.BOOL;
+    private static final Type STR = BuiltinTypes.STRING;
+    private static final Type VOID = Type.PrimitiveType.VOID;
+
+    static boolean isGpuNamespace(String name) { return "gpu".equals(name); }
+
+    static boolean isGpuMethod(String name) {
+        return switch (name) {
+            case "available", "dispatchMatmul", "failReason" -> true;
+            default -> false;
+        };
+    }
+
+    record GpuCall(String function, Type returnType, List<Type> parameterTypes) {}
+
+    static boolean supportedOn(Target target) {
+        // JVM: FFM real. Nativos: stubs asm (available=false, dispatch=1).
+        // JS: sem suporte (GPU001).
+        return target.isNative() || target == Target.JVM;
+    }
+
+    static GpuCall staticCall(String name, List<Type> argTypes) {
+        return switch (name) {
+            case "available" -> argTypes.isEmpty() ? new GpuCall("kof_vk_available", BOOL, List.of()) : null;
+            case "failReason" -> argTypes.isEmpty() ? new GpuCall("kof_vk_fail_reason", STR, List.of()) : null;
+            case "dispatchMatmul" -> argTypes.size() == 6
+                    ? new GpuCall("kof_vk_dispatch", INT,
+                        List.of(new Type.ArrayType(INT), new Type.ArrayType(INT), new Type.ArrayType(INT),
+                                INT, INT, INT))
+                    : null;
+            default -> null;
+        };
+    }
+}

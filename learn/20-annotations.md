@@ -1,6 +1,6 @@
 # 20 — Annotations
 
-> **Status: implementado (JVM/KofJS) — 0.2.0-beta — 658 testes**
+> **Status: implementado (JVM/KofJS) — 0.2.6-beta — 736 testes**
 >
 > O parser aceita `@Name` e `@Name(valor | key = valor, ...)` em classes,
 > records, interfaces, entities, campos, métodos, construtores, funções,
@@ -51,7 +51,13 @@ Valores precisam ser **constantes em compile-time**: literais `String`, `Int`, `
 - Anotações em parâmetros (`RuntimeVisible/InvisibleParameterAnnotations`)
 - Anotações em campos
 
-A retenção é decidida por tabela: annotations de `java.lang` (`Deprecated`, `FunctionalInterface`, `SafeVarargs`) e pacotes de metadata (`androidx.annotation`, `javax.annotation`, `org.jetbrains.annotations`) são emitidas como invisíveis; todo o resto vai como visível (escolha conservadora para frameworks que leem em runtime).
+A retenção é decidida por tabela: `@Override` e `@SuppressWarnings` e os pacotes
+de metadata (`androidx.annotation.*`, `javax.annotation.*`,
+`org.jetbrains.annotations.*`, `edu.umd.cs.findbugs.annotations.*`) são
+emitidos como **invisíveis** (`RuntimeInvisible`); todo o resto — incluindo
+`@Deprecated`, `@FunctionalInterface` e `@SafeVarargs` — vai como **visível**
+(`RuntimeVisible`). É uma escolha conservadora para frameworks que leem as
+annotations em runtime (JUnit, Android).
 
 ## Resolução do nome
 

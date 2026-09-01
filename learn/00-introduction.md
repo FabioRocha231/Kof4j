@@ -1,6 +1,6 @@
 # 00 — Introdução
 
-> **Kof 0.2.0-beta — 27 ago 2026 — 658 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc**
 
 ## O que é Kof
 

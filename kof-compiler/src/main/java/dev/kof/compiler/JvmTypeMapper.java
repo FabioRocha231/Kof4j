@@ -11,7 +11,7 @@ final class JvmTypeMapper {
     static String toDescriptor(Type type) {
         return switch (type) {
             case Type.PrimitiveType p -> primitiveDescriptor(p);
-            case Type.ClassType c when KofUi.isUiType(c) -> "I";
+            case Type.ClassType c when KofUi.isUiType(c) || KofMedia.isHandleType(c) -> "I";
             case Type.ClassType c -> classDescriptor(c);
             case Type.ArrayType a -> "[" + toDescriptor(a.componentType());
             case Type.TypeVariable tv -> "Ljava/lang/Object;";

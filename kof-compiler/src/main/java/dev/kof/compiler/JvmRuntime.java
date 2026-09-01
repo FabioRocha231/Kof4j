@@ -34,13 +34,16 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_spawn_result") || methodName.equals("kof_await")
                 || methodName.equals("kof_poll") || methodName.equals("kof_done")
                 || methodName.equals("kof_cancel") || methodName.equals("kof_cancelled")
+                || methodName.equals("kof_await_timeout")
                 || methodName.equals("kof_select_any")
                 || methodName.equals("kof_list_map") || methodName.equals("kof_list_filter") || methodName.equals("kof_list_reduce")
                 || methodName.startsWith("kof_observability_")
+                || methodName.startsWith("kof_media_")
                 || methodName.startsWith("kof_tetris_")
                 || methodName.startsWith("kof_http_")
                 || methodName.startsWith("kof_mq_")
                 || methodName.startsWith("kof_time_")
+                || methodName.startsWith("kof_vk_")
                 || methodName.startsWith("kof_scheduler_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
@@ -161,6 +164,15 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_ui_store_set" -> "(II)V";
             case "kof_ui_store_subscribe", "kof_ui_store_unsubscribe" -> "(ILjava/lang/Object;)V";
             case "kof_ui_stores_live" -> "()I";
+            // Fase 7: Router (no-ops JVM — UI é KofJS)
+            case "kof_ui_route_register" -> "(Ljava/lang/String;I)V";
+            case "kof_ui_router_go1" -> "(Ljava/lang/String;)Z";
+            case "kof_ui_router_go2" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_ui_router_replace1" -> "(Ljava/lang/String;)Z";
+            case "kof_ui_router_replace2" -> "(Ljava/lang/String;Ljava/lang/String;)Z";
+            case "kof_ui_router_back", "kof_ui_router_forward" -> "()Z";
+            case "kof_ui_router_param", "kof_ui_router_current" -> "()Ljava/lang/String;";
+            case "kof_ui_router_depth" -> "()I";
             case "kof_ui_window_title", "kof_ui_label_text", "kof_ui_button_text", "kof_ui_input_text"
                     -> "(I)Ljava/lang/String;";
             case "kof_ui_window_show", "kof_ui_window_close", "kof_ui_label_remove", "kof_ui_button_remove",
@@ -188,11 +200,32 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_web_use" -> "(Ljava/lang/String;Ljava/lang/Object;)V";
             case "kof_web_listen" -> "(Ljava/lang/String;I)V";
             case "kof_web_listen_secure" -> "(Ljava/lang/String;I)V";
+            case "kof_web_serve_dir" -> "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V";
+            // ── kof.media: imagem / áudio / microfone ──
+            case "kof_media_image_open", "kof_media_audio_open_wav", "kof_media_video_open"
+                    -> "(Ljava/lang/String;)I";
+            case "kof_media_image_width", "kof_media_image_height",
+                    "kof_media_audio_sample_rate", "kof_media_audio_duration_ms",
+                    "kof_media_video_size", "kof_media_video_duration_ms",
+                    "kof_media_mic_record" -> "(I)I";
+            case "kof_media_image_save", "kof_media_audio_save_wav" -> "(ILjava/lang/String;)I";
+            case "kof_media_image_format", "kof_media_image_data_uri" -> "(I)Ljava/lang/String;";
+            case "kof_media_image_save_fmt" -> "(ILjava/lang/String;Ljava/lang/String;)I";
+            case "kof_media_image_bytes", "kof_media_audio_pcm_bytes" -> "(I)[I";
+            case "kof_media_image_bytes_fmt" -> "(ILjava/lang/String;)[I";
+            case "kof_media_video_bytes" -> "(I)[I";
+            case "kof_media_image_close", "kof_media_video_close" -> "(I)V";
+            case "kof_media_video_path", "kof_media_video_format" -> "(I)Ljava/lang/String;";
+            case "kof_media_audio_from_pcm_bytes" -> "([III)I";
+            case "kof_media_mic_list" -> "()Ljava/util/ArrayList;";
             case "kof_web_port" -> "(Ljava/lang/String;)I";
             case "kof_web_close" -> "(Ljava/lang/String;)V";
             case "kof_web_param", "kof_web_query", "kof_web_header"
                     -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_body", "kof_web_method", "kof_web_path" -> "()Ljava/lang/String;";
+            case "kof_web_ws_message" -> "()Ljava/lang/String;";
+            case "kof_web_ws_send" -> "(Ljava/lang/String;)V";
+            case "kof_web_sse_send" -> "(Ljava/lang/String;)Ljava/lang/String;";
             case "kof_web_status" -> "(ILjava/lang/String;)Ljava/lang/String;";
             case "kof_web_header_set" -> "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
             case "kof_config_get", "kof_config_env", "kof_config_required" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -227,6 +260,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_cache_ttl" -> "(Ljava/lang/String;)I";
             case "kof_cache_delete" -> "(Ljava/lang/String;)V";
             case "kof_cache_clear" -> "()V";
+            case "kof_vk_available" -> "()Z";
+            case "kof_vk_fail_reason" -> "()Ljava/lang/String;";
+            case "kof_vk_dispatch" -> "([I[I[IIII)I";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
                     -> "(Ljava/lang/String;)V";
             case "kof_db_connect" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -306,6 +342,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_done", "kof_cancel" -> "(Ljava/lang/Object;)Z";
             case "kof_cancelled" -> "()Z";
             case "kof_select_any" -> "(Ljava/util/List;)Ljava/lang/Object;";
+            case "kof_await_timeout" -> "(Ljava/lang/Object;I)Ljava/lang/Object;";
             case "kof_tetris_run" -> "()V";
             case "kof_sec_jwt_secret", "kof_sec_csrf_token", "kof_sec_csp_header",
                     "kof_sec_hsts_header", "kof_sec_content_type_options_header",
@@ -351,6 +388,9 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_cache_get" -> "Ljava/lang/String;";
             case "kof_cache_set", "kof_cache_set_ttl", "kof_cache_delete", "kof_cache_clear" -> "V";
             case "kof_cache_ttl" -> "I";
+            case "kof_vk_available" -> "Z";
+            case "kof_vk_fail_reason" -> "Ljava/lang/String;";
+            case "kof_vk_dispatch" -> "I";
             case "kof_http_get", "kof_http_get_headers", "kof_http_delete", "kof_http_delete_headers",
                     "kof_http_options", "kof_http_options_headers", "kof_http_post", "kof_http_post_headers",
                     "kof_http_put", "kof_http_put_headers", "kof_http_patch", "kof_http_patch_headers"
@@ -359,6 +399,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_mq_queue" -> "Ljava/lang/String;";
             case "kof_mq_pop" -> "Ljava/lang/Object;";
             case "kof_web_sse_route", "kof_web_ws_route", "kof_http_timeout_set",
+                    "kof_http_retry_set", "kof_http_circuit_set",
                     "kof_mq_publish", "kof_mq_subscribe", "kof_mq_unsubscribe",
                     "kof_mq_push", "kof_time_sleep", "kof_time_cancel", "kof_scheduler_cancel" -> "V";
             case "kof_time_now" -> "J";
@@ -388,6 +429,9 @@ static boolean hasRuntimeFn(String methodName) {
                      "kof_ui_event_stop", "kof_ui_store_set", "kof_ui_store_subscribe",
                      "kof_ui_store_unsubscribe" -> "V";
              case "kof_ui_store_get", "kof_ui_store_new", "kof_ui_stores_live" -> "I";
+             case "kof_ui_router_go1", "kof_ui_router_go2", "kof_ui_router_replace1",
+                     "kof_ui_router_replace2", "kof_ui_router_back", "kof_ui_router_forward" -> "Z";
+             case "kof_ui_router_param", "kof_ui_router_current" -> "Ljava/lang/String;";
              case "kof_ui_label_set_font_size", "kof_ui_label_set_bold", "kof_ui_label_set_color",
                      "kof_ui_window_set_theme" -> "V";
             // ── kof.security (docs/security.md §5) ───────────────────
@@ -413,6 +457,19 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id" -> "Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
             case "kof_observability_gauge" -> "V";
+            // ── kof.media ─────────────────────────────────────────────
+            case "kof_media_image_open", "kof_media_image_width", "kof_media_image_height",
+                    "kof_media_image_save", "kof_media_audio_open_wav",
+                    "kof_media_audio_sample_rate", "kof_media_audio_duration_ms",
+                    "kof_media_audio_save_wav", "kof_media_audio_from_pcm_bytes",
+                    "kof_media_mic_record", "kof_media_video_open",
+                    "kof_media_video_size", "kof_media_video_duration_ms" -> "I";
+            case "kof_media_image_format", "kof_media_image_data_uri",
+                    "kof_media_video_path", "kof_media_video_format" -> "Ljava/lang/String;";
+            case "kof_media_image_bytes", "kof_media_image_bytes_fmt",
+                    "kof_media_audio_pcm_bytes", "kof_media_video_bytes" -> "[I";
+            case "kof_media_image_close", "kof_media_video_close", "kof_web_serve_dir" -> "V";
+            case "kof_media_mic_list" -> "Ljava/util/ArrayList;";
             case "kof_list_map", "kof_list_filter" -> "Ljava/util/ArrayList;";
             case "kof_list_reduce" -> "Ljava/lang/Object;";
             // ── kof.security G9 (rate limiting / sessions / API keys) ──
@@ -420,6 +477,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_sec_rate_limit", "kof_sec_session_destroy", "kof_sec_api_key_valid" -> "I";
             case "kof_sec_session_get", "kof_enum_value_of" -> "Ljava/lang/String;";
             case "kof_spawn_result", "kof_await", "kof_poll" -> "Ljava/lang/Object;";
+            case "kof_await_timeout" -> "Ljava/lang/Object;";
             case "kof_done", "kof_cancel", "kof_cancelled" -> "I";
             case "kof_select_any" -> "Ljava/lang/Object;";
             case "kof_tetris_run" -> "V";
@@ -442,8 +500,9 @@ static boolean hasRuntimeFn(String methodName) {
 
                     """.formatted(mangle, javaName));
         }
-                return sourceCore(decoders.toString())
+        return sourceCore(decoders.toString())
                 + JvmWebRuntime.source()
+                + JvmMediaRuntime.source()
                 + """
                 public static void kof_web_listen(String appId, int port) {
                     WebApp app = kof_web_app(appId);
@@ -541,9 +600,11 @@ static boolean hasRuntimeFn(String methodName) {
                             Thread handler = Thread.startVirtualThread(() -> {
                                 try {
                                     KOF_WEB_REQUEST.set(req);
+                                    KOF_SSE_SENDER.set(sse);
                                     try {
                                         kof_web_invoke(result.route.handler, sse);
                                     } finally {
+                                        KOF_SSE_SENDER.remove();
                                         KOF_WEB_REQUEST.remove();
                                     }
                                 } catch (Exception e) {
@@ -557,10 +618,14 @@ static boolean hasRuntimeFn(String methodName) {
                             return;
                         }
                         if (result.kind == RouteKind.WS) {
-                            kof_web_ws_handshake(req, client);
+                            kof_web_ws_handshake(result, req, client);
                             return;
                         }
                         client.getOutputStream().write(result.response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        if (result.body() != null) {
+                            // arquivo estático: head na response + bytes crus
+                            client.getOutputStream().write(result.body());
+                        }
                         client.getOutputStream().flush();
                     } catch (Exception e) {
                         System.err.println("kof web connection error: " + e.getMessage());
@@ -571,7 +636,8 @@ static boolean hasRuntimeFn(String methodName) {
                 // loop with a frame codec and per-connection timeout handling.
                 private static final int KEEPALIVE_IDLE_MS = 300_000;
 
-                private static void kof_web_ws_handshake(WebRequest req, java.net.Socket client)
+                private static void kof_web_ws_handshake(WebDispatchResult result, WebRequest req,
+                        java.net.Socket client)
                         throws java.io.IOException {
                     String upgradeVal = req.headers.get("upgrade");
                     String connectionVal = req.headers.get("connection");
@@ -800,8 +866,18 @@ static boolean hasRuntimeFn(String methodName) {
                                             fragmenting = false;
                                             break frameLoop;
                                         }
-                                        // TEXT payload is valid; PR5 dispatches to the
-                                        // Kof handler here. For now we accept and drop.
+                                        // Dispatch the full message to the Kof handler.
+                                        String text = new String(msg, java.nio.charset.StandardCharsets.UTF_8);
+                                        KOF_WS_CONNECTION.set(conn);
+                                        KOF_WS_MESSAGE.set(text);
+                                        try {
+                                            kof_web_invoke(result.route.handler, req);
+                                        } catch (Exception he) {
+                                            System.err.println("kof web ws handler error: " + he.getMessage());
+                                        } finally {
+                                            KOF_WS_CONNECTION.remove();
+                                            KOF_WS_MESSAGE.remove();
+                                        }
                                     }
                                     fragmentBuffer.reset();
                                     fragmenting = false;
@@ -844,7 +920,6 @@ static boolean hasRuntimeFn(String methodName) {
                                 conn.close(peerCode, peerReason);
                                 break frameLoop;
                             }
-                            // TEXT/BINARY/CONT: discard for now (PR5)
                         }
                     } catch (java.net.SocketTimeoutException idle) {
                         // graceful close after KEEPALIVE_IDLE_MS
@@ -931,6 +1006,59 @@ static boolean hasRuntimeFn(String methodName) {
                             KOF_WEB_HEADERS.get().clear();
                             return new WebDispatchResult(RouteKind.HTTP, resp2, null);
                         }
+                        // Arquivos estáticos (app.serveDir): fallback quando
+                        // nenhuma rota dinâmica casa — conteúdo binário do
+                        // disco com content-type e Range (vídeo navegável no
+                        // browser), sem o app colar base64 em String.
+                        if (kof_web_static_match(app, req.path) == 0) {
+                            String staticMeta = kof_web_static_meta();
+                            if (staticMeta != null) {
+                                int sep = staticMeta.indexOf('|');
+                                String mime = staticMeta.substring(0, sep);
+                                long total = Long.parseLong(staticMeta.substring(sep + 1));
+                                String range = req.header("range");
+                                long start = 0, end = total - 1;
+                                boolean ranged = false;
+                                if (range != null && range.startsWith("bytes=")) {
+                                    String spec = range.substring(6).split(",", 2)[0].trim();
+                                    int dash = spec.indexOf('-');
+                                    if (dash > 0) {
+                                        String s = spec.substring(0, dash).trim();
+                                        String e = spec.substring(dash + 1).trim();
+                                        start = s.isEmpty()
+                                                ? Math.max(0, total - Long.parseLong(e))
+                                                : Long.parseLong(s);
+                                        end = e.isEmpty()
+                                                ? total - 1
+                                                : Math.min(Long.parseLong(e), total - 1);
+                                        ranged = true;
+                                    }
+                                }
+                                if (ranged && (start > end || start >= total)) {
+                                    String h416 = "HTTP/1.1 416 Range Not Satisfiable\\r\\n"
+                                            + "Content-Range: bytes */" + total + "\\r\\n"
+                                            + "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n";
+                                    return new WebDispatchResult(RouteKind.HTTP, h416, null);
+                                }
+                                byte[] staticBody = kof_web_static_read(start, end);
+                                if (staticBody != null) {
+                                    String head = (ranged ? "HTTP/1.1 206 Partial Content"
+                                            : "HTTP/1.1 200 OK") + "\\r\\n"
+                                            + "Content-Type: " + mime + "\\r\\n"
+                                            + "Accept-Ranges: bytes\\r\\n"
+                                            + "Cache-Control: public, max-age=86400\\r\\n"
+                                            + (ranged
+                                            ? "Content-Range: bytes " + start + "-"
+                                                    + (start + staticBody.length - 1) + "/" + total + "\\r\\n"
+                                            : "")
+                                            + "Content-Length: " + staticBody.length + "\\r\\n"
+                                            + "Connection: close\\r\\n\\r\\n";
+                                    return new WebDispatchResult(
+                                            RouteKind.HTTP, head, null, staticBody);
+                                }
+                            }
+                            kof_web_static_done();
+                        }
                         return new WebDispatchResult(RouteKind.HTTP,
                                 kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"), null);
                     } catch (Exception e) {
@@ -962,6 +1090,33 @@ static boolean hasRuntimeFn(String methodName) {
                 private static Object kof_web_invoke(Object target, SseConnection sse) throws Exception {
                     return target.getClass().getMethod("invoke", SseConnection.class)
                             .invoke(target, sse);
+                }
+
+                // ── WS/SSE context (kof_web_ws_message/wsSend/sse) ──
+                private static final ThreadLocal<Object> KOF_WS_CONNECTION = new ThreadLocal<>();
+                private static final ThreadLocal<String> KOF_WS_MESSAGE = new ThreadLocal<>();
+                private static final ThreadLocal<Object> KOF_SSE_SENDER = new ThreadLocal<>();
+
+                /** wsMessage() — mensagem TEXT corrente da conexão WebSocket. */
+                public static String kof_web_ws_message() {
+                    return KOF_WS_MESSAGE.get();
+                }
+
+                /** wsSend(text) — envia TEXT pela conexão WebSocket corrente. */
+                public static void kof_web_ws_send(String text) {
+                    Object conn = KOF_WS_CONNECTION.get();
+                    if (conn instanceof WsSender ws) {
+                        ws.sendText(text);
+                    }
+                }
+
+                /** sse(text) — envia um evento SSE pela conexão corrente. */
+                public static String kof_web_sse_send(String text) {
+                    Object sender = KOF_SSE_SENDER.get();
+                    if (sender instanceof SseSender s) {
+                        s.send(text);
+                    }
+                    return text;
                 }
 
                 private static String kof_web_build(int status, String statusText, String body) {
@@ -1074,7 +1229,25 @@ static boolean hasRuntimeFn(String methodName) {
                 + JvmCacheRuntime.source()
                 + JvmOrmRuntime.source()
                 + JvmTimeRuntime.source()
-                + JvmStringRuntime.source();
+                + JvmStringRuntime.source()
+                + (usesVulkan(classes)
+                        ? JvmVkRuntime.source()
+                        : "            }");
+    }
+
+    private static boolean usesVulkan(List<IRClass> classes) {
+        for (IRClass clazz : classes) {
+            for (IRMethod method : clazz.methods()) {
+                for (IRBasicBlock block : method.basicBlocks()) {
+                    for (KofOperation op : block.operations()) {
+                        if (op instanceof KofCall kc && kc.methodName().startsWith("kof_vk_")) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static String sourceCore(String decoders) {
@@ -1728,6 +1901,46 @@ static boolean hasRuntimeFn(String methodName) {
                     return kofUiStoreLive.size();
                 }
 
+                // ── Fase 7: Router (no-ops — UI é KofJS) ──
+                public static void kof_ui_route_register(String name, int root) {
+                }
+
+                public static boolean kof_ui_router_go1(String name) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_go2(String name, String param) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_replace1(String name) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_replace2(String name, String param) {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_back() {
+                    return false;
+                }
+
+                public static boolean kof_ui_router_forward() {
+                    return false;
+                }
+
+                public static String kof_ui_router_param() {
+                    return "";
+                }
+
+                public static String kof_ui_router_current() {
+                    return "";
+                }
+
+                public static int kof_ui_router_depth() {
+                    return 0;
+                }
+
                 // ── Fase 4: primitivas de layout (no-ops) ──
                 public static int kof_ui_box_new(java.util.ArrayList ids) {
                     return 1;
@@ -1913,11 +2126,36 @@ static boolean hasRuntimeFn(String methodName) {
                 private static final java.util.Set<Object> KOF_CANCELLED =
                         java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
+                /**
+                 * Thread de tarefa: virtual quando disponível (JVM 21+), platform
+                 * thread no ART (Android não tem Thread.startVirtualThread).
+                 * Detecta uma vez; sem reflection, sem falha em runtime antigo.
+                 */
+                private static final boolean KOF_VIRTUAL_OK = kofProbeVirtual();
+                private static boolean kofProbeVirtual() {
+                    try {
+                        Thread.class.getMethod("startVirtualThread", Runnable.class);
+                        return true;
+                    } catch (Throwable t) {
+                        return false;
+                    }
+                }
+                static void kofStartTask(Runnable body) {
+                    if (KOF_VIRTUAL_OK) {
+                        try {
+                            Thread.class.getMethod("startVirtualThread", Runnable.class)
+                                    .invoke(null, body);
+                            return;
+                        } catch (Throwable ignored) {}
+                    }
+                    new Thread(body, "kof-task").start();
+                }
+
                 public static Object kof_spawn_result(Object task) {
                     java.util.concurrent.CompletableFuture<Object> future =
                             new java.util.concurrent.CompletableFuture<>();
                     KOF_ACTIVE_TASKS.incrementAndGet();
-                    Thread.startVirtualThread(() -> {
+                    kofStartTask(() -> {
                         KOF_CURRENT_HANDLE.set(future);
                         try {
                             future.complete(task.getClass().getMethod("invoke").invoke(task));
@@ -1979,6 +2217,24 @@ static boolean hasRuntimeFn(String methodName) {
                     throw new IllegalStateException("await: handle inválido");
                 }
 
+                /** awaitTimeout(handle, timeoutMs) -> valor; lança exceção no estouro. */
+                public static Object kof_await_timeout(Object handle, int timeoutMs) throws Exception {
+                    if (!(handle instanceof java.util.concurrent.Future<?> f)) {
+                        throw new IllegalStateException("awaitTimeout: handle inválido");
+                    }
+                    try {
+                        return f.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    } catch (java.util.concurrent.TimeoutException te) {
+                        throw new RuntimeException("awaitTimeout: estourou o tempo limite de " + timeoutMs + "ms");
+                    } catch (java.util.concurrent.ExecutionException e) {
+                        // re-lança a causa original (mesma semântica do kof_await)
+                        Throwable cause = e.getCause() != null ? e.getCause() : e;
+                        if (cause instanceof RuntimeException re) throw re;
+                        if (cause instanceof Error err) throw err;
+                        throw new RuntimeException(cause);
+                    }
+                }
+
                 /** poll(rdi=handle) -> valor pronto | 0 (null) — não bloqueia. */
                 public static Object kof_poll(Object handle) {
                     if (handle instanceof java.util.concurrent.CompletableFuture<?> cf) {
@@ -1997,7 +2253,7 @@ static boolean hasRuntimeFn(String methodName) {
 
                 public static void kof_spawn(Object task) {
                     KOF_ACTIVE_TASKS.incrementAndGet();
-                    Thread.startVirtualThread(() -> {
+                    kofStartTask(() -> {
                         try {
                             task.getClass().getMethod("invoke").invoke(task);
                         } catch (Exception e) {
@@ -2047,8 +2303,8 @@ static boolean hasRuntimeFn(String methodName) {
                         java.util.concurrent.FutureTask<String> errTask = new java.util.concurrent.FutureTask<>(
                                 () -> new String(p.getErrorStream().readAllBytes(),
                                         java.nio.charset.StandardCharsets.UTF_8));
-                        Thread.startVirtualThread(outTask);
-                        Thread.startVirtualThread(errTask);
+                        kofStartTask(outTask);
+                        kofStartTask(errTask);
                         int code = p.waitFor();
                         String out = outTask.get();
                         String err = errTask.get();

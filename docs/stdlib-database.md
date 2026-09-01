@@ -1,8 +1,8 @@
 # stdlib database — Banco de Dados Nativo do Kof
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes)
-**Status:** implementado (Fase 5 do plano de independência do Spring) — JVM + SQLite native + MySQL handshake 27/08
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes)
+**Status:** implementado (Fase 5 do plano de independência do Spring) — JVM (JDBC) + Native (SQLite via `.so` direto + MySQL wire protocol WIP) + `kof.orm` (JVM + MongoDB); JS `DB001`
 
 ---
 
@@ -82,28 +82,79 @@ main() {
 ## 5. Drivers
 
 JDBC por `java.sql.DriverManager` — qualquer driver JDBC no classpath
-funciona (H2, SQLite, PostgreSQL, MySQL) no JVM. O driver é resolvido pelo
-`ServiceLoader` do JDK; nenhum acoplamento de biblioteca no runtime Kof.
-Native: SQLite via link direto `libsqlite3.so.0` (sem JDBC) + MySQL/MariaDB via wire protocol (`kof_db_mysql_scramble` 27/08).
+funciona (H2, MySQL, MariaDB, PostgreSQL, SQLite) no JVM. O driver é resolvido
+pelo `ServiceLoader` do JDK; nenhum acoplamento de biblioteca no runtime Kof.
 
-## 6. Targets (0.2.0-beta)
+Native:
+- **SQLite** — link direto da `libsqlite3.so.0` (sem driver JDBC), DSN
+  `sqlite:/path.db`; `execute`/`query`/bind tipado com roundtrip E2E real.
+- **MySQL/MariaDB** — wire protocol próprio sobre sockets nativos (WIP):
+  handshake + auth `mysql_native_password` (scramble SHA-1, `kof_db_mysql_scramble`)
+  + `lenenc` + parse de `user:pass@` na DSN `mysql://[user[:pass]@]host[:port][/db]`.
+  O link inclui a lib do MySQL apenas quando o programa a usa (DSN literal
+  detectado em compile-time). Handshake completo, query e prepared statements
+  ainda em progresso (P3).
+
+## 6. Targets (0.2.6-beta)
 
 | Target | Estado | Notas |
 |--------|--------|-------|
-| JVM | ✅ completo (JDBC) | `db.connect`/`execute`/`query<T>`/`transaction` + `orm.*` (entity, `saveAll`, `where` operadores, `page`, `migrate`, MongoDB) |
-| Native x86_64 | ✅ SQLite; MySQL handshake `kof_db_mysql_scramble` | `sqlite:` DSN + MySQL scramble SHA-1 (query/prepared pendentes) |
+| JVM | ✅ completo (JDBC) | `db.connect`/`execute`/`query<T>`/`transaction` (H2/MySQL/MariaDB/PostgreSQL/SQLite) + `orm.*` (entity, `saveAll`, `where` operadores, `page`, `count` filtrado, `deleteAll`, `migrate`, MongoDB) |
+| Native x86_64 | ✅ SQLite; MySQL WIP | `sqlite:` DSN completo; MySQL wire protocol (scramble SHA-1 + lenenc + `user:pass@`) — handshake/query/prepared pendentes |
 | Native riscv64 | ✅ SQLite (riscv64) | `li a7` syscalls |
 | JS | DB001 (gap documentado) | reporta `DB001`/`ORM001` em compile-time |
 
-## 7. Testes (0.2.0-beta)
+## 7. Testes (0.2.6-beta)
 
 `KofDbE2ETest` 8 + `KofOrmE2ETest` 16 (inclui MariaDB/PostgreSQL/MongoDB com skip condicional + SQLite native) — execute + query JSON,
 query tipada com bind, transação com commit, rollback em exceção,
 credenciais, e DB001 no JS (Native SQLite ✅).
 
-## 8. Evolução planejada (0.2.0 residual)
+## 8. Evolução planejada (residual)
 
 - Query DSL tipada `User.query { where age > 18 }` (nível 3 DATABASE_VISION)
 - Connection pooling + `kof.db`/`kof.orm` fora do JVM (JS via WASM, Native ORM sobre SQLite)
-- MySQL/MariaDB native completo (handshake `kof_db_mysql_scramble` done; falta query/prepared)
+- MySQL/MariaDB native completo — WIP: auth scramble SHA-1 + `lenenc` + parse
+  `user:pass@` done; falta handshake completo, query e prepared statements
 - `repository<User>` / abstração de repositório
+
+## 9. `kof.orm` (resumo)
+
+O ORM da própria linguagem (`entity` na linguagem → DDL + CRUD). Full API,
+backends e testes em `docs/DATABASE_VISION.md`.
+
+```kof
+entity User {
+    id: Long generated
+    name: String
+    email: String unique
+    age: Int
+}
+
+main() {
+    var db = db.connect("jdbc:h2:mem:app;DB_CLOSE_DELAY=-1")
+    orm.create<User>(db)                                   // DDL do schema
+    orm.save(db, User(0, "Mel", "mel@kof.dev", 30))        // insert/update
+    var u = orm.find<User>(db, 1)                          // PK
+    var adultos = orm.where<User>(db, "age", ">", 30)      // operadores
+    orm.saveAll<User>(db, l)                               // batch (upsert por PK)
+    var pg = orm.page<User>(db, 20, 40)                    // paginação
+    println(orm.count<User>(db))
+    orm.delete<User>(db, 1)
+    orm.migrate(db, "add-phone", "ALTER TABLE user ADD phone VARCHAR")
+}
+```
+
+| Chamada | Descrição |
+|---------|-----------|
+| `orm.create<T>(db)` | Gera o DDL a partir do `entity` |
+| `orm.save(db, t)` / `orm.saveAll<T>(db, list)` | insert/update (upsert por PK) |
+| `orm.find<T>(db, pk)` / `orm.all<T>(db)` | por PK / todas |
+| `orm.where<T>(db, field, value[, op])` | filtro (op: `=` `>` `<` `>=` `<=` `!=` `LIKE`) |
+| `orm.count<T>(db[, field, value])` | contagem (com filtro opcional) |
+| `orm.page<T>(db, limit, offset)` | paginação |
+| `orm.delete<T>(db, pk)` / `orm.deleteAll<T>(db)` | exclusão |
+| `orm.migrate(db, name, sql)` | migration versionada (roda uma vez) |
+
+Backends: SQL via JDBC (JVM) + **MongoDB** (driver oficial, E2E com
+container real, skip condicional). Native/JS reportam `ORM001`.

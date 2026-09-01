@@ -385,21 +385,70 @@ class AndroidInteropE2ETest {
     }
 
     @Test
-    void androidTargetRejectsSpawn(@TempDir Path tempDir) throws IOException {
+    void androidTargetSupportsSpawnAwaitChannel(@TempDir Path tempDir) throws IOException {
+        // AND001 fechado 31/08: ART não tem virtual threads, mas o runtime
+        // cai para platform threads (Thread.startVirtualThread detectado em
+        // runtime) — spawn/await/cancelled/channel/scheduler compilam no Android.
+        // (evita `&&` na condição de while: bug pré-existente JS002 do
+        // short-circuit no KofJS do WebView, independente da concorrência)
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
-            tarefa() {
-                println("trabalho")
+            Int tarefa() {
+                var i = 0
+                while (i < 3) {
+                    if (cancelled()) {
+                        return i
+                    }
+                    time.sleep(5)
+                    i++
+                }
+                return i
             }
+
             main() {
-                spawn tarefa()
+                val r = spawn tarefa()
+                var v = await r
+                println("v=" + v)
+                val c = channel<Int>()
+                c.send(1)
+                c.send(2)
+                println("s=" + (c.receive() + c.receive()))
+                var id = scheduler.every(50) { println("tick") }
+                scheduler.cancel(id)
+                println("ok")
             }
             """);
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.ANDROID);
-        assertFalse(result.success(), "spawn não compila no Android (sem virtual threads no ART)");
-        boolean hasAnd001 = result.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> "AND001".equals(d.code()));
-        assertTrue(hasAnd001, "gap deve ser AND001: " + result.diagnostics().getDiagnostics());
+        assertTrue(result.success(),
+                "concorrência deve compilar no Android (AND001 fechado): " + result.diagnostics().getDiagnostics());
+        assertFalse(result.diagnostics().getDiagnostics().stream()
+                .anyMatch(d -> "AND001".equals(d.code())), "sem AND001");
+
+        // o bytecode chama o runtime (spawn_result/await/scheduler) e o
+        // canal é um LinkedBlockingQueue (java.util.concurrent, existe no ART):
+        // send → put, receive → take, channel() → new LinkedBlockingQueue()
+        byte[] bytes = Files.readAllBytes(tempDir.resolve("out").resolve("Default").resolve("Main.class"));
+        List<String> runtimeCalls = new ArrayList<>();
+        List<String> queueOps = new ArrayList<>();
+        new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String desc,
+                                                               String signature, String[] exceptions) {
+                return new org.objectweb.asm.MethodVisitor(Opcodes.ASM9) {
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String mName,
+                                                String mDesc, boolean isItf) {
+                        if (owner.equals("dev/kof/runtime/KofRuntime")) runtimeCalls.add(mName);
+                        if (owner.equals("java/util/concurrent/LinkedBlockingQueue")) queueOps.add(mName);
+                    }
+                };
+            }
+        }, 0);
+        assertTrue(runtimeCalls.contains("kof_spawn_result"), "spawn via runtime: " + runtimeCalls);
+        assertTrue(runtimeCalls.contains("kof_await"), "await via runtime: " + runtimeCalls);
+        assertTrue(runtimeCalls.contains("kof_scheduler_every"), "scheduler via runtime: " + runtimeCalls);
+        assertTrue(queueOps.contains("put") && queueOps.contains("take"),
+                "canal via LinkedBlockingQueue (send/receive): " + queueOps);
     }
 
     @Test

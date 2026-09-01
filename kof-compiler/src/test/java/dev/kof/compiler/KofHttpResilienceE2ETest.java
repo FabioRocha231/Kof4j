@@ -69,8 +69,8 @@ class KofHttpResilienceE2ETest {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main(args: List<String>) {
-                    var base = args.get(0)
-                    var closedUrl = args.get(1)
+                    var base = args[0]
+                    var closedUrl = args[1]
                     http.retry(2)
                     var a = http.get(base + "/flaky")
                     println("retry=" + a)
@@ -92,7 +92,9 @@ class KofHttpResilienceE2ETest {
                     var d = http.get(base + "/ok")
                     println("recover=" + d)
                 }
-                """);
+                """
+                .replace("args[0]", "args.get(0)")
+                .replace("args[1]", "args.get(1)"));
         Path outDir = tempDir.resolve("classes");
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
         assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
@@ -124,7 +126,8 @@ class KofHttpResilienceE2ETest {
     @Test
     void retrySucceedsAfterFlakyFailures(@TempDir Path tempDir) throws IOException {
         startServer();
-        String out = runApp(tempDir, new String[]{"http://127.0.0.1:" + basePort(), "http://127.0.0.1:1"});
+        String closed = "http://127.0.0.1:" + closedPort();
+        String out = runApp(tempDir, new String[]{"http://127.0.0.1:" + basePort(), closed});
         assertTrue(out.contains("retry=ok-3"), "retry should succeed on 3rd attempt, got: " + out);
         assertEquals(3, flakyHits.get(), "flaky server should have been hit exactly 3 times");
     }
@@ -137,5 +140,60 @@ class KofHttpResilienceE2ETest {
         assertTrue(out.contains("fail=caught"), "closed port should throw, got: " + out);
         assertTrue(out.contains("open=caught"), "circuit should be open (fail fast), got: " + out);
         assertTrue(out.contains("recover=ok"), "circuit(0) should recover, got: " + out);
+    }
+
+    @Test
+    void jsParityRetryAndCircuit(@TempDir Path tempDir) throws IOException {
+        startServer();
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                main(args: List<String>) {
+                    var base = args.get(0)
+                    var closedUrl = args.get(1)
+                    http.retry(2)
+                    var a = http.get(base + "/flaky")
+                    println("retry=" + a)
+                    http.retry(0)
+                    http.circuit(1)
+                    try {
+                        var b = http.get(closedUrl)
+                        println("fail=" + b)
+                    } catch (Exception e) {
+                        println("fail=caught")
+                    }
+                    try {
+                        var c = http.get(base + "/ok")
+                        println("open=" + c)
+                    } catch (Exception e) {
+                        println("open=caught")
+                    }
+                    http.circuit(0)
+                    var d = http.get(base + "/ok")
+                    println("recover=" + d)
+                }
+                """);
+        Path outDir = tempDir.resolve("js");
+        CompilationResult result = driver.compile(source, outDir, Target.JS);
+        assertTrue(result.success(), "JS compilation should succeed: " + result.diagnostics().getDiagnostics());
+        String entry = outDir.resolve("Default.mjs").toString();
+        if (!Files.exists(Path.of(entry))) {
+            try (var s = Files.walk(outDir)) {
+                entry = s.filter(p -> p.toString().endsWith(".mjs"))
+                        .filter(p -> p.getFileName().toString().equals("Default.mjs"))
+                        .findFirst().map(Path::toString).orElse(null);
+            }
+        }
+        assertNotNull(entry, "JS entry not found");
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        java.io.ByteArrayOutputStream beos = new java.io.ByteArrayOutputStream();
+        String closed = "http://127.0.0.1:" + closedPort();
+        int ec = dev.kof.runtime.KofJsRunner.run(Path.of(entry), baos, new java.io.ByteArrayInputStream(new byte[0]),
+                beos, false, new String[]{"http://127.0.0.1:" + basePort(), closed});
+        String out = baos.toString().replace("\r\n", "\n").trim();
+        assertEquals(0, ec, "JS exit code should be 0, out: " + out + " stderr: " + beos);
+        assertTrue(out.contains("retry=ok-3"), "JS retry should succeed on 3rd attempt, got: " + out);
+        assertTrue(out.contains("fail=caught"), "JS closed port should throw and be caught, got: " + out);
+        assertTrue(out.contains("open=caught"), "JS circuit should be open (fail fast), got: " + out);
+        assertTrue(out.contains("recover=ok"), "JS circuit(0) should recover, got: " + out);
     }
 }

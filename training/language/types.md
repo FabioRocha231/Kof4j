@@ -1,6 +1,6 @@
 # Kof Types
 
-**Version:** 0.2.0-beta (27 Aug 2026)
+**Version:** 0.2.6-beta (31 Aug 2026)
 
 ## Primitive Types
 
@@ -17,7 +17,7 @@
 | `string` | reference | KofString |
 | `void` | — | No return |
 
-Nullable: suffix `?` → `String?`, `Int?`, `Point?` (NullableType, 0.2.0-beta). `if (x != null)` narrows para non-null via `isAssignable`.
+Nullable: suffix `?` → `String?`, `Int?`, `Point?` (NullableType, 0.2.6-beta). `if (x != null)` narrows para non-null via `isAssignable`.
 
 ## Reference Types
 

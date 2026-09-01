@@ -1,7 +1,7 @@
 # Kof Standard Library — Arquitetura
 
-**Última atualização:** 27 de agosto de 2026
-**Versão:** 0.2.0-beta (658 testes: 650 kof-compiler +8 kof-script +5 kof-c-compiler; golden 16/16, integration 9/9)
+**Última atualização:** 31 de agosto de 2026
+**Versão:** 0.2.6-beta (747 testes: 734 kof-compiler +8 kof-script +5 kof-c-compiler; golden 16/16, integration 9/9)
 
 > A Standard Library do Kof é a plataforma: HTTP, REST, auth, autorização,
 > validação, serialização, database, messaging, observabilidade e testing
@@ -48,25 +48,27 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.core` | ✅ | println, strings, arrays, aritmética; `enum Name { A, B }` + `values()/valueOf()/name()` + `==` por conteúdo — 3 targets (`KofEnumTest`); **0.2.0**: pattern matching `case String s` + `Point(x,y)` e `String?` básica (3 targets) |
 | `kof.collections` | ✅ | `List<T>` `listOf` + `map/filter/reduce` (0.2.0, 3 targets); `Map<K,V>` (mapOf + put/get/remove/contains/size/keys/values/clear/isEmpty) e `Set<T>` (setOf + add/contains/remove/size/clear/isEmpty) — **3 targets** (Native: asm próprio sobre layout List; Set usa tag de tipo p/ equals); `Box<T>` via `substituteTypeVariable` `CompilerDriver.java:3972` |
 | `kof.io` | ✅ | `File/Path/Directory`, readFile/writeFile — JVM/Native/JS |
-| `kof.time` | ✅ | `now()`, `sleep`, `interval`/`cancel` (JVM; `TIME001` Native/JS parcial) — `KofTimeE2ETest` |
-| `kof.json` | ✅ | encode/decode; objetos/records JVM+Native+JS (JSN002 fechado 0.1.0), Float/Double gap (JSN001) |
-| `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM; `kof.http` client `http.get/post/put/delete/status` — JVM+JS (JS via `Java HttpClient` interop, 27/08) — Native `HTTP002` |
-| `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use`, `listenSecure(port)` TLS — JVM (Native/JS `WEB001/002`) |
+| `kof.time` | ✅ | `now()`, `sleep` (3 targets), `interval`/`cancel` (JVM; `TIME001` Native/JS) — `KofTimeE2ETest` |
+| `kof.json` | ✅ | encode/decode; objetos/records JVM+Native+JS (JSN002), Float/Double + arrays `Double[]`/`Float[]` (JSN001) e arrays `Int[]/Long[]/Bool[]/String[]` (JSN003) — Native completo 31/08 |
+| `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM; `kof.http` client `http.get/post/put/delete/patch/options/status` + `timeout/retry/circuit` — JVM+JS (JS via `Java HttpClient` interop; retry/circuit paridade 30/08) — Native `HTTP002` |
+| `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use`, `listenSecure(port)` TLS, `status(code[, body])`/`headerSet`, `app.ws` (WebSocket RFC 6455) + `app.sse` (SSE) — JVM (Native `WEB001/002`, JS `WEB001`/`WEB003`/`WEB004`) |
 | `kof.security` | ✅ (v1 + G9) | passwords, crypto, jwt, secrets, auth, security, rateLimit, sessions, apiKeys — 3 targets; free-list Native 27/08 — ver `docs/security.md` |
-| `kof.concurrent` | ✅ | `spawn` (statement) + `val r = spawn f()` / `await r` (handle tipado, virtual threads) — JVM + JS sequencial; Native CONC001 |
+| `kof.concurrent` | ✅ | `spawn` (statement) + `val r = spawn f()` / `await r` (handle tipado) — JVM (virtual threads) + Native (pthread, 31/08, `CONC001` fechado) + JS sequencial |
 | `kof.test` | ✅ | `kof test` (`test "nome" { }` nos 3 targets) + `assert` — `StructuredTestE2ETest` 11/11; golden 16/16 |
 | `kof.cli` | ✅ | `kof build/run/serve/check/test/bench/debug/info/lsp/install/script/repl/c` (debug DAP, `kof script --watch` SIGPIPE fix 27/08) |
 | `kof.script` | ✅ | `KofScript` top-level `let` → `KofScriptGlobals` + REPL (8 testes kof-script, 27/08) |
 | `kof.c` | ✅ | `KofCcompiler` C subset (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → native x86_64 (5 testes kof-c-compiler, 27/08) |
 | `kof.metrics` | ✅ | `kof bench`/`kof profile` (harness + baseline, 37 benchmarks, `benchmark.yml` threshold 1.20) |
 | `kof.rest` | ⏳ | planejado |
-| `kof.database` | ✅ | `kof.db` (JDBC + SQLite native + MySQL `kof_db_mysql_scramble` 27/08) + `kof.orm` (entity, create/save/find/all/where/delete/count/migrate) — JVM; ver `docs/DATABASE_VISION.md` |
+| `kof.database` | ✅ | `kof.db` (JVM JDBC: H2/MySQL/MariaDB/PostgreSQL; Native SQLite via `.so` direto + MySQL wire protocol WIP — auth scramble SHA-1; JS `DB001`) + `kof.orm` (entity, create/save/saveAll/find/where/count/page/delete/deleteAll/migrate; JVM + MongoDB; Native/JS `ORM001`) — ver `docs/DATABASE_VISION.md` |
 | `kof.messaging` | ✅ | `kof.mq` publish/subscribe/queue — JVM+JS (Native `MQ001`) — `KofMqE2ETest` |
 | `kof.validation` | ✅ | `validation.required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max` — JVM/Native/JS (`KofValidationTest` 3/3) |
 | `kof.logging` | ✅ | `log.debug/info/warn/error`, níveis, off — JVM+Native (asm, `kof_log_*`, 27/08) — `KofLogE2ETest` + `NativeLogE2ETest` |
 | `kof.observability` | ✅ | `observability.health/readiness/liveness`, `counter`/`increment`/`gauge`, `requestId()`/`correlationId()` — JVM/Native/JS (`KofObservabilityTest` 3/3) |
+| `kof.cache` | ✅ | `cache.get/set/set(key,v,ttl)/ttl/delete/clear` — 3 targets (fix nativo 30/08) — `KofCacheE2ETest` (5) |
+| `kof.scheduler` | ✅ | `scheduler.every(n, fn)`/`at(cron, fn)`/`cancel(id)` — JVM (ScheduledExecutor) + JS (setInterval) — Native `SCHED001` |
 | `kof.process` | ✅ | `kof.process` (spawn de processos) — ver `docs/status.md` |
-| `kof.config` | ✅ | `config.get/env/has`, `config.str/int/long/bool(name, fallback)`; arquivo > env > profile > default — JVM+Native (asm `/proc/self/environ`, 27/08) — `KofConfigE2ETest` (8) |
+| `kof.config` | ✅ | `config.get/env/has`, `config.str/int/long/bool(name, fallback)`, `config.required`; interpolação `${key}`; `kof config gen` gera template; precedência `KOF_CONFIG` > env `KOF_<KEY>` > profile > `kof.config` — 3 targets (JVM/Native asm `/proc/self/environ`/JS) — `KofConfigE2ETest` (11) |
 
 ---
 
@@ -94,28 +96,28 @@ arquitetura, prioridade e estratégia) vive em **`docs/ecosystem-coverage.md`**
 plataforma moderna (checklist derivado do ecossistema Spring, usado como
 matriz de capacidades, não como especificação de API).
 
-Resumo executivo (0.2.0-beta, 27/08):
+Resumo executivo (0.2.6-beta, 31/08):
 
 | Categoria | Estado |
 |-----------|--------|
 | core/collections/io/time/json | DONE (3 targets; 0.2.0 acrescenta `map/filter/reduce` + pattern matching + `String?`) |
 | security (crypto, jwt, secrets, auth web + G9) | DONE (JVM/Native/JS core; web auth JVM; free-list Native 27/08) |
-| web server (`web.app()`) + `kof.http` client | DONE (JVM; `kof.http` JVM+JS) |
-| concurrency (`spawn` + `await`) | DONE (JVM + JS sequencial; Native CONC001) |
+| web server (`web.app()`) + `kof.http` client | DONE (JVM; `kof.http` JVM+JS + retry/circuit; WebSocket/SSE JVM) |
+| concurrency (`spawn` + `await`) | DONE (JVM + Native pthread (31/08) + JS sequencial) |
 | test (`assert`, `kof test` `test "nome" {}`) | DONE (3 targets, 16/16 golden, 9/9 integration) |
 | observability | DONE (kof.observability: health/metrics/request IDs — JVM/Native/JS) |
 | `KofScript` / `KofCcompiler` / targets riscv64/aarch64 | DONE (KofScript 8, KofC 5, riscv64 toolchain estável) |
-| messaging, scheduling (interval done), sessions, rate limiting, TLS | DONE (0.1.0) |
-| GC Native free-list | DONE (0.2.0-beta `kof_free_head` + `kof_gc_collect`) |
+| messaging (`kof.mq` JVM+JS), scheduling (`scheduler` JVM+JS), sessions, rate limiting, TLS, WebSocket/SSE (JVM), `kof.cache` (3 targets) | DONE (gaps reais: `MQ001`/`SCHED001` Native, `WEB002` TLS, `WEB003/004` WS/SSE) |
+| GC Native free-list | DONE (0.2.6-beta `kof_free_head` + `kof_gc_collect`) |
 
 # 6. PRÓXIMAS ETAPAS (residual pós-0.2.0)
 
 1. Native aarch64 codegen completo (placeholder hoje)
 2. GC mark-sweep completo (free-list done)
-3. MySQL/MariaDB native completo (handshake `kof_db_mysql_scramble` done; query/prepared pendentes)
+3. MySQL/MariaDB native completo (auth scramble SHA-1 + lenenc done; handshake/query/prepared pendentes — WIP)
 4. Query DSL tipada `User.query { where age > 18 }` (nível 3 DATABASE_VISION)
 5. `kof fmt` (P5) + LSP completo + Debugger DWARF/JS source maps
-6. WebSocket/SSE, cache, tracing
+6. tracing / OpenTelemetry (WebSocket/SSE ✅ JVM e `kof.cache` ✅ 3 targets fechados 30/08)
 
 Histórico fechado: G7 SECN004, G6 `kof.test` estruturado, G3 `kof.config` (JVM+Native), G2 `kof.http` (JVM+JS), G1 `kof.db`/`kof.orm` (SQLite + MySQL scramble), G4 `kof.validation`, G5 `kof.observability`, G8 `kof.time sleep/interval`, G10 security Native, G9 rateLimit/session/apiKey, G12 TLS, 0.2.0 pattern matching + `String?` + `List map/filter/reduce`.
 
