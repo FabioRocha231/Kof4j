@@ -138,8 +138,35 @@ private Target target = Target.JVM;
      * EXTERNAS (JVM/Android via ExternalClasspath).
      */
     public CompilationResult compileSources(java.util.List<Path> sources, Path outputDir, Target target) {
-        return compileSources(sources, outputDir, target,
-                sources.get(0).toAbsolutePath().normalize().getParent());
+        return compileSources(sources, outputDir, target, moduleRootFor(sources));
+    }
+
+    /**
+     * Deriva o moduleRoot do menor ancestral comum dos diretórios-pai de todas
+     * as fontes — resolução unificada de `import a.b.C` para projetos
+     * multi-diretório (P1-4). Fontes no mesmo diretório mantêm o diretório
+     * como raiz (comportamento anterior, convenção Go-like).
+     */
+    private static Path moduleRootFor(java.util.List<Path> sources) {
+        if (sources.isEmpty()) return null;
+        java.util.List<Path> parents = new java.util.ArrayList<>();
+        for (Path s : sources) {
+            Path p = s.toAbsolutePath().normalize().getParent();
+            if (p != null) parents.add(p);
+        }
+        if (parents.isEmpty()) return null;
+        Path lca = parents.get(0);
+        for (int i = 1; i < parents.size(); i++) lca = commonAncestor(lca, parents.get(i));
+        return lca;
+    }
+
+    private static Path commonAncestor(Path a, Path b) {
+        int n = Math.min(a.getNameCount(), b.getNameCount());
+        int i = 0;
+        while (i < n && a.getName(i).toString().equals(b.getName(i).toString())) i++;
+        if (i == 0) return a.getRoot() != null ? a.getRoot() : Path.of(".");
+        Path sub = a.subpath(0, i);
+        return a.getRoot() != null ? a.getRoot().resolve(sub) : sub;
     }
 
     public CompilationResult compileSources(java.util.List<Path> sources, Path outputDir, Target target,
@@ -785,6 +812,35 @@ private Target target = Target.JVM;
         Path parent = rootAbs.relativize(abs).getParent();
         if (parent == null || parent.toString().isEmpty()) return "";
         return parent.toString().replace(java.io.File.separatorChar, '.');
+    }
+
+    /**
+     * P3-10: em {@code orm.where<T>(db, "col", v)}, {@code orm.where_op<T>(db,
+     * "col", op, v)} e {@code orm.count<T>(db, "col", v)} a coluna é o 2º arg.
+     * Se for um literal de string, ele tem que nomear um campo da entidade —
+     * caso contrário falha em compile-time (ORM003), sem esperar o SQL falhar
+     * em runtime. Colunas dinâmicas (arg não-literal) seguem liberadas.
+     */
+    private void validateOrmField(MethodCallExpr mc, String entityName,
+                                  List<EntityFieldNode> fields) {
+        String m = mc.methodName();
+        boolean isWhere = "where".equals(m) || "where_op".equals(m);
+        boolean isCountWhere = "count".equals(m) && mc.arguments().size() == 3;
+        if (!isWhere && !isCountWhere) return;
+        ExpressionNode fieldArg = mc.arguments().get(1);
+        if (!(fieldArg instanceof LiteralExpr lit) || lit.kind() != ConcreteLiteralKind.STRING) return;
+        String col = lit.value();
+        for (EntityFieldNode f : fields) {
+            if (f.name().equals(col)) return;
+        }
+        if (currentDiagnostics != null) {
+            SourcePosition p = mc.position();
+            currentDiagnostics.error(p != null ? p.file() : "",
+                    p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                    "orm." + m + ": unknown column '" + col + "' in entity '"
+                            + entityName + "'",
+                    "ORM003");
+        }
     }
 
     private String declPackage(AstNode decl, String fallback) {
@@ -3322,6 +3378,9 @@ private Target target = Target.JVM;
                             }
                             yield localIdx;
                         }
+                        // P3-10: validação tipada do campo em where/count/where_op —
+                        // a coluna tem que ser um campo real da entidade (ORM003)
+                        validateOrmField(mc, entityName, fields);
                         // args do usuário: (db[, obj|id]) — primitivos são
                         // boxed (o runtime espera Object para obj/id)
                         for (int ai = 0; ai < mc.arguments().size(); ai++) {

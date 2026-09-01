@@ -57,6 +57,10 @@ final class KofObservability {
                     ? new ObservabilityCall("kof_observability_request_id", STR, List.of()) : null;
             case "correlationId" -> argc == 0
                     ? new ObservabilityCall("kof_observability_correlation_id", STR, List.of()) : null;
+            case "traceId" -> argc == 0
+                    ? new ObservabilityCall("kof_observability_trace_id", STR, List.of()) : null;
+            case "spanId" -> argc == 0
+                    ? new ObservabilityCall("kof_observability_span_id", STR, List.of()) : null;
             default -> null;
         };
     }

@@ -325,6 +325,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_validation_min", "kof_validation_max" -> "(II)Z";
             // ── kof.observability (G5) ────────────────────────────────
             case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id",
+                    "kof_observability_trace_id", "kof_observability_span_id",
                     "kof_observability_metrics" -> "()Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness" -> "()Z";
             case "kof_observability_counter" -> "(Ljava/lang/String;)I";
@@ -458,9 +459,10 @@ static boolean hasRuntimeFn(String methodName) {
                     "kof_validation_max" -> "I";
             // ── kof.observability (G5) ────────────────────────────────
             case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id",
+                    "kof_observability_trace_id", "kof_observability_span_id",
                     "kof_observability_metrics" -> "Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
-            case "kof_observability_gauge" -> "V";
+            case "kof_observability_gauge", "kof_observability_histogram" -> "V";
             // ── kof.media ─────────────────────────────────────────────
             case "kof_media_image_open", "kof_media_image_width", "kof_media_image_height",
                     "kof_media_image_save", "kof_media_audio_open_wav",

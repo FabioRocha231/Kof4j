@@ -88,6 +88,38 @@ class KofObservabilityTest {
     }
 
     @Test
+    void tracingJvmNativeJs(@TempDir Path tmp) throws Exception {
+        // W3C Trace Context: trace-id = 32 hex, span-id = 16 hex.
+        runJvm(tmp, """
+            main() {
+                val t = observability.traceId()
+                assert(t.length() == 32)
+                val s = observability.spanId()
+                assert(s.length() == 16)
+                val t2 = observability.traceId()
+                assert(t2 != t)
+                println("ok")
+            }
+            """, "ok");
+        runNative(tmp, """
+            main() {
+                val t = observability.traceId()
+                assert(t.length() == 32)
+                val s = observability.spanId()
+                assert(s.length() == 16)
+                println("ok")
+            }
+            """, "ok");
+        runJs(tmp, """
+            main() {
+                println(observability.traceId().length())
+                println(observability.spanId().length())
+                println("done")
+            }
+            """, "32\n16\ndone");
+    }
+
+    @Test
     void histogramMetricsNativeIsGap(@TempDir Path tmp) throws Exception {
         // Native ainda não tem o store de métricas (OBS002) — compilação falha
         // com o gap documentado, sem crash silencioso.

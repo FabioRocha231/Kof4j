@@ -192,6 +192,39 @@ class KofOrmE2ETest {
     }
 
     @Test
+    void whereUnknownColumnIsCompileError(@TempDir Path tempDir) throws IOException {
+        // P3-10: coluna que não existe na entidade → falha em compile-time (ORM003)
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:orm12;DB_CLOSE_DELAY=-1\")\n"
+                + "                    var r = orm.where<User>(db, \"idade\", 30)\n"
+                + "                }\n");
+        CompilationResult r = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(r.success(), "coluna inexistente deve falhar na compilação");
+        assertTrue(r.diagnostics().getDiagnostics().stream()
+                        .anyMatch(d -> "ORM003".equals(d.code())),
+                "gap ORM003 esperado: " + r.diagnostics().getDiagnostics());
+    }
+
+    @Test
+    void whereDynamicColumnIsAllowed(@TempDir Path tempDir) throws IOException {
+        // P3-10: coluna dinâmica (não-literal) não é validada em compile-time
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:orm13;DB_CLOSE_DELAY=-1\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    var col = \"age\"\n"
+                + "                    var r = orm.where<User>(db, col, 30)\n"
+                + "                    println(r.size)\n"
+                + "                    db.close(db)\n"
+                + "                }\n");
+        runJvm(source, tempDir.resolve("out"), "1");
+    }
+
+    @Test
     void saveAllBatch(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, ENTITY_SRC + "\n"

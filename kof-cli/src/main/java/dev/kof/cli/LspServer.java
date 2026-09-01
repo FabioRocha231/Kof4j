@@ -84,6 +84,8 @@ final class LspServer {
                 completion.put("triggerCharacters", List.of("."));
                 capabilities.put("completionProvider", completion);
                 capabilities.put("hoverProvider", Boolean.TRUE);
+                capabilities.put("referencesProvider", Boolean.TRUE);
+                capabilities.put("renameProvider", Boolean.TRUE);
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("capabilities", capabilities);
                 result.put("serverInfo", Map.of("name", "kof-lsp", "version", dev.kof.compiler.KofVersion.version()));
@@ -97,6 +99,8 @@ final class LspServer {
             case "textDocument/didClose" -> clearDiagnostics(params);
             case "textDocument/hover" -> hover(id, params);
             case "textDocument/completion" -> completion(id, params);
+            case "textDocument/references" -> references(id, params);
+            case "textDocument/rename" -> rename(id, params);
             default -> {  }
         }
     }
@@ -351,6 +355,111 @@ final class LspServer {
         result.put("isIncomplete", false);
         result.put("items", items);
         respond(id, result);
+    }
+
+    /** Todas as ocorrências (start, end) do identificador em fronteiras de palavra. */
+    private static List<int[]> wordOccurrences(String text, String word) {
+        List<int[]> out = new ArrayList<>();
+        if (word.isEmpty()) return out;
+        int from = 0;
+        while (true) {
+            int idx = text.indexOf(word, from);
+            if (idx < 0) break;
+            int end = idx + word.length();
+            boolean leftOk = idx == 0 || !isIdentChar(text.charAt(idx - 1));
+            boolean rightOk = end >= text.length() || !isIdentChar(text.charAt(end));
+            if (leftOk && rightOk) out.add(new int[]{idx, end});
+            from = idx + 1;
+        }
+        return out;
+    }
+
+    private static boolean isIdentChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_';
+    }
+
+    @SuppressWarnings("unchecked")
+    private void references(Object id, Map<String, Object> params) {
+        Map<String, Object> td = params.get("textDocument") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String uri = str(td.get("uri"));
+        String text = openText.getOrDefault(uri, "");
+        Map<String, Object> pos = params.get("position") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        long line = pos.get("line") instanceof Number n ? n.longValue() : 0;
+        long ch = pos.get("character") instanceof Number n ? n.longValue() : 0;
+        int off = offsetOf(text, line, ch);
+        String word = wordAt(text, off);
+        List<Object> locations = new ArrayList<>();
+        for (int[] r : wordOccurrences(text, word)) {
+            Map<String, Object> loc = new LinkedHashMap<>();
+            loc.put("uri", uri);
+            loc.put("range", rangeOf(text, r[0], r[1]));
+            locations.add(loc);
+        }
+        respond(id, locations);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void rename(Object id, Map<String, Object> params) {
+        Map<String, Object> td = params.get("textDocument") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String uri = str(td.get("uri"));
+        String text = openText.getOrDefault(uri, "");
+        Map<String, Object> pos = params.get("position") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        long line = pos.get("line") instanceof Number n ? n.longValue() : 0;
+        long ch = pos.get("character") instanceof Number n ? n.longValue() : 0;
+        int off = offsetOf(text, line, ch);
+        String word = wordAt(text, off);
+        String newName = str(params.get("newName"));
+        if (word.isEmpty() || !isValidIdentifier(newName)) { respond(id, null); return; }
+        List<int[]> occ = wordOccurrences(text, word);
+        if (occ.isEmpty()) { respond(id, null); return; }
+        List<Object> edits = new ArrayList<>();
+        for (int[] r : occ) {
+            Map<String, Object> edit = new LinkedHashMap<>();
+            edit.put("range", rangeOf(text, r[0], r[1]));
+            edit.put("newText", newName);
+            edits.add(edit);
+        }
+        Map<String, Object> docEdit = new LinkedHashMap<>();
+        docEdit.put("textDocument", Map.of("uri", uri));
+        docEdit.put("edits", edits);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("documentChanges", List.of(docEdit));
+        respond(id, result);
+    }
+
+    private static Map<String, Object> rangeOf(String text, int start, int end) {
+        Map<String, Object> s = positionPoint(text, start);
+        Map<String, Object> e = positionPoint(text, end);
+        Map<String, Object> range = new LinkedHashMap<>();
+        range.put("start", s);
+        range.put("end", e);
+        return range;
+    }
+
+    private static Map<String, Object> positionPoint(String text, int offset) {
+        int line = 0;
+        int lineStart = 0;
+        for (int i = 0; i < offset && i < text.length(); i++) {
+            if (text.charAt(i) == '\n') { line++; lineStart = i + 1; }
+        }
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("line", line);
+        p.put("character", offset - lineStart);
+        return p;
+    }
+
+    private static boolean isValidIdentifier(String s) {
+        if (s == null || s.isEmpty()) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean ok = Character.isLetterOrDigit(c) || c == '_';
+            if (!ok) return false;
+        }
+        return true;
     }
 
     private void writeMessage(String json) {

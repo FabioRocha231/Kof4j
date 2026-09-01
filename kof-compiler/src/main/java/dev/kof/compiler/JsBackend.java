@@ -4827,6 +4827,20 @@ class JsBackend implements Backend {
                 return kofObservabilityRequestId();
             }
 
+            function __kofObsRandomHex(bytes) {
+                const out = [];
+                for (let i = 0; i < bytes; i++) out.push(Math.floor(Math.random() * 256));
+                return out.map(v => v.toString(16).padStart(2, "0")).join("");
+            }
+
+            export function kofObservabilityTraceId() {
+                return __kofObsRandomHex(16);
+            }
+
+            export function kofObservabilitySpanId() {
+                return __kofObsRandomHex(8);
+            }
+
             // ── kof.security G9 (rate limiting / sessions / API keys) ──
 
             const __kofRateLimit = {};

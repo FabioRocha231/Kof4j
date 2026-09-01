@@ -595,6 +595,14 @@ final class JvmStringRuntime {
                     return kof_observability_request_id();
                 }
 
+                public static String kof_observability_trace_id() {
+                    return kof_sec_random_hex(16);
+                }
+
+                public static String kof_observability_span_id() {
+                    return kof_sec_random_hex(8);
+                }
+
                 // ── kof.security G9 (rate limiting / sessions / API keys) ──
 
                 private static final java.util.concurrent.ConcurrentHashMap<String, long[]> KOF_RATE_LIMIT = new java.util.concurrent.ConcurrentHashMap<>();

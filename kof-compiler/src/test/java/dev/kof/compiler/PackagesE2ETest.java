@@ -141,6 +141,50 @@ class PackagesE2ETest {
     }
 
     @Test
+    void moduleRootDerivedFromCommonAncestor(@TempDir Path tempDir) throws IOException {
+        // P1-4: sem moduleRoot explícito, fontes em subdiretórios diferentes
+        // precisam do menor ancestral comum como raiz — `import b.Y` a partir
+        // de a/X.kf só resolve se a raiz for a pasta pai de a/ e b/.
+        Path root = tempDir.resolve("proj");
+        Files.createDirectories(root.resolve("a"));
+        Files.createDirectories(root.resolve("b"));
+        Files.writeString(root.resolve("a/X.kf"), """
+            package a
+
+            import b.Y
+
+            class X {
+                static Int somar() { return 1 + 1 }
+            }
+            """);
+        Files.writeString(root.resolve("b/Y.kf"), """
+            package b
+
+            import a.X
+
+            class Y {
+                static Int total() { return X.somar() * 10 }
+            }
+            """);
+        Files.writeString(root.resolve("main.kf"), """
+            import a.X
+            import b.Y
+
+            main() {
+                println(Y.total())
+            }
+            """);
+        // 3-arg: moduleRoot é derivado (LCA = proj/), não de sources.get(0)
+        CompilationResult r = driver.compileSources(
+                List.of(
+                        root.resolve("a/X.kf"),
+                        root.resolve("b/Y.kf"),
+                        root.resolve("main.kf")),
+                root.resolve("out"), Target.JVM);
+        assertTrue(r.success(), () -> r.diagnostics().getDiagnostics().toString());
+    }
+
+    @Test
     void twoMainsIsDiagnostic(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("a.kf"), """
             main() { println("um") }

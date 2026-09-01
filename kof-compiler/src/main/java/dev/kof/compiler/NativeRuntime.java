@@ -15202,6 +15202,20 @@ cmpl %r14d, %r15d
                 movq $16, %rdi
                 jmp kof_sec_random_hex
 
+            # kof_observability_trace_id() -> String (16 bytes = 32 hex, W3C)
+            .globl kof_observability_trace_id
+            .type kof_observability_trace_id, @function
+            kof_observability_trace_id:
+                movq $16, %rdi
+                jmp kof_sec_random_hex
+
+            # kof_observability_span_id() -> String (8 bytes = 16 hex, W3C)
+            .globl kof_observability_span_id
+            .type kof_observability_span_id, @function
+            kof_observability_span_id:
+                movq $8, %rdi
+                jmp kof_sec_random_hex
+
                         .section .bss
             .Lkof_sec_rl_keys: .zero 256
             .Lkof_sec_rl_counts: .zero 128
