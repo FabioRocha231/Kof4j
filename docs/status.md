@@ -1,6 +1,6 @@
 # Status do Projeto Kof
 
-**Última atualização:** 31 de agosto de 2026
+**Última atualização:** 1 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
