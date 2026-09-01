@@ -1286,6 +1286,16 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        if (kc.kind() == KofCallKind.INSTANCE && "lastIndexOf".equals(kc.methodName())) {
+            String[] regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            for (int i = kc.parameterTypes().size() - 1; i >= 0; i--) {
+                sb.append("    popq ").append(regs[i + 1]).append("\n");
+            }
+            sb.append("    popq %rdi\n");
+            sb.append("    call kof_string_last_index_of\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (kc.kind() == KofCallKind.INSTANCE && "trim".equals(kc.methodName())) {
             sb.append("    popq %rdi\n");
             sb.append("    call kof_string_trim\n");
@@ -1492,8 +1502,9 @@ public class NativeBackend implements Backend {
                 // Pop this
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
-                // Push stack args back
-                for (int s = 0; s < stackArgs; s++) {
+                // Push stack args back (arg6 por último → fica no topo da
+                // stack → 16(%rbp) no callee; SysV exige essa ordem)
+                for (int s = stackArgs - 1; s >= 0; s--) {
                     int off = 256 + s * 8;
                     sb.append("    pushq -").append(off).append("(%rbp)\n");
                 }
@@ -1506,6 +1517,12 @@ public class NativeBackend implements Backend {
             }
             String ctorLabel = resolveCalleeName(kc);
             sb.append("    call ").append(ctorLabel).append("\n");
+            if (stackArgs > 0) {
+                // callee é caller-clean: remove os stack args empilhados de
+                // volta. O pop subsequente do consumidor desempilha o push
+                // duplicado do receptor (mesmo contrato do caminho <=5 args).
+                sb.append("    addq $").append(stackArgs * 8).append(", %rsp\n");
+            }
             return;
         }
 
@@ -1570,8 +1587,11 @@ public class NativeBackend implements Backend {
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 int stackArgs = Math.max(0, argCount - 5);
                 if (stackArgs > 0) {
+                    // salva stack args em slots do frame (ordem: argN no slot alto)
                     for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
                         sb.append("    popq %r10\n");
+                        sb.append("    movq %r10, -").append(off).append("(%rbp)\n");
                     }
                 }
                 for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
@@ -1580,8 +1600,10 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 if (stackArgs > 0) {
-                    for (int s = 0; s < stackArgs; s++) {
-                        sb.append("    pushq %r10\n");
+                    // arg6 por último → topo → 16(%rbp) no callee
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
+                        sb.append("    pushq -").append(off).append("(%rbp)\n");
                     }
                 }
                 sb.append("    movq 8(%rax), %rbx\n");
@@ -1604,8 +1626,11 @@ public class NativeBackend implements Backend {
                 String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
                 int stackArgs = Math.max(0, argCount - 5);
                 if (stackArgs > 0) {
+                    // salva stack args em slots do frame (ordem: argN no slot alto)
                     for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
                         sb.append("    popq %r10\n");
+                        sb.append("    movq %r10, -").append(off).append("(%rbp)\n");
                     }
                 }
                 for (int i = Math.min(argCount, 5) - 1; i >= 0; i--) {
@@ -1614,8 +1639,10 @@ public class NativeBackend implements Backend {
                 sb.append("    popq %rax\n");
                 sb.append("    movq %rax, %rdi\n");
                 if (stackArgs > 0) {
-                    for (int s = 0; s < stackArgs; s++) {
-                        sb.append("    pushq %r10\n");
+                    // arg6 por último → topo → 16(%rbp) no callee
+                    for (int s = stackArgs - 1; s >= 0; s--) {
+                        int off = 256 + s * 8;
+                        sb.append("    pushq -").append(off).append("(%rbp)\n");
                     }
                 }
                 sb.append("    movq 8(%rax), %rbx\n");
@@ -1702,7 +1729,9 @@ public class NativeBackend implements Backend {
             sb.append("    movq %rax, %rdi\n");
         }
         sb.append("    call ").append(sanitizeName(clazz.name())).append("_main\n");
-        sb.append("    movq $60, %rax\n");
+        // M32.3: SYS_exit_group (231) — SYS_exit (60) só mata a thread
+        // chamadora; com threads do driver Vulkan o processo fica pendurado.
+        sb.append("    movq $231, %rax\n");
         sb.append("    xorq %rdi, %rdi\n");
         sb.append("    syscall\n");
     }
