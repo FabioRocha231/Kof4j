@@ -197,8 +197,8 @@ main() {
 |--------|---------|----------|--------|
 | `jvm` | `JvmBackend` (ASM) | bytecode V21, exception table, virtual threads | estável |
 | `native` | `NativeBackend` (x86_64) | ELF x86_64, syscalls, free-list alloc, GC mark pending | estável |
-| `native.risc` | `NativeBackend` (riscv64) | ELF riscv64 via `riscv64-linux-gnu-as/ld` + qemu (placeholder, separado de `native`) | em progresso |
-| `native.arm` | `NativeBackend` (aarch64) | ELF aarch64 via `aarch64-linux-gnu-as/ld` + qemu (placeholder) | em progresso |
+| `native.risc` | `NativeBackend` (riscv64) | ELF riscv64 via `riscv64-linux-gnu-as/ld` + qemu (em desenvolvimento — ver `docs/native-multiarch.md`) | em progresso |
+| `native.arm` | `NativeBackend` (aarch64) | ELF aarch64 via `aarch64-linux-gnu-as/ld` + qemu (em desenvolvimento — ver `docs/native-multiarch.md`) | em progresso |
 | `js` | `JsBackend` + `KofJsRunner` | ES Modules via GraalJS, `kof.http` via `Java HttpClient` interop | alpha |
 | `kofc` | `KofCcompiler` | C subset (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → nativo x86_64 | nativo-only |
 
@@ -604,7 +604,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
 20. ~~Ponto flutuante no Native~~ — ✅ FLT001 fechado: FP é XMM real (`vcvtsi2sd`, `mulsd`); dtoa via snprintf alinhado; `kof_string_to_double` parse completo (fração+expoente).
 21. ~~idem~~
-22. `KofCcompiler` riscv64/aarch64 placeholder (target separation feito `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm`, codegen ainda x86_64 placeholder, `qemu` skip)
+22. riscv64/aarch64 **em desenvolvimento** (target separation feito `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/arm` + dispatch + cross-as/ld; codegen ainda stub `main: ret 0`, `qemu` skip) — **estado real + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
 23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
 24. ~~`spawn`-statement (fire-and-forget) no Native não era juntado~~ — ✅ 01/09: o `kof_spawn` (stmt) criava a thread mas **não registrava** o handle na lista que `kof_spawn_join_all` percorre; e `join_all` só era emitido no bloco `!endsWithReturn`, que nunca roda para o main (o driver sempre fecha o main com `KofReturnVoid` → `endsWithReturn`). Resultado: o processo saía antes do worker imprimir. Fix: `kof_spawn` agora delega a `kof_spawn_result` (registra o handle) e `join_all` é emitido no **epílogo do return** de main (idempotente — limpa a lista). `SpawnE2ETest 4/4`
 
@@ -671,7 +671,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
 - ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; binds `?` via substituição client-side; `nativeMysqlWireProtocol`); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — otimização de wire; tentativa de 01/09 revertida, ver "Bugs Restantes" #18)
-- `native.risc` (riscv64) toolchain estável + `native.arm` (aarch64) placeholder — ELF via cross-as/ld + qemu (codegen ainda x86_64)
+- `native.risc` (riscv64) + `native.arm` (aarch64) **em desenvolvimento** — plumbing pronto (enum + CLI + dispatch + cross-as/ld), codegen stub; **detalhe + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
 - Debugger — além do MVP JVM (DAP sobre stdio já no JVM; Native DWARF / JS source maps pendentes)
 - KofJS — plataforma web no browser (ES Modules via GraalJS já em alpha)
 

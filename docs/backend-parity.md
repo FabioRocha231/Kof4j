@@ -3,7 +3,7 @@
 **Última atualização:** 31 de agosto de 2026
 **Versão:** 0.2.6-beta
 
-> Deltas desde 0.1.0: Targets `native.risc` (riscv64) e `native.arm` (aarch64) separados de `native` x86_64 (toolchain + qemu; codegen ainda x86_64 placeholder); Native free-list (`kof_free_head`) + `kof_gc_collect` (mark-sweep pendente; auto-GC desativado); MySQL wire protocol em progresso (`kof_db_mysql_scramble` + `user:pass@`); pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `List map/filter/reduce` + `Box<T>`; Windows SIGPIPE fix.
+> Deltas desde 0.1.0: Targets `native.risc` (riscv64) e `native.arm` (aarch64) separados de `native` x86_64 (**em desenvolvimento** — plumbing pronto, codegen stub; ver `docs/native-multiarch.md`); Native free-list (`kof_free_head`) + `kof_gc_collect` (mark-sweep pendente; auto-GC desativado); MySQL wire protocol em progresso (`kof_db_mysql_scramble` + `user:pass@`); pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `List map/filter/reduce` + `Box<T>`; Windows SIGPIPE fix.
 > Deltas 30-31/08: `spawn`/`await` real no Native (pthread + trampoline + join + allocator thread-safe futex — CONC001); FP real em XMM (FLT001); JSON objetos/records + arrays FP no Native (JSN001/JSN002/JSN003); WebSocket/SSE no JVM (`app.ws`/`sse.*`, RFC 6455); `kof.http` retry/circuit JVM+JS (30s window, fail-fast); `kof.cache` 3 targets (fix de clobber de registradores); UI Fase 7 Router (JS real, JVM no-op); SQLite nativo via `.so` direto; `kof fmt` + `kof config gen`.
 > Tabela reflete 0.2.6-beta (31/08) — Build `mvn test` 747 (734+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
 
@@ -64,7 +64,7 @@
 | `Box<T>` generic | ✅ | ✅ | ✅ | `substituteTypeVariable` |
 | `KofScript` top-level `let` → `KofScriptGlobals` | ✅ | ✅ | ✅ | `KofScript` 0.2.0 |
 | `KofCcompiler` (`kof c`) C subset | — | ✅ x86_64 native-only | — | `kof_c`, while/if/deref &/* |
-| `native.risc` (riscv64) / `native.arm` (aarch64) | — | toolchain + qemu / codegen x86_64 placeholder | — | target separation 0.2.0 |
+| `native.risc` (riscv64) / `native.arm` (aarch64) | — | **em desenvolvimento**: plumbing pronto / codegen stub — `docs/native-multiarch.md` | — | target separation 0.2.0 |
 | `kof fmt` (formatter parser real, idempotente) | ✅ 31/08 | ✅ | ✅ | `KofFormatter` (2c3e794) |
 | Android (Fase 1: `kof build --target android` → projeto Maven + APK, host Activity em Kof) | ✅ (bytecode JVM) | — | — | gaps `AND00x` em compile-time |
 
@@ -81,7 +81,7 @@
 | JSON objetos/records no Native | ✅ 31/08 (JSN002 fechado — composição em compile-time) | |
 | GC mark-sweep no Native | — | pendente; auto-GC desativado após hang (memória devolvida só no `munmap` fallback) |
 | MySQL nativo completo | — | WIP: auth scramble SHA-1 + parse `user:pass@`; falta handshake completo, query e prepared |
-| Native riscv64/aarch64 codegen | `NATIVE002` | toolchain + qemu prontos; codegen ainda x86_64 placeholder |
+| Native riscv64/aarch64 codegen | `NATIVE002` | **em desenvolvimento**: plumbing pronto (enum `NATIVE_RISCV64/AARCH64` + CLI `native.risc/arm` + dispatch + cross-as/ld); codegen ainda stub (`main: ret 0`). **Ver `docs/native-multiarch.md`** (estado real + como finalizar) |
 
 Fechados em 0.2.6-beta (30-31/08): `spawn` Native (CONC001 — pthread), FP XMM (FLT001), JSON completo no Native (JSN001/JSN002/JSN003 — objetos/records + arrays incl. Double/Float), WebSocket/SSE JVM (RFC 6455), `kof.http` retry/circuit JVM+JS (30s window, fail-fast), `kof.cache` 3 targets (fix de clobber de registradores), SQLite nativo `.so` direto, UI Fase 7 Router (JS), `kof fmt` + `kof config gen`.
 Fechados em 0.2.6-beta (27/08): pattern matching `switch case String s` + record `Point(x,y)` (JVM/Native/JS), `String?` null safety básica, `kof.http` no JS via `Java HttpClient`, `List map/filter/reduce`, large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, free-list GC (`kof_free_head`), Windows SIGPIPE.
