@@ -476,9 +476,11 @@ HMAC, AES-GCM, random seguro — **nos 3 targets**, Native em asm puro),
 rate limit, sessions, API keys. **A** — e com gaps diagnosticados
 (`SECN00x`).
 
-**O que falta (expansão):**
-- **Criptografia avançada** — RSA/ECC/P-256, X.509/TLS completo, ChaCha20-Poly1305.
-  **B** (JVM via `javax`; Native por FFI a libs; formato versionado já existe).
+ **O que falta (expansão):**
+ - **Criptografia avançada** — RSA/ECC/P-256, X.509/TLS completo, ChaCha20-Poly1305.
+   **B** (JVM via `javax`; Native por FFI a libs; formato versionado já existe).
+   **Evolução estratégica completa em §4.8.1** (camadas, PQC híbrido, key
+   management, `SecureChannel`, threat model, roadmap por maturidade).
 - **Networking / parsing de protocolos** — sockets existem (`kof_net_*` emitidos);
   *parse* de pacotes/DNS é **C** (namespace `kof.net`/`kof.packet` — FFI a
   libs como `libpcap` para captura).
@@ -496,11 +498,333 @@ legítimo (auditoria, pentest autorizado, pesquisa) — e sempre como *ferrament
 orquestrada*, não como "Kof é um framework de ataque". (Reflete a postura do
 `docs/security-plan.md`.)
 
-**O que NÃO fazer:** não reimplementar stacks cripto do zero quando há
-implementações auditadas (FFI a libs); não transformar Kof em "Kali em Kof";
-não expor primitivas ofensivas sem o contexto de controle.
+ **O que NÃO fazer:** não reimplementar stacks cripto do zero quando há
+ implementações auditadas (FFI a libs); não transformar Kof em "Kali em Kof";
+ não expor primitivas ofensivas sem o contexto de controle.
+ 
+ ## 4.8.1 Kof Security — Evolução Estratégica (camada de segurança moderna + pós-quântica)
+ 
+ > **Status: planejamento/arquitetura — NÃO implementar nesta fase.** Este
+ > bloco é auditoria + estratégia, não código. O `kof.security` atual permanece
+ > **intacto** (6 namespaces, 3 targets, `KofSecurityTest` 25 + `KofSecurityG9Test`
+ > 3). Segue o princípio do domínio: **criptografia extremamente complexa para
+ > quem implementa a plataforma, extremamente difícil de usar incorretamente para
+ > quem usa a linguagem.**
+ 
+ **Filosofia invariante:** *complexidade criptográfica por dentro, API simples por
+ fora.* O dev comum nunca vê nonce, IV, padding, KDF, provider, encoding,
+ rotação. E — regra absoluta — **o Kof simplifica a *utilização* da criptografia,
+ mas NUNCA reinventa criptografia**: toda primitiva nova é **FFI a uma
+ implementação auditada** (JCA/JCE no JVM, `liboqs`/`Relic`/`libsodium` no
+ Native, `SubtleCrypto` no JS), nunca algoritmo próprio.
+ 
+ ### A. Estado atual (auditoria real — 0.2.6-beta, `KofSecurity.java`)
+ 
+ 6 namespaces de intenção, compilados pelo mesmo padrão de dispatch de
+ `kof.io`/`kof.web` (`KofSecurity.staticMethod` → `kof_sec_*` → 3 runtimes):
+ 
+ | Namespace | APIs hoje | JVM | Native x86_64/riscv64 | JS |
+ |-----------|-----------|-----|----------------------|-----|
+ | `passwords` | `hash`/`verify`/`needsRehash` (PBKDF2-HMAC-SHA256, 600k) | ✅ javax.crypto | ✅ **asm puro** (getrandom, FIPS) | ✅ platform |
+ | `crypto` | `sha256`/`sha512`/`hmacSha256`/`encryptAesGcm`/`decryptAesGcm`/`randomHex`/`randomInt` | ✅ JCA | ✅ **asm** (FIPS 180-4, GCM, getrandom) | ✅ sha/hmac JS puro; ❌ **AES-GCM = SECN002** |
+ | `jwt` | `create(claims,secret[,ttl])`/`verify(token,secret[,iss,aud])`/`secret()` — **HS256 fixo** | ✅ | ✅ asm (b64url+HMAC) | ✅ |
+ | `secrets` | `get(name[,fallback])`/`redact` | ✅ env | ✅ `/proc/self/environ` | ✅ platform |
+ | `security` | `constantTimeEquals`/`random*`/`redact`/`csrf*`/`corsAllowed`/`csp/hsts/nosniff/frame/referrerHeader`/`rateLimit`/`session*`/`apiKey*` | ✅ | ✅ ct/redact/random/rate/session/apiKey (asm); ❌ csrf/cors/headers | ✅ ct/redact/random/rate/session/apiKey; ❌ csrf/cors/headers |
+ | `auth` (web) | `secret`/`token`/`authenticated`/`claims`/`user`/`hasRole`/`hasPermission` | ✅ Bearer JWT + ThreadLocal | ❌ JVM-only | ❌ JVM-only |
+ 
+ **Formatos serializados (versionados, sem ambiguidade):**
+ `pbkdf2$sha256$<iter>$<saltB64>$<hashB64>` · `aesgcm$<ivB64>$<ctB64>` (chave 32B,
+ IV 12B) · JWT RFC 7519 **HS256 fixo** (o `alg` **nunca** é aceito do token —
+ trava confusão de algoritmo, `KofSecurityTest.jwtRejectsAlgorithmConfusionJvm`).
+ 
+ **Gaps reais** (nunca silencioso — `KofSecurity.supportedOn` + `gapCode`):
+ `SECN002` (AES-GCM fora de JVM/Native), csrf/cors/headers + `auth.*` (JVM-only).
+ 
+ ### B. Arquitetura atual
+ 
+ ```text
+ Kof (intenção) → SemanticAnalyzer (tipa) → KofSecurity.staticMethod
+    → kof_sec_* (nome runtime) → [ supportedOn? gapCode → diagnóstico ]
+        → JvmRuntime     (javax.crypto / JCA / SecureRandom / MessageDigest)
+        → NativeRuntime  (asm sem libc: getrandom, FIPS 180-4, GCM, constant-time)
+        → JsBackend      (JS puro sha/hmac/pbkdf2 + kof_platform; AES-GCM = gap)
+ ```
+ 
+ **Camada de provider implícita já existe** (JVM = JCA, Native = asm, JS =
+ `SubtleCrypto`/platform). O que falta é *formalizá-la* e adicionar camadas
+ (keys, PQC, channel, typed) por cima — ver §F.
+ 
+ ### C. Pontos fortes (o que já está bem projetado — NÃO tocar)
+ 
+ - **Seguro por padrão**: PBKDF2 600k, AES-**GCM** (autenticado, nunca CBC),
+   constant-time em toda comparação de segredo, JWT HS256 fixo (sem alg-confusion).
+ - **Formato versionado** em todo artefato serializado → evolução sem quebrar dados.
+ - **Multi-target honesto**: primitivas em asm sem libc; gap vira diagnóstico, nunca
+   stub divergente.
+ - **Zero ceremony**: intenção em Kof, sem annotation/container/config XML.
+ - **Cross-check de vetores**: SHA-256/512/HMAC idênticos nos 3 targets e batem com
+   FIPS 180-4 / RFC 2104 (`KofSecurityTest`).
+ 
+ ### D. Gaps (o que está ausente — ordenado por valor)
+ 
+ 1. **Assimétrica** — RSA/ECC/P-256 (chave, sign/verify): **não existe** (só HMAC simétrico).
+ 2. **Pós-quântico** — **zero** (sem ML-KEM/ML-DSA/Falcon). A ameaça *harvest-now-decrypt-later* é real para dados longevos.
+ 3. **Gestão de chaves** — só env `KOF_*` + `secrets.get`; sem ciclo de vida (gerar/derivar/rotacionar/armazenar/revogar) tipado.
+ 4. **KDF / envelope** — AES-GCM toma a chave "pronta" (hex); não há HKDF, nem *key encapsulation*, nem binding de contexto.
+ 5. **Comunicação segura (channel)** — TLS parcial: `app.listenSecure` só no JVM (self-signed via keytool); sem abstração de canal (negociação + KEM + KDF + crypto + auth em uma API).
+ 6. **Tipos de segurança** — `String` carrega senha, hash, chave, segredo: o sistema de tipos **não impede** trocar `PasswordHash` por `Password`.
+ 7. **ChaCha20-Poly1305** — segunda AEAD (edge/dispositivos sem acelerador AES).
+ 
+ ### E. Riscos (técnicos e criptográficos)
+ 
+ - **Cripto caseira** (o risco nº1 do roadmap): qualquer PQC/KDF/channel "feito à mão" em Kof/asm é catastrófico. **Mitigação: FFI a libs auditadas sempre.**
+ - **Combinação arbitrária de primitivas** ≠ protocolo seguro: ML-KEM + AES-GCM só é seguro com KDF (HKDF) + binding de contexto + versionamento + replay. **Mitigação: abstração de *canal* com protocolo versionado, não primitives soltas.**
+ - **Downgrade attack** no modelo híbrido (forçar o par clássico). **Mitigação: híbrido *obrigatório* (clássico + PQ juntos), versionamento no cabeçalho do artefato, recusa de versão desconhecida.**
+ - **Nonce/IV reuse** (GCM = catastrófico se reutilizar IV sob a mesma chave). **Mitigação: IV 12B via `randomHex` (CSPRNG) + limite de uso por chave documentado; nunca IV derivado do contador sem proteção.**
+ - **Vazamento de segredos em logs/memory** — `redact` existe mas não é *enforceado* por tipo. **Mitigação: tipo `Secret` (não-printável) + redaction automática no `kof.log`.**
+ - **Provider/dependency compromise** (JCA backdoor, CVE em `liboqs`). **Mitigação:** §23 (processo de auditoria + pinned versions).
+ 
+ ### F. Arquitetura futura proposta (modular — hipótese a validar)
+ 
+ ```text
+ kof.security
+ ├── crypto          (primitivas — FFI, NUNCA próprio)
+ │   ├── hash        sha256/512 (+sha3 via FFI)
+ │   ├── symmetric   AES-GCM (pronto) · ChaCha20-Poly1305 (FFI libsodium)
+ │   ├── asymmetric  RSA/ECC/P-256 sign/verify (FFI JCA / liboqs)
+ │   ├── signature   (sobre asymmetric)
+ │   └── postquantum ML-KEM-768 (KEM) · ML-DSA-65 (sig) · híbrido  (FFI liboqs)
+ ├── keys            generate · import · export · derive(HKDF) · rotate · store · revoke
+ ├── secrets         get · redact · (tipo `Secret` não-printável)
+ ├── passwords       hash/verify/needsRehash (pronto; migração Argon2 opcional)
+ ├── jwt             create/verify (pronto; JWS HS384/512 + RS256 opcional)
+ ├── certificates    X.509/PEM/PKCS#12 (FFI; hoje ausente)
+ ├── tls             app.listenSecure(port, cert, key) + canal cliente (FFI/SSLSocket)
+ ├── auth            context web (pronto no JVM; estender p/ Native/JS)
+ ├── identity        RBAC/ABAC via claims (pronto `hasRole/hasPermission`)
+ ├── tokens          (jwt + session + apiKey — consolidar)
+ └── secure          channel(...)  →  SecureChannel (KEM+KDF+AEAD+auth+replay, §J)
+ ```
+ 
+ **Avaliação da hipótese:** faz sentido **em camadas**, mas **não** criar todos os
+ sub-namespaces de uma vez. O que *protege* a linguagem: manter os 6 namespaces
+ atuais estáveis e **acrescentar** `keys`/`secure`/`postquantum` como extensão
+ (padrão `entity`→`orm`), **não** reorganizar o que já existe. `certificates`/
+ `identity`/`tokens` podem começar como **funções dentro** de namespaces existentes
+ antes de virar sub-tree.
+ 
+ ### G. Design da API (idiomática — proposta, decidir por segurança não por estética)
+ 
+ Preferir a forma **funcional de intenção** (consistente com o restante da
+ linguagem; rejeitar builder `Security.encryption(...).build()` — anti-idiomático):
+ 
+ ```kof
+ // simétrica segura por padrão (esconde IV/alg/provider — já existe)
+ let ct = crypto.encryptAesGcm(data, key)
+ let pt = crypto.decryptAesGcm(ct, key)
 
-## 4.9 Scientific Computing (física, química, engenharia, numérica, HPC)
+ // assimétrica (NOVA — FFI)
+ let kp   = keys.generatePair("P-256")
+ let sig  = kp.sign(data)
+ if (kp.verify(data, sig)) { ... }
+
+ // pós-quântico (NOVA — FFI liboqs)
+ let ct2 = crypto.encryptHybrid(data, key)     // ML-KEM-768 + AES-256-GCM (HKDF)
+ let pt2 = crypto.decryptHybrid(ct2, key)
+ let sig = crypto.signPq(data, kp)             // ML-DSA-65
+
+ // gestão de chaves (NOVA)
+ let k   = keys.derive(masterKey, "app/2026/db")   // HKDF — nunca usar senha como chave
+ k.rotate()
+
+ // canal seguro (NOVA — esconde KEM/KDF/AEAD/auth/replay)
+ let ch  = secure.channel(peer, profile)
+ ch.send(payload)
+
+ // passwords (pronto — manter)
+ let h   = passwords.hash(pw)
+ if (passwords.verify(pw, h)) { ... }
+ ```
+ 
+ **Decisões a fixar (não estética):**
+ - **Default seguro**: `encrypt(...)` = AES-256-GCM; `encryptHybrid(...)` =
+   ML-KEM-768 + AES-256-GCM. Nunca expor `Cipher("AES/CBC/...")` como default.
+ - **APIs perigosas escondidas**: primitives de nível baixo (`Cipher`/`Mac`
+   diretos) **não** entram na API pública — só via FFI explícito/escape hatch.
+ - **Warnings em compile-time**: usar chave < 128 bits, IV curto, ECB → diagnóstico
+   `SECD00x` (aviso), nunca silencioso.
+ - **Tipos** (§L/§15 do prompt): `Secret`, `KeyHandle`, `Signature` impedem
+   semântica errada (usar `Secret` onde `String` comum é esperado, etc.).
+ 
+ ### H. Estratégia pós-quântica (análise — NUNCA implementar à mão)
+ 
+ > **Regra: não existe PQC no Kof ainda. Toda PQC é FFI a uma lib auditada
+ > (JVM: provider futuro/`liboqs`; Native: `liboqs`/`Relic`; JS: não há → gap).**
+ 
+ **O que cada primitiva resolve (e o que NÃO resolve):**
+ 
+ | Algoritmo | Problema | Garantias dadas | **NÃO** dá |
+ |-----------|----------|-----------------|------------|
+ | **ML-KEM-768** (KEM) | *key encapsulation* → segredo compartilhado | confidencialidade do segredo; CCA | **não autentica** o par; não é AEAD de payload |
+ | **HKDF** (KDF) | segredo bruto → chaves derivadas | derivação segura, binding de contexto | não cifra; não autentica por si |
+ | **AES-256-GCM** (AEAD) | cifrar o payload | confidencialidade + **integridade** | reuso de IV quebra tudo (mitigado §E) |
+ | **ML-DSA-65** (sig) | assinatura autêntica | integridade + não-repúdio de artefato | não cifra; não dá forward secrecy |
+ 
+ **Modelo conceitual (o que SIM se combina — com KDF e binding, não "apenas
+ colar"):**
+ 
+ ```text
+ ML-KEM-768 (encaps)  →  segredo efêmero
+        ↓  HKDF (salt + info=versão+contexto)
+   chaves { enc, mac }  →  AES-256-GCM (payload)  →  AEAD autenticado
+   [opcional] ML-DSA-65  →  assinatura do envelope (quem/qual versão)
+ ```
+ 
+ **Onde entra cada peça obrigatória (não assumir que combinar = seguro):**
+ - **KDF**: obrigatório — KEM devolve segredo bruto; HKDF deriva chaves AEAD.
+ - **Binding de contexto**: `info` do HKDF carrega **versão do protocolo** +
+   identificadores das partes → previne *key-confusion* entre canais.
+ - **Autenticação**: ML-KEM puro é anônimo → exigir **assinatura (ML-DSA) ou
+   pré-compartilhado** para autenticação do par; documentar.
+ - **Anti-replay**: em canal persistente, counter/nonce no cabeçalho do envelope.
+ - **Versionamento**: cabeçalho do artefato `hyb1$<kem>$<kemCtB64>$<ctB64>` (segue
+   o padrão `aesgcm$...`); versão desconhecida → **recusar**, não adivinhar.
+ - **Híbrido obrigatório**: sempre clássico **e** PQ (defesa em profundidade contra
+   bug em um dos dois); **downgrade** bloqueado (recusa de versão só-clássico).
+ - **Rotação/compatibilidade**: KEM usa chaves efêmeras (forward secrecy do canal);
+   chaves de assinatura rotacionáveis (chave-pública distribuída por banda fora).
+ 
+ ### I. Gestão de chaves (ciclo de vida)
+ 
+ Abstrações a avaliar (expor o mínimo): `KeyHandle` (opaca — **nunca** `String`
+ para material sensível), `PublicKey`/`PrivateKey`/`KeyPair`, `MasterKey`.
+ **Não expor** bytes crus de chave privada como `String`.
+ - **generate**: CSPRNG (`randomHex`/JCA) + tamanho mínimo por algoritmo.
+ - **derive**: HKDF a partir de master key (nunca senha→chave direta).
+ - **store**: env `KOF_*` → arquivo `0600` → variante `keychain`/platform (JS);
+   **redact automático** em qualquer log.
+ - **rotate/revocation**: `keys.rotate` gera sucessora + janelas de dual-key
+   (formato versionado permite dual-read); revogação por allow-list de `KeyHandle`.
+ 
+ ### J. Comunicação segura (abstração futura — `SecureChannel`)
+ 
+ Objetivo: dev **nunca** implementa key-exchange/KEM/KDF/encryption/auth/nonce/
+ replay. Propriedades alvo: confidencialidade, integridade, autenticação,
+ forward secrecy (via KEM efêmero), anti-replay, negociação de algoritmo **e**
+ **versão**, rotação, binding de contexto. Proposta: `secure.channel(peer, profile)`
+ devolve handle com `send/receive/close`; por baixo = §H (híbrido) + ML-DSA
+ (auth) + HKDF (derivação) + AES-256-GCM (payload) + counter (replay). **Classif.:
+ D (pesquisa) / C** — depende de FFI PQC + formalização do protocolo versionado.
+ 
+ ### K. Estratégia multi-target (JVM / Native / JS)
+ 
+ | Camada | JVM | Native | JS |
+ |--------|-----|--------|-----|
+ | simétrica (GCM) | JCA | asm (pronto) | `SubtleCrypto` (fechar **SECN002**) |
+ | hash/HMAC | JCA | asm (pronto) | JS puro (pronto) |
+ | assimétrica (ECC/RSA) | JCA/`KeyPair` | FFI `liboqs`/`openssl` | `SubtleCrypto` |
+ | **PQC (ML-KEM/DSA)** | FFI `liboqs`/provider | FFI `liboqs` | **não há** → gap `SECPQ` (diagnóstico, nunca stub) |
+ | canal/TLS | `SSLContext` (pronto) | FFI `openssl` | `fetch`/`wss` (host) |
+ 
+ **Regra:** API Kof idêntica; quando um target **não** tem a capacidade, **falha
+ claramente** (`SECPQ`/`SECN00x`) — **nunca** fallback silencioso para algoritmo
+ fraco (ex.: nunca "PQ indisponível → usa só clássico" sem aviso).
+ 
+ ### L. Threat model (resumo — Threat / Impact / Likelihood / Mitigação / Resíduo)
+ 
+ | Ameaça | Impact | Likelihood | Mitigação | Resíduo |
+ |--------|--------|-----------|-----------|---------|
+ | Vazamento de chave em log | alto | med | tipo `Secret` + redact automático | baixo |
+ | Nonce/IV reuse (GCM) | alto | baixo | IV via CSPRNG + limite doc | baixo |
+ | Harvest-now-decrypt-later | alto (dados longevos) | med | **PQC híbrido** (§H) | med |
+ | Replay em canal | med | med | counter/nonce + versão | baixo |
+ | Downgrade (só-clássico) | med | med | híbrido obrigatório + recusa de versão | baixo |
+ | Confusão de algoritmo (JWT) | alto | baixo | **HS256 fixo** (pronto) | baixo |
+ | Timing attack (comparação) | med | baixo | `constantTimeEquals` (pronto) | baixo |
+ | Weak randomness | alto | baixo | CSPRNG (getrandom/SecureRandom) | baixo |
+ | Dependency/provider CVE | med | med | pinned + audit (§23) | med |
+ 
+ ### M. Estratégia de teste (NUNCA "encrypt→decrypt→funcionou")
+ 
+ - **Known-answer / vetores oficiais**: FIPS 180-4 (pronto), RFC 2104 (pronto);
+   para PQC: **vetores oficiais do NIST** (ML-KEM-768 / ML-DSA-65) — interop.
+ - **Interop**: artefato Kof↔lib externa (ex.: `openssl`/`liboqs` decifra o que o
+   Kof cifrou) — essencial para PQC/assimétrica.
+ - **Negative/adversarial**: tamper (pronto), chave errada, IV reutilizado,
+   alg-confusion (pronto), versão desconhecida, token malformado (pronto).
+ - **Property/fuzzing**: round-trip + invariantes de integridade (GCM falha em
+   bit flip) sob input aleatório.
+ - **Regression**: paridade de valor entre targets (já existe para hash/HMAC).
+ 
+ ### N. Roadmap (por maturidade — **sem datas**; cada fase com objetivo/
+ dependência/risco/critério de conclusão)
+ 
+ ```text
+ S1 SECURITY FOUNDATION   (base — quase pronto)
+    default seguro (GCM/PBKDF2/constant-time/HS256-fixo) + vetores + redact
+    → já A; concluir: fechar SECN002 (AES-GCM JS) + vetores adversariais
+ S2 SAFE DEFAULTS / TIPOS
+    tipo `Secret`/`KeyHandle` + redaction em kof.log + warnings SECD00x
+    → depende S1; risco baixo; critério: API sem exposição de chave crua
+ S3 KEY MANAGEMENT
+    keys.generate/derive(HKDF)/rotate/store(0600)/revoke
+    → depende S2; FFI JCA/openssl; critério: ciclo de vida tipado + rotação dual-key
+ S4 ADVANCED CRYPTO
+    assimétrica (ECC/RSA sign/verify) + ChaCha20-Poly1305 + X.509/PEM
+    → depende S3 + FFI; critério: interop com openssl + vetores
+ S5 POST-QUANTUM RESEARCH
+    ML-KEM-768 + ML-DSA-65 (FFI liboqs) + vetores NIST + interop
+    → depende S4 + FFI formal; risco alto (só FFI auditado); critério: vetores NIST verdes
+ S6 HYBRID CRYPTOGRAPHY
+    encryptHybrid (ML-KEM + HKDF + AES-256-GCM) + formato versionado + anti-downgrade
+    → depende S5; critério: interop híbrido + bloqueio de downgrade
+ S7 SECURE COMMUNICATION
+    secure.channel (KEM+KDF+AEAD+auth+replay) + TLS completo multi-target
+    → depende S6; classif D/C; critério: canal E2E + forward secrecy
+ S8 MULTI-TARGET SECURITY
+    paridade honesta (gap = diagnóstico, nunca stub fraco) + perf/streaming
+    → depende S7; critério: matriz de target sem divergência silenciosa
+ ```
+ 
+ ### O. Prioridades (NOW / NEXT / LATER / RESEARCH / AVOID)
+ 
+ **Classificação (mesma legenda A–E do §14.2):**
+ 
+ | Item | Classif. | Justificativa (estado real) |
+ |------|----------|------------------------------|
+ | AES-GCM no JS (SECN002) | **B** | `SubtleCrypto` no browser/Node; fecha gap, sem mudar core |
+ | `keys.*` (gerar/derivar/rotacionar) | **B/C** | sobre JCA/openssl (FFI); `KeyHandle` opaco é extensão de tipo |
+ | tipo `Secret`/redaction forçada | **B** | type-system + `kof.log`; impede vazamento |
+ | assimétrica ECC/RSA (sign/verify) | **B** | FFI JCA/openssl; formato versionado já existe |
+ | X.509/PEM/PKCS#12 | **C** | FFI + novo sub-namespace; TLS completo depende |
+ | **ML-KEM/ML-DSA (PQC)** | **D (FFI)** | **não há** hoje; FFI `liboqs` + vetores NIST; pesquisa de integração |
+ | híbrido (KEM+HKDF+AEAD) | **D/C** | protocolo versionado; anti-downgrade; depende PQC |
+ | `secure.channel` | **D** | KEM+KDF+AEAD+auth+replay; formalização de protocolo |
+ | ChaCha20-Poly1305 | **B** | FFI libsodium/`SubtleCrypto` |
+ | TLS completo multi-target | **C** | JVM pronto (self-signed); Native/JS via FFI/fetch |
+ | "Kali em Kof" / ofensiva sem contexto | **AVOID** | não expor primitivas ofensivas sem controle |
+ | algoritmo próprio (qualquer) | **AVOID** | **regra absoluta** — só FFI a lib auditada |
+ 
+ **NOW** (sem pesquisa profunda, estende o que já existe): fechar **SECN002**
+ (AES-GCM JS) · tipo `Secret` + redaction forçada · `keys.derive` (HKDF) +
+ `keys.rotate`.
+ **NEXT**: `keys.*` completo · assimétrica (ECC/RSA) · ChaCha20-Poly1305 ·
+ X.509/PEM.
+ **LATER**: TLS completo multi-target · `secure.channel`.
+ **RESEARCH** (só FFI a lib auditada + vetores oficiais): **ML-KEM-768** ·
+ **ML-DSA-65** · **híbrido** (KEM+HKDF+AEAD, anti-downgrade) · interop PQC.
+ **AVOID**: inventar qualquer algoritmo · expor `Cipher`/primitives de baixo
+ nível como default · PQC no JS sem lib (gap `SECPQ`, não stub) · downgrade
+ silencioso · "Kali em Kof".
+ 
+ ### Non-goals deste bloco (espelha §24)
+ 
+ Não inventar algoritmo · não implementar todos os algoritmos existentes · não
+ expor API perigosa como default · não reorganizar os 6 namespaces atuais (só
+ **acrescentar** `keys`/`secure`/`postquantum`) · não fazer o core depender de
+ segurança · não transformar `kof.security` em framework gigante sem modularização.
+ 
+ ## 4.9 Scientific Computing (física, química, engenharia, numérica, HPC)
 
 **O que é:** cálculo numérico, simulação, SIMD/GPU, paralelismo, HPC, sinais,
 imagem, áudio, embarcados.
@@ -905,12 +1229,19 @@ UNIVERSAL PLATFORM (plataforma integrada)
 
 ### Estágio 5 — SECURITY (expansão)
 - **Objetivo:** de "segurança de aplicação" (já forte) a **segurança de
-  plataforma** (rede, forense, defensiva).
-- **Capacidades:** crypto avançada (RSA/ECC/X.509/TLS — B/FFI), `kof.net` /
-  parsing de pacotes (FFI a `libpcap`), forense (FFI a libs de parse +
-  pipelines Kof), automação de segurança / threat-intel (`kof.http` +
-  `spawn`/`channel` + `kof.log`), defensiva (monitoring/detection/auditoria
-  sobre `kof.observability` + `kof.log` + `kof.db`).
+  plataforma** (rede, forense, defensiva) — e **camada criptográfica moderna
+  + pós-quântica** (detalhamento completo em **§4.8.1**).
+- **Capacidades:** crypto avançada (RSA/ECC/X.509/TLS — B/FFI), **PQC híbrido
+  (ML-KEM-768 + ML-DSA-65 + HKDF + AES-256-GCM — D/FFI `liboqs`)**, `keys.*`
+  (generate/derive/rotate/store), tipo `Secret` + redaction forçada,
+  `secure.channel` (KEM+KDF+AEAD+auth+replay — D), `kof.net` / parsing de
+  pacotes (FFI a `libpcap`), forense (FFI a libs de parse + pipelines Kof),
+  automação de segurança / threat-intel (`kof.http` + `spawn`/`channel` +
+  `kof.log`), defensiva (monitoring/detection/auditoria sobre
+  `kof.observability` + `kof.log` + `kof.db`).
+- **Regra absoluta (§4.8.1):** **nunca** cripto caseira — toda primitiva nova
+  (incl. PQC) é FFI a lib auditada; API idêntica nos targets; gap = diagnóstico
+  (`SECN00x`/`SECPQ`), nunca stub fraco.
 - **Dependências:** estágios 1-3; FFI.
 - **Riscos:** "Kali em Kof"; expor primitivas ofensivas sem contexto.
 - **Impacto:** linguagem 0; stdlib: expandir `security` + `net`/`forensics`
@@ -1093,6 +1424,12 @@ vale a pena (ou non-goal).
 | JSON/IO/config/logging/observability | **A** | `kof.json`/`kof.io`/`kof.config`/`kof.log`/`kof.observability` prontos |
 | State de infra / experiment tracking | **A/B** | `kof.db`/`kof.io` prontos; o *formato* de state é extensão |
 | Crypto/JWT/secrets/auth (app) | **A** | `kof.security` v1+G9+G10 pronto nos 3 targets |
+| Crypto: AES-GCM no JS (fechar SECN002) | **B** | `SubtleCrypto` (browser/Node); sem mudar core — §4.8.1 |
+| Crypto: `keys.*` (gerar/derivar HKDF/rotacionar/store) + tipo `Secret` | **B/C** | FFI JCA/openssl + type-system; `KeyHandle` opaco — §4.8.1 |
+| Crypto: assimétrica (ECC/RSA sign/verify) + X.509/PEM | **B/C** | FFI JCA/openssl; formato versionado já existe — §4.8.1 |
+| Crypto: **PQC** (ML-KEM-768 KEM + ML-DSA-65 sig) | **D (FFI)** | **não há hoje**; FFI `liboqs` + vetores NIST; nunca caseiro — §4.8.1 |
+| Crypto: **híbrido** (ML-KEM + HKDF + AES-256-GCM, anti-downgrade) | **D/C** | protocolo versionado; depende PQC — §4.8.1 |
+| Crypto: `secure.channel` (KEM+KDF+AEAD+auth+replay) | **D** | formalização de protocolo; depende híbrido — §4.8.1 |
 | Cloud providers (AWS/Azure/GCP) | **A/B** | via **interop** (JVM SDK / CLI `kof.process` / REST `kof.http`); abstração tipada = extensão |
 | FFI (`.so`, C/C++/Rust) | **A→C** | SQLite/FFM já funcionam; **formalizar** FFI (assinatura em compile-time) = evolução |
 | Interop Java / GraalJS | **A** | interop direta existente |
