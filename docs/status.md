@@ -273,7 +273,7 @@ spawn {
 - JVM: virtual threads; o programa espera as tarefas (join implícito).
 - Native: pthread_create + trampoline + `await`/pthread_join + allocator
   thread-safe (futex) + `done`/`poll`/`cancel`/`cancelled`/`selectAny` — ✅ 31/08 (CONC001 fechado).
-- JS: sequencial (spawn statement/expr cobre; async real = CONC003 parcial).
+- JS: sequencial (spawn statement/expr cobre via inline; CONC003 **fechado** `7402101` — o erro CONC003 remanescente no lowering era código morto, removido 01/09; `SpawnE2ETest.jsSpawnStmtRunsSequentially`).
 - Zero API de plataforma exposta (Thread/Runnable são internos do runtime).
 - Ver: `docs/concurrency.md`.
 

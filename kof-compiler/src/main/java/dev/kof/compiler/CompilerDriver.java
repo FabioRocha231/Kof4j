@@ -1961,14 +1961,6 @@ private Target target = Target.JVM;
                             "kof_spawn", List.of(taskTypeN), Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                     yield localIdx;
                 }
-                if (target == Target.JS) {
-                    // nunca silencioso: kof_spawn não tem rota no runtime JS
-                    if (currentDiagnostics != null) {
-                        currentDiagnostics.error("", 0, 0, 0,
-                                "spawn: not supported on the js target yet (CONC003)", "CONC003");
-                    }
-                    yield localIdx;
-                }
                 LambdaExpr le;
                 if (ss.expression() instanceof LambdaExpr le0) {
                     le = le0;

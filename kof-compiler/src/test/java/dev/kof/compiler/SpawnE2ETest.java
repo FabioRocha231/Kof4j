@@ -85,6 +85,43 @@ class SpawnE2ETest {
     }
 
     @Test
+    void jsSpawnStmtRunsSequentially(@TempDir Path tempDir) throws Exception {
+        // CONC003: JS é single-threaded — `spawn { }` degenera em execução
+        // imediata/sequencial do corpo (fire-and-forget sem thread). A ordem
+        // de output é preservada (bloco roda ANTES de "after").
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                main() {
+                    spawn {
+                        println("inside")
+                    }
+                    println("after")
+                }
+                """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JS);
+        assertTrue(result.success(), "JS spawn stmt deve compilar (sem CONC003): " + result.diagnostics().getDiagnostics());
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            int ec = dev.kof.runtime.KofJsRunner.run(findJsEntry(tempDir.resolve("out")), buf,
+                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+            String output = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "exit, output: " + output);
+            assertTrue(output.contains("inside"), "corpo rodou: " + output);
+            assertTrue(output.contains("after"), "main continuou: " + output);
+        }
+    }
+
+    private static Path findJsEntry(Path dir) throws java.io.IOException {
+        try (var s = Files.walk(dir)) {
+            var opt = s.filter(p -> p.getFileName().toString().equals("Default.mjs")).findFirst();
+            if (opt.isPresent()) return opt.get();
+        }
+        try (var s = Files.walk(dir)) {
+            return s.filter(p -> p.toString().endsWith(".mjs"))
+                    .findFirst().orElseThrow(() -> new java.io.IOException("no .mjs in " + dir));
+        }
+    }
+
+    @Test
     void nativeSpawnStmtRuns(@TempDir Path tempDir) throws IOException, InterruptedException {
         // CONC001 fechado: spawn stmt com pthread + join implícito no fim do main
         Path source = tempDir.resolve("Main.kf");
