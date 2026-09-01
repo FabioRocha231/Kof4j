@@ -1683,7 +1683,9 @@ public class NativeBackend implements Backend {
             sb.append("    movq %rax, %rdi\n");
         }
         sb.append("    call ").append(sanitizeName(clazz.name())).append("_main\n");
-        sb.append("    movq $60, %rax\n");
+        // M32.3: SYS_exit_group (231) — SYS_exit (60) só mata a thread
+        // chamadora; com threads do driver Vulkan o processo fica pendurado.
+        sb.append("    movq $231, %rax\n");
         sb.append("    xorq %rdi, %rdi\n");
         sb.append("    syscall\n");
     }
