@@ -60,14 +60,16 @@ Quando o conjunto é reutilizado, extraia para uma função que o devolve
 `NoClassDefFoundError: kof/Set`; `setOf` local é o caminho verificado):
 
 ```kof
-Set<String> queryOperations() {
-    return setOf("GetSession", "GetAccess", "GetDashboard", "GetToday")
-}
-
 Bool isQueryOperation(String operation) {
-    return queryOperations().contains(operation)
+    val known = setOf("GetSession", "GetAccess", "GetDashboard", "GetToday")
+    return known.contains(operation)
 }
 ```
+
+> **Caveat multi-target (verificado 01/09):** `setOf(...)` **local** funciona
+> nos 3 targets. `Set<T>` como **tipo declarado** (campo de classe ou retorno de
+> função) falha no **JVM** em runtime (`kof/Set` não é materializado) — só o
+> Native lida. Para pertencimento, sempre `val s = setOf(...)` dentro da função.
 
 ## Why it is bad
 
