@@ -19,11 +19,15 @@ Isso gera a classe no package `com.exemplo.users` (JVM: internal name `com/exemp
 ## Imports
 
 ```kf
-import java.util.List
-import java.util.Map
-import java.util.HashMap
 import a.b.C          // 0.2.0: resolve tanto o arquivo C.kf quanto o diretório a/b/
+import a.b.*          // diretório inteiro
+import kof.http       // stdlib
 ```
+
+> **`java.util.*` é interop, não o idiomático.** Para coleções Kof, `List<T>`/
+> `Map<K,V>`/`Set<T>` + `listOf`/`mapOf`/`setOf` vêm da stdlib **sem import**.
+> `import java.util.ArrayList` etc. só é necessário ao chamar APIs Java
+> diretamente (ver cap. 21).
 
 `kof build` agora compila `largeproj` corretamente:
 
