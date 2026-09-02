@@ -65,7 +65,8 @@ class JsBackend implements Backend {
         runtimeImports.clear();
         ioRuntimeImports.clear();
         JsIr.JsModule jsModule = lowerModule(module);
-        String code = new JsEmitter().emit(jsModule);
+        JsEmitter emitter = new JsEmitter();
+        String code = emitter.emit(jsModule);
         String fileName = moduleFileName(module.name());
         String sourceMapUrl = debugInfo ? "//# sourceMappingURL=" + fileName + ".map\n" : "";
         Path outFile = outputDir.resolve(fileName);
@@ -73,7 +74,7 @@ class JsBackend implements Backend {
         writeRuntime(outputDir);
         writeHtmlEntry(outputDir, module.name());
         if (debugInfo) {
-            writeSourceMap(module, outputDir, fileName);
+            writeSourceMap(module, outputDir, fileName, emitter.functionLines());
         }
     }
 
@@ -311,7 +312,8 @@ class JsBackend implements Backend {
         List<JsIr.JsStatement> body = parseMethodBody(ctx);
         insertFieldDefaults(clazz, body);
         insertSuperCall(clazz, body);
-        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false);
+        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false,
+                firstKofLine(method));
     }
 
     private JsIr.JsFunction lowerFunction(IRMethod method, IRClass clazz, boolean isStatic) {
@@ -325,7 +327,24 @@ class JsBackend implements Backend {
         if (isTopLevel) {
             name = jsFunctionName(name, method.parameterTypes().size());
         }
-        return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel);
+        return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel,
+                firstKofLine(method));
+    }
+
+    /**
+     * Linha Kof da primeira instrução do método (para o source map V3) — vem do
+     * {@code KofDebugInfo} que o driver já popula (mesma fonte das line tables
+     * do JVM). Sintéticos (toString/toJSON/decode) não têm fonte → null.
+     */
+    private static Integer firstKofLine(IRMethod method) {
+        if (method.debugInfo() == null || method.debugInfo().positions().isEmpty()) return null;
+        Integer min = null;
+        for (SourcePosition p : method.debugInfo().positions().values()) {
+            if (p != null && p.line() > 0) {
+                min = (min == null) ? p.line() : Math.min(min, p.line());
+            }
+        }
+        return min;
     }
 
     private List<JsIr.JsStatement> parseMethodBody(MethodCtx ctx) {
@@ -5589,10 +5608,63 @@ class JsBackend implements Backend {
         Files.writeString(outputDir.resolve("index.html"), html);
     }
 
-    private void writeSourceMap(IRModule module, Path outputDir, String fileName) throws IOException {
+    private void writeSourceMap(IRModule module, Path outputDir, String fileName,
+                                List<JsIr.JsFunctionLine> functionLines) throws IOException {
         String source = module.name().isEmpty() ? "Default.kf" : module.name() + ".kf";
+        String mappings = buildSourceMapMappings(functionLines);
         String map = "{\"version\":3,\"file\":\"" + fileName
-                + "\",\"sources\":[\"" + source + "\"],\"names\":[],\"mappings\":\"\"}";
+                + "\",\"sources\":[\"" + source + "\"],\"sourcesContent\":null"
+                + ",\"names\":[],\"mappings\":\"" + mappings + "\"}";
         Files.writeString(outputDir.resolve(fileName + ".map"), map);
+    }
+
+    /**
+     * Mappings VLQ (source map V3, formato padrão) — mapeamento de nível de
+     * linha: cada linha gerada com mapeamento tem um segmento
+     * {@code [genCol=0, srcIdx=0, srcLine(0-based), srcCol=0]}. As linhas geradas
+     * são entradas separadas por {@code ';'} (linhas sem mapeamento ficam
+     * vazias); {@code srcIdx}/{@code srcLine}/{@code srcCol} são deltas
+     * acumulativos entre segmentos; {@code genCol} zera a cada linha.
+     */
+    private static String buildSourceMapMappings(List<JsIr.JsFunctionLine> lines) {
+        if (lines == null || lines.isEmpty()) return "";
+        java.util.TreeMap<Integer, Integer> byGen = new java.util.TreeMap<>();
+        for (JsIr.JsFunctionLine fl : lines) {
+            if (fl.generatedLine() > 1 && fl.kofLine() > 0) {
+                byGen.putIfAbsent(fl.generatedLine(), fl.kofLine());
+            }
+        }
+        if (byGen.isEmpty()) return "";
+        int maxGen = byGen.lastKey();
+        java.util.List<String> entries = new java.util.ArrayList<>(maxGen);
+        int prevSrcLine0 = 0;   // linha 0-based acumulativa entre segmentos
+        for (int g = 1; g <= maxGen; g++) {
+            Integer src = byGen.get(g);
+            if (src == null) {
+                entries.add("");
+                continue;
+            }
+            int srcLine0 = src - 1;
+            entries.add(vlq(0) + vlq(0) + vlq(srcLine0 - prevSrcLine0) + vlq(0));
+            prevSrcLine0 = srcLine0;
+        }
+        return String.join(";", entries);
+    }
+
+    /** VLQ base64 do source map (RFC 3436 + tabela do source map V3). */
+    private static final String VLQ_B64 =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    private static String vlq(int value) {
+        int v = (value < 0) ? (((-value) << 1) | 1) : (value << 1);
+        StringBuilder out = new StringBuilder();
+        while (true) {
+            int digit = v & 31;
+            v >>= 5;
+            if (v > 0) digit |= 32;
+            out.append(VLQ_B64.charAt(digit));
+            if (v == 0) break;
+        }
+        return out.toString();
     }
 }

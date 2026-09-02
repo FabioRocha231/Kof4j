@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 786 testes 769 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 787 testes 770 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -468,7 +468,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (786 = 769 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (787 = 770 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -525,6 +525,7 @@ main() { /* ignorado pelo kof test */ }
 | RouterE2ETest | 4 | kof.ui Router Fase 7: go/replace/back/forward |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
 | KofJsBrowserE2ETest | 1 | **KofJS no browser real** (Chrome headless + HTTP + DOM) — kof.ui renderiza de verdade (pula se Chrome ausente) |
+| KofJsSourceMapTest | 1 | **source map V3 do KofJS** (mappings VLQ reais, nível de linha: função gerada → linha Kof via `KofDebugInfo`; antes era stub `"mappings":""`) |
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
 | KofMapSetTest | 4 | Map/Set 3 targets (asm próprio no Native) + `Set<T>`/`Map<K,V>` como campo/retorno de classe (JVM: `NoClassDefFoundError` → `HashSet`/`HashMap`; parse de método de classe c/ retorno genérico) |
@@ -540,11 +541,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **769** | |
+ | **Total kof-compiler** | **770** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **786** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **787** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -583,7 +584,7 @@ Princípio: o programador depura **código Kof**, nunca o artefato do backend.
 | 3 — `kof-debug` MVP (DAP over stdio + JDWP cru): launch, breakpoints por linha Kof, `stopped`, stack trace com funções/linhas Kof, continue, disconnect | ✅ |
 | 4 — Kof Editor (breakpoints, toolbar, variables) | planejado |
 | 5 — Native (DWARF) | planejado |
-| 6 — JS (source maps) | planejado |
+| 6 — JS (source maps) | ✅ parcial 01/09 (source map V3 em nível de linha: função gerada → linha Kof, `KofJsSourceMapTest`; colunas/expressões pendentes) |
 | 7 — Avançado: locals por frame, stepping, exception breakpoints, avaliação | planejado |
 
 `kof debug app.kf` já abre uma sessão DAP funcional no target JVM:
@@ -654,7 +655,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
  **P5 — DX:**
  15. ✅ `kof fmt` (parser real) + `kof init` + `REPL` — ✅ todos implementados (`Fmt.java`, `init` em `Main.java:694`, `repl` em `Main.java:839`); `fmt` idempotente
-  16. ✅ LSP hover/completion/**references**/**rename** + Debugger Native DWARF/JS source maps + VS Code extension — LSP hover/completion ✅ + `textDocument/references` + `textDocument/rename` (word-boundary, single-file; `LspServerTest` 4/4). **DWARF/JS source maps + VS Code** pendentes
+  16. ✅ LSP hover/completion/**references**/**rename** + Debugger Native DWARF/JS source maps + VS Code extension — LSP hover/completion ✅ + `textDocument/references` + `textDocument/rename` (word-boundary, single-file; `LspServerTest` 4/4). **JS source maps V3 (nível de linha) ✅ 01/09** (`KofJsSourceMapTest`); Native DWARF + VS Code pendentes
 
 ## Roadmap — Estado por Fase (31/08)
 
@@ -690,7 +691,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; binds `?` via substituição client-side; `nativeMysqlWireProtocol`); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — otimização de wire; tentativa de 01/09 revertida, ver "Bugs Restantes" #18)
 - `native.risc` (riscv64) + `native.arm` (aarch64) **em desenvolvimento** — plumbing pronto (enum + CLI + dispatch + cross-as/ld), codegen stub; **detalhe + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
-- Debugger — além do MVP JVM (DAP sobre stdio já no JVM; Native DWARF / JS source maps pendentes)
+- Debugger — MVP JVM (DAP sobre stdio) + **JS source maps V3 em nível de linha (01/09)**; Native DWARF pendente
 - KofJS — plataforma web no browser (ES Modules via GraalJS já em alpha)
 
 ### Planejado
