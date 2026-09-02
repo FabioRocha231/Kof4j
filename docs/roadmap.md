@@ -662,6 +662,21 @@ contratos estabilizarem.
 - messaging / RPC;
 - observability / deployment / cloud integrations.
 
+### Fase 9 — Refactor Interno: regra de 500 linhas por classe
+
+> **Registrado 02/09/2026.** Regra de arquitetura: nenhuma classe pode
+> ultrapassar **500 linhas**. Violações atuais obrigam refactor geral:
+
+- `NativeRuntime.java` (~17.300 — assembly embutido) → módulos por domínio
+  (`native/asm/*.s` ou classes `NativeRuntime*` por área);
+- `CompilerDriver.java` (~8.200) → extrair helpers por área;
+- `JsBackend.java` (~5.400) → separar emitter do runtime embutido;
+- `Parser.java` / `SemanticAnalyzer.java` / `JvmBackend.java` → sub-parsers.
+
+Critério de aceite: `cloc`/`wc -l` por classe — nenhuma acima de 500.
+Detalhes e tabela de tamanhos: `docs/complexity-audit.md` → "Regra de
+arquitetura — limite de 500 linhas por classe".
+
 ---
 
 ## 16. Não Fazer
