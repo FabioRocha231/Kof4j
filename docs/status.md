@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 787 testes 770 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 788 testes 771 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -468,7 +468,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (787 = 770 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (788 = 771 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -541,11 +541,12 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **770** | |
- | kof-script | 8 | KofScriptGlobals / repl / --watch |
- | kof-c-compiler | 5 | KofC C subset → ELF |
- | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **787** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
+  | **Total kof-compiler** | **771** | |
+  | kof-script | 8 | KofScriptGlobals / repl / --watch |
+  | kof-c-compiler | 5 | KofC C subset → ELF |
+  | kof-cli | 4 | LSP references + rename (mock) |
+  | **Total** | **788** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -583,7 +584,7 @@ Princípio: o programador depura **código Kof**, nunca o artefato do backend.
 | 2 — JVM: SourceFile + LineNumberTable + LocalVariableTable | ✅ |
 | 3 — `kof-debug` MVP (DAP over stdio + JDWP cru): launch, breakpoints por linha Kof, `stopped`, stack trace com funções/linhas Kof, continue, disconnect | ✅ |
 | 4 — Kof Editor (breakpoints, toolbar, variables) | planejado |
-| 5 — Native (DWARF) | planejado |
+| 5 — Native (DWARF) | ✅ parcial 02/09 (line info real: `.debug_line` via `.file`/`.loc` GAS — arquivo Kof + linha por instrução, `objdump --dwarf=decodedline`; `NativeDwarfLineInfoTest`. Variáveis locais/expressões e breakpoints DAP no nativo pendentes) |
 | 6 — JS (source maps) | ✅ parcial 01/09 (source map V3 em nível de linha: função gerada → linha Kof, `KofJsSourceMapTest`; colunas/expressões pendentes) |
 | 7 — Avançado: locals por frame, stepping, exception breakpoints, avaliação | planejado |
 
