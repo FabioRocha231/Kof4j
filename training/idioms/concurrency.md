@@ -82,7 +82,7 @@ plataforma — a decisão de como executar pertence ao runtime.
 
 - ~~Native: CONC001~~ — ✅ fechado 31/08 (pthread_create + trampoline + await/pthread_join + allocator thread-safe futex + join implícito);
 - JS: execução sequencial — `spawn`/`await` cobrem statement e expressão; async real de event-loop = CONC003 parcial;
-- filas produtor/consumidor: `kof.mq` (Native: MQ001);
+- filas produtor/consumidor: `kof.mq` — 3 targets (Native 01/09, MQ001 fechado; pub/sub + `mq.queue()`/`push`/`pop`);
 - lambdas com captura funcionam em spawn (BoxN).
 
 ## Anti-patterns relacionados

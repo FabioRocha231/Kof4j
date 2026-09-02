@@ -20,11 +20,13 @@ import java.util.List;
  * var job = mq.pop(q)     // null quando vazia
  * }</pre>
  *
- * <p>Internally every call maps to a static {@code kof_mq_*} function of the
- * generated {@code dev.kof.runtime.KofRuntime} class (JVM target): the event
- * bus is an in-memory pub/sub (handlers are Kof lambdas invoked with the
- * message); queues are bounded {@code ArrayBlockingQueue}s keyed by a handle.
- * Native and JS targets report {@code MQ001} at compile time.
+ * <p>Internally every call maps to a static {@code kof_mq_*} function: the
+ * JVM target resolves it against the generated {@code dev.kof.runtime.KofRuntime}
+ * class (in-memory pub/sub — handlers are Kof lambdas invoked with the
+ * message; queues are bounded {@code ArrayBlockingQueue}s keyed by a handle);
+ * the Native target emits an asm implementation in
+ * {@link NativeRuntime#emitMq(StringBuilder)} (in-process pub/sub + queues,
+ * 01/09, MQ001 fechado); the JS target reuses the in-process runtime.
  */
 final class KofMq {
 
@@ -50,9 +52,9 @@ final class KofMq {
 
     record MqCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.mq: JVM + JS; Native reporta MQ001. */
+    /** kof.mq: JVM + JS + Native (01/09, pub/sub + filas in-process). */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM || target == Target.JS;
+        return true;
     }
 
     static String gapCode() {

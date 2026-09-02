@@ -54,7 +54,7 @@ NOT APPLICABLE   → não se aplica à arquitetura Kof
 | WebFlux | WebFlux | `spawn` + virtual threads | PARTIAL | Modelo concorrente próprio (JVM/Native/JS) |
 | WebSocket | WebSocket | `kof.web` (`app.ws`) | **EXISTS (JVM)** | RFC 6455: handshake + frame codec com máscara (Native `WEB004`, JS `WEB003`) |
 | SSE | (Spring via `SseEmitter`) | `kof.web` (`app.sse`) | **EXISTS (JVM)** | `sse.send/event/close` (Native/JS `WEB003`) |
-| Messaging | spring-messaging | `kof.mq` (publish/subscribe/queue) | **EXISTS** | JVM+JS; Native `MQ001` |
+| Messaging | spring-messaging | `kof.mq` (publish/subscribe/queue) | **EXISTS** | JVM+Native+JS (MQ001 fechado 01/09) |
 | Transactions | spring-tx | `kof.db` (`transaction {}`) | **EXISTS** | JVM (JDBC commit/rollback) + Native (SQLite); JS `DB001` |
 | Scheduling | spring-context | `kof.scheduler` (`every/at/cancel`) + `spawn` | PARTIAL | JVM (ScheduledExecutor) + JS (setInterval); Native `SCHED001` |
 | Events | ApplicationEvent | `kof.mq` pub/sub | PARTIAL | filas pub/sub na stdlib |

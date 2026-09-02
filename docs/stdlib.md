@@ -61,7 +61,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.metrics` | ✅ | `kof bench`/`kof profile` (harness + baseline, 37 benchmarks, `benchmark.yml` threshold 1.20) |
 | `kof.rest` | ⏳ | planejado |
 | `kof.database` | ✅ | `kof.db` (JVM JDBC: H2/MySQL/MariaDB/PostgreSQL; Native SQLite via `.so` direto + MySQL wire protocol WIP — auth scramble SHA-1; JS `DB001`) + `kof.orm` (entity, create/save/saveAll/find/where/count/page/delete/deleteAll/migrate; **coluna tipada em where/count: literal não-campo → `ORM003` em compile-time**; JVM + MongoDB; Native/JS `ORM001`) — ver `docs/DATABASE_VISION.md` |
-| `kof.messaging` | ✅ | `kof.mq` publish/subscribe/queue — JVM+JS (Native `MQ001`) — `KofMqE2ETest` |
+| `kof.messaging` | ✅ | `kof.mq` publish/subscribe/queue — **3 targets** (JVM in-memory; Native asm 01/09; JS in-process) — `KofMqE2ETest` 4/4 |
 | `kof.validation` | ✅ | `validation.required/notBlank/minLength/maxLength/lengthBetween/isEmail/isUrl/matches/isInt/isLong/inRange/min/max` — JVM/Native/JS (`KofValidationTest` 3/3) |
 | `kof.logging` | ✅ | `log.debug/info/warn/error`, níveis, off — JVM+Native (asm, `kof_log_*`, 27/08) — `KofLogE2ETest` + `NativeLogE2ETest` |
 | `kof.observability` | ✅ | `observability.health/readiness/liveness`, `counter`/`increment`/`gauge`, `requestId()`/`correlationId()` — JVM/Native/JS (`KofObservabilityTest` 3/3) |
@@ -107,7 +107,7 @@ Resumo executivo (0.2.6-beta, 31/08):
 | test (`assert`, `kof test` `test "nome" {}`) | DONE (3 targets, 16/16 golden, 9/9 integration) |
 | observability | DONE (kof.observability: health/metrics/request IDs — JVM/Native/JS) |
 | `KofScript` / `KofCcompiler` / targets riscv64/aarch64 | DONE (KofScript 8, KofC 5, riscv64 toolchain estável) |
-| messaging (`kof.mq` JVM+JS), scheduling (`scheduler` JVM+JS), sessions, rate limiting, TLS, WebSocket/SSE (JVM), `kof.cache` (3 targets) | DONE (gaps reais: `MQ001`/`SCHED001` Native, `WEB002` TLS, `WEB003/004` WS/SSE) |
+| messaging (`kof.mq` 3 targets), scheduling (`scheduler` JVM+JS), sessions, rate limiting, TLS, WebSocket/SSE (JVM), `kof.cache` (3 targets) | DONE (gaps reais: `SCHED001` Native, `WEB002` TLS, `WEB003/004` WS/SSE) |
 | GC Native free-list | DONE (0.2.6-beta `kof_free_head` + `kof_gc_collect`) |
 
 # 6. PRÓXIMAS ETAPAS (residual pós-0.2.0)

@@ -40,9 +40,31 @@ class KofMqE2ETest {
         }
     }
 
+    private String runNative(Path tempDir, String kofSource, String expected) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, kofSource);
+        Path outDir = tempDir.resolve("out-native");
+        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native compilation should succeed: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default/Main");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected native output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
     @Test
     void publishDeliversToSubscribers(@TempDir Path tempDir) throws IOException {
-        runJvm(tempDir, """
+        String src = """
                 main() {
                     mq.subscribe("order.created", (msg) -> {
                         println("pedido: " + msg)
@@ -50,12 +72,15 @@ class KofMqE2ETest {
                     mq.publish("order.created", "12345")
                     mq.publish("order.created", "67890")
                 }
-                """, "pedido: 12345\npedido: 67890");
+                """;
+        runJvm(tempDir, src, "pedido: 12345\npedido: 67890");
+        // MQ001 (01/09): pub/sub no Native (in-process, invoke-com-arg).
+        runNative(tempDir, src, "pedido: 12345\npedido: 67890");
     }
 
     @Test
     void unsubscribeStopsDelivery(@TempDir Path tempDir) throws IOException {
-        runJvm(tempDir, """
+        String src = """
                 main() {
                     var h = (msg) -> {
                         println("got:" + msg)
@@ -65,12 +90,14 @@ class KofMqE2ETest {
                     mq.unsubscribe("topic", h)
                     mq.publish("topic", "two")
                 }
-                """, "got:one");
+                """;
+        runJvm(tempDir, src, "got:one");
+        runNative(tempDir, src, "got:one");
     }
 
     @Test
     void queuePushPopAndSize(@TempDir Path tempDir) throws IOException {
-        runJvm(tempDir, """
+        String src = """
                 main() {
                     var q = mq.queue()
                     mq.push(q, "job-1")
@@ -80,11 +107,13 @@ class KofMqE2ETest {
                     println(mq.pop(q))
                     println(mq.pop(q))
                 }
-                """, "2\njob-1\njob-2\nnull");
+                """;
+        runJvm(tempDir, src, "2\njob-1\njob-2\nnull");
+        runNative(tempDir, src, "2\njob-1\njob-2\nnull");
     }
 
     @Test
-    void jsSupportsMqAndNativeStillGaps(@TempDir Path tempDir) throws IOException {
+    void jsAndNativeSupportMq(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
@@ -94,7 +123,7 @@ class KofMqE2ETest {
                     mq.publish("topic", "hello")
                 }
                 """);
-        // JS should now succeed
+        // JS: suporta (setInterval-free, pub/sub in-process)
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
         assertTrue(jsResult.success(), "JS should support mq.publish: " + jsResult.diagnostics().getDiagnostics());
         try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
@@ -105,11 +134,11 @@ class KofMqE2ETest {
             assertEquals(0, ec, "JS exit code, output: " + out);
             assertEquals("got:hello", out, "JS output");
         }
-        // Native still gaps
+        // Native: MQ001 fechado (01/09) — compila e roda
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "Native should reject mq.publish");
-        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("MQ001")), "" + nativeResult.diagnostics().getDiagnostics());
+        assertTrue(nativeResult.success(),
+                "Native should now support mq.publish (MQ001 fechado): "
+                        + nativeResult.diagnostics().getDiagnostics());
     }
 
     private static Path findJsEntry(Path dir) throws IOException {
