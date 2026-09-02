@@ -267,7 +267,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | metrics (runtime API) | ✅ `kof.observability.counter/increment/gauge` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | health checks / readiness / liveness | ✅ `kof.observability.health/readiness/liveness` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | tracing / OpenTelemetry | `PLANNED` | — | — | — | — | — |
-| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | y (asm, UTC) | – LOG001 | KofLogE2ETest, NativeLogE2ETest | — |
+| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | y (asm, UTC) | y (console.*, 01/09) | KofLogE2ETest, NativeLogE2ETest | — |
 | correlation IDs / request IDs | ✅ `kof.observability.requestId/correlationId` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | request IDs | ✅ `kof.observability.requestId` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | profiling / runtime diagnostics | `PARTIAL` (`kof profile`) | y | y | – | — | performance.md |

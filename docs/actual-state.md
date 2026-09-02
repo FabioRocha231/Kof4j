@@ -160,10 +160,11 @@ log.info("servindo na porta 8080")               // debug/info/warn/error, níve
 
 `kof.config` (typed: str/int/long/bool, env/has; Native em asm próprio com
 precedência total — `KOF_CONFIG` > env `KOF_<KEY>` > profile > `kof.config`)
-e `kof.log` (níveis, off, warn→stderr; Native em asm próprio, UTC) — JVM/Native;
-JS reporta CONF001/LOG001. Logging estruturado em JSON com correlation ID no
+e `kof.log` (níveis, off, warn→stderr; Native em asm próprio, UTC; JS
+console.* com `KOF_LOG_LEVEL` — LOG001 fechado 01/09) — JVM/Native/JS.
+Logging estruturado em JSON com correlation ID no
 JVM. Testes: `KofConfigE2ETest` (8), `NativeConfigE2ETest` (8), `KofLogE2ETest`
-(10), `NativeLogE2ETest` (7).
+(11, incl. JS), `NativeLogE2ETest` (7).
 
 ### kof.db e kof.orm — persistência nativa
 

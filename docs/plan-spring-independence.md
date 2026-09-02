@@ -139,9 +139,9 @@ customizados (`status(201, body)`/`headerSet`), **WebSocket** `app.ws("/chat") {
 - [x] Métricas/health: `kof.observability` (health/readiness/liveness,
       counter/increment/gauge, requestId/correlationId — 3 targets).
 - [ ] Tracing hooks + endpoint `/metrics` (Prometheus) + `app.health` — planned.
-- [x] Testes (`KofLogE2ETest`, 10 E2E JVM + `NativeLogE2ETest` 7) + docs
+- [x] Testes (`KofLogE2ETest`, 11 E2E JVM+JS + `NativeLogE2ETest` 7) + docs
       `docs/stdlib-logging.md`.
-- [x] JS reporta `LOG001` em compile-time.
+- [x] JS via `console.*` com `KOF_LOG_LEVEL` — LOG001 fechado 01/09.
 
 ### Fase 5 — Database + Transactions ✅ (concluída em 23/08/2026)
 

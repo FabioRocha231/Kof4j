@@ -486,7 +486,7 @@ Estado atual: ✅ JVM funcional, Native funcional
 APIs nativas para log, metric, trace, health, audit. Integração com OpenTelemetry.
 
 Estado atual: 🟡 parcial — `kof.log` com níveis (JVM: JSON estruturado +
-correlation ID; Native: asm, UTC — LOG001 no JS) e `kof.observability`
+correlation ID; Native: asm, UTC — JS `console.*` 01/09) e `kof.observability`
 (health/readiness/liveness, counter/increment/gauge, requestId/
 correlationId — 3 targets). Faltam: histogram + endpoint `/metrics`
 (Prometheus), tracing/OpenTelemetry e `app.health("/health")`.

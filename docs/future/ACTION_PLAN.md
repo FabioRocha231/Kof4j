@@ -28,8 +28,12 @@ contida) · `H` alto (arquitetural) · `R` pesquisa.
 > §10 Estágio 1). Fechar antes de Tier 6+.
 
 1.1 Fechar gaps de paridade: `HTTP002` (http Native), `WEB001` (JS), `WEB002`
-(Native web), `CONC003` (async JS real), `LOG001`, `MQ001`, `SCHED001`/
+(Native web), `CONC003` (async JS real), `LOG001` (✅ 01/09 — JS `console.*` +
+`KOF_LOG_LEVEL`, `KofLogE2ETest` 11), `MQ001`, `SCHED001`/
 `TIME001`, `SECN002` (AES-GCM JS), `OBS002`, `MEDIA*` — **M**
+> Fix de infra 01/09: runtime JVM agora inclui o bloco Vulkan só quando o
+> programa usa `kof.vk` (capability/link-por-uso — R2); `--enable-preview`
+> (FFM preview API no JDK 21) só para programas Vulkan.
 1.2 GC mark-sweep automático no Native — **H**
 1.3 Query DSL tipada (`kof.db` nível 3: `User.query {}`) — **M**
 1.4 Package manager MVP (`kof init`, `kofdeps`, registry) + generalizar

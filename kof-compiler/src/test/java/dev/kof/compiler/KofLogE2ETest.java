@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -280,8 +281,8 @@ class KofLogE2ETest {
     }
 
     @Test
-    void nativeSupportedAndJsReportsLog001(@TempDir Path tempDir) throws IOException {
-        // Native agora tem kof.log próprio (asm); só o JS mantém o gap LOG001
+    void nativeAndJsSupported(@TempDir Path tempDir) throws IOException {
+        // Native tem kof.log próprio (asm); JS fechou LOG001 (01/09) via console.*
         Path source = tempDir.resolve("Log.kf");
         Files.writeString(source, """
                 main() {
@@ -293,8 +294,27 @@ class KofLogE2ETest {
                 "Native supports kof.log: " + nativeResult.diagnostics().getDiagnostics());
 
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js-out"), Target.JS);
-        assertFalse(jsResult.success());
-        assertTrue(jsResult.diagnostics().getDiagnostics().toString().contains("LOG001"),
-                jsResult.diagnostics().getDiagnostics().toString());
+        assertTrue(jsResult.success(),
+                "JS supports kof.log: " + jsResult.diagnostics().getDiagnostics());
+    }
+
+    @Test
+    void jsLogsToConsole(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Log.kf");
+        Files.writeString(source, """
+                main() {
+                    log.info("hello from js log")
+                }
+                """);
+        Path outDir = tempDir.resolve("js-out");
+        CompilationResult result = driver.compile(source, outDir, Target.JS);
+        assertTrue(result.success(), result.diagnostics().getDiagnostics().toString());
+        Path jsFile = outDir.resolve("Default.mjs");
+        assertTrue(Files.exists(jsFile), "Generated JS module should exist");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int exitCode = dev.kof.runtime.KofJsRunner.run(jsFile, out,
+                new java.io.ByteArrayInputStream(new byte[0]), out);
+        assertEquals(0, exitCode, "Exit code should be 0, output: '" + out + "'");
+        assertTrue(out.toString().contains("hello from js log"), out.toString());
     }
 }

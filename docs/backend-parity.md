@@ -51,7 +51,7 @@
 | `kof.cache` (get/set/ttl/delete/clear) | ✅ | ✅ 30/08 (fix clobber `%rax`/`%rdi`) | ✅ | `KofCacheE2ETest` 5/5 x3 targets |
 | `kof.mq` (pub/sub + queue) | ✅ | ✅ (01/09, pub/sub + filas in-process, asm) | ✅ | `KofMqE2ETest` 4/4 (JVM+Native+JS) |
 | `kof.config` (typed) | ✅ | ✅ (asm próprio) | CONF001 | precedência total Native (`KOF_CONFIG` > env > profile > `kof.config`); `NativeConfigE2ETest` 8 |
-| `kof.log` | ✅ (JSON + correlation ID) | ✅ (asm; UTC, sem JSON) | LOG001 | `KofLogE2ETest` 10 + `NativeLogE2ETest` 7 |
+| `kof.log` | ✅ (JSON + correlation ID) | ✅ (asm; UTC, sem JSON) | ✅ 01/09 (console.* + nível) | `KofLogE2ETest` 11 (incl. JS) + `NativeLogE2ETest` 7 |
 | `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM (asm no Native, JS puro no KofJS — `SECN002` fechado 01/09) |
 | `kof.db`/`kof.orm` | ✅ | ✅ (SQLite `.so` direto; **`transaction {}` commit/rollback 01/09** (EH asm + BEGIN/COMMIT/ROLLBACK); **MySQL wire protocol** — handshake+scramble+auth-switch+COM_QUERY+resultset 31/08)/ORM001 | DB001/ORM001 | **Query DSL `User.query(db){ where; orderBy; limit }` (nível 3) 01/09** — baixa p/ `db.query` (JVM E2E H2); MySQL native `nativeMysqlWireProtocol`; `nativeTransaction{Commits,RollsBack}`; prepared statements pendentes |
 | `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
@@ -85,7 +85,11 @@
 | MySQL nativo completo | — | WIP: **wire protocol ✅** (handshake + scramble SHA-1 + auth-switch `mysql_native_password` + COM_QUERY + resultset coldefs/rows/EOF + binds `?` client-side — `nativeMysqlWireProtocol`, 31/08); falta **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — tentativa de 01/09 revertida; binds `?` já cobrem o uso funcional) |
 | Native riscv64/aarch64 codegen | `NATIVE002` | **riscv64 parcial (02/09)**: `NativeRiscv64E2ETest 4/4` — `kof_main` + runtime em **asm puro** (raw syscalls, **sem C**; `as`+`ld` estático) + qemu: println String/Int, var, if/else, aritmética/comparações Int. aarch64 ainda stub; coleções/classe/`instanceof`/`switch` cross pendentes. **Ver `docs/native-multiarch.md`** (estado real + como finalizar) |
 
+<<<<<<< HEAD
 Fechados em 0.2.6-beta (01/09): `spawn` com lambda que captura variável externa (JVM+Native), `&&`/`||` booleanos com short-circuit no JS (bitwise intacto), `Channel<T>` como parâmetro de função (JVM/Native/JS), `println`/`print` antes de `spawn` e `spawn→await→spawn` no Native sem SIGSEGV (alinhamento de stack no `pthread_create`), KofJS `kof.ui` renderizando em browser real (Chrome headless E2E), LSP `references`+`rename`, tracing W3C `traceId`/`spanId` (3 targets), `moduleRoot` por LCA (P1-4), validação tipada de coluna no ORM (P3-10, `ORM003`), **AES-256-GCM no KofJS (`SECN002`)** — AES-GCM puro JS com paridade cross-target JVM↔JS e tamper detection por base64 estrito, **histogram/metrics no Native (`OBS002`)** — store asm + export Prometheus em paridade de conteúdo com o JVM, **`time.interval`/`time.cancel` no Native (`TIME001`)** — reusa o scheduler (SCHED001) via alias `jmp`, mutação por referência validada, **`transaction {}` no Native** — `kof_db_transaction` em asm: BEGIN/COMMIT/ROLLBACK via `kf_db_execute`, lambda via vtable (`rdi`=this p/ capturas) e ROLLBACK+re-throw no EH (`kf_throw_string` chega no handler com `%rdi` e a chain p/ o try externo), conexão default = última aberta — `nativeTransactionCommits`/`nativeTransactionRollsBackOnFailure`, **`kof.mq` no Native (`MQ001`)** — pub/sub + filas in-process em asm (store `.bss` + nodes 40B, invoke-com-arg, paridade de output com JVM/JS), **`Set<T>`/`Map<K,V>` como campo/retorno de classe no JVM** — mapper `Set`→`HashSet`/`Map`→`HashMap` + parse de método de classe c/ retorno genérico (`KofMapSetTest.setMapAsFieldAndReturn`, 3 targets), **source map V3 do KofJS** — mappings VLQ em nível de linha (função gerada → linha Kof; `KofJsSourceMapTest`).
+=======
+Fechados em 0.2.6-beta (01/09): `kof.log` no JS (LOG001 — console.* + `KOF_LOG_LEVEL`), bloco Vulkan no runtime JVM condicional ao uso de `kof.vk` (capability/link-por-uso, R2), `--enable-preview` só para programas Vulkan (FFM preview API no JDK 21).
+>>>>>>> 0d45a90 (feat(js): close LOG001 (kof.log on JS) + runtime fixes)
 Fechados em 0.2.6-beta (30-31/08): `spawn` Native (CONC001 — pthread), FP XMM (FLT001), JSON completo no Native (JSN001/JSN002/JSN003 — objetos/records + arrays incl. Double/Float), WebSocket/SSE JVM (RFC 6455), `kof.http` retry/circuit JVM+JS (30s window, fail-fast), `kof.cache` 3 targets (fix de clobber de registradores), SQLite nativo `.so` direto, UI Fase 7 Router (JS), `kof fmt` + `kof config gen`.
 Fechados em 0.2.6-beta (27/08): pattern matching `switch case String s` + record `Point(x,y)` (JVM/Native/JS), `String?` null safety básica, `kof.http` no JS via `Java HttpClient`, `List map/filter/reduce`, large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, free-list GC (`kof_free_head`), Windows SIGPIPE.
 Fechados em 0.1.0: Map/Set nativo (era COL001), await com unboxing, captura em lambdas (BoxN), resultado de tarefa (`await`).
@@ -106,7 +110,7 @@ emitido em compile-time. Domínios novos seguem o mesmo padrão dos existentes
 
 | Prefixo | Domínio | Exemplos |
 |---------|---------|----------|
-| `HTTP`/`WEB`/`DB`/`ORM`/`MQ`/`LOG`/`SCHED`/`TIME`/`CONC`/`SECN` | Sistemas atuais | `HTTP002`, `WEB001`, `DB001`, `MQ001`, `LOG001`, `SCHED001`, `CONC003`, `SECN002` |
+| `HTTP`/`WEB`/`DB`/`ORM`/`MQ`/`SCHED`/`TIME`/`CONC`/`SECN` | Sistemas atuais | `HTTP002`, `WEB001`, `DB001`, `MQ001`, `SCHED001`, `CONC003`, `SECN002` |
 | `AND` | Android | `AND001..004` |
 | `NATIVE` | codegen multiarch | `NATIVE002` |
 | `INFRA` | infraestrutura / IaC | `INFRA00x` |

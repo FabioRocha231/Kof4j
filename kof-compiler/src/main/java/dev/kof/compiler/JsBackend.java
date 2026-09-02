@@ -2252,6 +2252,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_time_")
                 || name.startsWith("kof_scheduler_")
                 || name.startsWith("kof_mq_")
+                || name.startsWith("kof_log_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
@@ -2744,6 +2745,20 @@ class JsBackend implements Backend {
             export function kofPrintln(x) {
                 console.log(x);
             }
+
+            let kofLogLevel = 1; // default "info": 0 debug, 1 info, 2 warn, 3 error, 4 off
+            try {
+                const lv = (process.env.KOF_LOG_LEVEL || "info").trim().toLowerCase();
+                if (lv === "debug") kofLogLevel = 0;
+                else if (lv === "warn") kofLogLevel = 2;
+                else if (lv === "error") kofLogLevel = 3;
+                else if (lv === "off") kofLogLevel = 4;
+            } catch (e) { /* non-node env: keep default */ }
+
+            export function kofLogDebug(msg) { if (kofLogLevel <= 0) console.log(String(msg)); }
+            export function kofLogInfo(msg)  { if (kofLogLevel <= 1) console.log(String(msg)); }
+            export function kofLogWarn(msg)  { if (kofLogLevel <= 2) (console.warn || console.log)(String(msg)); }
+            export function kofLogError(msg) { if (kofLogLevel <= 3) (console.error || console.log)(String(msg)); }
 
             export function kofUiWindowNew(title) {
                 if (typeof document === "undefined") {
