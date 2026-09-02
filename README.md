@@ -11,6 +11,18 @@ se pronuncia coffe
 
 ---
 
+## Mascote
+
+<p align="center">
+  <img src="kof_mascot.png" alt="Mascote da Kof — uma civetta" width="300">
+</p>
+
+O mascote da Kof é uma **civetta** — também conhecida como **gato do almiscar**,
+é um felino que come café. Nada mais adequado para uma linguagem que se pronuncia
+*coffe*.
+
+---
+
 ## Disclaimer
 
 A linguagem Kof não possui qualquer relação com o jogo The King of Fighters ou com sua franquia.
