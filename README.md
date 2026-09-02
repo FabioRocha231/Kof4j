@@ -11,6 +11,30 @@ se pronuncia coffe
 
 ---
 
+## Mascote
+
+<p align="center">
+  <img src="kof_mascot.png" alt="Mascote da Kof — uma civetta" width="300">
+</p>
+
+O mascote da Kof é uma **civetta** — também conhecida como **gato do almiscar**,
+é um felino que come café. Nada mais adequado para uma linguagem que se pronuncia
+*coffe*.
+
+---
+
+## Disclaimer
+
+A linguagem Kof não possui qualquer relação com o jogo The King of Fighters ou com sua franquia.
+
+O nome Kof surgiu como uma referência à palavra "coffee" escrita propositalmente de forma incorreta. A escolha foi feita justamente na tentativa de criar um nome curto, único e facilmente identificável para a linguagem.
+
+Koflang e Kof4J não compactuam com a associação do nome à franquia The King of Fighters. Qualquer semelhança ou associação feita nesse sentido é incidental e não representa a origem, o propósito ou a identidade dos projetos.
+
+Nosso objetivo sempre foi criar uma identidade própria para a linguagem e seus componentes.
+
+---
+
 > Algumas pessoas olham para um problema e escrevem uma biblioteca.
 >
 > Outras escrevem um framework.
