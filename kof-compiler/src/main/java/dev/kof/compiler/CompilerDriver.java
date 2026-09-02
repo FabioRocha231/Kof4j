@@ -844,6 +844,162 @@ private Target target = Target.JVM;
         }
     }
 
+    /**
+     * Query DSL tipada (ORM001): baixa {@code Entity.query(db) { where ...;
+     * orderBy ...; limit N }} para {@code kof_db_queryN(db, sql, binds...,
+     * className)} — o mesmo caminho de {@code db.query<T>}. A SQL é montada em
+     * compile-time a partir do schema da entidade (validação de coluna à la
+     * ORM003); os valores de {@code where} são binds preparados ({@code ?}).
+     */
+    private int lowerQueryDsl(QueryDslExpr q, List<KofOperation> ops, String owner,
+                              int localIdx, List<IRLocalVariable> locals) {
+        if (!KofDb.supportedOn(target)) {
+            if (currentDiagnostics != null) {
+                SourcePosition p = q.position();
+                currentDiagnostics.error(p != null ? p.file() : "",
+                        p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                        q.entityType() + ".query: not available on the " + target
+                                + " target yet (" + KofDb.gapCode() + ")",
+                        KofDb.gapCode());
+            }
+            return localIdx;
+        }
+        String entity = q.entityType();
+        List<EntityFieldNode> fields = entitySchemas.get(entity);
+        // identificadores sempre quotados (ANSI "ident") — nomes de entidade/
+        // coluna podem ser palavras reservadas do SQL (ex.: user)
+        String table = '"' + KofOrm.tableName(entity) + '"';
+
+        StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
+        List<ExpressionNode> binds = new ArrayList<>();
+        boolean firstWhere = true;
+        for (ExpressionNode w : q.whereClauses()) {
+            if (!(w instanceof BinaryExpr be)) {
+                if (currentDiagnostics != null) {
+                    SourcePosition p = q.position();
+                    currentDiagnostics.error(p != null ? p.file() : "",
+                            p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                            "query: where clause must be a comparison (a > b)", "ORM004");
+                }
+                return localIdx;
+            }
+            if (!(be.left() instanceof IdentifierExpr col)) {
+                if (currentDiagnostics != null) {
+                    SourcePosition p = q.position();
+                    currentDiagnostics.error(p != null ? p.file() : "",
+                            p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                            "query: where field must be a column name", "ORM004");
+                }
+                return localIdx;
+            }
+            if (fields == null) {
+                if (currentDiagnostics != null) {
+                    SourcePosition p = q.position();
+                    currentDiagnostics.error(p != null ? p.file() : "",
+                            p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                            "query: unknown entity '" + entity + "' (ORM002)", "ORM002");
+                }
+                return localIdx;
+            }
+            boolean valid = fields.stream().anyMatch(f -> f.name().equals(col.name()));
+            if (!valid) {
+                if (currentDiagnostics != null) {
+                    SourcePosition p = q.position();
+                    currentDiagnostics.error(p != null ? p.file() : "",
+                            p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                            "query: unknown column '" + col.name() + "' in entity '"
+                                    + entity + "' (ORM003)", "ORM003");
+                }
+                return localIdx;
+            }
+            String op = sqlOp(be.operator());
+            if (op == null) {
+                if (currentDiagnostics != null) {
+                    SourcePosition p = q.position();
+                    currentDiagnostics.error(p != null ? p.file() : "",
+                            p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                            "query: unsupported operator '" + be.operator() + "' (use =, ==, !=, <, <=, >, >=)",
+                            "ORM004");
+                }
+                return localIdx;
+            }
+            sql.append(firstWhere ? " WHERE " : " AND ")
+                    .append('"').append(col.name()).append('"')
+                    .append(' ').append(op).append(" ?");
+            firstWhere = false;
+            binds.add(be.right());
+        }
+        if (!q.orderByFields().isEmpty()) {
+            for (int i = 0; i < q.orderByFields().size(); i++) {
+                ExpressionNode f = q.orderByFields().get(i);
+                if (!(f instanceof IdentifierExpr idf)) {
+                    if (currentDiagnostics != null) {
+                        SourcePosition p = q.position();
+                        currentDiagnostics.error(p != null ? p.file() : "",
+                                p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                                "query: orderBy field must be a column name", "ORM004");
+                    }
+                    return localIdx;
+                }
+                sql.append(i == 0 ? " ORDER BY " : ", ")
+                        .append('"').append(idf.name()).append('"')
+                        .append(" ").append(q.orderByDirs().get(i).toUpperCase());
+            }
+        }
+        // limit: literal inline; não-literal vira bind
+        if (q.limit() != null) {
+            if (q.limit() instanceof LiteralExpr le && le.kind() == ConcreteLiteralKind.INT) {
+                sql.append(" LIMIT ").append(le.value());
+            } else {
+                sql.append(" LIMIT ?");
+                binds.add(q.limit());
+            }
+        }
+
+        int nBinds = binds.size();
+        if (nBinds > KofDb.MAX_BIND) {
+            if (currentDiagnostics != null) {
+                SourcePosition p = q.position();
+                currentDiagnostics.error(p != null ? p.file() : "",
+                        p != null ? p.line() : 0, p != null ? p.column() : 0, 0,
+                        "query: at most " + KofDb.MAX_BIND + " binds (where + limit)", "ORM004");
+            }
+            return localIdx;
+        }
+        String fn = "kof_db_query" + nBinds;
+        // 1) db id
+        localIdx = emitExpression(q.dbArg(), ops, owner, localIdx, locals);
+        // 2) sql
+        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, sql.toString()));
+        // 3) binds (primitivos boxed — o runtime espera Object)
+        for (ExpressionNode b : binds) {
+            Type bt = inferExprType(b, locals);
+            localIdx = emitExpression(b, ops, owner, localIdx, locals);
+            if (isPrimitiveType(bt)) boxPrimitive(ops, bt);
+        }
+        // 4) className
+        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, classNameFor(entity)));
+        // 5) a chamada
+        List<Type> params = new ArrayList<>();
+        params.add(BuiltinTypes.STRING); // id
+        params.add(BuiltinTypes.STRING); // sql
+        for (int i = 0; i < nBinds; i++) params.add(Type.UnknownType.UNKNOWN);
+        params.add(BuiltinTypes.STRING); // className
+        Type retType = new Type.ClassType("kof", "List", List.of(toType(entity)));
+        ops.add(new KofCall(new Type.ClassType("kof.db", "Db", List.of()),
+                fn, params, retType, KofCallKind.FUNCTION));
+        return localIdx;
+    }
+
+    /** Operador Kof → operador SQL ({@code ==} → {@code =}); null se não suportado. */
+    private static String sqlOp(String op) {
+        return switch (op) {
+            case "=", "==", "!=" -> op.equals("==") ? "=" : op;
+            case "<", "<=", ">", ">=" -> op;
+            default -> null;
+        };
+    }
+
     private String declPackage(AstNode decl, String fallback) {
         String pkg = declarationPackages.get(decl);
         return pkg != null ? pkg : fallback;
@@ -5205,6 +5361,9 @@ private Target target = Target.JVM;
                         Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 yield localIdx;
             }
+            case QueryDslExpr q -> {
+                yield lowerQueryDsl(q, ops, owner, localIdx, locals);
+            }
             default -> localIdx;
         };
     }
@@ -5221,6 +5380,7 @@ private Target target = Target.JVM;
                 case ConcreteLiteralKind.CHAR -> Type.PrimitiveType.CHAR;
                 case ConcreteLiteralKind.NULL -> Type.UnknownType.UNKNOWN;
             };
+            case QueryDslExpr q -> new Type.ClassType("kof", "List", List.of(toType(q.entityType())));
             case IdentifierExpr ie -> {
                 if (loweringMain && "args".equals(ie.name())) {
                     if (mainArgsListField) {

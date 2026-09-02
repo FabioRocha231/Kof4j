@@ -208,6 +208,95 @@ class KofOrmE2ETest {
     }
 
     @Test
+    void queryDslFiltersOrdersAndLimits(@TempDir Path tempDir) throws IOException {
+        // ORM001 (nível 3): Query DSL tipada — User.query(db) { where ...; orderBy ...; limit N }
+        // O compilador baixa para db.query (SQL preparada em compile-time; valores como binds).
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:dsl1;DB_CLOSE_DELAY=-1\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    orm.save(db, User(0, \"Ana\", \"ana@kof.dev\", 25))\n"
+                + "                    orm.save(db, User(0, \"Leo\", \"leo@kof.dev\", 40))\n"
+                + "                    var adultos = User.query(db) {\n"
+                + "                        where age > 25\n"
+                + "                        orderBy name asc\n"
+                + "                    }\n"
+                + "                    println(adultos.size)\n"
+                + "                    println(adultos.get(0).name)\n"
+                + "                    println(adultos.get(1).name)\n"
+                + "                    var limitado = User.query(db) {\n"
+                + "                        where age >= 25\n"
+                + "                        limit 1\n"
+                + "                    }\n"
+                + "                    println(limitado.size)\n"
+                + "                    db.close(db)\n"
+                + "                }\n");
+        runJvm(source, tempDir.resolve("out"), "2\nLeo\nMel\n1");
+    }
+
+    @Test
+    void queryDslMultipleWhereAnds(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:dsl2;DB_CLOSE_DELAY=-1\")\n"
+                + "                    orm.create<User>(db)\n"
+                + "                    orm.save(db, User(0, \"Mel\", \"mel@kof.dev\", 30))\n"
+                + "                    orm.save(db, User(0, \"Ana\", \"ana@kof.dev\", 25))\n"
+                + "                    orm.save(db, User(0, \"Leo\", \"leo@kof.dev\", 40))\n"
+                + "                    var faixa = User.query(db) {\n"
+                + "                        where age >= 25\n"
+                + "                        where age < 40\n"
+                + "                        orderBy name asc\n"
+                + "                    }\n"
+                + "                    println(faixa.size)\n"
+                + "                    println(faixa.get(0).name)\n"
+                + "                    println(faixa.get(1).name)\n"
+                + "                    db.close(db)\n"
+                + "                }\n");
+        // age >= 25 AND age < 40 → age 25 (Ana) + age 30 (Mel); idade 40 fora
+        runJvm(source, tempDir.resolve("out"), "2\nAna\nMel");
+    }
+
+    @Test
+    void queryDslUnknownColumnIsCompileError(@TempDir Path tempDir) throws IOException {
+        // ORM003: coluna inexistente no where do DSL → falha em compile-time
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:dsl3;DB_CLOSE_DELAY=-1\")\n"
+                + "                    var r = User.query(db) {\n"
+                + "                        where idade > 10\n"
+                + "                    }\n"
+                + "                }\n");
+        CompilationResult r = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(r.success(), "coluna inexistente no where do DSL deve falhar na compilação");
+        assertTrue(r.diagnostics().getDiagnostics().stream()
+                        .anyMatch(d -> "ORM003".equals(d.code())),
+                "gap ORM003 esperado: " + r.diagnostics().getDiagnostics());
+    }
+
+    @Test
+    void queryDslWhereMustBeComparisonIsCompileError(@TempDir Path tempDir) throws IOException {
+        // ORM004: where sem comparação (só uma coluna) → falha em compile-time
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, ENTITY_SRC + "\n"
+                + "                main() {\n"
+                + "                    var db = db.connect(\"jdbc:h2:mem:dsl4;DB_CLOSE_DELAY=-1\")\n"
+                + "                    var r = User.query(db) {\n"
+                + "                        where age\n"
+                + "                    }\n"
+                + "                }\n");
+        CompilationResult r = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(r.success(), "where sem comparação deve falhar na compilação");
+        assertTrue(r.diagnostics().getDiagnostics().stream()
+                        .anyMatch(d -> "ORM004".equals(d.code())),
+                "gap ORM004 esperado: " + r.diagnostics().getDiagnostics());
+    }
+
+    @Test
     void whereDynamicColumnIsAllowed(@TempDir Path tempDir) throws IOException {
         // P3-10: coluna dinâmica (não-literal) não é validada em compile-time
         Path source = tempDir.resolve("Main.kf");

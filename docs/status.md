@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 782 testes 765 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 786 testes 769 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -181,10 +181,10 @@ main() {
   container real (skip condicional; serviço Mongo no CI).
 - Migrations versionadas: tabela `kof_migrations`, cada migração roda uma vez.
 - Native/JS reportam `ORM001`.
-- Testes: `KofDbE2ETest` (9), `KofOrmE2ETest` (12+; MariaDB/PostgreSQL/MongoDB
-  com skip condicional quando o container não está no ar).
-- Docs: `docs/future/DATABASE_VISION.md` (níveis 0-2 e 4 implementados;
-  nível 3 = query DSL tipada é o próximo).
+ - Testes: `KofDbE2ETest` (9), `KofOrmE2ETest` (22; MariaDB/PostgreSQL/MongoDB
+   com skip condicional quando o container não está no ar).
+ - Docs: `docs/future/DATABASE_VISION.md` (níveis 0-4 implementados, incluindo
+   o nível 3 = query DSL tipada `User.query(db){ where; orderBy; limit }` — 01/09).
 
 ---
 
@@ -468,7 +468,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (782 = 765 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (786 = 769 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -478,7 +478,7 @@ main() { /* ignorado pelo kof test */ }
 | JvmE2ETest | 29 | execução real de bytecode JVM |
 | KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais |
 | OptimizerTest | 21 | passes de otimização da IR |
-| KofOrmE2ETest | 18 | kof.orm: entity, CRUD, where (+ORM003 validação de coluna tipada, P3-10), migrate, unique, MongoDB (3 skips condicional) |
+| KofOrmE2ETest | 22 | kof.orm: entity, CRUD, where (+ORM003 validação de coluna tipada, P3-10), **Query DSL `User.query(db){ where; orderBy; limit }` (nível 3, ORM001)**, migrate, unique, MongoDB (3 skips condicional) |
 | KofConcurrency2Test | 18 | spawn stmt/expr, selectAny, cancel/cancelled, done/poll, awaitTimeout, channel (+`Channel<T>` como parâmetro de função, 3 targets) |
 | IoE2ETest | 15 | kof.io multiplatform |
 | ComponentCoreE2ETest | 14 | kof.ui Component: view/onMount/onDispose |
@@ -540,11 +540,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **765** | |
+ | **Total kof-compiler** | **769** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **782** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **786** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -644,7 +644,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 9. ✅ `kof.http` `timeout`/`retry`/`circuit breaker` — ✅ JVM+JS (30/08; retry repete em exceção+HTTP 5xx, circuito abre após N falhas por 30s com fail-fast, `circuit(0)` recupera; `KofHttpResilienceE2ETest 3/3` JVM+JS) — falta `HTTP/2`
 
 **P3 — Data produção:**
-10. ✅ (parcial) Query DSL tipada — validação **tipada** de coluna em `orm.where<T>(db,"col",v)`/`where_op`/`count`: literal não-campo → `ORM003` em compile-time (JVM; colunas dinâmicas liberadas; `KofOrmE2ETest` 18). Restante: sintaxe lambda `User.query { where age > 18 }` (parser) — pendente
+10. ✅ Query DSL tipada (nível 3) — validação **tipada** de coluna em `orm.where<T>`/`where_op`/`count` (`ORM003`) + **sintaxe `User.query(db) { where age > 25; orderBy name desc; limit 10 }`** (01/09): o compilador baixa o bloco para `db.query<T>` (SQL preparada em compile-time a partir do schema da entidade, identificadores quotados, valores como binds `?`; múltiplos `where` → `AND`; colunas inexistentes → `ORM003`, where sem comparação / operador não suportado / >4 binds → `ORM004`; o lowering é agnóstico de target (emite o mesmo `db.queryN` no JVM e no Native) e o E2E roda no JVM (H2) — o workflow de entidade no Native segue `ORM001` — `KofOrmE2ETest` 22)
 11. Connection pooling + `kof.db`/`kof.orm` fora do JVM (JS via WASM, Native ORM sobre SQLite)
 12. ~~MySQL/MariaDB nativo (handshake+query)~~ — ✅ 31/08 (wire protocol: handshake+scramble+auth-switch+COM_QUERY+resultset); restam **prepared statements** + binds `?` no MySQL nativo
 
