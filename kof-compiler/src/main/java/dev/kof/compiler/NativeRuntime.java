@@ -727,7 +727,19 @@ final class NativeRuntime {
                 xorl %esi, %esi                 # attr = NULL
                 leaq kof_spawn_trampoline(%rip), %rdx
                 movq %rax, %rcx                 # arg = bloco
+                # pthread_create é um C call: a ABI SysV exige rsp ≡ 0 (mod 16)
+                # NO SITE DO CALL. O caller (main) pode chegar desalinhado quando
+                # um println/print precede o spawn (a convenção args-by-stack via
+                # push empilha um slot a mais) — sem alinhar, a glibc segfaulta
+                # em pthread_attr_copy escrevendo no frame. Alinha na hora,
+                # preservando r15 (callee-saved, livre aqui) e o frame de rsp:
+                pushq %r15                      # [A-8]=r15c ; rsp=A-8
+                movq %rsp, %r15                 # r15=A-8
+                andq $-16, %rsp                 # rsp=B (B%16==0)
                 call pthread_create
+                subq %rsp, %r15                 # r15=(A-8)-B = delta
+                addq %r15, %rsp                 # rsp=B+delta=A-8
+                popq %r15                       # r15c ; rsp=A (frame restaurado)
                 testl %eax, %eax
                 jz .Lkof_spawn_ok
                 # falha no pthread: roda inline (degradacao segura)

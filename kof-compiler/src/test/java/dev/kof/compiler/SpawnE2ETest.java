@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * spawn — concurrent tasks on the JVM backend (virtual threads) and
@@ -20,6 +21,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class SpawnE2ETest {
 
     private final CompilerDriver driver = new CompilerDriver();
+
+    private static boolean isLinux() {
+        return System.getProperty("os.name", "").toLowerCase().contains("linux");
+    }
 
     private String runJvm(Path source, Path outDir) throws IOException {
         CompilationResult result = driver.compile(source, outDir, Target.JVM);
@@ -170,6 +175,40 @@ class SpawnE2ETest {
         assertEquals(0, p.waitFor(), "exit code, output: " + output);
         assertTrue(output.contains("inside"), "task rodou: " + output);
         assertTrue(output.contains("after"), "main continuou: " + output);
+    }
+
+    @Test
+    void nativePrintBeforeSpawnDoesNotSegfault(@TempDir Path tempDir) throws IOException, InterruptedException {
+        // Regressão: um println/print ANTES do spawn desalinhava a stack
+        // (convenção args-by-stack via push empilha um slot a mais) e o
+        // pthread_create do kof_spawn segfaultava em pthread_attr_copy.
+        // Esperado: os 3 prints saem em qualquer ordem, sem SIGSEGV.
+        assumeTrue(isLinux(), "Native target runs on Linux");
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                void tarefa() {
+                    println("t")
+                }
+                main() {
+                    println("antes")
+                    spawn tarefa()
+                    spawn {
+                        println("bloco")
+                    }
+                    println("depois")
+                }
+                """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Native: " + result.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("out").resolve("Default/Main");
+        ProcessBuilder pb = new ProcessBuilder(bin.toString()).redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        int ec = p.waitFor();
+        assertEquals(0, ec, "exit code (SIGSEGV=139), output: " + output);
+        for (String e : List.of("antes", "depois", "t", "bloco")) {
+            assertTrue(output.contains(e), "falta " + e + " em: " + output);
+        }
     }
 
     @Test
