@@ -17,7 +17,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 * Distribuição oficial (JDK embutido, tooling, editor support)
 * CLI (18 comandos): build, run, serve, check, test, script, repl, c, fmt, config gen, bench, profile, inspect, debug, info, lsp, install, version — `kof script` (`let`→`KofScriptGlobals`, repl, --watch), `kof c` (C subset nativo-only), `kof fmt` (parser real, idempotente — 31/08)
 * kof.io: File, Path, Directory (JVM + Native) + kof.http (JVM+JS, HTTP002 Native)
-* 805 testes
+* 810 testes
 
 ## Para quem é
 
@@ -142,11 +142,11 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 37 | KofJS (caminho da Web) | ✅ (alpha) |
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM,
-Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 805 testes).
+Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 810 testes).
 
 **Testes:** 805
 
-**O que funciona hoje (0.2.6-beta — 02 set 2026 — 805 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
+**O que funciona hoje (0.2.6-beta — 02 set 2026 — 810 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
 - Frontend completo (lexer, parser, type system, semântica) — `intention->Kof->frontend->IR->backend->runtime`
 - Seis targets: JVM (ASM), Native x86-64 (free-list GC), Native.risc, Native.arm, KofJS (GraalJS) e KofC (C subset nativo-only)
 - Classes, records, herança, interfaces, virtual dispatch, generics (erasure), imports `a.b.C` fix (largeproj)

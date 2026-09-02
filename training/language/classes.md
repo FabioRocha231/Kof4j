@@ -1,6 +1,6 @@
 # Kof Classes
 
-**Version:** 0.2.6-beta (31 Aug 2026)
+**Version:** 0.2.6-beta (02 Sep 2026)
 
 ## Basic Class (idiomático: primary constructor)
 

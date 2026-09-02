@@ -1,6 +1,6 @@
 # Idioms — Collections
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (01 Sep 2026)
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (02 Sep 2026)
 
 ## What it is
 

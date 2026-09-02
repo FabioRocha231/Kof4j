@@ -1,6 +1,6 @@
 # Kof Target Reference
 
-**Version:** 0.2.6-beta (31 Aug 2026) — 810 tests
+**Version:** 0.2.6-beta (02 Sep 2026) — 810 tests
 
 ## JVM Target
 

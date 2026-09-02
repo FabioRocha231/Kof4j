@@ -3,7 +3,7 @@
 Fatos sobre a CLI oficial do Kof. Use para responder perguntas sobre
 comandos, tooling e editor support.
 
-**Version:** 0.2.6-beta (31 Aug 2026) — 810 tests
+**Version:** 0.2.6-beta (02 Sep 2026) — 810 tests
 
 ## Comandos oficiais (18)
 

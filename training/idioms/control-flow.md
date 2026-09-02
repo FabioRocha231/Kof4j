@@ -116,22 +116,28 @@ switch (obj) {
 - Substituir um `for-in` por `for` com índice manual quando a ordem não importa.
 - `switch` para dois casos — `if/else` é mais direto.
 
-## switch: `break` é obrigatório (decisão de design)
+## switch: `break` é opcional (sem fallthrough — verificado 02/09)
 
-Cada `case` termina com `break` explícito (sem fallthrough implícito). É
-cerimônia deliberada: evita o bug clássico de C/Java de esquecer o `break` e
-cair no próximo caso. Se a lógica é "todos terminam", o `break` é a forma
-correta; pattern matching (`case String s`) também exige.
+Cada `case` **termina sozinho**: o compilador salta para o fim do `switch` ao
+concluir o corpo — não há fallthrough (nem o bug clássico de C/Java de
+esquecer o `break`). O `break` é **aceito mas não obrigatório**; escrevê-lo é
+opcional (alguns preferem explícito por clareza).
 
 ```kof
 switch (x) {
     case 1:
-        println("um")
-        break
+        println("um")      // sem break — ok, não cai no próximo caso
+        break              // também ok (explícito)
+    case 2:
+        println("dois")
     default:
         println("outro")
 }
 ```
+
+> **Nota (02/09):** documentações anteriores afirmavam que `break` era
+> obrigatório — verificado no compilador que é **opcional** (auto-termina).
+> `break`/`continue` continuam obrigatórios em loops (para sair/pular).
 
 ## Anti-patterns relacionados
 

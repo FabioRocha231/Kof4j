@@ -1,6 +1,6 @@
 # Multiplatform — Uma Linguagem, Múltiplos Mundos
 
-> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — 02 set 2026 — 810 testes — targets jvm/native/native.risc/native.arm/js/kofc — `intention->Kof->frontend->IR->backend->runtime`**
 
 ## A visão
 

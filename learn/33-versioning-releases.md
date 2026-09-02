@@ -1,6 +1,6 @@
 # 33 — Versionamento e Releases
 
-> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes**
+> **Kof 0.2.6-beta — 02 set 2026 — 810 testes**
 
 ## Formato
 
@@ -23,7 +23,7 @@ O Kof saiu de `0.0.x` (Alpha) para `0.2.6-beta`. Cada release carrega o sufixo:
 0.2.6-beta
 ```
 
-Nada é chamado de stable. A evolução foi: Alpha → Beta (0.2.6-beta, 31 ago 2026, 736 testes) → Release Candidate → Stable. A cadeia `intention->Kof->frontend->IR->backend->runtime` vale para todos.
+Nada é chamado de stable. A evolução foi: Alpha → Beta (0.2.6-beta, 02 set 2026, 810 testes) → Release Candidate → Stable. A cadeia `intention->Kof->frontend->IR->backend->runtime` vale para todos.
 
 Targets oficiais em 0.2.0: `jvm`, `native` (x86-64), `native.risc` (riscv64), `native.arm` (aarch64), `js` (KofJS), `kofc` (KofC C subset nativo-only). Target separation já no `Target` enum.
 
@@ -44,7 +44,7 @@ Cada commit na `main` gera a próxima versão, em dois jobs
 (`.github/workflows/release.yml`):
 
 ```text
-commit → CI (736 testes)
+commit → CI (810 testes)
        → test-and-bump (Ubuntu)
             ├─ mvn clean package (gate) + golden + integração
             ├─ version bump (scripts/bump-version.sh)
