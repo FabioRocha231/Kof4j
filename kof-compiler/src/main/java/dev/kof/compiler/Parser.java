@@ -618,6 +618,15 @@ class Parser {
                 return new MethodDeclarationNode(m.position(), m.modifiers(), m.returnType(), m.name(),
                         m.parameters(), m.thrownExceptions(), m.body(), annos);
             }
+            // Retorno genérico em método de classe: `List<Int> all(` (mesma
+            // forma que o top-level — Parser.parseFunctionDeclaration).
+            if (isGenericReturnTypeAhead()) {
+                advance();
+                String returnType = nameTok.value() + consumeGenericTypeArgs();
+                MethodDeclarationNode m = parseMethod(mods, returnType);
+                return new MethodDeclarationNode(m.position(), m.modifiers(), m.returnType(), m.name(),
+                        m.parameters(), m.thrownExceptions(), m.body(), annos);
+            }
             FieldDeclarationNode f = (FieldDeclarationNode) parseField(mods);
             return new FieldDeclarationNode(f.position(), f.modifiers(), f.type(), f.name(),
                     f.initializer(), annos);

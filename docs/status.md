@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 781 testes 764 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 782 testes 765 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -77,6 +77,7 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 | **OBS002: histogram/metrics no Native** (01/09): implementado em asm — bugs encontrados no smoke-test: (1) appender caía no fluxo principal após o seed (sem `jmp`) → crash em `kf_memcpy` com len lixeira; (2) loop de export com comparação invertida (`cmpq %idx, %len; jge` saía imediatamente) → string vazia; (3) `kf_free` clobbrou `%rsi` (fragmento) no meio do append → `kf_string_concat` com ptr corrompido; (4) `call` com `rsp%16==8` (ABI SysV) | store `.Lkof_obs_histograms` (32B: name+sum+count) + `kof_observability_metrics` via `kof_string_concat`; appender com `pushq` de alinhamento + fragmento em `%r10` (scratch); `cmpq %len, %idx` corrigido — `KofObservabilityTest.observabilityNative` (paridade de conteúdo com o JVM, byte-identical no smoke-test) |
 | **`transaction {}` no Native dava link error** (`kf_db_transaction` não existia; o gate `KofDb.supportedOn` já liberava o Native) + rollback não desfazia (01/09): (1) a lambda não tinha `rdi` (=this, onde ficam as capturas) antes do `call *%rax` → lia `db` no campo errado; (2) `r12` (handle) clobberado pela lambda no caminho do throw; (3) KofStrings de BEGIN/COMMIT/ROLLBACK sem NUL final → `sqlite3_exec` lia "begin\x01" (erro ignorado) e o autocommit persistia os inserts | `kf_db_transaction` em asm: BEGIN via `kf_db_execute`, `movq %rbx, %rdi` (this) antes do invoke, COMMIT/ROLLBACK **re-carregam o handle do BSS** (`.Ldb_default_handle`, gravado no `connect`), re-throw via `kf_throw_string` (a chain aponta p/ o try externo); KofStrings com `.asciz` (NUL) — `KofDbE2ETest.nativeTransaction{Commits,RollsBackOnFailure}` |
 | **MQ001: kof.mq no Native** (01/09): pub/sub + filas in-process implementadas em asm | store `.bss` (topics/queues/seq) + nodes 40B `[next, KofString*, KofList*, _, _]`; `kof_mq_find_topic`/`_queue` (busca por `kof_string_equals`, callee-saved `rbx/r12` pois `kf_string_equals` clobbra `rdi/rsi/rax`); `subscribe`/`push` criam o node na 1ª vez e `kof_list_add`; `publish` itera os subs com `kof_list_get` + invoke-com-arg (`rdi`=fn, `rsi`=msg); `unsubscribe` compara por **identidade** do objeto fn; `queue()` = `"mq-<n>"` (seq); `pop` remove head (`null` se vazio) — `KofMqE2ETest` 4/4 (JVM+Native+JS, paridade de output) |
+| **`Set<T>`/`Map<K,V>` como campo/retorno de classe → `NoClassDefFoundError: kof/Set`** (01/09): dois bugs. (1) `JvmTypeMapper.classDescriptor`/`toInternalName` mapeavam só `List`→`ArrayList` e `Channel`→`LinkedBlockingQueue`, mas **não** `Set`/`Map` → o descriptor do campo/retorno ficava `Lkof/Set;`/`Lkof/Map;` (classe inexistente) enquanto o runtime real é `java.util.HashSet`/`HashMap`; (2) o parser de membro de classe (`Parser.parseClassMember`) só reconhecia `Type name(` para método (lookahead de 2 tokens), então retorno **genérico** `Set<Int> all(` caía no ramo de campo e quebrava em `(` (PARSE016/020-023/044) | `JvmTypeMapper`: `Set`→`Ljava/util/HashSet;`, `Map`→`Ljava/util/HashMap;` (desc + internalName); `Parser.parseClassMember`: novo ramo `isGenericReturnTypeAhead()` + `consumeGenericTypeArgs()` antes do fallback de campo (mesma forma do top-level `parseFunctionDeclaration`) — `KofMapSetTest.setMapAsFieldAndReturn` (3 targets, campo de classe + param de construtor + retorno de método) |
 
 ---
 
@@ -467,7 +468,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (781 = 764 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (782 = 765 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -526,7 +527,7 @@ main() { /* ignorado pelo kof test */ }
 | KofJsBrowserE2ETest | 1 | **KofJS no browser real** (Chrome headless + HTTP + DOM) — kof.ui renderiza de verdade (pula se Chrome ausente) |
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
-| KofMapSetTest | 3 | Map/Set 3 targets (asm próprio no Native) |
+| KofMapSetTest | 4 | Map/Set 3 targets (asm próprio no Native) + `Set<T>`/`Map<K,V>` como campo/retorno de classe (JVM: `NoClassDefFoundError` → `HashSet`/`HashMap`; parse de método de classe c/ retorno genérico) |
 | KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
 | KofValidationTest | 3 | 13 predicados de validação (3 targets) |
 | TetrisEasterEggTest | 3 | registro easter egg oculto |
@@ -539,11 +540,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **764** | |
+ | **Total kof-compiler** | **765** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **781** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **782** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da

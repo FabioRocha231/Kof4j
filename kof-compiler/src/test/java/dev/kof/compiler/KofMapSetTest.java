@@ -45,6 +45,42 @@ class KofMapSetTest {
     }
 
     @Test
+    void setMapAsFieldAndReturn(@TempDir Path tmp) throws Exception {
+        // REGRESSION (JVM): Set<T>/Map<K,V> como campo de classe, param de
+        // construtor e retorno de método — o JvmTypeMapper mapeava Set/Map para
+        // kof.Set/kof.Map (NoClassDefFoundError: kof/Set); agora
+        // java.util.HashSet/HashMap (runtime real). Cobre também o parse de
+        // método de classe com retorno genérico (`Set<Int> all(`).
+        String src = """
+            class Bag(Set<Int> tags) {
+                Set<Int> all() {
+                    return tags
+                }
+            }
+            Set<Int> evens() {
+                return setOf(2, 4, 6)
+            }
+            Map<String,Int> counts() {
+                var m = mapOf()
+                m.put("a", 1)
+                return m
+            }
+            main() {
+                var b = Bag(setOf(1, 2, 3))
+                println(b.all().size())
+                println(b.all().contains(2))
+                println(evens().size())
+                println(counts().size())
+                println(counts().get("a"))
+            }
+            """;
+        String expected = "3\ntrue\n3\n1\n1";
+        runJvm(tmp, src, expected);
+        runNative(tmp, src, expected);
+        runJs(tmp, src, expected);
+    }
+
+    @Test
     void mapSetJs(@TempDir Path tmp) throws Exception {
         runJs(tmp, """
             main() {
