@@ -23,6 +23,8 @@ final class JvmWebRuntime {
                 private static final ThreadLocal<Integer> KOF_WEB_STATUS = new ThreadLocal<>();
                 private static final ThreadLocal<java.util.Map<String, String>> KOF_WEB_HEADERS =
                         ThreadLocal.withInitial(java.util.HashMap::new);
+                private static final ThreadLocal<WsConnection> KOF_WS_CONNECTION = new ThreadLocal<>();
+                private static final ThreadLocal<String> KOF_WS_MESSAGE = new ThreadLocal<>();
 
                 public static String kof_web_status(int code, String body) {
                     KOF_WEB_STATUS.set(code);
@@ -32,6 +34,15 @@ final class JvmWebRuntime {
                 public static String kof_web_header_set(String name, String value) {
                     KOF_WEB_HEADERS.get().put(name, value);
                     return value;
+                }
+
+                public static String kof_web_ws_message() {
+                    return KOF_WS_MESSAGE.get();
+                }
+
+                public static void kof_web_ws_send(String text) {
+                    WsConnection ws = KOF_WS_CONNECTION.get();
+                    if (ws != null) ws.sendText(text);
                 }
 
                 private static String kof_web_status_text(int code) {
@@ -159,6 +170,13 @@ final class JvmWebRuntime {
                     }
 
                     public void event(String name, String data) {
+                        // Sanitize event name. The wire format forbids CR/LF in
+                        // any field value; otherwise the client would parse a
+                        // synthetic header out of the injected bytes.
+                        if (name.indexOf((int) '\\r') >= 0 || name.indexOf((int) '\\n') >= 0) {
+                            throw new IllegalArgumentException(
+                                    "event name must not contain CR or LF");
+                        }
                         writeFrame("event: " + name + "\\n");
                         writeData(data);
                     }
@@ -181,7 +199,11 @@ final class JvmWebRuntime {
                     }
 
                     private void writeData(String data) {
-                        for (String line : data.split("\\n", -1)) {
+                        // SSE spec: split on ANY line break (CRLF, LF, or lone CR)
+                        // so the output is normalized regardless of which OS
+                        // produced the data. Without this, CRLF payloads would
+                        // leak the trailing CR onto the wire.
+                        for (String line : data.split("\\\\R", -1)) {
                             writeFrame("data: " + line + "\\n");
                         }
                         writeFrame("\\n");
@@ -292,6 +314,8 @@ final class JvmWebRuntime {
                     public static final int CLOSE_TOO_BIG = 1009;
                     public static final int CLOSE_PROTOCOL_ERROR = 1002;
                     public static final int CLOSE_UNSUPPORTED = 1003;
+                    public static final int CLOSE_INVALID_PAYLOAD = 1007;
+                    public static final int CLOSE_INTERNAL_ERROR = 1011;
                 }
 
                 /** Interface para o KofRuntime acessar o envio WS sem ciclo de import. */
@@ -328,14 +352,32 @@ final class JvmWebRuntime {
                         send(WsFrame.encode(0xA, payload, true));
                     }
                     public void close(int code, String reason) {
-                        byte[] body = new byte[2 + (reason == null ? 0 : reason.length())];
+                        byte[] rb = reason == null
+                                ? new byte[0]
+                                : reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        // RFC 6455 §5.5: control payload <= 125; CLOSE has 2 bytes
+                        // for the status code, so the reason UTF-8 must fit in
+                        // 123 bytes to stay within the control frame budget.
+                        if (rb.length > 123) {
+                            throw new IllegalArgumentException(
+                                    "close reason too large: " + rb.length + " bytes (max 123)");
+                        }
+                        byte[] body = new byte[2 + rb.length];
                         body[0] = (byte) ((code >> 8) & 0xFF);
                         body[1] = (byte) (code & 0xFF);
-                        if (reason != null) {
-                            byte[] rb = reason.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                            System.arraycopy(rb, 0, body, 2, rb.length);
-                        }
+                        System.arraycopy(rb, 0, body, 2, rb.length);
                         send(WsFrame.encode(0x8, body, true));
+                    }
+
+                    // RFC 6455 §7.4.1: which close codes may appear on the wire.
+                    // 1004/1005/1006/1015 are reserved and MUST NOT appear in a
+                    // close frame payload; 0 and codes > 4999 are invalid.
+                    static boolean isValidCloseCode(int code) {
+                        if (code < 1000 || code > 4999) return false;
+                        if (code == 1004 || code == 1005 || code == 1006 || code == 1015) return false;
+                        // 1016-2999 reserved for future use by RFC.
+                        if (code >= 1016 && code <= 2999) return false;
+                        return true;
                     }
 
                     private void send(byte[] frame) {
@@ -356,7 +398,6 @@ final class JvmWebRuntime {
                     final java.util.List<WebRoute> routes = new java.util.ArrayList<>();
                     final java.util.List<Object> middlewares = new java.util.ArrayList<>();
                     final java.util.List<StaticDir> staticDirs = new java.util.ArrayList<>();
-                    final java.util.List<String> healthPaths = new java.util.ArrayList<>();
                     volatile java.net.ServerSocket serverSocket;
                     volatile boolean running;
 

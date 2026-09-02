@@ -949,22 +949,7 @@ static boolean hasRuntimeFn(String methodName) {
                 }
 
                 // ── WS/SSE context (kof_web_ws_message/wsSend/sse) ──
-                private static final ThreadLocal<Object> KOF_WS_CONNECTION = new ThreadLocal<>();
-                private static final ThreadLocal<String> KOF_WS_MESSAGE = new ThreadLocal<>();
                 private static final ThreadLocal<Object> KOF_SSE_SENDER = new ThreadLocal<>();
-
-                /** wsMessage() — mensagem TEXT corrente da conexão WebSocket. */
-                public static String kof_web_ws_message() {
-                    return KOF_WS_MESSAGE.get();
-                }
-
-                /** wsSend(text) — envia TEXT pela conexão WebSocket corrente. */
-                public static void kof_web_ws_send(String text) {
-                    Object conn = KOF_WS_CONNECTION.get();
-                    if (conn instanceof WsSender ws) {
-                        ws.sendText(text);
-                    }
-                }
 
                 /** sse(text) — envia um evento SSE pela conexão corrente. */
                 public static String kof_web_sse_send(String text) {
