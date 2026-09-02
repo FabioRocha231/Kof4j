@@ -853,6 +853,7 @@ private Target target = Target.JVM;
     private final java.util.Map<String, String> lambdaEnclosingOwner = new java.util.LinkedHashMap<>();
     /** Variáveis externas ESCRITAS dentro de lambdas do método sendo lowered → box mutável. */
     private java.util.Set<String> mutatedCapturedNames = new java.util.HashSet<>();
+    private final java.util.Set<String> lambdaCapturedNames = new java.util.HashSet<>();
     /** Nomes das classes BoxN sintéticas (captura mutável) — acesso via campo `value`. */
     private final java.util.Set<String> boxClassNames = new java.util.HashSet<>();
     private final java.util.Map<String, Type> boxValueTypes = new java.util.HashMap<>();
@@ -1267,9 +1268,212 @@ private Target target = Target.JVM;
         // locals (lowered at their own site); do not descend.
     }
 
-    private void collectMutatedCaptures(List<StatementNode> body) {
+    private void collectMutatedCaptures(List<StatementNode> body, List<IRLocalVariable> params) {
+        // Capturas REAIS: uma variável só precisa de box se for capturada por
+        // uma lambda (coletCaptures resolve contra os nomes do escopo da função)
+        // E mutada em qualquer lugar. Antes só mutações DENTRO da lambda eram
+        // detectadas, então `var f = (x) -> x + offset; offset = 20` capturava
+        // offset por valor (resultado desatualizado). Ver learn/16-lambdas.md.
+        java.util.Set<String> declared = new java.util.HashSet<>();
+        for (IRLocalVariable p : params) declared.add(p.name());
+        for (StatementNode stmt : body) collectDeclaredVarNamesStmt(stmt, declared);
+        java.util.List<IRLocalVariable> outerLocals = new ArrayList<>(params);
+        for (String n : declared) {
+            if (findLocalVar(n, outerLocals) == null) {
+                outerLocals.add(new IRLocalVariable(outerLocals.size(), n, Type.UnknownType.UNKNOWN));
+            }
+        }
+        lambdaCapturedNames.clear();
+        java.util.List<LambdaExpr> lambdas = new ArrayList<>();
+        for (StatementNode stmt : body) collectLambdasStmt(stmt, lambdas);
+        for (LambdaExpr le : lambdas) {
+            for (IRLocalVariable c : collectCaptures(le, outerLocals)) {
+                lambdaCapturedNames.add(c.name());
+            }
+        }
         for (StatementNode stmt : body) {
             collectMutatedCapturesStmt(stmt, new java.util.HashSet<>(), false);
+        }
+    }
+
+    /** Nomes de var-decl no escopo da função (não desce em lambdas). */
+    private void collectDeclaredVarNamesStmt(StatementNode stmt, java.util.Set<String> out) {
+        if (stmt instanceof ExpressionStmt es) {
+            collectDeclaredVarNamesExpr(es.expression());
+        } else if (stmt instanceof ReturnStmt rs) {
+            if (rs.value() != null) collectDeclaredVarNamesExpr(rs.value());
+        } else if (stmt instanceof BlockStmt b) {
+            for (StatementNode s : b.statements()) collectDeclaredVarNamesStmt(s, out);
+        } else if (stmt instanceof IfStmt i) {
+            collectDeclaredVarNamesExpr(i.condition());
+            collectDeclaredVarNamesStmt(i.thenBranch(), out);
+            if (i.elseBranch() != null) collectDeclaredVarNamesStmt(i.elseBranch(), out);
+        } else if (stmt instanceof WhileStmt w) {
+            collectDeclaredVarNamesExpr(w.condition());
+            collectDeclaredVarNamesStmt(w.body(), out);
+        } else if (stmt instanceof DoWhileStmt dw) {
+            collectDeclaredVarNamesStmt(dw.body(), out);
+            collectDeclaredVarNamesExpr(dw.condition());
+        } else if (stmt instanceof ForStmt f) {
+            if (f.init() instanceof VarDeclStmt vds) {
+                out.add(vds.name());
+                if (vds.initializer() != null) collectDeclaredVarNamesExpr(vds.initializer());
+            } else if (f.init() instanceof ExpressionStmt ies) {
+                collectDeclaredVarNamesExpr(ies.expression());
+            }
+            if (f.condition() != null) collectDeclaredVarNamesExpr(f.condition());
+            if (f.update() != null) collectDeclaredVarNamesExpr(f.update());
+            collectDeclaredVarNamesStmt(f.body(), out);
+        } else if (stmt instanceof ForInStmt fi) {
+            collectDeclaredVarNamesExpr(fi.collection());
+            collectDeclaredVarNamesStmt(fi.body(), out);
+        } else if (stmt instanceof VarDeclStmt vds) {
+            out.add(vds.name());
+            if (vds.initializer() != null) collectDeclaredVarNamesExpr(vds.initializer());
+        } else if (stmt instanceof ThrowStmt ts) {
+            collectDeclaredVarNamesExpr(ts.expression());
+        } else if (stmt instanceof AssertStmt as) {
+            collectDeclaredVarNamesExpr(as.condition());
+        } else if (stmt instanceof SpawnStmt ss) {
+            collectDeclaredVarNamesExpr(ss.expression());
+        } else if (stmt instanceof SwitchStmt sw) {
+            collectDeclaredVarNamesExpr(sw.expression());
+            for (SwitchCase c : sw.cases()) {
+                if (c.value() != null) collectDeclaredVarNamesExpr(c.value());
+                for (StatementNode s : c.body()) collectDeclaredVarNamesStmt(s, out);
+            }
+            if (sw.defaultBody() != null) {
+                for (StatementNode s : sw.defaultBody()) collectDeclaredVarNamesStmt(s, out);
+            }
+        } else if (stmt instanceof TryStmt ts) {
+            for (StatementNode s : ts.tryBody()) collectDeclaredVarNamesStmt(s, out);
+            for (CatchClause cc : ts.catchClauses()) {
+                for (StatementNode s : cc.body()) collectDeclaredVarNamesStmt(s, out);
+            }
+            if (ts.finallyBody() != null) {
+                for (StatementNode s : ts.finallyBody()) collectDeclaredVarNamesStmt(s, out);
+            }
+        }
+    }
+
+    private void collectDeclaredVarNamesExpr(ExpressionNode expr) {
+        if (expr instanceof LambdaExpr) {
+            return; // declarações internas da lambda pertencem a ela
+        }
+        if (expr instanceof BinaryExpr be) {
+            collectDeclaredVarNamesExpr(be.left());
+            collectDeclaredVarNamesExpr(be.right());
+        } else if (expr instanceof UnaryExpr ue) {
+            collectDeclaredVarNamesExpr(ue.operand());
+        } else if (expr instanceof MethodCallExpr mc) {
+            if (mc.receiver() != null) collectDeclaredVarNamesExpr(mc.receiver());
+            for (ExpressionNode a : mc.arguments()) collectDeclaredVarNamesExpr(a);
+        } else if (expr instanceof FieldAccessExpr fa) {
+            collectDeclaredVarNamesExpr(fa.receiver());
+        } else if (expr instanceof AssignmentExpr ae) {
+            collectDeclaredVarNamesExpr(ae.target());
+            collectDeclaredVarNamesExpr(ae.value());
+        } else if (expr instanceof IfExpr iex) {
+            collectDeclaredVarNamesExpr(iex.condition());
+            collectDeclaredVarNamesExpr(iex.thenExpr());
+            collectDeclaredVarNamesExpr(iex.elseExpr());
+        } else if (expr instanceof ArrayAccessExpr aa) {
+            collectDeclaredVarNamesExpr(aa.receiver());
+            collectDeclaredVarNamesExpr(aa.index());
+        } else if (expr instanceof NewExpr ne) {
+            for (ExpressionNode a : ne.arguments()) collectDeclaredVarNamesExpr(a);
+        } else if (expr instanceof NewArrayExpr nae) {
+            collectDeclaredVarNamesExpr(nae.size());
+        }
+    }
+
+    /** Coleta todas as lambdas do corpo (para computar capturas reais). */
+    private void collectLambdasStmt(StatementNode stmt, java.util.List<LambdaExpr> out) {
+        if (stmt instanceof ExpressionStmt es) {
+            collectLambdasExpr(es.expression(), out);
+        } else if (stmt instanceof ReturnStmt rs) {
+            if (rs.value() != null) collectLambdasExpr(rs.value(), out);
+        } else if (stmt instanceof BlockStmt b) {
+            for (StatementNode s : b.statements()) collectLambdasStmt(s, out);
+        } else if (stmt instanceof IfStmt i) {
+            collectLambdasExpr(i.condition(), out);
+            collectLambdasStmt(i.thenBranch(), out);
+            if (i.elseBranch() != null) collectLambdasStmt(i.elseBranch(), out);
+        } else if (stmt instanceof WhileStmt w) {
+            collectLambdasExpr(w.condition(), out);
+            collectLambdasStmt(w.body(), out);
+        } else if (stmt instanceof DoWhileStmt dw) {
+            collectLambdasStmt(dw.body(), out);
+            collectLambdasExpr(dw.condition(), out);
+        } else if (stmt instanceof ForStmt f) {
+            if (f.init() instanceof VarDeclStmt vds) {
+                if (vds.initializer() != null) collectLambdasExpr(vds.initializer(), out);
+            } else if (f.init() instanceof ExpressionStmt ies) {
+                collectLambdasExpr(ies.expression(), out);
+            }
+            if (f.condition() != null) collectLambdasExpr(f.condition(), out);
+            if (f.update() != null) collectLambdasExpr(f.update(), out);
+            collectLambdasStmt(f.body(), out);
+        } else if (stmt instanceof ForInStmt fi) {
+            collectLambdasExpr(fi.collection(), out);
+            collectLambdasStmt(fi.body(), out);
+        } else if (stmt instanceof VarDeclStmt vds) {
+            if (vds.initializer() != null) collectLambdasExpr(vds.initializer(), out);
+        } else if (stmt instanceof ThrowStmt ts) {
+            collectLambdasExpr(ts.expression(), out);
+        } else if (stmt instanceof AssertStmt as) {
+            collectLambdasExpr(as.condition(), out);
+        } else if (stmt instanceof SpawnStmt ss) {
+            collectLambdasExpr(ss.expression(), out);
+        } else if (stmt instanceof SwitchStmt sw) {
+            collectLambdasExpr(sw.expression(), out);
+            for (SwitchCase c : sw.cases()) {
+                if (c.value() != null) collectLambdasExpr(c.value(), out);
+                for (StatementNode s : c.body()) collectLambdasStmt(s, out);
+            }
+            if (sw.defaultBody() != null) {
+                for (StatementNode s : sw.defaultBody()) collectLambdasStmt(s, out);
+            }
+        } else if (stmt instanceof TryStmt ts) {
+            for (StatementNode s : ts.tryBody()) collectLambdasStmt(s, out);
+            for (CatchClause cc : ts.catchClauses()) {
+                for (StatementNode s : cc.body()) collectLambdasStmt(s, out);
+            }
+            if (ts.finallyBody() != null) {
+                for (StatementNode s : ts.finallyBody()) collectLambdasStmt(s, out);
+            }
+        }
+    }
+
+    private void collectLambdasExpr(ExpressionNode expr, java.util.List<LambdaExpr> out) {
+        if (expr instanceof LambdaExpr le) {
+            out.add(le);
+            return;
+        }
+        if (expr instanceof BinaryExpr be) {
+            collectLambdasExpr(be.left(), out);
+            collectLambdasExpr(be.right(), out);
+        } else if (expr instanceof UnaryExpr ue) {
+            collectLambdasExpr(ue.operand(), out);
+        } else if (expr instanceof MethodCallExpr mc) {
+            if (mc.receiver() != null) collectLambdasExpr(mc.receiver(), out);
+            for (ExpressionNode a : mc.arguments()) collectLambdasExpr(a, out);
+        } else if (expr instanceof FieldAccessExpr fa) {
+            collectLambdasExpr(fa.receiver(), out);
+        } else if (expr instanceof AssignmentExpr ae) {
+            collectLambdasExpr(ae.target(), out);
+            collectLambdasExpr(ae.value(), out);
+        } else if (expr instanceof IfExpr iex) {
+            collectLambdasExpr(iex.condition(), out);
+            collectLambdasExpr(iex.thenExpr(), out);
+            collectLambdasExpr(iex.elseExpr(), out);
+        } else if (expr instanceof ArrayAccessExpr aa) {
+            collectLambdasExpr(aa.receiver(), out);
+            collectLambdasExpr(aa.index(), out);
+        } else if (expr instanceof NewExpr ne) {
+            for (ExpressionNode a : ne.arguments()) collectLambdasExpr(a, out);
+        } else if (expr instanceof NewArrayExpr nae) {
+            collectLambdasExpr(nae.size(), out);
         }
     }
 
@@ -1342,7 +1546,8 @@ private Target target = Target.JVM;
                 collectMutatedCapturesStmt(s, new java.util.HashSet<>(), true);
             }
         } else if (expr instanceof AssignmentExpr ae) {
-            if (inLambda && ae.target() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())) {
+            if (ae.target() instanceof IdentifierExpr ie && !shadowed.contains(ie.name())
+                    && (inLambda || lambdaCapturedNames.contains(ie.name()))) {
                 mutatedCapturedNames.add(ie.name());
             }
             collectMutatedCapturesExpr(ae.target(), shadowed, inLambda);
@@ -1553,7 +1758,7 @@ private Target target = Target.JVM;
         }
         java.util.Set<String> savedMutated = mutatedCapturedNames;
         mutatedCapturedNames = new java.util.HashSet<>();
-        collectMutatedCaptures(func.body());
+        collectMutatedCaptures(func.body(), locals);
         for (StatementNode stmt : func.body()) {
             localIdx = emitStatement(stmt, body, "", localIdx, locals, returnType);
         }
@@ -7457,7 +7662,7 @@ private Target target = Target.JVM;
             }
             java.util.Set<String> savedMutated = mutatedCapturedNames;
             mutatedCapturedNames = new java.util.HashSet<>();
-            collectMutatedCaptures(method.body());
+            collectMutatedCaptures(method.body(), localVars);
             for (StatementNode stmt : method.body()) localIdx = emitStatement(stmt, ops, owner, localIdx, localVars, returnType);
             mutatedCapturedNames = savedMutated;
             KofOperation lastOp = ops.isEmpty() ? null : ops.get(ops.size() - 1);

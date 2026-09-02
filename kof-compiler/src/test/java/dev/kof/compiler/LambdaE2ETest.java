@@ -106,4 +106,49 @@ class LambdaE2ETest {
         Files.writeString(source, IF_EXPRS);
         runNative(source, tempDir.resolve("out"), "10\nmenor\n100\nyes\nboth");
     }
+
+    // Captura mutável: mutação FORA da lambda refletida na lambda (fix 02/09 —
+    // antes capturava por valor e a leitura ficava desatualizada).
+    private static final String MUTABLE_OUTER = """
+            main() {
+                var offset = 10
+                var f2 = (x: Int) -> x + offset
+                println(f2(5))
+                offset = 20
+                println(f2(5))
+            }
+            """;
+
+    @Test
+    void mutableCaptureOuterMutationJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, MUTABLE_OUTER);
+        runJvm(source, tempDir.resolve("out"), "15\n25");
+    }
+
+    // Captura mutável: a lambda ESCREVE numa variável externa (funciona em
+    // JVM e Native).
+    private static final String MUTABLE_LAMBDA_WRITES = """
+            main() {
+                var counter = 0
+                var inc = () -> { counter = counter + 1 }
+                inc()
+                inc()
+                println(counter)
+            }
+            """;
+
+    @Test
+    void mutableCaptureLambdaWritesJvm(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, MUTABLE_LAMBDA_WRITES);
+        runJvm(source, tempDir.resolve("out"), "2");
+    }
+
+    @Test
+    void mutableCaptureLambdaWritesNative(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, MUTABLE_LAMBDA_WRITES);
+        runNative(source, tempDir.resolve("out"), "2");
+    }
 }

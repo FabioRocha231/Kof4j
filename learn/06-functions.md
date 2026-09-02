@@ -1,10 +1,15 @@
 # 06 — Funções
 
-> **Status: implementado (JVM / Native / JS / KofScript) — 0.2.6-beta**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — exemplos verificados no compilador**
 >
-> Funções de nível superior, métodos, expression bodies e default parameters funcionam nos três targets (JVM, Native, KofJS) + KofScript (`let`→`KofScriptGlobals`). Target separation `native.risc/arm` preserva a mesma IR.
+> Funções de nível superior, métodos, expression bodies, default parameters,
+> recursão e funções como valores (lambdas) funcionam nos targets JVM, Native
+> e KofJS.
 
 ## Funções de nível superior
+
+Não existe `fun`/`func` — a função é declarada pelo nome, com o tipo de
+retorno **antes** do nome ou **depois** dos parâmetros:
 
 ```kf
 Int soma(Int a, Int b) {
@@ -12,22 +17,40 @@ Int soma(Int a, Int b) {
 }
 
 main() {
-    println(soma(2, 3))
+    println(soma(2, 3))   // 5
 }
+```
+
+## As formas válidas
+
+```kf
+main() { println("entry point") }             // única sem tipo explícito
+String saudacao() { return "oi" }             // retorno antes do nome
+despedida(): String { return "tchau" }        // retorno depois dos parâmetros
+void fazIsso() { println("x") }               // void explícito
 ```
 
 ## Expression body
 
+Para funções de uma expressão só:
+
 ```kf
 Bool positivo(Int x) = x > 0
+
+main() {
+    println(positivo(5))    // true
+    println(positivo(-1))   // false
+}
 ```
 
 ## Parâmetros
 
 ```kf
 void imprimir(String mensagem, Int vezes) {
-    for (var i = 0; i < vezes; i++) {
-        print(mensagem);
+    var i = 0
+    while (i < vezes) {
+        print(mensagem)
+        i = i + 1
     }
 }
 ```
@@ -45,12 +68,12 @@ main() {
 }
 ```
 
-`Server(8080)` / `Server()` para classes com componentes default seguem a
-mesma semântica, resolvida em compile-time.
+`Server(8080)` / `Server()` para classes seguem a mesma semântica, resolvida
+em compile-time.
 
-## Return nu
+## Retorno
 
-Em funções `void`, `return` pode aparecer sozinho:
+Em funções `void`, `return` sozinho encerra o fluxo:
 
 ```kf
 void maybe(Bool condition) {
@@ -63,18 +86,23 @@ void maybe(Bool condition) {
 
 `return;` também é aceito por compatibilidade.
 
-## Retorno
+## Recursão
 
 ```kf
-Int dobro(Int valor) {
-    return valor * 2;
+Int fatorial(Int n) {
+    if (n <= 1) { return 1 }
+    return n * fatorial(n - 1)
+}
+
+main() {
+    println(fatorial(5))   // 120
 }
 ```
 
-## Funções como valores (0.2.0)
+## Funções como valores
 
-Lambdas são valores de primeira classe — se guardam em variável e se passam
-como argumento (é assim que `map/filter/reduce` funcionam, ver cap. 12):
+Lambdas são valores de primeira classe — guarda-se em variável e passa-se
+como argumento (é assim que `map/filter/reduce` funcionam, ver cap. 12 e 16):
 
 ```kf
 main() {
@@ -87,10 +115,18 @@ main() {
 }
 ```
 
-Não existe tipo de função anotado como parâmetro de uma função declarada —
-a função chega como lambda anônimo no ponto de chamada.
+> **Nota:** não existe tipo de função **anotado** como parâmetro declarado
+> (`(Int) -> Int f` não compila). A função chega como lambda anônimo no ponto
+> de chamada.
 
-No KofScript, `let`/`const` no topo são alias para `var`/`val` e viram `KofScriptGlobals` para estado entre células/REPL.
+## Exercícios
+
+1. Escreva `Int maximo(Int a, Int b)` em expression body e use-a.
+2. Escreva `Int fib(Int n)` recursivo e imprima `fib(10)`.
+3. Crie `listOf(1,2,3,4).map(...)` que devolva os quadrados. Compare com um
+   loop manual — qual expressa melhor a intenção?
+4. Escreva uma função com default parameter que gere uma saudação
+   personalizada.
 
 ## Próximo passo
 
