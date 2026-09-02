@@ -1,8 +1,11 @@
 # Kof Native — Multi-Arch (RISC-V 64 e ARM64/AArch64)
 
-> **Status:** `EM DESENVOLVIMENTO (parcial)` — plumbing pronto, codegen pendente.
-> **Versão:** 0.2.6-beta · **Data:** 2026-09-01
+> **Status:** `EM DESENVOLVIMENTO (parcial)` — plumbing pronto, toolchain + runtime validados, codegen do programa pendente.
+> **Versão:** 0.2.6-beta · **Data:** 2026-09-02
 > **Gap:** `NATIVE002` (codegen riscv64/aarch64 ainda é placeholder x86_64).
+> **Progresso 02/09:** toolchain cruzada + qemu instaladas; **runtime em C validado**
+> (`riscv64-linux-gnu-gcc -static` + `qemu-riscv64` → `Hello, Kof!`/`12345`/`-42`, exit 0).
+> Ver §2.3.
 > **Escopo:** expandir o `NativeBackend` (hoje `x86_64` em asm puro) para
 > `riscv64` e `aarch64` Linux, preservando `frontend → Kof IR → backend` e
 > paridade `JVM/Native/JS`. Este doc vive em `docs/` (não em `docs/future/`)
@@ -50,7 +53,8 @@ funciona de ponta a ponta.
 | **Lowering real aarch64** | ❌ STUB | `emitAarch64` gera só `_start` + `main: mov x0,#0; ret` (`NativeBackend.java:1857`) — **não** emite o IR |
 | Os 18 métodos `emit*` reais (`emitBinary`/`emitOperation`/`emitMethod`/`emitConditionalJump`/vcall…) | ❌ x86_64-only | Todos usam `rdi/rsi/%rip`/`movq` — nenhum é multi-arch |
 | Extração de `NativeBase` (layout/`kof_alloc`/mangle comum) | ❌ não existe | `NativeBackend` ainda é monolítico x86_64 |
-| Runtime por arch (`kof_runtime_{x64,aarch64,riscv64}.s`) | ❌ não existe | `kof_alloc`/`kof_instanceof`/`kof_string_*` só em x86_64 (asm inline em `NativeRuntime`) |
+| Runtime por arch (asm) | ❌ não existe | `kof_alloc`/`kof_instanceof`/`kof_string_*` só em x86_64 (asm inline em `NativeRuntime`) |
+| **Runtime por arch (C, gcc cruzado)** | ✅ validado 02/09 | `kof_string_from_literal`/`kof_int_to_string`/`kof_println_string` em C compilado com `riscv64-linux-gnu-gcc -static`; roda em `qemu-riscv64` (ver §2.3) |
 | Testes E2E `qemu` (aarch64/riscv64) | ❌ não existem | nenhum `NativeAarch64E2ETest`/`NativeRiscv64E2ETest` |
 | CI com cross toolchains | ❌ não existe | `aarch64/riscv64` não entram no pipeline |
 | `backend-parity.md` colunas por arch | ⚠️ parcial | delta citado, colunas `NATIVE_X86_64/AARCH64/RISCV64` separadas pendentes |
@@ -58,6 +62,39 @@ funciona de ponta a ponta.
 **Consequência prática:** um programa real (com `println`, `instanceof`,
 `switch`) em `native.risc`/`native.arm` **não executa a lógica** — sai `0` sem
 efeto. O stub existe para validar o *encanamento*, não a codegen.
+
+### 2.3 Runtime em C via gcc cruzado (validado 02/09)
+
+Em vez de escrever o runtime (`kof_alloc`, `kof_string_*`, `kof_int_to_string`)
+em assembly puro por arch, a abordagem validada usa **C compilado com o gcc
+cruzado** — o compilador C garante a ABI (culling/restore de `ra`/`s0-s11`,
+alinhamento de stack, chamadas a `malloc`/`snprintf`/`fwrite` corretas), o que
+é a parte que mais buga em asm manual.
+
+Toolchain instalada (02/09, via `sudo apt`):
+`binutils-riscv64-linux-gnu`, `binutils-aarch64-linux-gnu`, `qemu-user`,
+`gcc-riscv64-linux-gnu`, `gcc-aarch64-linux-gnu`, `libc6-riscv64-cross`,
+`libc6-arm64-cross`.
+
+Pipeline validado (`/tmp/opencode/riscv/`):
+```
+rt.c  (runtime C: KofStr{kof_string_from_literal,kof_int_to_string,kof_println_string}
+       + int main(){ return kof_main(); })
+   └─ riscv64-linux-gnu-gcc -O2 -static → binário
+   └─ qemu-riscv64 → "Hello, Kof!" / "12345" / "-42"  (exit 0) ✅
+```
+
+Consequência para o `NATIVE002`: o `emitRiscv`/`emitAarch64` precisam apenas
+emitir o **`kof_main` em asm** (stack machine do programa) e linkar
+`gcc -static kof.o rt.o` (o crt1 da libc chama `main`→`kof_main`). O runtime
+passa a ser um `rt.c` por arch, não asm inline — menos código, ABI correta.
+
+O que **restou** para o próximo incremento (não entregue 02/09):
+- o `emitRiscv`/`emitAarch64` continuam **stub** (`main: ret 0`); o lowering do
+  programa (stack machine riscv64/aarch64, `s11` como frame pointer, operandos
+  na stack com 16-alinhamento) ainda precisa ser escrito contra esse runtime C.
+- `KofJsSourceMap`/paridade de ops fora do caminho feliz (coleções, classe,
+  `instanceof`, `switch`) — mesmo escopo do §2.2.
 
 ## 3. Arquitetura (alvo)
 
