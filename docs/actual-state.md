@@ -310,8 +310,8 @@ handles no-ops.
 ### Backends
 - KofJS — alpha (GraalJS embarcado): `while(true)`, `try/finally`, `switch` pattern, `listOf map/filter/reduce`, `kof.http` via `Java HttpClient` (+ retry/circuit paridade JVM, 30/08), decode de objetos — parity JVM/Native/JS; UI via webview nativo; `spawn` sequencial (async real = CONC003)
 - KofScript — ✅ `KofScript` top-level `let` → `KofScriptGlobals` + REPL + `--watch` (Windows SIGPIPE fix 27/08)
-- KofC — ✅ `KofCcompiler` C subset native-only (`kof c`) → ELF x86_64 (while/if/deref `&`/`*(int*)`); riscv64/aarch64 placeholder
-- Native riscv64 — toolchain estável (`riscv64-linux-gnu-as`, `.option arch,rv64g`, `li a7 214/64/93`), codegen riscv64 ainda placeholder (x86_64 via qemu); aarch64 placeholder (target separation done)
+- KofC — ✅ `KofCcompiler` C subset native-only (`kof c`) → ELF x86_64 (while/if/deref `&`/`*(int*)`)
+- Native riscv64 — **codegen real (02/09)** — stack machine riscv64 + runtime em asm puro (raw syscalls, sem C), `NativeRiscv64E2ETest 4/4` via qemu (`NATIVE002` parcial); aarch64 placeholder (target separation done)
 
 ### Runtime
 - GC automático Native — free-list `kof_free_head` (reuso `mmap`, 27/08); GC mark-sweep pendente; auto-GC desativado após hang (memória devolvida só no `munmap` fallback)
@@ -350,7 +350,7 @@ Source (.kf)
   ↓ Optimizer
   ├── JVM Backend (ASM) → .class V21 (virtual threads, KofRuntime com web/ws/sse/cache)
   ├── Native Backend (x86-64, free-list + kof_gc_collect, pthread spawn, FP XMM)
-  ├── Native riscv64 (native.risc — toolchain + placeholder x86_64 via qemu)
+  ├── Native riscv64 (native.risc — codegen real 02/09, asm puro + qemu)
   ├── Native aarch64 (native.arm — toolchain + placeholder x86_64 via qemu)
   ├── JS Backend (GraalJS, kof.http via HttpClient, retry/circuit)
   ├── KofC Backend (C subset → native)

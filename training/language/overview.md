@@ -41,7 +41,7 @@ Kof IR (backend-agnostic, KofOperation)
 │         │ riscv64* │      │ let/top  │       │
 │         │ aarch64* │      │ level    │       │
 └─────────┴──────────┴──────┴─────────┴────────┘
- * placeholder via riscv64-linux-gnu-as/ld + qemu
+ * riscv64 real (02/09, asm puro, qemu); aarch64 placeholder
 ```
 
 ## Current Features (0.2.6-beta)

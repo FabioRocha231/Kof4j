@@ -39,7 +39,7 @@ kof c app.c            # KofC C subset → ELF x86_64
 - **Concorrência:** `spawn`/`await` via pthread — `pthread_create` + trampoline + `pthread_join` + allocator thread-safe com lock futex (CONC001 fechado 31/08).
 - SQLite via link direto `.so`; MySQL wire protocol handshake com auth scramble SHA-1 (`kof_db_mysql_scramble`) implementado 27/08 (query/prepared pendente)
 
-## Native RISC-V / ARM (placeholder)
+## Native RISC-V / ARM (riscv64 real; aarch64 pendente)
 
 ```bash
 kof build --target native.risc   # riscv64 ELF via riscv64-linux-gnu-as/ld + qemu
@@ -47,7 +47,12 @@ kof build --target native.arm    # aarch64 via aarch64-linux-gnu-as/ld + qemu
 ```
 
 - Target separation `Target.NATIVE_RISCV64` / `NATIVE_AARCH64` feito em 0.2.6-beta
-- Codegen ainda placeholder (emite x86_64 header com riscv/arm ELF placeholder); execução via `qemu-riscv64`/`qemu-aarch64` com skip condicional se toolchain ausente
+- **riscv64 com codegen real (02/09)** — `NATIVE002` parcial (caminho feliz):
+  stack machine riscv64 (raw syscalls; runtime em **asm puro**, sem C) +
+  `NativeRiscv64E2ETest 4/4` via `qemu-riscv64` (println String/Int, `var`,
+  `if/else`, aritmética/comparações Int). Execução com skip condicional se a
+  toolchain (`riscv64-linux-gnu-as`/`ld` + qemu) estiver ausente.
+- **aarch64**: codegen ainda placeholder (x86_64 via qemu) — `NATIVE002` residual.
 - `isNative()` true para os três; `nativeArch()` retorna `x86_64`/`riscv64`/`aarch64`
 
 ## Runtime Functions (Native x86_64)

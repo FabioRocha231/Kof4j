@@ -76,9 +76,8 @@ mark-sweep pendente — auto-GC desativado após hang, memória devolvida só no
 `munmap` fallback; `spawn`/`await` via `pthread_create` + trampoline +
 `pthread_join` com allocator thread-safe (futex) — 31/08; FP real em XMM —
 FLT001; JSON objetos/records + arrays FP — JSN001/002/003; SQLite nativo `.so`
-direto; MySQL wire protocol WIP) + `native.risc` (riscv64: toolchain
-`riscv64-linux-gnu-as/ld` + qemu; codegen ainda x86_64 placeholder) +
-`native.arm` (aarch64: toolchain + qemu; codegen ainda x86_64 placeholder)
+direto; MySQL wire protocol WIP) + `native.risc` (riscv64: codegen real 02/09 — asm puro + qemu, NATIVE002
+parcial) + `native.arm` (aarch64: toolchain + qemu; codegen ainda placeholder)
 
 ### KofJS — Web
 
