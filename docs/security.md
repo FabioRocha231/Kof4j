@@ -241,7 +241,7 @@ Suporte por target (estado atual — `KofSecurity.supportedOn`):
 | `passwords.hash/verify/needsRehash` | SIM (javax.crypto PBKDF2) | SIM (asm PBKDF2-HMAC-SHA256) | SIM (PBKDF2 platform-delegated) |
 | `crypto.sha256/sha512` | SIM | SIM (asm, FIPS 180-4) | SIM (JS) |
 | `crypto.hmacSha256` | SIM | SIM (asm) | SIM (JS) |
-| `crypto.aesGcm` encrypt/decrypt | SIM | SIM (asm, GCM) | NÃO (SECN002) |
+| `crypto.aesGcm` encrypt/decrypt | SIM | SIM (asm, GCM) | SIM (JS puro, 01/09) |
 | `crypto.randomHex/randomInt` | SIM (SecureRandom) | SIM (getrandom) | SIM (kof_platform) |
 | `jwt.create/verify/secret` | SIM | SIM (asm: base64url + HMAC) | SIM |
 | `secrets.get` | SIM (env) | SIM (`/proc/self/environ`) | SIM (kof_platform) |
@@ -254,8 +254,8 @@ Suporte por target (estado atual — `KofSecurity.supportedOn`):
 | `auth.*` (contexto web) | SIM (Bearer JWT + ThreadLocal) | — | — |
 
 Gaps reais com diagnóstico em compile-time: `SECN001` (passwords),
-`SECN002` (AES-GCM fora do JVM/Native), `SECN003` (sha512), `SECN004` (jwt) e
-`SECN005` (G9) — nunca comportamento silenciosamente diferente.
+`SECN003` (sha512) e `SECN005` (G9) — nunca comportamento silenciosamente
+diferente. `SECN002` (AES-GCM no JS) e `SECN004` (jwt) fechados.
 
 **Regra**: qualquer gap emite diagnóstico claro em compile-time (ex.
 `SECN001: passwords.hash não está disponível no target Native ainda`).
@@ -294,8 +294,8 @@ jwt:         RFC 7519 HS256 (alg fixado, nunca aceito do token)
 | `crypto.sha256(data)` | ✅ | ✅ (asm FIPS 180-4, riscv64 `li a7`) | ✅ (JS puro) | hex |
 | `crypto.sha512(data)` | ✅ | ✅ (asm FIPS 180-4, vetores FIPS testados) | ✅ (JS puro) | hex |
 | `crypto.hmacSha256(key, data)` | ✅ | ✅ (asm) | ✅ (JS puro) | hex |
-| `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ✅ (asm GCM, round-trip E2E) | ❌ SECN002 | `aesgcm$iv$ct` |
-| `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ✅ (asm, falha em tamper) | ❌ SECN002 | |
+| `crypto.encryptAesGcm(plain, keyHex)` | ✅ AES/GCM/NoPadding | ✅ (asm GCM, round-trip E2E) | ✅ (JS puro, round-trip E2E) | `aesgcm$iv$ct` |
+| `crypto.decryptAesGcm(ct, keyHex)` | ✅ (falha em tamper) | ✅ (asm, falha em tamper) | ✅ (JS puro, falha em tamper) | |
 | `crypto.randomHex(n)` | ✅ SecureRandom | ✅ getrandom (`li a7 318` x86_64 / `214` riscv64) | ✅ platform | hex |
 | `crypto.randomInt(bound)` | ✅ | ✅ getrandom + rejection | ✅ platform | |
 | `jwt.create(claims, secret[, ttl])` | ✅ HS256 + iat/exp | ✅ (asm: base64url + HMAC + kof_now) | ✅ | RFC 7519 HS256 |

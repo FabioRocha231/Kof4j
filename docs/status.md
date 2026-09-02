@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 778 testes 761 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 780 testes 763 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -73,6 +73,7 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 | **`&&`/`||` sem short-circuit no JS**: o JsBackend emitia `KofBinaryOp.AND/OR` como `&`/`|` (bitwise), que avalia os DOIS lados → efeitos colaterais do lado de não eram executados | `&&`/`||` booleanos (operandType `bool`) agora viram `&&`/`||` JS (short-circuit nativo); `&`/`|` bitwise intacto — `KofJsE2ETest.logicalAndOrShortCircuit` + `bitwiseAndOrStillWorks` |
 | **`Channel<T>` rejeitado como parâmetro de função**: o tipo do parâmetro saía `ClassType(package="")` e o `isChannel` exigia `kof.concurrent` → dispatch caía no genérico → bytecode inválido (JVM), `undefined reference Channel_receive` (Native), `c.receive()` inexistente (JS) | `Type.of`/`toType` tratam `Channel` como builtin (`kof.concurrent`, paridade com `List`); `JvmTypeMapper` mapeia `Channel` → `java/util/concurrent/LinkedBlockingQueue` (descritor+internalName) — `KofConcurrency2Test.channelAsFunctionParameter{Jvm,Native,Js}` |
 | **`println`/`print` antes de `spawn` → SIGSEGV no Native** (`pthread_create`): a convenção args-by-stack (push) chegava 8 bytes desalinhada no site do `call pthread_create` (`rsp%16==8` vs `0` exigido pela ABI SysV) → glibc segfaultava em `pthread_attr_copy` escrevendo no frame | alinhamento de stack no C call: `andq $-16, %rsp` antes do `call pthread_create` em `kof_spawn_handle_new`, preservando `r15` (callee-saved) e restaurando o frame do caller — `SpawnE2ETest.nativePrintBeforeSpawnDoesNotSegfault` |
+| **AES-GCM no JS ignorava tamper no ciphertext** (`SECN002`, 01/09): `kofSecB64Decode` tolerava tamanho não múltiplo de 4 (bits restantes descartados silenciosamente), então `decryptAesGcm(ct + "AA")` decodificava e o tag mismatch passava despercebido — divergente do `java.util.Base64` do JVM (que lança) | `kofSecB64Decode(s, strict)`: `strict=true` rejeita tamanho %4 ≠ 0; `decryptAesGcm` passa `strict=true` em `iv` e `ctTag`; JWT (b64-url sem padding) segue com `strict=false` — `KofSecurityTest.aesGcmJsRoundTrip` (tamper+chave errada) + paridade cross-target JVM↔JS |
 
 ---
 
@@ -89,8 +90,8 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
   AES-GCM (round-trip E2E `aesGcmNativeRoundTrip`), JWT HS256, random via
   `getrandom`, secrets via `/proc/self/environ`, constant-time, redaction.
 - **JS**: SHA-256/512 e HMAC em JS puro, PBKDF2 com delegação ao platform
-  (runner embarcado), JWT, secrets, constant-time; AES-GCM no JS = SECN002.
-- **Testes**: `KofSecurityTest` — 25 testes (unit + E2E nos 3 targets +
+  (runner embarcado), JWT, secrets, constant-time, AES-GCM (01/09, SECN002).
+- **Testes**: `KofSecurityTest` — 27 testes (unit + E2E nos 3 targets +
   adversariais: tamper, expiração, confusão de algoritmo, token malformado,
   chave errada, issuer/audience).
 - **Benchmarks**: `benchmarks/security/` (password-hash, jwt, hash-speed,
@@ -457,7 +458,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (778 = 761 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (780 = 763 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -529,11 +530,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **761** | |
+ | **Total kof-compiler** | **763** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **778** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **780** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
