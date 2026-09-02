@@ -276,6 +276,72 @@ class KofConcurrency2Test {
     }
 
     @Test
+    void channelAsFunctionParameterJvm(@TempDir Path tmp) throws Exception {
+        // Channel<T> como PARÂMETRO: antes o tipo do parâmetro era
+        // ClassType(package="") e o isChannel exigia "kof.concurrent" → o
+        // dispatch caía no genérico e gerava bytecode inválido (JVM),
+        // undefined reference (Native) e c.receive() inexistente (JS).
+        runJvm(tmp, """
+                Int soma(Channel<Int> c) {
+                    var s = 0
+                    s = s + c.receive()
+                    s = s + c.receive()
+                    return s
+                }
+                main() {
+                    var c = channel<Int>()
+                    c.send(3)
+                    c.send(4)
+                    println(soma(c))
+                }
+                """, "7");
+    }
+
+    @Test
+    void channelAsFunctionParameterNative(@TempDir Path tmp) throws Exception {
+        Path f = tmp.resolve("M.kf");
+        Files.writeString(f, """
+                Int soma(Channel<Int> c) {
+                    var s = 0
+                    s = s + c.receive()
+                    s = s + c.receive()
+                    return s
+                }
+                main() {
+                    var c = channel<Int>()
+                    c.send(3)
+                    c.send(4)
+                    println(soma(c))
+                }
+                """);
+        CompilationResult r = driver.compile(f, tmp.resolve("out"), Target.NATIVE);
+        assertTrue(r.success(), "Native channel-params deve compilar: " + r.diagnostics().getDiagnostics());
+        Path bin = tmp.resolve("out").resolve("Default/Main");
+        Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+        String output = new String(p.getInputStream().readAllBytes()).trim();
+        assertEquals(0, p.waitFor(), "exit code, output: " + output);
+        assertEquals("7", output, "channel como parâmetro no Native");
+    }
+
+    @Test
+    void channelAsFunctionParameterJs(@TempDir Path tmp) throws Exception {
+        runJs(tmp, """
+                Int soma(Channel<Int> c) {
+                    var s = 0
+                    s = s + c.receive()
+                    s = s + c.receive()
+                    return s
+                }
+                main() {
+                    var c = channel<Int>()
+                    c.send(3)
+                    c.send(4)
+                    println(soma(c))
+                }
+                """, "7");
+    }
+
+    @Test
     void pollDoneNative(@TempDir Path tmp) throws Exception {
         // CONC001 residual fechado: done/poll não-bloqueantes sobre o handle
         // nativo (flag done no bloco de 32B: 0=tag(2), 4=done, 16=result)

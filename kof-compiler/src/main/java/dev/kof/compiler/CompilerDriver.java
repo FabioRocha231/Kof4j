@@ -515,6 +515,7 @@ private Target target = Target.JVM;
 
     private Type toType(String typeName) {
         if ("List".equals(typeName) || "ArrayList".equals(typeName)) return BuiltinTypes.LIST;
+        if ("Channel".equals(typeName)) return BuiltinTypes.CHANNEL;
         // tipos simples declarados em import ("import android.webkit.WebView")
         Type viaImports = qualifyViaImports(typeName);
         if (viaImports != null) return viaImports;
@@ -1952,11 +1953,20 @@ private Target target = Target.JVM;
                             : new LambdaExpr(ss.position(), List.of(),
                                     List.of(new ExpressionStmt(ss.position(), ss.expression())));
                     Type.FunctionType ftN = new Type.FunctionType(List.of(), Type.PrimitiveType.VOID, null);
-                    String lambdaClassN = lambdaClass(leN, ftN, List.of());
+                    List<IRLocalVariable> capN = collectCaptures(leN, locals);
+                    List<IRLocalVariable> effN = lambdaEffectiveCaptures.get(leN);
+                    if (effN != null) capN = effN;
+                    String lambdaClassN = lambdaClass(leN, ftN, capN);
                     Type taskTypeN = new Type.ClassType("", lambdaClassN, List.of());
-                    ops.add(new KofNewObject(taskTypeN, List.of()));
+                    List<Type> capTypesN = new ArrayList<>();
+                    for (IRLocalVariable cap : capN) capTypesN.add(cap.type());
+                    ops.add(new KofNewObject(taskTypeN, capTypesN));
                     ops.add(new KofDup());
-                    ops.add(new KofCall(taskTypeN, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                    for (IRLocalVariable cap : capN) {
+                        ops.add(new KofLoadLocal(cap.type(), cap.index()));
+                    }
+                    ops.add(new KofCall(taskTypeN, "<init>", capTypesN,
+                            Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                     ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
                             "kof_spawn", List.of(taskTypeN), Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                     yield localIdx;
@@ -1969,11 +1979,22 @@ private Target target = Target.JVM;
                             List.of(new ExpressionStmt(ss.position(), ss.expression())));
                 }
                 Type.FunctionType ft = new Type.FunctionType(List.of(), Type.PrimitiveType.VOID, null);
-                String lambdaClass = lambdaClass(le, ft, List.of());
+                // capturas: spawn { println(x + 1) } deve empilhar x no construtor
+                // (antes: List.of() → x resolvia para `this` → VerifyError)
+                List<IRLocalVariable> captures = collectCaptures(le, locals);
+                List<IRLocalVariable> effective = lambdaEffectiveCaptures.get(le);
+                if (effective != null) captures = effective;
+                String lambdaClass = lambdaClass(le, ft, captures);
                 Type taskType = new Type.ClassType("", lambdaClass, List.of());
-                ops.add(new KofNewObject(taskType, List.of()));
+                List<Type> captureTypes = new ArrayList<>();
+                for (IRLocalVariable cap : captures) captureTypes.add(cap.type());
+                ops.add(new KofNewObject(taskType, captureTypes));
                 ops.add(new KofDup());
-                ops.add(new KofCall(taskType, "<init>", List.of(), Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
+                for (IRLocalVariable cap : captures) {
+                    ops.add(new KofLoadLocal(cap.type(), cap.index()));
+                }
+                ops.add(new KofCall(taskType, "<init>", captureTypes,
+                        Type.PrimitiveType.VOID, KofCallKind.CONSTRUCTOR));
                 ops.add(new KofCall(new Type.ClassType("dev.kof.runtime", "KofRuntime", List.of()),
                         "kof_spawn", List.of(taskType), Type.PrimitiveType.VOID, KofCallKind.FUNCTION));
                 yield localIdx;

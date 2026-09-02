@@ -1859,6 +1859,16 @@ class JsBackend implements Backend {
         };
     }
 
+    // && / || booleanos → && / || JS (que short-circuitam nativamente);
+    // & / | bitwise → & / | (avalia os dois lados). O operador lógico e o
+    // bitwise caem no MESMO KofBinaryOp.AND/OR — o operandType (bool vs int)
+    // é o que os distingue. Antes: && virava & (bitwise) no JS → sem
+    // short-circuit (efeitos colaterais do lado de não deviam ser avaliados).
+    private boolean isBoolOperand(Type type) {
+        return type instanceof Type.PrimitiveType pt
+                && "bool".equals(Type.canonicalPrimitiveName(pt.name()));
+    }
+
     private boolean isLongType(Type type) {
         if (!(type instanceof Type.PrimitiveType pt)) return false;
         return "long".equals(Type.canonicalPrimitiveName(pt.name()));
@@ -1887,8 +1897,12 @@ class JsBackend implements Backend {
             case LE -> new JsIr.JsBinary(left, "<=", right);
             case GT -> new JsIr.JsBinary(left, ">", right);
             case GE -> new JsIr.JsBinary(left, ">=", right);
-            case AND -> new JsIr.JsBinary(left, "&", right);
-            case OR -> new JsIr.JsBinary(left, "|", right);
+            case AND -> isBoolOperand(kb.operandType())
+                    ? new JsIr.JsBinary(left, "&&", right)
+                    : new JsIr.JsBinary(left, "&", right);
+            case OR -> isBoolOperand(kb.operandType())
+                    ? new JsIr.JsBinary(left, "||", right)
+                    : new JsIr.JsBinary(left, "|", right);
             case XOR -> new JsIr.JsBinary(left, "^", right);
             case SHL -> new JsIr.JsBinary(left, "<<", right);
             case SHR -> new JsIr.JsBinary(left, ">>", right);

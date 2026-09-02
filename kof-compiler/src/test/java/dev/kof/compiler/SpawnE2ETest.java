@@ -85,6 +85,34 @@ class SpawnE2ETest {
     }
 
     @Test
+    void spawnLambdaCapturesOuterLocal(@TempDir Path tempDir) throws IOException, InterruptedException {
+        // spawn { println(x + 1) }: a lambda captura o local `x` — antes o
+        // lowering de SpawnStmt usava List.of() (zero capturas) e o corpo
+        // resolvia `x` para `this` → VerifyError/ClassFormatError no JVM e
+        // valor errado no Native.
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                main() {
+                    var x = 10
+                    spawn {
+                        println(x + 1)
+                    }
+                }
+                """);
+        // JVM: a captura chega pelo construtor da Lambda (field)
+        assertEquals("11", runJvm(source, tempDir.resolve("out-jvm")));
+        // Native: pthread + captura
+        CompilationResult result = driver.compile(source, tempDir.resolve("out-native"), Target.NATIVE);
+        assertTrue(result.success(), "Native: " + result.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("out-native").resolve("Default/Main");
+        ProcessBuilder pb = new ProcessBuilder(bin.toString()).redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        assertEquals(0, p.waitFor(), "exit, output: " + output);
+        assertEquals("11", output, "captura no Native");
+    }
+
+    @Test
     void jsSpawnStmtRunsSequentially(@TempDir Path tempDir) throws Exception {
         // CONC003: JS é single-threaded — `spawn { }` degenera em execução
         // imediata/sequencial do corpo (fire-and-forget sem thread). A ordem
