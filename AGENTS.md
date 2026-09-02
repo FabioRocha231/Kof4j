@@ -96,7 +96,8 @@ Int dobro(Int x) { return x * 2 }
 var x = 10              // mutável
 val y = 20              // imutável
 String nome = "Mel"
-var idade: Int? = null  // nullability: forma ANOTADA (não `Int? idade = null`)
+String? nome2 = null    // nullability: forma TIPO-PRIMEIRO (idiomática no corpus)
+var idade: Int? = null  // nullability: forma ANOTADA (também válida)
 ```
 
 ### Classes (construtor primário é a forma idiomática)
@@ -241,7 +242,7 @@ Se você está prestes a escrever algo desta lista, **pare**:
 | `{"a", "b"}` (literal de conjunto) | `setOf("a", "b")` |
 | `[1, 2, 3]` (literal de array) | `listOf(1, 2, 3)` ou `new Int[n]` |
 | `Option<T>` / `Result<T>` | `String?` + narrowing; `throw` para erro |
-| `async`/`await` JS-style | `spawn`/`await` (sempre em pares Kof) |
+| `async`/`await` JS-style | `spawn`/`await` (Kof; `spawn f()` fire-and-forget é válido sozinho) |
 | `for (x in coll)` **sem `var`** | `for (var x in coll)` |
 | `Thread` / `Executor` / `Runnable` | `spawn` |
 | `match x { A, B => ... }` (multi-case OR) | `switch (x) { case "A": ... case "B": ... }` ou `setOf` |

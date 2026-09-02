@@ -190,10 +190,10 @@ Se a linguagem pode resolver um problema diretamente, não crie um framework par
 
 | Problema | Solução Framework | Solução Kof |
 |----------|------------------|-------------|
-| HTTP routing | Spring MVC | Proposta: `route GET "/users" { ... }` |
-| Validação | Bean Validation | Proposta: `name: String required` |
-| Serialização | Jackson | Proposta: implícita |
-| Configuração | application.properties | Proposta: `config { port = 8080 }` |
+| HTTP routing | Spring MVC | ✅ `app.get("/users") { ... }` (implementado — `web.app()` no JVM) |
+| Validação | Bean Validation | ✅ `kof.validation` (13 predicados, 3 targets) — sintaxe `name: String required` é **proposta futura** |
+| Serialização | Jackson | ✅ `json.encode/decode` (3 targets) |
+| Configuração | application.properties | ✅ `config.int("server.port", 8080)` — bloco `config { port = 8080 }` é **proposta futura** |
 
 ### 11. Não Copiar o Java
 
@@ -214,10 +214,10 @@ Criar um servidor HTTP não deve exigir:
 
 Deveria ser algo como:
 ```kof
-route GET "/users" {
-    return users.all()
-}
+var app = web.app()
+app.get("/users") { return users.all() }
 ```
+(implementado no JVM — ver `docs/stdlib-web.md`)
 
 ### 13. Performance Sem Sacrificar Ergonomia
 

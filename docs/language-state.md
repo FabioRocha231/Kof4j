@@ -136,6 +136,9 @@ main() {
 
 `public`, `private`, `protected`, `static`, `final`, `abstract`, `override`
 
+> `override` é **aceito** como modificador (retrocompatível) mas **não exigido**:
+> override é implícito — mesmo nome de método sobrescreve. `training/idioms/classes.md`.
+
 ### Tipos primitivos
 
 `bool`, `byte`, `short`, `int`, `long`, `float`, `double`, `char`, `string`, `void`

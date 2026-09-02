@@ -1,10 +1,10 @@
 {
   "language": "kof",
-  "version": "0.2.0-beta",
-  "updated": "27 Aug 2026",
-  "tests": 658,
+  "version": "0.2.6-beta",
+  "updated": "02 Sep 2026",
+  "tests": 771,
   "targets": ["jvm", "native", "native.risc", "native.arm", "js", "kofc"],
-  "description": "Pares BAD/GOOD/WHY para treinamento de modelos. Cada entrada representa um erro de estilo, não necessariamente um erro de sintaxe. Atualizado para 0.2.0-beta.",
+  "description": "Pares BAD/GOOD/WHY para treinamento de modelos. Cada entrada representa um erro de estilo, não necessariamente um erro de sintaxe. Atualizado para 0.2.6-beta (02/09): null-safety com narrowing no JVM corrigido, Map.get V? para valores de referência, File.size sem sentinela -1, Set<T> como tipo declarado nos 3 targets.",
   "entries": [
     {
       "id": "kof-001",
@@ -22,7 +22,7 @@
       "problem": "representar um objeto de dados imutável",
       "bad": "class User { String name; Int age; public getName(): String { return name } public getAge(): Int { return age } }",
       "good": "record User(String name, Int age)",
-      "reason": "Record gera construtor, accessors e (no JVM) toString/equals/hashCode. A classe com getters é cerimônia sem semântica.",
+      "reason": "Record gera construtor, accessors (p.x()) e (no JVM) toString/equals/hashCode. A classe com getters é cerimônia sem semântica.",
       "status": "implemented",
       "introduced": "0.0.4-alpha"
     },
@@ -39,10 +39,10 @@
     {
       "id": "kof-004",
       "category": "errors",
-      "problem": "sinalizar 'não encontrado'",
+      "problem": "sinalizar 'não encontrado' como erro real",
       "bad": "String find(String key) { ...; return \"\" }",
-      "good": "String find(String key) { ...; throw \"not found: \" + key }",
-      "reason": "Sentinela \"\" espalha a convenção pelos consumidores e colide com valores legítimos. Exceção carrega a informação do erro.",
+      "good": "String findOrThrow(String key) { ...; throw \"not found: \" + key }",
+      "reason": "Para AUSÊNCIA (o dado pode não existir) use String? + null (kof-014); para ERRO real (a ausência é um defeito do fluxo) use throw. Sentinela \"\" colide com valores legítimos.",
       "status": "implemented",
       "introduced": "0.0.4-alpha"
     },
@@ -102,7 +102,7 @@
       "problem": "ler conteúdo de arquivo",
       "bad": "var f = File(\"config.json\") (construção correta) — sem alternativa bad",
       "good": "var conteudo = readFile(\"config.json\")",
-      "reason": "readFile é função top-level da stdlib kof.io. File(\"x\").readText() também existe.",
+      "reason": "readFile é função top-level da stdlib kof.io; devolve String? (null se o arquivo não existe). File(\"x\").readText() também existe.",
       "status": "implemented",
       "introduced": "0.0.5-alpha"
     },
@@ -122,7 +122,7 @@
       "problem": "serializar objeto",
       "bad": "ObjectMapper() (Java)",
       "good": "var j = json.encode(user)",
-      "reason": "JSON é integrado à linguagem. Objetos/records no JVM e JS; primitivos/lists em ambos.",
+      "reason": "JSON é integrado à linguagem. Objetos/records nos 3 targets (JSN001/002/003 fechados 31/08).",
       "status": "implemented",
       "introduced": "0.0.4-alpha"
     },
@@ -142,7 +142,7 @@
       "problem": "ausência como valor",
       "bad": "String find(String key) { return \"\" } // sentinela",
       "good": "String? find(String key) { if (found) return value; return null } ; if (r != null) println(r.length)",
-      "reason": "String? + narrowing if (x != null) implementado em 0.2.0-beta (NullableType). Sentinela colide com valores legítimos.",
+      "reason": "String? + narrowing if (x != null) implementado desde 0.2.0-beta (NullableType). Narrowing de propriedades/métodos no JVM corrigido 02/09. Sentinela colide com valores legítimos.",
       "status": "implemented",
       "introduced": "0.2.0-beta"
     },
@@ -175,6 +175,36 @@
       "reason": "File-specific import a.b.C fixado 27/08 (CompilerDriver). Projetos grandes com a/b/C.kf agora compilam ambos os units.",
       "status": "implemented",
       "introduced": "0.2.0-beta"
+    },
+    {
+      "id": "kof-018",
+      "category": "membership",
+      "problem": "testar pertencimento a um conjunto de valores",
+      "bad": "Bool isQuery(String op) { return op == \"A\" || op == \"B\" || op == \"C\" }",
+      "good": "Bool isQuery(String op) { val known = setOf(\"A\", \"B\", \"C\"); return known.contains(op) }",
+      "reason": "Cadeia de || esconde a intenção (pertencimento), é fácil esquecer entrada e escala mal. setOf().contains() é O(1), deduplica e expressa o domínio. Ver training/anti-patterns/chained-or-membership.md.",
+      "status": "implemented",
+      "introduced": "0.2.6-beta"
+    },
+    {
+      "id": "kof-019",
+      "category": "collections",
+      "problem": "ausência em Map.get",
+      "bad": "var v = m.get(\"k\"); v.length // SEM014: get devolve String?",
+      "good": "var v = m.get(\"k\"); if (v != null) { println(v.length) }",
+      "reason": "Desde 02/09 m.get() devolve V? para valores de referência (ausência = null, narrowing via if (x != null)). Para valores primitivos (Map<String, Int>) o tipo fica V — checar com contains/containsKey antes.",
+      "status": "implemented",
+      "introduced": "0.2.6-beta"
+    },
+    {
+      "id": "kof-020",
+      "category": "io",
+      "problem": "tamanho de arquivo inexistente",
+      "bad": "var sz = f.size(); if (sz == -1) { println(\"missing\") } // sentinela",
+      "good": "try { var sz = f.size(); println(sz) } catch (String e) { println(\"missing\") }",
+      "reason": "File.size() lança exceção recuperável desde 02/09 — o -1 sentinela (anti-pattern do próprio corpus) foi removido do stdlib. Para existência, use exists().",
+      "status": "implemented",
+      "introduced": "0.2.6-beta"
     }
   ]
 }

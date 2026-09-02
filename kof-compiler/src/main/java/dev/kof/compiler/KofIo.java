@@ -36,6 +36,7 @@ final class KofIo {
     record IoCall(String function, Type returnType, List<Type> parameterTypes) {}
 
     private static final Type STR = BuiltinTypes.STRING;
+    private static final Type STR_NULL = new Type.NullableType(STR);
     private static final Type INT = Type.PrimitiveType.INT;
     private static final Type LONG = Type.PrimitiveType.LONG;
     private static final Type BOOL = Type.PrimitiveType.BOOL;
@@ -48,7 +49,7 @@ final class KofIo {
             case "exists" -> argCount == 0 ? new IoCall("kof_io_file_exists", BOOL, List.of()) : null;
             case "isFile" -> argCount == 0 ? new IoCall("kof_io_file_is_file", BOOL, List.of()) : null;
             case "isDirectory" -> argCount == 0 ? new IoCall("kof_io_file_is_dir", BOOL, List.of()) : null;
-            case "readText" -> argCount == 0 ? new IoCall("kof_io_read_text", STR, List.of()) : null;
+            case "readText" -> argCount == 0 ? new IoCall("kof_io_read_text", STR_NULL, List.of()) : null;
             case "writeText" -> argCount == 1 ? new IoCall("kof_io_write_text", BOOL, List.of(STR)) : null;
             case "appendText" -> argCount == 1 ? new IoCall("kof_io_append_text", BOOL, List.of(STR)) : null;
             case "readBytes" -> argCount == 0 ? new IoCall("kof_io_read_bytes", INT_ARRAY, List.of()) : null;
@@ -83,7 +84,7 @@ final class KofIo {
                 case "exists" -> argCount == 1 ? new IoCall("kof_io_file_exists", BOOL, List.of(STR)) : null;
                 case "isFile" -> argCount == 1 ? new IoCall("kof_io_file_is_file", BOOL, List.of(STR)) : null;
                 case "isDirectory" -> argCount == 1 ? new IoCall("kof_io_file_is_dir", BOOL, List.of(STR)) : null;
-                case "readText" -> argCount == 1 ? new IoCall("kof_io_read_text", STR, List.of(STR)) : null;
+                case "readText" -> argCount == 1 ? new IoCall("kof_io_read_text", STR_NULL, List.of(STR)) : null;
                 case "writeText" -> argCount == 2 ? new IoCall("kof_io_write_text", BOOL, List.of(STR, STR)) : null;
                 case "appendText" -> argCount == 2 ? new IoCall("kof_io_append_text", BOOL, List.of(STR, STR)) : null;
                 case "readBytes" -> argCount == 1 ? new IoCall("kof_io_read_bytes", INT_ARRAY, List.of(STR)) : null;

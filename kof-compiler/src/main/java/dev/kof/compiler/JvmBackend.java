@@ -700,7 +700,9 @@ class JvmBackend implements Backend {
                     // Unknown NÃO é referência (int não-inferido também infere Unknown)
                     boolean isRef = kb.operandType() instanceof Type.ClassType
                             || kb.operandType() instanceof Type.ArrayType
-                            || kb.operandType() instanceof Type.TypeVariable;
+                            || kb.operandType() instanceof Type.TypeVariable
+                            || (kb.operandType() instanceof Type.NullableType nt
+                                && !(nt.inner() instanceof Type.PrimitiveType));
                     int cmpOpcode;
                     if (isRef) {
                         cmpOpcode = switch (kb.op()) {
@@ -782,7 +784,9 @@ class JvmBackend implements Backend {
             // também infere Unknown — if_acmp sobre int = VerifyError
             boolean isRef = kc.operandType() instanceof Type.ClassType
                     || kc.operandType() instanceof Type.ArrayType
-                    || kc.operandType() instanceof Type.TypeVariable;
+                    || kc.operandType() instanceof Type.TypeVariable
+                    || (kc.operandType() instanceof Type.NullableType nt
+                        && !(nt.inner() instanceof Type.PrimitiveType));
             if (isLong) {
                 mv.visitInsn(LCMP);
             } else if (isFloat) {

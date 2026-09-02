@@ -11,7 +11,7 @@ conteúdo com `==`/`!=`, e uma API de métodos direta.
 
 ```kof
 var s = "Hello World"
-s.length                    // 11 (método: s.length())
+s.length                    // 11 (propriedade; s.length() também é aceito)
 s.charAt(1)                 // 'e' como valor numérico (101)
 s.substring(6)              // "World"
 s.substring(0, 5)           // "Hello"
@@ -97,23 +97,30 @@ var saudacao = "ola " + nome + "!"
 `+` já é concatenação de strings. Não há necessidade de `StringBuilder` manual —
 e **não existe** uma classe StringBuilder na linguagem (não invente uma).
 
-## Nota por target
+## Nota por target (`STR001` — gap cross-target documentado)
 
 - No Native, `length` conta **bytes UTF-8** de uma string imutável.
 - No JVM, `length` conta unidades UTF-16 (comportamento padrão do `java.lang.String`).
 
-Use `length` para tamanho; não assuma contagem de caracteres quando precisar
-de precisão por target (diferença em strings com acentos/emoji).
+Para strings com acentos/emoji os valores divergem (`"Olá".length` = 4 no Native,
+3 no JVM). É um gap **conhecido e explícito** (código `STR001` em
+`docs/backend-parity.md`): use `length` para tamanho bruto; não assuma contagem
+de caracteres quando o target importa.
 
 ## Null safety (0.2.6-beta)
 
 ```kof
 String? s = null
 if (s != null) {
-    println(s.length)   // narrowing OK
+    println(s.length)   // narrowing OK — propriedade E métodos (s.substring(...))
 }
 // s.length sem check → erro SEM014
 ```
+
+> **02/09:** narrowing de `String?` no JVM corrigido — antes `s.length`/`s.substring(...)`
+> com narrowing emitiam `getfield "?".length`/`"".substring` (bytecode inválido →
+> `ClassFormatError`/erro de launcher). Agora roda nos 3 targets
+> (`NullSafetyE2ETest`).
 
 ## Limitações
 

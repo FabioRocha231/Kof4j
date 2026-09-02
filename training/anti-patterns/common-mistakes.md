@@ -37,7 +37,7 @@ var data = new Int[100]
 // memory reclaimed automatically
 ```
 
-## 3. Backend-specific code
+## 4. Backend-specific code
 
 ```kof
 // WRONG — breaks multi-target
@@ -50,7 +50,7 @@ var result = compute()
 println(result)
 ```
 
-## 4. Over-engineering
+## 5. Over-engineering
 
 ```kof
 // WRONG
@@ -64,7 +64,7 @@ class ServiceFactory {
 var service = new Service()
 ```
 
-## 5. Ignoring error handling
+## 6. Ignoring error handling
 
 ```kof
 // WRONG — unsafe
@@ -78,7 +78,7 @@ try {
 }
 ```
 
-## 6. Using Object as universal type
+## 7. Using Object as universal type
 
 ```kof
 // WRONG
@@ -88,7 +88,7 @@ var x: Object = "hello"
 var x: String = "hello"
 ```
 
-## 7. Unnecessary annotations
+## 8. Unnecessary annotations
 
 Annotations existem no Kof para **interoperação** (frameworks JVM, Android). Para recursos da própria plataforma, use as APIs idiomáticas — annotation+container é vazar mecanismo na intenção.
 
@@ -112,7 +112,7 @@ class UserService {
 }
 ```
 
-## 8. Manual string building
+## 9. Manual string building
 
 ```kof
 // WRONG
@@ -125,7 +125,7 @@ for (var i = 0; i < items.length; i++) {
 var result = "Items: " + items.length
 ```
 
-## 9. Manual List.get handling (fix 27/08 — removido)
+## 10. Manual List.get handling (fix 27/08 — removido)
 
 ```kof
 // WRONG (workaround histórico) — bounds check manual antes de get
@@ -136,7 +136,7 @@ var x = l.get(1)   // ou l[1]
 var y = listOf(1,2,3).get(1) // 2
 ```
 
-## 10. Manual import workarounds (fix 27/08 — removido)
+## 11. Manual import workarounds (fix 27/08 — removido)
 
 ```kof
 // WRONG — copiar arquivo C.kf para pasta raiz para evitar import a.b.C falhando
@@ -145,7 +145,7 @@ import a.b.C
 import a.b.*
 ```
 
-## 11. Ignorar null safety (0.2.6-beta)
+## 12. Ignorar null safety (0.2.6-beta)
 
 ```kof
 // WRONG — sentinela para ausência
@@ -157,7 +157,7 @@ var r = find("x")
 if (r != null) { println(r) }
 ```
 
-## 12. Loop manual quando higher-order existe (0.2.6-beta)
+## 13. Loop manual quando higher-order existe (0.2.6-beta)
 
 ```kof
 // WRONG

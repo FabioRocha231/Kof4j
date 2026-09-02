@@ -225,6 +225,18 @@ class Parser {
             if (check(TokenType.LESS)) {
                 returnType = returnType + consumeGenericTypeArgs();
             }
+            // suffixo de tipo no retorno: `String? f()`, `Int[] f()`
+            while (check(TokenType.QUESTION)
+                    || (check(TokenType.LBRACKET) && checkNext(TokenType.RBRACKET))) {
+                if (check(TokenType.QUESTION)) {
+                    advance();
+                    returnType += "?";
+                } else {
+                    advance();
+                    advance();
+                    returnType += "[]";
+                }
+            }
             name = expectId("Expected function name", "PARSE010");
         } else {
             name = expectId("Expected function name", "PARSE010");
@@ -609,16 +621,29 @@ class Parser {
         if (check(TokenType.IDENTIFIER, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE, TokenType.SHORT_TYPE,
                 TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE, TokenType.DOUBLE_TYPE,
                 TokenType.CHAR_TYPE, TokenType.STRING_TYPE, TokenType.VOID)) {
-            Token nameTok = peek();
-            Token next = pos + 1 < tokens.size() ? tokens.get(pos + 1) : peek();
-            Token afterNext = pos + 2 < tokens.size() ? tokens.get(pos + 2) : peek();
-            if (next.is(TokenType.IDENTIFIER) && afterNext.is(TokenType.LPAREN)) {
+            // Campo ou método com tipo de retorno explícito: `Type name(...)`.
+            // parseTypeRef cobre retornos genéricos (`Set<Int>`, `List<String>`,
+            // `Map<K,V>`) e nullable (`String?`) — o lookahead antigo de 2 tokens
+            // quebrava porque assumia retorno de um token só.
+            String type = parseTypeRef();
+            String name = expectId("Expected member name", "PARSE018");
+            if (check(TokenType.LPAREN)) {
                 advance();
-                MethodDeclarationNode m = parseMethod(mods, nameTok.value());
-                return new MethodDeclarationNode(m.position(), m.modifiers(), m.returnType(), m.name(),
-                        m.parameters(), m.thrownExceptions(), m.body(), annos);
+                List<FormalParameterNode> params = new ArrayList<>();
+                if (!check(TokenType.RPAREN)) {
+                    params.add(parseFormalParameter());
+                    while (check(TokenType.COMMA)) { advance(); params.add(parseFormalParameter()); }
+                }
+                expect(TokenType.RPAREN, "Expected ')' after parameters", "PARSE019");
+                String returnType = type;
+                if (check(TokenType.COLON)) {
+                    advance();
+                    returnType = parseTypeRef();
+                }
+                List<String> thrown = parseThrows();
+                return finishMethod(mods, annos, name, params, returnType, thrown);
             }
-            FieldDeclarationNode f = (FieldDeclarationNode) parseField(mods);
+            FieldDeclarationNode f = (FieldDeclarationNode) parseField(mods, type, name);
             return new FieldDeclarationNode(f.position(), f.modifiers(), f.type(), f.name(),
                     f.initializer(), annos);
         }
@@ -653,9 +678,7 @@ class Parser {
         return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(), annos);
     }
 
-    private FieldDeclarationNode parseField(List<String> mods) {
-        String type = parseTypeRef();
-        String name = expectId("Expected field name", "PARSE017");
+    private FieldDeclarationNode parseField(List<String> mods, String type, String name) {
         ExpressionNode init = null;
         if (check(TokenType.EQUAL)) {
             advance();
@@ -663,28 +686,6 @@ class Parser {
         }
         expectSemicolon();
         return new FieldDeclarationNode(pos(), mods, type, name, init);
-    }
-
-    private MethodDeclarationNode parseMethod(List<String> mods, String returnType) {
-        String name = advance().value();
-        List<FormalParameterNode> params = parseFormalParameters();
-        if (check(TokenType.COLON)) {
-            advance();
-            returnType = parseTypeRef();
-        }
-        List<String> thrown = parseThrows();
-        if (check(TokenType.LBRACE)) {
-            List<StatementNode> body = parseBlock();
-            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, body, List.of());
-        }
-        if (check(TokenType.EQUAL)) {
-            advance();
-            ExpressionNode expr = parseExpression();
-            if (check(TokenType.SEMICOLON)) advance();
-            return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(new ReturnStmt(pos(), expr)), List.of());
-        }
-        expectSemicolon();
-        return new MethodDeclarationNode(pos(), mods, returnType, name, params, thrown, List.of(), List.of());
     }
 
     private ConstructorDeclarationNode parseConstructor(List<String> mods) {
@@ -836,15 +837,11 @@ class Parser {
         if (check(TokenType.VAR, TokenType.VAL)) {
             return parseVarDecl();
         }
-        if (check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE, TokenType.DOUBLE_TYPE,
-                TokenType.BOOL_TYPE, TokenType.BYTE_TYPE, TokenType.SHORT_TYPE, TokenType.CHAR_TYPE,
-                TokenType.STRING_TYPE)) {
-            if (checkNext(TokenType.IDENTIFIER)) {
-                return parseVarDecl();
-            }
-        }
-        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.IDENTIFIER)
-                && pos + 2 < tokens.size() && tokens.get(pos + 2).is(TokenType.EQUAL)) {
+        if ((check(TokenType.IDENTIFIER) || check(TokenType.VOID) || isPrimitiveType())
+                && lookaheadTypedVarDecl()) {
+            // `Type name = ...` incluindo nullable (`String? s`) e arrays
+            // (`Int[] arr`) — a detecção antiga via checkNext(IDENTIFIER)
+            // quebrava em `?`/`[`/`<` depois do tipo.
             return parseVarDecl();
         }
         if (check(TokenType.SEMICOLON)) {
@@ -1084,6 +1081,57 @@ class Parser {
         }
         expectSemicolon();
         return new VarDeclStmt(p, type, name, init);
+    }
+
+    /**
+     * Lookahead de declaração tipada em statement: `Type name = ...` —
+     * cobre nullable (`String? s`), arrays (`Int[] arr`) e genéricos
+     * (`List<Int> xs`). A detecção antiga (checkNext(IDENTIFIER)) quebrava
+     * quando `?`/`[`/`<` vinha logo após o tipo.
+     */
+    private boolean lookaheadTypedVarDecl() {
+        if (pos >= tokens.size()) return false;
+        TokenType t0 = tokens.get(pos).type();
+        if (t0 != TokenType.IDENTIFIER && t0 != TokenType.VOID && !isPrimitiveTypeToken(t0)) {
+            return false;
+        }
+        int i = pos + 1;
+        while (i + 1 < tokens.size() && tokens.get(i).is(TokenType.DOT)
+                && tokens.get(i + 1).is(TokenType.IDENTIFIER)) {
+            i += 2;
+        }
+        if (i < tokens.size() && tokens.get(i).is(TokenType.LESS)) {
+            int depth = 0;
+            while (i < tokens.size()) {
+                TokenType tt = tokens.get(i).type();
+                if (tt == TokenType.LESS) {
+                    depth++;
+                    i++;
+                } else if (tt == TokenType.GREATER) {
+                    depth--;
+                    i++;
+                    if (depth <= 0) break;
+                } else if (tt == TokenType.GREATER_GREATER) {
+                    depth -= 2;
+                    i++;
+                    if (depth <= 0) break;
+                } else {
+                    i++;
+                }
+            }
+        }
+        while (i < tokens.size()) {
+            TokenType tt = tokens.get(i).type();
+            if (tt == TokenType.QUESTION) {
+                i++;
+            } else if (tt == TokenType.LBRACKET && i + 1 < tokens.size()
+                    && tokens.get(i + 1).is(TokenType.RBRACKET)) {
+                i += 2;
+            } else {
+                break;
+            }
+        }
+        return i < tokens.size() && tokens.get(i).is(TokenType.IDENTIFIER);
     }
 
     private ExpressionNode parseExpression() {

@@ -7,6 +7,52 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## [0.2.6-beta] - 2026-09-02
+
+### Fix — filosofia idiomática (revisão do corpus)
+
+- **`Set<T>` como tipo declarado no JVM** (`feat`): descriptor `kof.Set`
+  materializado como `java/util/HashSet` (`JvmTypeMapper`). `Set<T>` em campo,
+  retorno e parâmetro agora funciona nos 3 targets — antes `NoClassDefFoundError:
+  kof/Set` no JVM (`KofMapSetTest`).
+- **Parser: membros de classe com retorno genérico** (`fix`): `Set<Int> foo()`,
+  `List<String> bar()` em classe não parseavam (lookahead de 1 token).
+  Refatorado para parse-then-decide (`Parser.parseClassMember`).
+- **Null-safety narrowing no JVM corrigido** (`fix`): `if (s != null) {
+  s.length }` emitia `getfield "?".length` e `s.substring(...)` emitia
+  `"".substring` (bytecode inválido → erro de launcher/`ClassFormatError`).
+  Agora desempacota `NullableType` no dispatch de field-access e method-call
+  (`NullSafetyE2ETest`). `if (x != null)` usa `if_acmp*` (era `if_icmp*`).
+- **`mapOf(k1, v1, ...)` infere o tipo do primeiro par** (`fix`): antes
+  `Map<Unknown,Unknown>` vazava para `var m = mapOf(...)` e `get()` devolvia
+  Unknown (SemanticAnalyzer + CompilerDriver).
+- **Parser: forma prefixada nullable** (`feat`): `String? s = null` e retorno
+  `String? f()` agora parseiam em statements, funções e classes — simétrica a
+  `String s`; a forma anotada `var s: String? = null` também é válida.
+
+### Fix — stdlib exemplifica os idioms que ensina
+
+- **`File.readText()`/`readFile()` → `String?`**: ausência = `null` (JVM e
+  Native — o Native antes encerrava o programa).
+- **`File.size()` sem sentinela `-1`**: lança exceção recuperável
+  (`catch (String e)`) quando o arquivo não existe (JVM + Native asm via
+  `kof_throw_string`).
+- **`Map.get` devolve `V?`** para valores de referência (ausência = `null`,
+  narrowing via `if (x != null)`); primitivos seguem `V` (modelo atual não
+  representa ausência).
+
+### Corpus / docs
+
+- `training/datasets/kof-idioms.json` atualizado para 0.2.6-beta (17 → 20
+  entradas; `;` estilo Java removido; kof-004 separa ausência vs erro).
+- `AGENTS.md` corrigido: forma nullable padrão `String? s = null`; `spawn`
+  fire-and-forget sozinho é válido.
+- `docs/philosophy.md`: propostas futuras (`config {}`, `name: required`)
+  marcadas como tal; `route GET` substituído pela API implementada.
+- `docs/backend-parity.md`: gap `STR001` (length UTF-8 vs UTF-16) e
+  `STR002` (io) documentados; `docs/stdlib/IO.md` e `training/language/io.md`
+  refletem o novo contrato.
+
 ## [0.1.0] - 2026-08-25
 
 Primeira release estável da plataforma base — P0 (ecossistema) e P1

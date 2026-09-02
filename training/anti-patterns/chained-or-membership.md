@@ -55,21 +55,27 @@ Bool isQueryOperation(String operation) {
 }
 ```
 
-Quando o conjunto é reutilizado, extraia para uma função que o devolve
-(**não** use `Set<T>` como campo de classe — hoje quebra em runtime com
-`NoClassDefFoundError: kof/Set`; `setOf` local é o caminho verificado):
+Quando o conjunto é reutilizado, extraia para uma função que o devolve **ou**
+declare como campo de classe — `Set<T>` como tipo declarado (campo, retorno
+de função ou parâmetro) funciona nos 3 targets desde 0.2.6-beta (02/09, o
+descriptor JVM de `kof.Set` foi mapeado para `java/util/HashSet`):
 
 ```kof
+Set<String> knownOperations() {
+    return setOf("GetSession", "GetAccess", "GetDashboard", "GetToday")
+}
+
 Bool isQueryOperation(String operation) {
-    val known = setOf("GetSession", "GetAccess", "GetDashboard", "GetToday")
-    return known.contains(operation)
+    return knownOperations().contains(operation)
 }
 ```
 
-> **Caveat multi-target (verificado 01/09):** `setOf(...)` **local** funciona
-> nos 3 targets. `Set<T>` como **tipo declarado** (campo de classe ou retorno de
-> função) falha no **JVM** em runtime (`kof/Set` não é materializado) — só o
-> Native lida. Para pertencimento, sempre `val s = setOf(...)` dentro da função.
+> **Histórico (fechado 02/09):** `setOf(...)` local sempre funcionou nos 3
+> targets; mas `Set<T>` como **tipo declarado** (campo de classe ou retorno de
+> função) falhava no **JVM** em runtime (`NoClassDefFoundError: kof/Set` —
+> o descriptor `Lkof/Set;` não era materializado). Corrigido no
+> `JvmTypeMapper` (mapeamento `kof.Set` → `java/util/HashSet`) + parser
+> de membros de classe com retorno genérico (`Set<Int> foo()`, `List<String> bar()`).
 
 ## Why it is bad
 

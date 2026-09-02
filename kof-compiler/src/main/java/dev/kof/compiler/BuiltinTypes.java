@@ -48,6 +48,22 @@ public final class BuiltinTypes {
         return false;
     }
 
+    public static Type mapKey(Type type) {
+        if (type instanceof Type.ClassType ct && "Map".equals(ct.name())
+                && ct.typeArguments().size() == 2) {
+            return ct.typeArguments().get(0);
+        }
+        return Type.UnknownType.UNKNOWN;
+    }
+
+    public static Type mapValue(Type type) {
+        if (type instanceof Type.ClassType ct && "Map".equals(ct.name())
+                && ct.typeArguments().size() == 2) {
+            return ct.typeArguments().get(1);
+        }
+        return Type.UnknownType.UNKNOWN;
+    }
+
 
     public static final Type SET = new Type.ClassType("kof", "Set", List.of());
 

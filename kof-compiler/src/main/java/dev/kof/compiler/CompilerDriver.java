@@ -2651,7 +2651,7 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && "readFile".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     localIdx = emitExpression(mc.arguments().get(0), ops, owner, localIdx, locals);
                     ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_file",
-                            List.of(BuiltinTypes.STRING), BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                            List.of(BuiltinTypes.STRING), new Type.NullableType(BuiltinTypes.STRING), KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "writeFile".equals(mc.methodName()) && mc.arguments().size() == 2) {
@@ -4071,6 +4071,9 @@ private Target target = Target.JVM;
                     }
                     localIdx = emitExpression(mc.receiver(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    // narrowing de null-safety (`if (x != null) { x.substring(...) }`):
+                    // dispatch pelo inner — antes emitia `"".substring` (owner "" inválido)
+                    if (recvType instanceof Type.NullableType nt) recvType = nt.inner();
                     if (KofUi.isUiType(recvType)) {
                         localIdx = emitUiInstance(recvType, mc, ops, owner, localIdx, locals);
                         yield localIdx;
@@ -4338,7 +4341,13 @@ private Target target = Target.JVM;
                             }
                             Type retType = switch (mapFn) {
                                 case "kof_map_put", "kof_map_remove" -> valueType;
-                                case "kof_map_get" -> valueType;
+                                // get() devolve V? para valores de REFERÊNCIA (ausência = null,
+                                // narrowing via `if (x != null)`); para primitivos/UI a ausência
+                                // não é representável no modelo atual (storage é o primitivo) —
+                                // ficam como V e a ausência vira exceção/erro de runtime.
+                                case "kof_map_get" -> valueType instanceof Type.ClassType ct
+                                        && !KofUi.isUiType(ct) && !KofMedia.isHandleType(ct)
+                                        ? new Type.NullableType(valueType) : valueType;
                                 case "kof_map_contains", "kof_map_is_empty" -> Type.PrimitiveType.BOOL;
                                 case "kof_map_size" -> Type.PrimitiveType.INT;
                                 case "kof_map_clear" -> Type.PrimitiveType.VOID;
@@ -4761,6 +4770,7 @@ private Target target = Target.JVM;
                         yield localIdx;
                     }
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    Type recvType = inferExprType(fa.receiver(), locals);
                     String faOp = ae.operator();
                     if ("+=".equals(faOp) || "-=".equals(faOp) || "*=".equals(faOp)
                             || "/=".equals(faOp) || "%=".equals(faOp)
@@ -4770,7 +4780,6 @@ private Target target = Target.JVM;
                                 Type.UnknownType.UNKNOWN));
                     }
                     localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
-                    Type recvType = inferExprType(fa.receiver(), locals);
                     Type fieldType = Type.UnknownType.UNKNOWN;
                     if (recvType instanceof Type.ClassType ct) {
                         SymbolTable.Symbol fs = resolveFieldInHierarchy(ct.name(), fa.fieldName());
@@ -5100,6 +5109,10 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 Type recvType = inferExprType(fa.receiver(), locals);
+                // narrowing de null-safety (`if (x != null) { x.length }`): o tipo do
+                // receptor é o inner — antes emitia `getfield "?".length` para String?
+                // (owner "?" inválido → erro de launcher/verificação no JVM).
+                if (recvType instanceof Type.NullableType nt) recvType = nt.inner();
                 if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     ops.add(new KofCall(recvType, "kof_list_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
@@ -5371,9 +5384,11 @@ private Target target = Target.JVM;
                 if (mc.receiver() == null && "transaction".equals(mc.methodName()) && mc.arguments().size() == 1) {
                     yield Type.PrimitiveType.VOID;
                 }
-                if (("readLine".equals(mc.methodName()) || "readFile".equals(mc.methodName()))
-                        && mc.receiver() == null) {
+                if ("readLine".equals(mc.methodName()) && mc.receiver() == null) {
                     yield BuiltinTypes.STRING;
+                }
+                if ("readFile".equals(mc.methodName()) && mc.receiver() == null) {
+                    yield new Type.NullableType(BuiltinTypes.STRING);
                 }
                 if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())
                         && KofWeb.contextCall(mc.methodName(), mc.arguments().size()) != null) {
@@ -5435,7 +5450,12 @@ private Target target = Target.JVM;
                     yield new Type.ClassType("kof", "List", List.of(listOfElementType(mc, locals)));
                 }
                 if ("mapOf".equals(mc.methodName()) && mc.receiver() == null) {
-                    yield new Type.ClassType("kof", "Map", List.of(Type.UnknownType.UNKNOWN, Type.UnknownType.UNKNOWN));
+                    // pinning do tipo no primeiro par — espelha o emit (mapOf(k1,v1,...))
+                    Type keyType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
+                            : inferExprType(mc.arguments().get(0), locals);
+                    Type valueType = mc.arguments().size() < 2 ? Type.UnknownType.UNKNOWN
+                            : inferExprType(mc.arguments().get(1), locals);
+                    yield new Type.ClassType("kof", "Map", List.of(keyType, valueType));
                 }
                 if ("setOf".equals(mc.methodName()) && mc.receiver() == null) {
                     Type elemType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN : inferExprType(mc.arguments().get(0), locals);
@@ -5634,6 +5654,8 @@ private Target target = Target.JVM;
                 }
                 if (mc.receiver() != null) {
                     Type recvType = inferExprType(mc.receiver(), locals);
+                    // narrowing de null-safety: `if (x != null) { x.metodo() }`
+                    if (recvType instanceof Type.NullableType nt) recvType = nt.inner();
                     if (KofProcess.isHandle(recvType)) {
                         List<Type> hArgs = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) hArgs.add(inferExprType(arg, locals));
@@ -5724,7 +5746,13 @@ private Target target = Target.JVM;
                         if (recvType instanceof Type.ClassType ct && ct.typeArguments().size() == 2) valueType = ct.typeArguments().get(1);
                         Type keyType = Type.UnknownType.UNKNOWN;
                         if (recvType instanceof Type.ClassType ct && ct.typeArguments().size() == 2) keyType = ct.typeArguments().get(0);
-                        if ("get".equals(mn) || "remove".equals(mn)) yield valueType;
+                        if ("get".equals(mn)) {
+                            // mesmo contrato do emit: valores de referência devolvem V?
+                            yield valueType instanceof Type.ClassType ct
+                                    && !KofUi.isUiType(ct) && !KofMedia.isHandleType(ct)
+                                    ? new Type.NullableType(valueType) : valueType;
+                        }
+                        if ("remove".equals(mn)) yield valueType;
                         if ("put".equals(mn)) yield valueType;
                         if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn)) yield Type.PrimitiveType.INT;
                         if ("containsKey".equals(mn) || "contains".equals(mn) || "isEmpty".equals(mn)) yield Type.PrimitiveType.BOOL;
@@ -5843,6 +5871,8 @@ private Target target = Target.JVM;
             }
             case FieldAccessExpr fa -> {
                 Type recvType = inferExprType(fa.receiver(), locals);
+                // narrowing de null-safety: `if (x != null) { x.length }` — inner type
+                if (recvType instanceof Type.NullableType nt) recvType = nt.inner();
                 if (KofProcess.isResult(recvType) && KofProcess.isField(fa.fieldName())) {
                     yield KofProcess.fieldType(fa.fieldName());
                 }

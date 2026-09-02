@@ -45,6 +45,9 @@ final class JvmTypeMapper {
         if ("kof".equals(c.packageName()) && "List".equals(c.name())) {
             return "Ljava/util/ArrayList;";
         }
+        if ("kof".equals(c.packageName()) && "Set".equals(c.name())) {
+            return "Ljava/util/HashSet;";
+        }
         if ("kof.concurrent".equals(c.packageName()) && "Channel".equals(c.name())) {
             return "Ljava/util/concurrent/LinkedBlockingQueue;";
         }
@@ -73,6 +76,7 @@ final class JvmTypeMapper {
         if (simpleName.contains("/")) return simpleName;
         if (simpleName.contains(".")) return simpleName.replace('.', '/');
         if ("kof".equals(packageName) && "List".equals(simpleName)) return "java/util/ArrayList";
+        if ("kof".equals(packageName) && "Set".equals(simpleName)) return "java/util/HashSet";
         if ("kof.concurrent".equals(packageName) && "Channel".equals(simpleName)) return "java/util/concurrent/LinkedBlockingQueue";
         if (packageName.isEmpty() && BuiltinTypes.isEnumName(simpleName)) return "java/lang/String";
         if (packageName.isEmpty()) return simpleName;

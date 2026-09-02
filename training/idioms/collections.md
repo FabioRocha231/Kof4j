@@ -36,6 +36,15 @@ s.add(4)
 s.contains(2)
 ```
 
+## `Map.get` devolve `V?` para valores de referência (02/09)
+
+`m.get(chave)` retorna `V?` quando o valor é um tipo de referência
+(`Map<String, String>`, `Map<String, User>`): ausência = `null`, use
+`if (v != null)` para estreitar. Para valores **primitivos** (`Map<String, Int>`)
+o tipo fica `V` — o modelo atual armazena primitivos desembrulhados e não
+representa ausência (limitação documentada; usar `contains`/`containsKey`
+para checar antes).
+
 Fix 27/08: `listOf(...).get(n)` e `size` em projetos grandes com `import a.b.C` agora resolvem corretamente (CompilerDriver file-specific imports). Não é necessário workaround manual de índice.
 
 ## When to use

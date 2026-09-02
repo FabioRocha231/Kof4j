@@ -83,6 +83,129 @@ class KofMapSetTest {
             """, "ok-native");
     }
 
+    @Test
+    void setAsDeclaredTypeJvm(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            Set<String> makeSet(String a, String b) {
+                var s = setOf(a, b)
+                return s
+            }
+
+            class Holder {
+                Set<Int> tags
+                public constructor() {
+                    tags = setOf(1, 2, 3)
+                }
+                Bool has(Int t) {
+                    return tags.contains(t)
+                }
+                Set<Int> tagsOf() {
+                    return tags
+                }
+            }
+
+            main() {
+                var s = makeSet("x", "y")
+                assert(s.contains("x"))
+                assert(s.size() == 2)
+                var h = Holder()
+                assert(h.has(2))
+                assert(h.tags.size() == 3)
+                var t = h.tagsOf()
+                assert(t.contains(3))
+                println("ok")
+            }
+            """, "ok");
+    }
+
+    @Test
+    void setAsDeclaredTypeJs(@TempDir Path tmp) throws Exception {
+        runJs(tmp, """
+            Set<String> makeSet(String a, String b) {
+                var s = setOf(a, b)
+                return s
+            }
+            main() {
+                var s = makeSet("x", "y")
+                println(s.contains("x"))
+                println(s.size())
+                println("done")
+            }
+            """, "true\n2\ndone");
+    }
+
+    @Test
+    void setAsDeclaredTypeNative(@TempDir Path tmp) throws Exception {
+        runNative(tmp, """
+            class Holder {
+                Set<Int> tags
+                public constructor() {
+                    tags = setOf(1, 2, 3)
+                }
+                Bool has(Int t) {
+                    return tags.contains(t)
+                }
+            }
+            main() {
+                var h = Holder()
+                assert(h.has(2))
+                assert(h.tags.size() == 3)
+                println("ok-native")
+            }
+            """, "ok-native");
+    }
+
+    @Test
+    void mapGetNullableReferenceValue(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            main() {
+                var m = mapOf("name", "Mel")
+                m.put("city", "SP")
+                var name = m.get("name")
+                if (name != null) {
+                    println(name.length)
+                } else {
+                    println("null-name")
+                }
+                var missing = m.get("nope")
+                if (missing == null) {
+                    println("missing")
+                } else {
+                    println(missing.length)
+                }
+                println("done")
+            }
+            """, "3\nmissing\ndone");
+    }
+
+    @Test
+    void mapGetNullableReferenceValueJs(@TempDir Path tmp) throws Exception {
+        runJs(tmp, """
+            main() {
+                var m = mapOf("name", "Mel")
+                var name = m.get("name")
+                println(name == null)
+                println("done")
+            }
+            """, "false\ndone");
+    }
+
+    @Test
+    void mapGetNullableReferenceValueNative(@TempDir Path tmp) throws Exception {
+        runNative(tmp, """
+            main() {
+                var m = mapOf("name", "Mel")
+                var missing = m.get("nope")
+                if (missing == null) {
+                    println("missing")
+                } else {
+                    println("has")
+                }
+                println("done")
+            }
+            """, "missing\ndone");
+    }
+
     private String runNative(Path tempDir, String source, String expected) throws java.io.IOException {
         Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, source);

@@ -6817,8 +6817,12 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_read_file_err:
-                leaq .Lstr_read_err(%rip), %rdi
-                call kof_panic
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
 
             .globl kof_write_file
             .type kof_write_file, @function
@@ -7997,6 +8001,7 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
+            .Lstr_io_size_prefix: .byte 115,105,122,101,58,32,102,105,108,101,32,110,111,116,32,102,111,117,110,100,58,32
             .globl kof_io_file_size
             .type kof_io_file_size, @function
             kof_io_file_size:
@@ -8016,10 +8021,14 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lio_size_err:
-                movq $-1, %rax
-                addq $144, %rsp
-                popq %rbx
-                ret
+                leaq .Lstr_io_size_prefix(%rip), %rdi
+                movl $22, %esi
+                call kof_string_from_literal   # rax = KofString "size: file not found: "
+                movq %rax, %rdi
+                movq %rbx, %rsi                 # path (preservado em rbx)
+                call kof_string_concat          # rax = prefixo + path
+                movq %rax, %rdi
+                call kof_throw_string           # longjmp p/ o try; panic se não houver — não retorna
 
             // ── Bytes ────────────────────────────────────────────
 

@@ -33,7 +33,7 @@
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
 | `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive / `scheduler.every`+`at`+`cancel` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue; scheduler = ScheduledExecutor) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex; **scheduler SCHED001** = thread por job + `usleep` ms→us + flag `active`) | ✅ sequencial (async real = CONC003; canal = array; scheduler = setInterval) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 15/15 · `SpawnE2ETest` 4/4 |
-| Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
+| Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | `length` diverge: **`STR001`** — Native conta bytes UTF-8; JVM conta unidades UTF-16 (`"Olá".length` = 4 vs 3). Gap explícito, não silencioso. |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |
 | `Map<K,V>` + `mapOf` (put/get/remove/contains/size/keys/values/clear/isEmpty) | ✅ HashMap | ✅ asm próprio | ✅ JS Map | `KofMapSetTest` |
@@ -41,7 +41,8 @@
 | `enum` + values/valueOf/name + switch exaustivo (`SEM031`) | ✅ | ✅ | ✅ | enum→String nos descritores; `KofEnumSwitchTest` |
 | JSON encode/decode (primitivos, List) | ✅ | ✅ | ✅ | arrays `JSN003` fechado; `Double[]`/`Float[]` no Native (JSN001, 31/08) |
 | JSON objetos/records (JSN002) | ✅ | ✅ 31/08 | ✅ | composição em compile-time no Native |
-| kof.io (File, Path, Directory) | ✅ | ✅ | ✅ | |
+| `kof.io` (File, Path, Directory) | ✅ | ✅ | ✅ | `readText`/`readFile` → `String?` (`null` p/ ausência, 02/09); `size()` lança em vez de `-1` |
+| kof.io `readText`/`size` | ✅ | ✅ | ✅ | `STR002` histórico fechado 02/09: Native `readText` devolve `null` (antes encerrava); `size()` sem sentinela `-1` |
 | kof.time (`now()`, `sleep`, `interval`) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) | `interval`/`every` JVM (ScheduledExecutor) + JS (`setInterval`, 27/08); Native SCHED001 |
 | `readLine`, `readFile`, `writeFile` | ✅ | ✅ | ✅ | |
 | `kof.validation` (13 preds) | ✅ | ✅ | ✅ | `KofValidationTest` |
