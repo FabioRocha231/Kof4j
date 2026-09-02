@@ -2,7 +2,7 @@
 
 **Status:** Fases 1-3 implementadas (DebugInfo na IR, metadata JVM, `kof-debug` MVP)
 **Data:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (790 testes; 7 targets; free-list + pthread spawn + FP XMM)
+**Versão:** 0.2.6-beta (805 testes; 7 targets; free-list + pthread spawn + FP XMM)
 
 ---
 

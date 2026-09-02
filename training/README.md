@@ -1,6 +1,6 @@
 # Kof Training — Corpus para LLMs
 
-**Version:** 0.2.6-beta (02 Sep 2026) — 790 tests · targets jvm/native/native.risc/native.arm/js/kofc + KofScript
+**Version:** 0.2.6-beta (02 Sep 2026) — 805 tests · targets jvm/native/native.risc/native.arm/js/kofc + KofScript
 
 Este diretório contém conhecimento estruturado sobre a linguagem Kof, otimizado para modelos de linguagem.
 

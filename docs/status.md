@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 790 testes 773 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 805 testes 788 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -486,7 +486,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (790 = 773 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
+## Testes (805 = 788 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -564,11 +564,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
  | NullSafetyE2ETest | 7 | `String?` narrowing JVM + readLine EOF null (02/09) |
- | **Total kof-compiler** | **773** | |
+ | **Total kof-compiler** | **788** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **790** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **805** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 
 ## Consolidação idiomática (guidelines 0.0.5)
 

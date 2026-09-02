@@ -1,7 +1,7 @@
 # Kof Standard Library — Arquitetura
 
 **Última atualização:** 2 de setembro de 2026
-**Versão:** 0.2.6-beta (790 testes: 773 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli; golden 16/16, integration 9/9)
+**Versão:** 0.2.6-beta (805 testes: 788 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli; golden 16/16, integration 9/9)
 
 > A Standard Library do Kof é a plataforma: HTTP, REST, auth, autorização,
 > validação, serialização, database, messaging, observabilidade e testing

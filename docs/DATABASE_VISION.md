@@ -10,7 +10,7 @@ versionadas) + **MongoDB**; SQLite nativo via `libsqlite3.so.0` direto
 (roundtrip E2E real); MySQL/MariaDB nativo via wire protocol em progresso
 (auth scramble SHA-1 `kof_db_mysql_scramble` + `lenenc` + parse `user:pass@`
 done; handshake completo/query/prepared pendentes); `VERSION` 0.2.6-beta;
-build 790 testes.
+build 805 testes.
 
 ---
 

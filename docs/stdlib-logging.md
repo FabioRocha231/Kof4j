@@ -1,7 +1,7 @@
 # stdlib log — Logging Nativo do Kof
 
 **Última atualização:** 2 de setembro de 2026
-**Versão:** 0.2.6-beta  (790 testes)
+**Versão:** 0.2.6-beta  (805 testes)
 **Status:** implementado (Fase 4 do plano de independência do Spring) — JVM+Native (Native asm UTC `kof_log_*`, 27/08); JS `LOG001`
 
 ---
