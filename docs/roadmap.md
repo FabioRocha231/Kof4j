@@ -1,6 +1,6 @@
 # Kof — Roadmap de Longo Prazo
 
-**Última atualização:** 31 de agosto de 2026
+**Última atualização:** 2 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
@@ -55,7 +55,7 @@ Objetivos:
 - possibilidade de utilizar frameworks legados como Spring, Hibernate etc.;
 - backend principal durante a consolidação inicial.
 
-Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 747 testes 31/08;
+Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 788 testes 02/09;
 web stack nativa com WebSocket/SSE e `kof.http` retry/circuit — 30/08)
 
 ### KofNative — Binário Nativo
@@ -688,7 +688,7 @@ O Kof é uma plataforma distribuível, não apenas um JAR:
 - distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
 - versionamento centralizado (`VERSION` 0.2.6-beta → pom/properties via `scripts/bump-version.sh`);
-- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 747 → bump → package 3 plataformas → GitHub Release);
+- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 788 → bump → package 3 plataformas → GitHub Release);
 - `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
 - editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);
 - `kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version` PASS (18 comandos; `fmt` e `config gen` 31/08).

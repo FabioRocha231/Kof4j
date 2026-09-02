@@ -1,6 +1,6 @@
 # Status do Projeto Kof
 
-**Última atualização:** 1 de setembro de 2026
+**Última atualização:** 2 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 769 testes 752 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 788 testes 771 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -26,6 +26,23 @@ tests/run-golden.sh  → 16/16 (8 casos × jvm+native)
 tests/run-integration.sh → 9/9 (CLI + serve + kof test)
 scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 ```
+
+---
+
+## 02/09 — Revisão da filosofia idiomática
+
+- **`Set<T>` como tipo declarado no JVM**: descriptor `kof.Set` → `java/util/HashSet`
+  (`NoClassDefFoundError: kof/Set` fechado); parser de membros de classe com
+  retorno genérico (`Set<Int> foo()`, `List<String> bar()`).
+- **Null-safety narrowing no JVM corrigido**: `if (s != null) { s.length }` /
+  `s.substring(...)` emitiam `getfield "?".length`/`"".substring` (bytecode
+  inválido); `if (x != null)` usava `if_icmp*` em referência. `mapOf(k1,v1,...)`
+  infere o tipo do primeiro par. Forma prefixada `String? s = null` passa a
+  parsear.
+- **stdlib honesta**: `File.readText`/`readFile` → `String?` (Native devolve
+  `null` em vez de encerrar); `File.size()` lança em vez do sentinela `-1`;
+  `Map.get` → `V?` para valores de referência.
+- Ver `CHANGELOG.md` [0.2.6-beta] 02/09 e `docs/backend-parity.md`.
 
 ---
 
@@ -453,7 +470,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (769 = 752 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (788 = 771 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -464,7 +481,7 @@ main() { /* ignorado pelo kof test */ }
 | KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais |
 | OptimizerTest | 21 | passes de otimização da IR |
 | KofOrmE2ETest | 18 | kof.orm: entity, CRUD, where (+ORM003 validação de coluna tipada, P3-10), migrate, unique, MongoDB (3 skips condicional) |
-| IoE2ETest | 15 | kof.io multiplatform |
+| IoE2ETest | 16 | kof.io multiplatform (+ `readText`/`size` contratos honestos 02/09) |
 | ComponentCoreE2ETest | 14 | kof.ui Component: view/onMount/onDispose |
 | CoreRegressionE2ETest | 14 | regressões de uso real (BOM, toInt, ARITH001...) |
 | JsonE2ETest | 14 | JSON JVM + Native |
@@ -510,7 +527,7 @@ main() { /* ignorado pelo kof test */ }
 | StdlibE2ETest | 4 | now/readFile/writeFile |
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
-| KofMapSetTest | 3 | Map/Set 3 targets (asm próprio no Native) |
+| KofMapSetTest | 9 | Map/Set 3 targets + `Set<T>` como tipo declarado + `Map.get` → `V?` (02/09) |
  | KofObservabilityTest | 5 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS; Native histogram = gap OBS002) |
 | KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
 | KofValidationTest | 3 | 13 predicados de validação (3 targets) |
@@ -524,11 +541,12 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **752** | |
+ | NullSafetyE2ETest | 5 | `String?` narrowing JVM (02/09) |
+ | **Total kof-compiler** | **771** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **769** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **788** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da

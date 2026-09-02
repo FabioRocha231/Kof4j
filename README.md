@@ -33,9 +33,7 @@ Kof é uma linguagem de programação **geral, fortemente tipada e estaticamente
 
 > **Uma única linguagem não deveria obrigar você a escolher um único mundo.**
 
-Kof possui seu próprio compilador, lexer, parser, sistema de tipos, análise semântica e representação intermediária.
-
-A partir dessa representação, diferentes backends podem transformar o mesmo programa em diferentes formas de execução.
+Kof possui seu próprio compilador, lexer, parser, sistema de tipos, análise semântica e representação intermediária (Kof IR). A partir dessa IR, diferentes backends transformam o mesmo programa em diferentes formas de execução:
 
 ```text
                          KOF
@@ -46,46 +44,13 @@ A partir dessa representação, diferentes backends podem transformar o mesmo pr
                           │
           ┌───────────────┼────────────────┐
           │               │                │
-       Kof4J          KofNative        KofScript
+       JVM Backend    Native Backend    JS Backend
           │               │                │
           ▼               ▼                ▼
-        JVM          Native Binary      Runtime
-       .class        Executável        Interativo
-          │               │                │
-          ▼               ▼                ▼
-        JVM             OS/CPU        Kof Runtime
-                          │
-                          ▼
-                        KofJS
-                          │
-                          ▼
-                         Web
-```
-
----
-
-# O que é Kof?
-
-Kof é uma linguagem de programação **geral, fortemente tipada e estaticamente tipada**.
-
-Uma linguagem. Um compilador. Múltiplos targets.
-
-```text
-Kof Source
-    │
-    ▼
-Kof Compiler
-    │
-    ▼
-Kof IR
-    │
-    ├──────────► Kof4J ───────► JVM
-    │
-    ├──────────► KofNative ───► Executável nativo
-    │
-    ├──────────► KofScript ───► Runtime
-    │
-    └──────────► KofJS ───────► Web
+        JVM          Native Binary      ES Modules
+       (.class)      (ELF x86_64,       (GraalJS /
+                      riscv64/aarch64,    browser)
+                      KofC, KofScript)
 ```
 
 **A linguagem não muda. O target muda.**
@@ -124,59 +89,46 @@ Kof não depende de Java como linguagem intermediária.
 
 # Estado Atual
 
-Kof está em desenvolvimento ativo — **0.1.0**.
+Kof está em desenvolvimento ativo — **0.2.6-beta** (02/09/2026).
 
-O compilador possui frontend próprio, type system, Kof IR e três backends.
+O compilador possui frontend próprio, type system, Kof IR e **sete targets**:
+JVM (V21 via ASM), Native x86_64 (ELF, sem libc), `native.risc`/`native.arm`
+(toolchain + qemu), KofJS (ES Modules no GraalJS), KofScript (REPL) e KofC
+(subset C → nativo).
 
 | Feature | JVM | Native | KofJS |
 |---------|-----|--------|-------|
-| println | ✅ | ✅ | ✅ |
-| variables | ✅ | ✅ | ✅ |
-| arithmetic | ✅ | ✅ | ✅ |
-| if/else, if-expr | ✅ | ✅ | ✅ |
-| while, for, do-while, for-in | ✅ | ✅ | ✅ |
-| switch | ✅ | ✅ | ✅ |
-| functions (sem `fun`) | ✅ | ✅ | ✅ |
-| records | ✅ | ✅ | ✅ |
-| classes | ✅ | ✅ | ✅ |
-| constructors (`constructor(...)` + primary) | ✅ | ✅ | ✅ |
-| inheritance, interfaces, virtual dispatch | ✅ | ✅ | ✅ |
-| generics (erasure) | ✅ | ✅ | ✅ |
-| lambdas | ✅ | ✅ | ✅ |
-| exceptions (try/catch/finally) | ✅ | ✅ | ✅ |
-| assert | ✅ | ✅ | ✅ |
-| spawn (concorrência) | ✅ | CONC001 | — |
+| println, variáveis, aritmética | ✅ | ✅ | ✅ |
+| if/else, if-expr, while, for, for-in, switch | ✅ | ✅ | ✅ |
+| functions (sem `fun`), lambdas com capturas | ✅ | ✅ | ✅ |
+| records, classes, herança, interfaces, virtual dispatch | ✅ | ✅ | ✅ |
+| generics (erasure), `Box<T>` com primitivos | ✅ | ✅ | ✅ |
+| exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ |
+| null safety `String?` + narrowing | ✅ | ✅ | ✅ |
+| pattern matching `case String s` + record destructuring | ✅ | ✅ | ✅ |
+| spawn/await (`Handle<T>`, unboxing) | ✅ | ✅ (pthread) | ✅ sequencial |
 | strings (concat `+`, `==`, API completa) | ✅ | ✅ | ✅ |
-| arrays | ✅ | ✅ | ✅ |
-| List\<T\>, listOf | ✅ | ✅ | ✅ |
-| JSON encode/decode (objetos no JVM) | ✅ | ✅ | ✅ |
-| kof.io (File, Path, Directory) | ✅ | ✅ |
-| kof.ui (Color, Palette, Theme) | ✅ | ✅ |
-| kof.ui Window/Label/Button/Input (bind + ações) | ✅ | ✅ (JS render) | ✅ |
-| kof.ui Column/Row/View/Style (layout) | ✅ | ✅ (JS render) | ✅ |
-| Lambdas com capturas | ✅ | ✅ | ✅ |
-| kof.time (`now()`) | ✅ | ✅ | ✅ |
-| kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
-| kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ~ | ~ |
-| kof.config (arquivo > env > profile, typed) | ✅ | CONF001 | CONF001 |
-| kof.log (níveis, off, JSON estruturado, requestId) | ✅ | ✅ (asm; UTC) | LOG001 |
-| kof.db (JDBC, query tipada, `transaction {}`) | ✅ | ✅ (SQLite nativo; MySQL WIP) | DB001 |
-| kof.orm (`entity`, CRUD, where c/ operadores, saveAll, page, deleteAll, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
-| String.toInt/toLong/toDouble/toFloat | ✅ | ✅ | ✅ |
-| JSON Float/Double + arrays (`json.decode<Int[]>`) | ✅ | — | — |
+| arrays, `List<T>`/`Map<K,V>`/`Set<T>` + map/filter/reduce | ✅ | ✅ | ✅ |
+| enums + switch exaustivo | ✅ | ✅ | ✅ |
+| JSON encode/decode (objetos/records/arrays, 3 targets) | ✅ | ✅ | ✅ |
+| kof.io (File, Path, Directory) | ✅ | ✅ | ✅ |
+| kof.time (`now`/`sleep`/`interval`), kof.cache | ✅ | ✅ | ✅ |
+| kof.web (`web.app()`, ws, sse, TLS) | ✅ | WEB002 | WEB001 |
+| kof.http client + retry/circuit | ✅ | HTTP002 | ✅ |
+| kof.security (passwords, crypto, jwt, secrets, auth) | ✅ | ✅ | ✅ |
+| kof.db / kof.orm (SQLite nativo, MySQL WIP, MongoDB) | ✅ | ✅ | DB001/ORM001 |
+| kof.config / kof.log | ✅ | ✅ | CONF001/LOG001 |
+| kof.ui (Color, Palette, Theme, widgets) | no-op | no-op | ✅ render |
 
-**KofJS** (target `js`): o mesmo frontend e a mesma Kof IR geram ES Modules
-(ECMAScript 2022+) executados na engine JS embarcada (GraalJS — sem Node.js
-nem runtime externo). `kof build --target js` / `kof run --target js`.
-Status alpha: [docs/targets/KOFJS.md](docs/targets/KOFJS.md).
+**Concorrência**: `spawn tarefa()` / `val r = spawn f(); await r` — virtual
+threads na JVM, `pthread_create` no Native (CONC001 fechado 31/08), sequencial
+no JS (CONC003). Ver [docs/concurrency.md](docs/concurrency.md).
 
-**Concorrência**: `spawn tarefa()` / `spawn { ... }` — virtual threads na JVM,
-join implícito; Native reporta `CONC001` (gap documentado). Ver
-[docs/concurrency.md](docs/concurrency.md).
+**Null safety**: `String?`/`Int?` + `if (x != null)` narrowing nos 3 targets
+(fix JVM 02/09). `Map.get` devolve `V?` para valores de referência.
 
-**Testes**: `test "nome" { }` + `assert(cond, "msg")` + `kof test
-<file.kf|dir> [--target jvm|native|js]` — PASS/FAIL **por teste**, runner
-sintetizado em compile-time, exit code pelo resultado. Ver
+**Testes**: `test "nome" { }` + `assert(cond, "msg")` + `kof test` — 788 testes
+(771 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli). Ver
 [learn/23-testing.md](learn/23-testing.md).
 
 **Depuração**: `kof debug <file.kf>` — servidor DAP sobre stdio com JDWP cru
@@ -305,8 +257,8 @@ for (var entry in dir.list()) {
 }
 ```
 
-Texto sempre UTF-8; bytes como `Int[]`; erros consistentes (Bool/`null`).
-Ver: [learn/34-file-system.md](learn/34-file-system.md) e
+Texto sempre UTF-8; bytes como `Int[]`; ausência como `String?` (`null`) e
+`size()` lança em vez de sentinela `-1`. Ver: [learn/34-file-system.md](learn/34-file-system.md) e
 [docs/stdlib/IO.md](docs/stdlib/IO.md).
 
 ---
@@ -353,18 +305,18 @@ completo com cada sistema, checksum e solução de problemas) e
 # CLI
 
 ```bash
-kof build <dir> [--target jvm|native|js] [--output <dir>]
-kof run <file.kf> [--target jvm|native|js] [args...]
+kof build <dir> [--target jvm|native|native.risc|native.arm|js|android] [--output <dir>] [--release]
+kof run <file.kf> [--target jvm|native|native.risc|native.arm|js] [args...]
 kof serve <file.kf> [--port <port>] [--host <host>]
 kof check <file.kf|dir>
 kof test <file.kf|dir> [--target jvm|native|js]
-kof info [--json]
-kof lsp
-kof install <dir>
-kof version
+kof script | repl | c | fmt | config
+kof bench | profile | inspect | debug
+kof info | lsp | install | version
 ```
 
-`kof fmt` é planejado (ver [docs/tooling/README.md](docs/tooling/README.md)).
+`kof fmt` (formatter idempotente) e `kof config gen` implementados — ver
+[docs/tooling/README.md](docs/tooling/README.md).
 
 ---
 
@@ -424,8 +376,9 @@ Source (.kf)
   ↓ Type System
   ↓ Semantic Analysis
   ↓ Kof IR (backend-agnostic)
-  ├── JVM Backend (ASM)
-  └── Native Backend (x86-64)
+  ├── JVM Backend (ASM) → .class
+  ├── Native Backend (x86_64 / riscv64 / aarch64) → ELF
+  └── JS Backend (GraalJS) → ES Modules
 ```
 
 ---
