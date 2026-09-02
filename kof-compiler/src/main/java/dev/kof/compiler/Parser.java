@@ -16,6 +16,9 @@ class Parser {
     private int pos;
     private String currentClassName;
 
+    /** Nomes de entidades declaradas — para o Query DSL {@code Entity.query(db) { }}. */
+    private final java.util.Set<String> entityNames = new java.util.HashSet<>();
+
     Parser(List<Token> tokens, DiagnosticCollector diagnostics, String file) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
@@ -292,6 +295,54 @@ class Parser {
     }
 
     /**
+     * Query DSL tipada (ORM001): {@code Entity.query(db) { where age > 18;
+     * orderBy name desc; limit 10 }}. Consome o bloco {@code { ... }} e
+     * devolve um {@link QueryDslExpr}; o lowering (CompilerDriver) gera
+     * {@code db.query<Entity>(db, "SELECT ...", binds...)}.
+     */
+    private ExpressionNode parseQueryDsl(SourcePosition pos, String entity, ExpressionNode dbArg) {
+        expect(TokenType.LBRACE, "Expected '{'", "PARSE024");
+        List<ExpressionNode> wheres = new ArrayList<>();
+        List<ExpressionNode> orderFields = new ArrayList<>();
+        List<String> orderDirs = new ArrayList<>();
+        ExpressionNode limit = null;
+        while (!check(TokenType.RBRACE) && !atEnd()) {
+            if (check(TokenType.IDENTIFIER) && "where".equals(peek().value())) {
+                advance();
+                wheres.add(parseExpression());
+                expectSemicolon();
+            } else if (check(TokenType.IDENTIFIER) && "orderBy".equals(peek().value())) {
+                advance();
+                orderFields.add(parseIdentifierOrLiteral());
+                String dir = "asc";
+                if (check(TokenType.IDENTIFIER) && ("desc".equals(peek().value())
+                        || "asc".equals(peek().value()))) {
+                    dir = advance().value();
+                }
+                orderDirs.add(dir);
+                expectSemicolon();
+            } else if (check(TokenType.IDENTIFIER) && "limit".equals(peek().value())) {
+                advance();
+                limit = parseExpression();
+                expectSemicolon();
+            } else {
+                error("Expected 'where', 'orderBy' or 'limit' in query block", "PARSE090");
+                advance();
+            }
+        }
+        expect(TokenType.RBRACE, "Expected '}' after query block", "PARSE025");
+        return new QueryDslExpr(pos, entity, dbArg, wheres, orderFields, orderDirs, limit);
+    }
+
+    /** Identificador ou literal (para o campo do `orderBy`). */
+    private ExpressionNode parseIdentifierOrLiteral() {
+        if (check(TokenType.IDENTIFIER)) {
+            return new IdentifierExpr(pos(), advance().value());
+        }
+        return parsePrimary();
+    }
+
+    /**
      * Consumes the generic type arguments starting at the current LESS token
      * and returns their source text, e.g. "<Int, String>".
      */
@@ -502,6 +553,7 @@ class Parser {
     private EntityDeclarationNode parseEntityDeclaration(List<String> mods, List<AnnotationNode> annos) {
         advance(); // entity
         String name = expectId("Expected entity name", "PARSE024");
+        entityNames.add(name);
         List<EntityFieldNode> fields = new ArrayList<>();
         expect(TokenType.LBRACE, "Expected '{' after entity name", "PARSE024");
         while (!check(TokenType.RBRACE) && !atEnd()) {
@@ -1283,6 +1335,13 @@ class Parser {
             } else if (check(TokenType.LPAREN)) {
                 List<ExpressionNode> args = parseArguments();
                 if (check(TokenType.LBRACE)) {
+                    // Query DSL tipada: `Entity.query(db) { where ...; }` — o `{`
+                    // é o token atual; parseQueryDsl consome o bloco.
+                    if (expr instanceof FieldAccessExpr fa && "query".equals(fa.fieldName())
+                            && fa.receiver() instanceof IdentifierExpr qr
+                            && entityNames.contains(qr.name()) && args.size() == 1) {
+                        return parseQueryDsl(fa.position(), qr.name(), args.get(0));
+                    }
                     args.add(new LambdaExpr(pos(), List.of(), parseBlock()));
                 }
                 if (expr instanceof IdentifierExpr ie) {

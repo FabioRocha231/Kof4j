@@ -1,8 +1,11 @@
 # DEBUGGING_NATIVE.md — Debug no target Native
 
-**Status:** Planejado — a Fase 1 da IR (source locations) já alimenta o caminho; DWARF futuro
-**Data:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (790 testes; 7 targets; free-list + pthread spawn + FP XMM)
+**Status:** Parcial (02/09) — line table DWARF real no ELF x86-64 (Fase 5 parcial): o `NativeBackend`
+emite `.file 1 "<fonte.kf>"` + `.loc 1 <linha> 0` quando debug enabled; `objdump
+--dwarf=decodedline` mostra o arquivo Kof e a linha de cada instrução
+(`NativeDwarfLineInfoTest`). Variáveis locais, DAP no nativo e stepping pendentes.
+**Data:** 2 de setembro de 2026
+**Versão:** 0.2.6-beta (790 testes; 7 targets)
 
 ---
 
@@ -26,7 +29,7 @@ Editor
 
 - símbolos de função (já existem: `ClassName_methodName`);
 - source locations por instrução (Fase 1 da IR);
-- line tables;
+- line tables ✅ (`.file`/`.loc` GAS → `.debug_line`; verificado com `objdump --dwarf=decodedline`);
 - locals com tipos Kof;
 - scopes;
 - stack frames.

@@ -1,6 +1,6 @@
 # Idioms — Collections
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (31 Aug 2026)
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (01 Sep 2026)
 
 ## What it is
 
@@ -34,7 +34,18 @@ var v = m.get("a")
 var s = setOf(1, 2, 3)
 s.add(4)
 s.contains(2)
+
+// Como campo de classe, param de construtor e retorno de método (3 targets — 01/09)
+class Bag(Set<Int> tags) {
+    Set<Int> all() {
+        return tags
+    }
+}
+var b = Bag(setOf(1, 2, 3))
+println(b.all().size())
 ```
+
+Fix 01/09: `Set<T>`/`Map<K,V>` como campo/retorno de classe no JVM — o mapper mapeava só `List`→`ArrayList` (então `Set`/`Map` viravam `Lkof/Set;` → `NoClassDefFoundError`); agora `HashSet`/`HashMap`. Parser: método de classe com retorno genérico (`Set<Int> all(`) agora parseia (antes caía no ramo de campo). `KofMapSetTest.setMapAsFieldAndReturn`.
 
 ## `Map.get` devolve `V?` para valores de referência (02/09)
 

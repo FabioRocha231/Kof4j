@@ -207,9 +207,9 @@ concorrência (`spawn` + `await`/`Handle<T>` — JVM virtual threads, Native
 pthread 31/08, JS sequencial), `List map/filter/reduce`, `Box<T>`, pattern
 matching e `String?` implementados (0.2.6-beta).
 Faltam: HTTP client no Native (HTTP002), RPC (gRPC — ver abaixo),
-eventos/filas/pub-sub fora do JVM (MQ001
-Native), tracing, web no Native/JS (WEB002/WEB001), MySQL nativo completo,
-RISC/ARM codegen, GC mark-sweep.
+tracing (OpenTelemetry), web no Native/JS (WEB002/WEB001),
+MySQL nativo completo, RISC/ARM codegen, GC mark-sweep.
+(kof.mq pub/sub + queue = 3 targets — MQ001 fechado 01/09)
 Ver `docs/plan-spring-independence.md` (Fases 5-14).
 
 **gRPC no `kof.web` (novo, 31/08 — planejado)**: comunicação gRPC como

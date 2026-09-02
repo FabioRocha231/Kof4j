@@ -94,7 +94,7 @@ valores idênticos ao JVM (FIPS 180-4 / RFC 2104):
 | passwords (PBKDF2-HMAC-SHA256, 600k) | ✅ | ✅ (asm) | ✅ (delegação ao platform) |
 | sha256 / hmacSha256 | ✅ | ✅ (asm) | ✅ (JS puro) |
 | sha512 | ✅ | ✅ (asm) | ✅ (JS puro) |
-| aes-gcm | ✅ | ✅ (asm) | ❌ (SECN002) |
+| aes-gcm | ✅ | ✅ (asm) | ✅ (JS puro) |
 | jwt HS256 (sig/exp/iss/aud) | ✅ | ✅ (asm) | ✅ |
 | secrets (env) | ✅ | ✅ (`/proc/self/environ`) | ✅ |
 | constant-time / redact | ✅ | ✅ | ✅ |
@@ -102,7 +102,7 @@ valores idênticos ao JVM (FIPS 180-4 / RFC 2104):
 | auth web (`auth.*`, Bearer JWT) | ✅ | ❌ | ❌ |
 | csrf / cors / security headers | ✅ | ❌ | ❌ |
 
-Gaps remanescentes (`SECN00x`, diagnóstico em compile-time): AES-GCM no JS
-(SECN002) e o contexto web de auth/headers (só JVM — web server é JVM,
-`WEB002` no Native). Testes: `KofSecurityTest` (22; unit + E2E nos 3
-targets + adversariais). Referência completa: `docs/security.md`.
+Gaps remanescentes (`SECN00x`, diagnóstico em compile-time): o contexto web de
+auth/headers (só JVM — web server é JVM, `WEB002` no Native). AES-GCM no JS
+(`SECN002`) e JWT (`SECN004`) fechados. Testes: `KofSecurityTest` (27; unit +
+E2E nos 3 targets + adversariais). Referência completa: `docs/security.md`.

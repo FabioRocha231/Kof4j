@@ -65,7 +65,8 @@ class JsBackend implements Backend {
         runtimeImports.clear();
         ioRuntimeImports.clear();
         JsIr.JsModule jsModule = lowerModule(module);
-        String code = new JsEmitter().emit(jsModule);
+        JsEmitter emitter = new JsEmitter();
+        String code = emitter.emit(jsModule);
         String fileName = moduleFileName(module.name());
         String sourceMapUrl = debugInfo ? "//# sourceMappingURL=" + fileName + ".map\n" : "";
         Path outFile = outputDir.resolve(fileName);
@@ -73,7 +74,7 @@ class JsBackend implements Backend {
         writeRuntime(outputDir);
         writeHtmlEntry(outputDir, module.name());
         if (debugInfo) {
-            writeSourceMap(module, outputDir, fileName);
+            writeSourceMap(module, outputDir, fileName, emitter.functionLines());
         }
     }
 
@@ -311,7 +312,8 @@ class JsBackend implements Backend {
         List<JsIr.JsStatement> body = parseMethodBody(ctx);
         insertFieldDefaults(clazz, body);
         insertSuperCall(clazz, body);
-        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false);
+        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false,
+                firstKofLine(method));
     }
 
     private JsIr.JsFunction lowerFunction(IRMethod method, IRClass clazz, boolean isStatic) {
@@ -325,7 +327,24 @@ class JsBackend implements Backend {
         if (isTopLevel) {
             name = jsFunctionName(name, method.parameterTypes().size());
         }
-        return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel);
+        return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel,
+                firstKofLine(method));
+    }
+
+    /**
+     * Linha Kof da primeira instrução do método (para o source map V3) — vem do
+     * {@code KofDebugInfo} que o driver já popula (mesma fonte das line tables
+     * do JVM). Sintéticos (toString/toJSON/decode) não têm fonte → null.
+     */
+    private static Integer firstKofLine(IRMethod method) {
+        if (method.debugInfo() == null || method.debugInfo().positions().isEmpty()) return null;
+        Integer min = null;
+        for (SourcePosition p : method.debugInfo().positions().values()) {
+            if (p != null && p.line() > 0) {
+                min = (min == null) ? p.line() : Math.min(min, p.line());
+            }
+        }
+        return min;
     }
 
     private List<JsIr.JsStatement> parseMethodBody(MethodCtx ctx) {
@@ -4600,7 +4619,10 @@ class JsBackend implements Backend {
                 return out;
             }
 
-            function kofSecB64Decode(s) {
+            // strict=true rejeita tamanho não múltiplo de 4 (paridade java.util.Base64).
+            // strict=false (default) tolera b64-url sem padding (JWT).
+            function kofSecB64Decode(s, strict) {
+                if (strict && s.length % 4 !== 0) throw new Error("invalid base64 length");
                 const out = [];
                 let buffer = 0;
                 let bits = 0;
@@ -4695,6 +4717,199 @@ class JsBackend implements Backend {
                     throw new Error("audience mismatch");
                 }
                 return payloadJson;
+            }
+
+            // ── AES-256-GCM (SECN002 fechado 01/09) ───────────────────
+            // Puro JS (roda no GraalJS e no browser). Formato idêntico ao
+            // JVM/Native: aesgcm$<ivB64>$<ct||tagB64>, key 32 bytes (64 hex),
+            // IV 12 bytes aleatórios, tag 128-bit. S-box FIPS 197; GHASH/CTR
+            // NIST SP 800-38D. Validado byte-a-byte contra node:crypto e o
+            // vetor NIST (KofSecurityTest.aesGcmJsRoundTrip + paridade JVM).
+
+            const KOF_SEC_AES_SBOX = new Uint8Array([
+                0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
+                0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
+                0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
+                0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
+                0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,
+                0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,
+                0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,
+                0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,
+                0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,
+                0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,
+                0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,
+                0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,
+                0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,
+                0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,
+                0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,
+                0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
+            ]);
+            const KOF_SEC_AES_RCON = [0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36,0x6c,0xd8,0xab,0x4d];
+
+            function kofSecAesKeyExpansion(key) {
+                const Nk = 8, Nr = 14;
+                const w = new Uint32Array(4 * (Nr + 1));
+                for (let i = 0; i < Nk; i++) {
+                    w[i] = ((key[4*i]<<24)|(key[4*i+1]<<16)|(key[4*i+2]<<8)|key[4*i+3]) >>> 0;
+                }
+                for (let i = Nk; i < 4*(Nr+1); i++) {
+                    let temp = w[i-1];
+                    if (i % Nk === 0) {
+                        temp = ((temp << 8) | (temp >>> 24)) >>> 0;
+                        temp = ((KOF_SEC_AES_SBOX[(temp>>>24)&0xff]<<24)|(KOF_SEC_AES_SBOX[(temp>>>16)&0xff]<<16)
+                                |(KOF_SEC_AES_SBOX[(temp>>>8)&0xff]<<8)|KOF_SEC_AES_SBOX[temp&0xff]) >>> 0;
+                        temp = (temp ^ (KOF_SEC_AES_RCON[i/Nk - 1] << 24)) >>> 0;
+                    } else if (i % Nk === 4) {
+                        temp = ((KOF_SEC_AES_SBOX[(temp>>>24)&0xff]<<24)|(KOF_SEC_AES_SBOX[(temp>>>16)&0xff]<<16)
+                                |(KOF_SEC_AES_SBOX[(temp>>>8)&0xff]<<8)|KOF_SEC_AES_SBOX[temp&0xff]) >>> 0;
+                    }
+                    w[i] = (w[i-Nk] ^ temp) >>> 0;
+                }
+                return w;
+            }
+
+            function kofSecAesXtime(a) { return ((a<<1) ^ ((a & 0x80)?0x1b:0)) & 0xff; }
+            function kofSecAesGmul(a,b) { let r=0; for(let i=0;i<8;i++){ if(b&1) r^=a; a=kofSecAesXtime(a); b>>>=1;} return r&0xff; }
+
+            function kofSecAesEncryptBlock(rk, input) {
+                const s = new Uint8Array(16);
+                s.set(input);
+                for (let c = 0; c < 4; c++) {
+                    const w = rk[c];
+                    s[4*c] ^= (w>>>24)&0xff; s[4*c+1] ^= (w>>>16)&0xff; s[4*c+2] ^= (w>>>8)&0xff; s[4*c+3] ^= w&0xff;
+                }
+                for (let round = 1; round < 14; round++) {
+                    for (let i=0;i<16;i++) s[i]=KOF_SEC_AES_SBOX[s[i]];
+                    let t;
+                    t=s[1]; s[1]=s[5]; s[5]=s[9]; s[9]=s[13]; s[13]=t;
+                    t=s[2]; s[2]=s[10]; s[10]=t; t=s[6]; s[6]=s[14]; s[14]=t;
+                    t=s[15]; s[15]=s[11]; s[11]=s[7]; s[7]=s[3]; s[3]=t;
+                    for (let c=0;c<4;c++) {
+                        const a0=s[4*c],a1=s[4*c+1],a2=s[4*c+2],a3=s[4*c+3];
+                        s[4*c]   = kofSecAesGmul(a0,2)^kofSecAesGmul(a1,3)^a2^a3;
+                        s[4*c+1] = a0^kofSecAesGmul(a1,2)^kofSecAesGmul(a2,3)^a3;
+                        s[4*c+2] = a0^a1^kofSecAesGmul(a2,2)^kofSecAesGmul(a3,3);
+                        s[4*c+3] = kofSecAesGmul(a0,3)^a1^a2^kofSecAesGmul(a3,2);
+                    }
+                    for (let c = 0; c < 4; c++) {
+                        const w = rk[4*round + c];
+                        s[4*c] ^= (w>>>24)&0xff; s[4*c+1] ^= (w>>>16)&0xff; s[4*c+2] ^= (w>>>8)&0xff; s[4*c+3] ^= w&0xff;
+                    }
+                }
+                for (let i=0;i<16;i++) s[i]=KOF_SEC_AES_SBOX[s[i]];
+                let t;
+                t=s[1]; s[1]=s[5]; s[5]=s[9]; s[9]=s[13]; s[13]=t;
+                t=s[2]; s[2]=s[10]; s[10]=t; t=s[6]; s[6]=s[14]; s[14]=t;
+                t=s[15]; s[15]=s[11]; s[11]=s[7]; s[7]=s[3]; s[3]=t;
+                for (let c = 0; c < 4; c++) {
+                    const w = rk[56 + c];
+                    s[4*c] ^= (w>>>24)&0xff; s[4*c+1] ^= (w>>>16)&0xff; s[4*c+2] ^= (w>>>8)&0xff; s[4*c+3] ^= w&0xff;
+                }
+                return s;
+            }
+
+            function kofSecGcmInc32(c) { for (let i=15;i>=12;i--) { c[i]=(c[i]+1)&0xff; if(c[i]!==0) break; } }
+
+            function kofSecGcmGctr(rk, ctr0, data) {
+                const out = new Uint8Array(data.length);
+                const ctr = ctr0.slice();
+                for (let off=0; off<data.length; off+=16) {
+                    const ks = kofSecAesEncryptBlock(rk, ctr);
+                    const n = Math.min(16, data.length-off);
+                    for (let j=0;j<n;j++) out[off+j]=data[off+j]^ks[j];
+                    kofSecGcmInc32(ctr);
+                }
+                return out;
+            }
+
+            function kofSecGcmMult(X, Y) {
+                const Z = new Uint8Array(16);
+                const V = Y.slice();
+                for (let i=0;i<128;i++) {
+                    if ((X[i>>3] >>> (7-(i&7))) & 1) { for (let j=0;j<16;j++) Z[j]^=V[j]; }
+                    const lsb = V[15] & 1;
+                    for (let j=15;j>0;j--) V[j] = ((V[j]>>>1) | ((V[j-1]&1)<<7)) & 0xff;
+                    V[0] = V[0]>>>1;
+                    if (lsb) V[0] ^= 0xe1;
+                }
+                return Z;
+            }
+
+            function kofSecGhashAbsorb(Y, H, data) {
+                for (let off=0; off<data.length; off+=16) {
+                    const block = new Uint8Array(16);
+                    block.set(data.subarray(off, Math.min(off+16, data.length)));
+                    for (let j=0;j<16;j++) Y[j]^=block[j];
+                    Y = kofSecGcmMult(Y, H);
+                }
+                return Y;
+            }
+
+            function kofSecGhash(H, aad, ct) {
+                let Y = new Uint8Array(16);
+                Y = kofSecGhashAbsorb(Y, H, aad);
+                Y = kofSecGhashAbsorb(Y, H, ct);
+                const lenBlock = new Uint8Array(16);
+                const dv = new DataView(lenBlock.buffer);
+                dv.setUint32(0, Math.floor(aad.length*8 / 4294967296));
+                dv.setUint32(4, (aad.length*8) >>> 0);
+                dv.setUint32(8, Math.floor(ct.length*8 / 4294967296));
+                dv.setUint32(12, (ct.length*8) >>> 0);
+                for (let j=0;j<16;j++) Y[j]^=lenBlock[j];
+                Y = kofSecGcmMult(Y, H);
+                return Y;
+            }
+
+            function kofSecGcmCore(key, iv, data, aad, decrypting) {
+                const rk = kofSecAesKeyExpansion(key);
+                const H = kofSecAesEncryptBlock(rk, new Uint8Array(16));
+                const J0 = new Uint8Array(16); J0.set(iv); J0[15] = 1;
+                const ctr = J0.slice(); kofSecGcmInc32(ctr);
+                const out = kofSecGcmGctr(rk, ctr, data);
+                const ctForTag = decrypting ? data : out;
+                const S = kofSecGhash(H, aad, ctForTag);
+                const encJ0 = kofSecAesEncryptBlock(rk, J0);
+                const tag = new Uint8Array(16);
+                for (let j=0;j<16;j++) tag[j] = S[j] ^ encJ0[j];
+                return { out: out, tag: tag };
+            }
+
+            function kofSecRandomBytes(n) {
+                if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+                    const b = new Uint8Array(n);
+                    crypto.getRandomValues(b);
+                    return b;
+                }
+                return kofSecHexToBytes(kof_platform.randomBytesHex(n));
+            }
+
+            export function kofSecAesgcmEncrypt(plaintext, keyHex) {
+                const key = kofSecHexToBytes(keyHex);
+                if (key.length !== 32) throw new Error("AES-GCM key must be 32 bytes (64 hex chars)");
+                const iv = kofSecRandomBytes(12);
+                const pt = kofSecUtf8(String(plaintext));
+                const r = kofSecGcmCore(key, iv, pt, new Uint8Array(0), false);
+                const ctTag = new Uint8Array(r.out.length + 16);
+                ctTag.set(r.out);
+                ctTag.set(r.tag, r.out.length);
+                return "aesgcm$" + kofSecB64Encode(iv) + "$" + kofSecB64Encode(ctTag);
+            }
+
+            export function kofSecAesgcmDecrypt(ciphertext, keyHex) {
+                const key = kofSecHexToBytes(keyHex);
+                if (key.length !== 32) throw new Error("AES-GCM key must be 32 bytes (64 hex chars)");
+                const parts = String(ciphertext).split("$");
+                if (parts.length !== 3 || parts[0] !== "aesgcm") throw new Error("invalid ciphertext format");
+                const iv = kofSecB64Decode(parts[1], true);
+                const ctTag = kofSecB64Decode(parts[2], true);
+                if (ctTag.length < 16) throw new Error("decryption failed: ciphertext too short");
+                const ct = ctTag.subarray(0, ctTag.length - 16);
+                const tag = ctTag.subarray(ctTag.length - 16);
+                const r = kofSecGcmCore(key, iv, ct, new Uint8Array(0), true);
+                let diff = 0;
+                for (let j=0;j<16;j++) diff |= r.tag[j] ^ tag[j];
+                if (diff !== 0) throw new Error("decryption failed: tag mismatch");
+                return kofSecUtf8Decode(r.out);
             }
 
             // ── kof.validation (G4) ───────────────────────────────────
@@ -5393,10 +5608,63 @@ class JsBackend implements Backend {
         Files.writeString(outputDir.resolve("index.html"), html);
     }
 
-    private void writeSourceMap(IRModule module, Path outputDir, String fileName) throws IOException {
+    private void writeSourceMap(IRModule module, Path outputDir, String fileName,
+                                List<JsIr.JsFunctionLine> functionLines) throws IOException {
         String source = module.name().isEmpty() ? "Default.kf" : module.name() + ".kf";
+        String mappings = buildSourceMapMappings(functionLines);
         String map = "{\"version\":3,\"file\":\"" + fileName
-                + "\",\"sources\":[\"" + source + "\"],\"names\":[],\"mappings\":\"\"}";
+                + "\",\"sources\":[\"" + source + "\"],\"sourcesContent\":null"
+                + ",\"names\":[],\"mappings\":\"" + mappings + "\"}";
         Files.writeString(outputDir.resolve(fileName + ".map"), map);
+    }
+
+    /**
+     * Mappings VLQ (source map V3, formato padrão) — mapeamento de nível de
+     * linha: cada linha gerada com mapeamento tem um segmento
+     * {@code [genCol=0, srcIdx=0, srcLine(0-based), srcCol=0]}. As linhas geradas
+     * são entradas separadas por {@code ';'} (linhas sem mapeamento ficam
+     * vazias); {@code srcIdx}/{@code srcLine}/{@code srcCol} são deltas
+     * acumulativos entre segmentos; {@code genCol} zera a cada linha.
+     */
+    private static String buildSourceMapMappings(List<JsIr.JsFunctionLine> lines) {
+        if (lines == null || lines.isEmpty()) return "";
+        java.util.TreeMap<Integer, Integer> byGen = new java.util.TreeMap<>();
+        for (JsIr.JsFunctionLine fl : lines) {
+            if (fl.generatedLine() > 1 && fl.kofLine() > 0) {
+                byGen.putIfAbsent(fl.generatedLine(), fl.kofLine());
+            }
+        }
+        if (byGen.isEmpty()) return "";
+        int maxGen = byGen.lastKey();
+        java.util.List<String> entries = new java.util.ArrayList<>(maxGen);
+        int prevSrcLine0 = 0;   // linha 0-based acumulativa entre segmentos
+        for (int g = 1; g <= maxGen; g++) {
+            Integer src = byGen.get(g);
+            if (src == null) {
+                entries.add("");
+                continue;
+            }
+            int srcLine0 = src - 1;
+            entries.add(vlq(0) + vlq(0) + vlq(srcLine0 - prevSrcLine0) + vlq(0));
+            prevSrcLine0 = srcLine0;
+        }
+        return String.join(";", entries);
+    }
+
+    /** VLQ base64 do source map (RFC 3436 + tabela do source map V3). */
+    private static final String VLQ_B64 =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    private static String vlq(int value) {
+        int v = (value < 0) ? (((-value) << 1) | 1) : (value << 1);
+        StringBuilder out = new StringBuilder();
+        while (true) {
+            int digit = v & 31;
+            v >>= 5;
+            if (v > 0) digit |= 32;
+            out.append(VLQ_B64.charAt(digit));
+            if (v == 0) break;
+        }
+        return out.toString();
     }
 }

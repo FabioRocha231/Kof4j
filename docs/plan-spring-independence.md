@@ -198,7 +198,7 @@ customizados (`status(201, body)`/`headerSet`), **WebSocket** `app.ws("/chat") {
 - [x] Parcial: `kof.time` `now/sleep` (3 targets) + `interval`/`every`/`at`
       JVM (`ScheduledExecutor`) + JS (`setInterval`) — 27/08; Native
       SCHED001.
-- [x] Parcial: `kof.mq` pub/sub + queue (JVM/JS; Native MQ001).
+- [x] `kof.mq` pub/sub + queue — 3 targets (JVM/JS; Native 01/09, MQ001 fechado).
 - [ ] Backends Kafka/RabbitMQ/JMS/NATS opcionais.
 - [ ] Testes + docs.
 

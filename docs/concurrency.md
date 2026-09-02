@@ -38,7 +38,7 @@ Semântica implementada:
 - `awaitTimeout(r, ms)` — valor se a task terminar no prazo; senão lança exceção (capturável via `try/catch`) — JVM (`Future.get(ms)`) + Native (polling 1ms com deadline); JS sequencial é paridade (a task sempre está pronta) — `KofConcurrency2Test`
 - `channel<T>()` — FIFO thread-safe com `c.send(v)`/`c.receive()` — JVM (`LinkedBlockingQueue`, `put`/`take` bloqueantes) + Native (lista ligada + mutex futex + polling 1ms) + JS (array sequencial) — `KofConcurrency2Test`
 - Lambdas com captura via `BoxN` já suportam `spawn { println(x) }`
-- `kof.mq` publish/subscribe/queue — JVM+JS (MQ001 Native); `kof.time interval/cancel` — JVM
+- `kof.mq` publish/subscribe/queue — **3 targets** (JVM in-memory; Native asm 01/09, MQ001 fechado; JS in-process); `kof.time interval/cancel` — JVM+Native
 
 ### Não exposto
 

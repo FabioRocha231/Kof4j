@@ -1134,7 +1134,12 @@ class JvmBackend implements Backend {
                     ? JvmTypeMapper.toInternalName(ct.packageName(), ct.name()) : "?";
             mv.visitTypeInsn(INSTANCEOF, type);
         } else if (op instanceof KofNewArray na) {
-            mv.visitIntInsn(NEWARRAY, arrayTypeForType(na.elementType()));
+            if (na.elementType() instanceof Type.ClassType ct) {
+                // array de referência: ANEWARRAY (NEWARRAY é só primitivo)
+                mv.visitTypeInsn(ANEWARRAY, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+            } else {
+                mv.visitIntInsn(NEWARRAY, arrayTypeForType(na.elementType()));
+            }
         } else if (op instanceof KofArrayLoad al) {
             mv.visitInsn(arrayLoadOpcode(al.elementType()));
         } else if (op instanceof KofArrayStore as) {

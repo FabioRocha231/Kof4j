@@ -31,6 +31,7 @@ final class NativeRuntime {
         emitConcurrency(sb);
         emitChannel(sb);
         emitScheduler(sb);
+        emitMq(sb);
         emitProcessExit(sb);
         emitPanic(sb);
         emitNullError(sb);
@@ -727,7 +728,19 @@ final class NativeRuntime {
                 xorl %esi, %esi                 # attr = NULL
                 leaq kof_spawn_trampoline(%rip), %rdx
                 movq %rax, %rcx                 # arg = bloco
+                # pthread_create é um C call: a ABI SysV exige rsp ≡ 0 (mod 16)
+                # NO SITE DO CALL. O caller (main) pode chegar desalinhado quando
+                # um println/print precede o spawn (a convenção args-by-stack via
+                # push empilha um slot a mais) — sem alinhar, a glibc segfaulta
+                # em pthread_attr_copy escrevendo no frame. Alinha na hora,
+                # preservando r15 (callee-saved, livre aqui) e o frame de rsp:
+                pushq %r15                      # [A-8]=r15c ; rsp=A-8
+                movq %rsp, %r15                 # r15=A-8
+                andq $-16, %rsp                 # rsp=B (B%16==0)
                 call pthread_create
+                subq %rsp, %r15                 # r15=(A-8)-B = delta
+                addq %r15, %rsp                 # rsp=B+delta=A-8
+                popq %r15                       # r15c ; rsp=A (frame restaurado)
                 testl %eax, %eax
                 jz .Lkof_spawn_ok
                 # falha no pthread: roda inline (degradacao segura)
@@ -1328,6 +1341,20 @@ final class NativeRuntime {
                 movq %rax, %rsi
                 jmp kof_scheduler_every
 
+            # TIME001 (01/09): time.interval/cancel no Native. Mesmo mecanismo do
+            # scheduler.every/cancel (thread por job, loop com cancel; captura por
+            # referência — mesma lambda). Aliás p/ o símbolo do scheduler.
+            # rdi=ms, rsi=task -> id String (igual a kof_scheduler_every).
+            .globl kof_time_interval
+            .type kof_time_interval, @function
+            kof_time_interval:
+                jmp kof_scheduler_every
+            # rdi=id String -> void (igual a kof_scheduler_cancel).
+            .globl kof_time_cancel
+            .type kof_time_cancel, @function
+            kof_time_cancel:
+                jmp kof_scheduler_cancel
+
             .globl kof_scheduler_cancel
             .type kof_scheduler_cancel, @function
             kof_scheduler_cancel:
@@ -1376,6 +1403,280 @@ final class NativeRuntime {
                 xorl %eax, %eax
                 popq %r13
                 popq %r12
+                popq %rbx
+                ret
+            """);
+    }
+
+    /**
+     * MQ001 (01/09): kof.mq no Native — pub/sub + filas in-process.
+     * Estruturas (alocadas via kof_alloc, nunca liberadas — processo único):
+     *   topic node (40B): [next, topic KofString*, subs KofList*, _, _]
+     *   queue  node (40B): [next, name KofString*, items KofList*, _, _]
+     * invoke-com-arg = padrão do kof_list_map (rdi=fn, rsi=arg).
+     */
+    private static void emitMq(StringBuilder sb) {
+        sb.append("""
+            .section .bss
+            .Lmq_topics: .quad 0
+            .Lmq_queues: .quad 0
+            .Lmq_seq: .quad 0
+            .section .data
+            .Lstr_mq_prefix: .asciz "mq-"
+            .section .text
+
+            # kof_mq_find_topic(rdi=topic) -> rax node | 0
+            # (kf_string_equals clobbra rdi/rsi/rax — usa rbx/r12 callee-saved)
+            kof_mq_find_topic:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq .Lmq_topics(%rip), %r12
+            .Lmq_ft_loop:
+                testq %r12, %r12
+                jz .Lmq_ft_done
+                movq %rbx, %rdi
+                movq 8(%r12), %rsi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .Lmq_ft_done
+                movq 0(%r12), %r12
+                jmp .Lmq_ft_loop
+            .Lmq_ft_done:
+                movq %r12, %rax
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_find_queue(rdi=name) -> rax node | 0
+            kof_mq_find_queue:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                movq .Lmq_queues(%rip), %r12
+            .Lmq_fq_loop:
+                testq %r12, %r12
+                jz .Lmq_fq_done
+                movq %rbx, %rdi
+                movq 8(%r12), %rsi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .Lmq_fq_done
+                movq 0(%r12), %r12
+                jmp .Lmq_fq_loop
+            .Lmq_fq_done:
+                movq %r12, %rax
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_subscribe(rdi=topic, rsi=fn) -> void
+            .globl kof_mq_subscribe
+            .type kof_mq_subscribe, @function
+            kof_mq_subscribe:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                call kof_mq_find_topic
+                testq %rax, %rax
+                jnz .Lmq_sub_have
+                movl $40, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movq .Lmq_topics(%rip), %rax
+                movq %rax, 0(%r13)
+                movq %rbx, 8(%r13)
+                call kof_list_new
+                movq %rax, 16(%r13)
+                movq %r13, .Lmq_topics(%rip)
+                movq %r13, %rax
+            .Lmq_sub_have:
+                movq %rax, %rdi
+                movq 16(%rax), %rdi
+                movq %r12, %rsi
+                call kof_list_add
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_unsubscribe(rdi=topic, rsi=fn) -> void
+            .globl kof_mq_unsubscribe
+            .type kof_mq_unsubscribe, @function
+            kof_mq_unsubscribe:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                call kof_mq_find_topic
+                testq %rax, %rax
+                jz .Lmq_unsub_done
+                movq %rax, %r13
+                movq 16(%r13), %r14
+                xorl %r15d, %r15d
+            .Lmq_unsub_loop:
+                movq %r14, %rdi
+                call kof_list_size
+                cmpq %rax, %r15
+                jge .Lmq_unsub_done
+                movq %r14, %rdi
+                movq %r15, %rsi
+                call kof_list_get
+                cmpq %r12, %rax                  # identidade do objeto fn
+                je .Lmq_unsub_rm
+                incq %r15
+                jmp .Lmq_unsub_loop
+            .Lmq_unsub_rm:
+                movq %r14, %rdi
+                movq %r15, %rsi
+                call kof_list_remove
+            .Lmq_unsub_done:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_publish(rdi=topic, rsi=msg) -> void
+            .globl kof_mq_publish
+            .type kof_mq_publish, @function
+            kof_mq_publish:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                call kof_mq_find_topic
+                testq %rax, %rax
+                jz .Lmq_pub_done
+                movq %rax, %r13
+                movq 16(%r13), %r14
+                xorl %r15d, %r15d
+            .Lmq_pub_loop:
+                movq %r14, %rdi
+                call kof_list_size
+                cmpq %rax, %r15
+                jge .Lmq_pub_done
+                movq %r14, %rdi
+                movq %r15, %rsi
+                call kof_list_get
+                movq %rax, %rdi
+                movq %r12, %rsi
+                movq 8(%rdi), %rax
+                movq (%rax), %rax
+                call *%rax
+                incq %r15
+                jmp .Lmq_pub_loop
+            .Lmq_pub_done:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_queue() -> String "mq-<n>"
+            .globl kof_mq_queue
+            .type kof_mq_queue, @function
+            kof_mq_queue:
+                pushq %rbx
+                pushq %r12
+                incq .Lmq_seq(%rip)
+                movq .Lmq_seq(%rip), %r12
+                leaq .Lstr_mq_prefix(%rip), %rdi
+                movl $3, %esi
+                call kof_string_from_literal
+                pushq %rax
+                movq %r12, %rdi
+                call kof_int_to_string
+                movq %rax, %rsi
+                popq %rdi
+                call kof_string_concat
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_push(rdi=q, rsi=item) -> void
+            .globl kof_mq_push
+            .type kof_mq_push, @function
+            kof_mq_push:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                call kof_mq_find_queue
+                testq %rax, %rax
+                jnz .Lmq_push_have
+                movl $40, %edi
+                call kof_alloc
+                movq %rax, %r13
+                movq .Lmq_queues(%rip), %rax
+                movq %rax, 0(%r13)
+                movq %rbx, 8(%r13)
+                call kof_list_new
+                movq %rax, 16(%r13)
+                movq %r13, .Lmq_queues(%rip)
+                movq %r13, %rax
+            .Lmq_push_have:
+                movq 16(%rax), %rdi
+                movq %r12, %rsi
+                call kof_list_add
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_pop(rdi=q) -> Object | null
+            .globl kof_mq_pop
+            .type kof_mq_pop, @function
+            kof_mq_pop:
+                pushq %rbx
+                pushq %r12
+                movq %rdi, %rbx
+                call kof_mq_find_queue
+                testq %rax, %rax
+                jz .Lmq_pop_null
+                movq %rax, %r12
+                movq 16(%r12), %rdi
+                call kof_list_size
+                testq %rax, %rax
+                jz .Lmq_pop_null
+                movq 16(%r12), %rdi
+                xorl %esi, %esi
+                call kof_list_remove
+                popq %r12
+                popq %rbx
+                ret
+            .Lmq_pop_null:
+                xorl %eax, %eax
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_mq_queue_size(rdi=q) -> Int
+            .globl kof_mq_queue_size
+            .type kof_mq_queue_size, @function
+            kof_mq_queue_size:
+                pushq %rbx
+                movq %rdi, %rbx
+                call kof_mq_find_queue
+                testq %rax, %rax
+                jz .Lmq_qs_zero
+                movq 16(%rax), %rdi
+                call kof_list_size
+                popq %rbx
+                ret
+            .Lmq_qs_zero:
+                xorl %eax, %eax
                 popq %rbx
                 ret
             """);
@@ -8686,10 +8987,36 @@ final class NativeRuntime {
         sb.append("""
             .section .data
             .Ldb_null: .asciz "null"
+            # KofStrings (header 24B: 1@0, 0@4, 0@8, len@16, 0@20; dados em +24)
+            # p/ transaction — kf_db_execute lê em leaq 24(%rsi).
+            .Ldb_begin_str:
+                .long 1
+                .long 0
+                .quad 0
+                .long 5
+                .long 0
+                .asciz "begin"
+            .Ldb_commit_str:
+                .long 1
+                .long 0
+                .quad 0
+                .long 6
+                .long 0
+                .asciz "commit"
+            .Ldb_rollback_str:
+                .long 1
+                .long 0
+                .quad 0
+                .long 8
+                .long 0
+                .asciz "rollback"
             .section .bss
             .Ldb_slots: .zero 512
             .Ldb_types: .zero 64
             .Ldb_count: .quad 0
+            # handle (KofString*) da conexão "default" — o que transaction {} usa.
+            # 0 = sem conexão aberta.
+            .Ldb_default_handle: .quad 0
             .Ldb_mysql_buf: .zero 16384
             .Ldb_mysql_names: .zero 1024
             .Ldb_mysql_seq: .zero 1
@@ -9893,6 +10220,7 @@ final class NativeRuntime {
                 jmp .Ldb_handle_copy
             .Ldb_handle_copy_done:
                 movb $0, 24(%r12,%r13)
+                movq %r12, .Ldb_default_handle(%rip)   # conexao atual = default (tx)
                 movq %r12, %rax
                 addq $96, %rsp
                 popq %r15
@@ -9950,6 +10278,74 @@ final class NativeRuntime {
                 movq %rbp, %rsp
                 popq %rbp
                 ret
+
+            # kof_db_transaction(task) — BEGIN; invoca a lambda; COMMIT (ou
+            # ROLLBACK + re-throw). Reusa kof_db_execute (sqlite3_exec / MySQL
+            # COM_QUERY) e o EH (kf_throw_string chega no handler com %rdi=exceção
+            # e a chain apontando p/ o try externo). Conexão: a última aberta
+            # (.Ldb_default_handle), paridade com KOF_DB_DEFAULT no JVM.
+            .globl kof_db_transaction
+            .type kof_db_transaction, @function
+            kof_db_transaction:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r14
+                movq %rdi, %rbx                    # task (lambda)
+                movq .Ldb_default_handle(%rip), %r12
+                testq %r12, %r12
+                jz .Ltx_begin_done
+                movq %r12, %rdi
+                leaq .Ldb_begin_str(%rip), %rsi
+                call kof_db_execute
+            .Ltx_begin_done:
+                # ── try start (mesmo layout de KofTryStart no NativeBackend) ──
+                subq $32, %rsp
+                leaq .Ltx_rollback(%rip), %rax
+                movq %rax, 0(%rsp)
+                movq %rsp, 8(%rsp)
+                movq %rbp, 16(%rsp)
+                movq kof_exc_chain(%rip), %rcx
+                movq %rcx, 24(%rsp)
+                movq %rsp, kof_exc_chain(%rip)
+                # invoca a lambda (vtable[0] = invoke); rdi = this (a lambda,
+                # onde ficam as capturas) — mesmo padrão do sched_trampoline.
+                movq %rbx, %rdi
+                movq 8(%rbx), %rax
+                movq (%rax), %rax
+                call *%rax
+                # ── try end / commit ── (re-carrega o handle do BSS: a lambda
+                # pode ter clobberado r12)
+                movq 24(%rsp), %rcx
+                movq %rcx, kof_exc_chain(%rip)
+                addq $32, %rsp
+                movq .Ldb_default_handle(%rip), %r12
+                testq %r12, %r12
+                jz .Ltx_done
+                movq %r12, %rdi
+                leaq .Ldb_commit_str(%rip), %rsi
+                call kof_db_execute
+            .Ltx_done:
+                popq %r14
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ltx_rollback:
+                movq %rdi, %r14                    # preserva a exceção
+                addq $32, %rsp                     # desfaz o subq do try
+                movq .Ldb_default_handle(%rip), %r12   # re-carrega (lambda clobberou)
+                testq %r12, %r12
+                jz .Ltx_rethrow
+                movq %r12, %rdi
+                leaq .Ldb_rollback_str(%rip), %rsi
+                call kof_db_execute
+            .Ltx_rethrow:
+                movq %r14, %rdi
+                call kof_throw_string
 
             # kof_db_execute(id, sql) → sqlite3_exec
             .globl kof_db_execute
@@ -14988,8 +15384,18 @@ cmpl %r14d, %r15d
             .Lkof_obs_counter_len: .quad 0
             .Lkof_obs_gauges: .zero 512
             .Lkof_obs_gauge_len: .quad 0
+            .Lkof_obs_histograms: .zero 384
+            .Lkof_obs_histogram_len: .quad 0
             .section .data
             .Lstr_obs_up: .asciz "UP"
+            .Lstr_obs_empty: .asciz ""
+            .Lstr_obs_type_counter: .asciz "# TYPE "
+            .Lstr_obs_ws_nl_counter: .asciz " counter\\n"
+            .Lstr_obs_ws_nl_gauge: .asciz " gauge\\n"
+            .Lstr_obs_space: .asciz " "
+            .Lstr_obs_nl: .asciz "\\n"
+            .Lstr_obs_suffix_count: .asciz "_count"
+            .Lstr_obs_suffix_sum: .asciz "_sum"
             .section .text
 
             """);
@@ -15279,6 +15685,379 @@ cmpl %r14d, %r15d
                 incq %r13
                 movq %r13, .Lkof_obs_gauge_len(%rip)
             .Lobs_gauge_full:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_observability_histogram(rdi=name, rsi=value) -> void (OBS002)
+            # store: entry 32 bytes = [name ptr, sum (long), count (long)];
+            # procura por nome (igual ao counter), atualiza sum+=value, count+=1.
+            .globl kof_observability_histogram
+            .type kof_observability_histogram, @function
+            kof_observability_histogram:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movq .Lkof_obs_histogram_len(%rip), %r13
+                xorq %r14, %r14
+            .Lobs_hist_search:
+                cmpq %r13, %r14
+                jge .Lobs_hist_notfound
+                leaq .Lkof_obs_histograms(%rip), %r15
+                movq %r14, %rax
+                shlq $5, %rax
+                addq %rax, %r15
+                movq 0(%r15), %rax
+                testq %rbx, %rbx
+                jz .Lobs_hist_check_null
+                testq %rax, %rax
+                jz .Lobs_hist_next
+                movl 16(%rbx), %ecx
+                movl 16(%rax), %edx
+                cmpl %edx, %ecx
+                jne .Lobs_hist_next
+                testl %ecx, %ecx
+                jz .Lobs_hist_found
+                leaq 24(%rbx), %rdi
+                leaq 24(%rax), %rsi
+                movslq %ecx, %rcx
+                xorq %r10, %r10
+            .Lobs_hist_cmp:
+                cmpq %rcx, %r10
+                jge .Lobs_hist_found
+                movzbl (%rdi,%r10), %eax
+                movzbl (%rsi,%r10), %edx
+                cmpl %edx, %eax
+                jne .Lobs_hist_next
+                incq %r10
+                jmp .Lobs_hist_cmp
+            .Lobs_hist_check_null:
+                testq %rax, %rax
+                jnz .Lobs_hist_next
+                jmp .Lobs_hist_found
+            .Lobs_hist_next:
+                incq %r14
+                jmp .Lobs_hist_search
+            .Lobs_hist_found:
+                leaq .Lkof_obs_histograms(%rip), %r10
+                movq %r14, %rcx
+                shlq $5, %rcx
+                addq %rcx, %r10
+                addq %r12, 8(%r10)
+                incq 16(%r10)
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lobs_hist_notfound:
+                cmpq $12, %r13
+                jge .Lobs_hist_full
+                leaq .Lkof_obs_histograms(%rip), %rax
+                movq %r13, %rcx
+                shlq $5, %rcx
+                addq %rcx, %rax
+                movq %rbx, 0(%rax)
+                movq %r12, 8(%rax)
+                movq $1, 16(%rax)
+                incq %r13
+                movq %r13, .Lkof_obs_histogram_len(%rip)
+            .Lobs_hist_full:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_observability_metrics() -> String (Prometheus text exposition, OBS002)
+            # Exporta counters, gauges e histograms em ordem de inserção, montando
+            # o resultado por kof_string_concat (paridade de conteúdo com o JVM;
+            # nomes de teste simples, sem sanitização promName/ordenação estável):
+            #   counter: "# TYPE <name> counter" + NL + "<name>" + " " + "<v>" + NL
+            #   gauge:   "# TYPE <name> gauge" + NL + "<name>" + " " + "<v>" + NL
+            #   hist:    4 linhas: TYPE <name>_count counter / <name>_count <c> /
+            #            TYPE <name>_sum gauge / <name>_sum <s>
+            # Registros: r14=acc, r15=temp a liberar, r13=flag/len, r12=idx, rbx=entry.
+            # Fragmento em %rsi, flag owned em %r8d (1 = liberar depois do append).
+            .globl kof_observability_metrics
+            .type kof_observability_metrics, @function
+            kof_observability_metrics:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                leaq .Lstr_obs_empty(%rip), %rdi
+                xorl %esi, %esi
+                call kof_string_from_literal
+                movq %rax, %r14
+                xorq %r15, %r15
+                xorq %r12, %r12
+                jmp .Lobs_m_cnt_loop             # pula o appender (só via call)
+
+            # appender: acc = kof_string_concat(acc, frag). Libera o temp anterior
+            # (r15, se owned); se o frag é owned (r8d=1), vira o novo temp (r15).
+            # Um push alinha rsp%16 (8→0) p/ os dois calls; o fragmento fica em r10
+            # (scratch) porque kof_free clobbra %rsi.
+            .Lobs_m_append:
+                pushq %rsi
+                movq %rsi, %r10
+                testq %r15, %r15
+                jz .Lobs_m_append_nodec
+                movq %r15, %rdi
+                call kof_free
+            .Lobs_m_append_nodec:
+                xorq %r15, %r15
+                testl $1, %r8d
+                jz .Lobs_m_append_do
+                movq %r10, %r15
+            .Lobs_m_append_do:
+                movq %r14, %rdi
+                movq %r10, %rsi
+                call kof_string_concat
+                movq %rax, %r14
+                popq %rsi
+                ret
+
+            # ── export counters ──
+            .Lobs_m_cnt_loop:
+                movq .Lkof_obs_counter_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lobs_m_gauges
+                leaq .Lkof_obs_counters(%rip), %rbx
+                movq %r12, %rax
+                shlq $4, %rax
+                addq %rax, %rbx
+                movq 0(%rbx), %rax
+                testq %rax, %rax
+                jz .Lobs_m_cnt_next
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_counter(%rip), %rdi
+                movl $10, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movl 8(%rbx), %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+            .Lobs_m_cnt_next:
+                incq %r12
+                jmp .Lobs_m_cnt_loop
+
+            # ── export gauges ──
+            .Lobs_m_gauges:
+                xorq %r12, %r12
+            .Lobs_m_ga_loop:
+                movq .Lkof_obs_gauge_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lobs_m_hists
+                leaq .Lkof_obs_gauges(%rip), %rbx
+                movq %r12, %rax
+                shlq $4, %rax
+                addq %rax, %rbx
+                movq 0(%rbx), %rax
+                testq %rax, %rax
+                jz .Lobs_m_ga_next
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_gauge(%rip), %rdi
+                movl $9, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movl 8(%rbx), %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+            .Lobs_m_ga_next:
+                incq %r12
+                jmp .Lobs_m_ga_loop
+
+            # ── export histograms ──
+            .Lobs_m_hists:
+                xorq %r12, %r12
+            .Lobs_m_hi_loop:
+                movq .Lkof_obs_histogram_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lobs_m_done
+                leaq .Lkof_obs_histograms(%rip), %rbx
+                movq %r12, %rax
+                shlq $5, %rax
+                addq %rax, %rbx
+                movq 0(%rbx), %rax
+                testq %rax, %rax
+                jz .Lobs_m_hi_next
+                # # TYPE <n>_count counter\n
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_count(%rip), %rdi
+                movl $6, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_counter(%rip), %rdi
+                movl $10, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                # <n>_count <c>\n
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_count(%rip), %rdi
+                movl $6, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 16(%rbx), %rax
+                movl %eax, %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                # # TYPE <n>_sum gauge\n
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_sum(%rip), %rdi
+                movl $4, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_gauge(%rip), %rdi
+                movl $9, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                # <n>_sum <s>\n
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_sum(%rip), %rdi
+                movl $4, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 8(%rbx), %rax
+                movl %eax, %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+            .Lobs_m_hi_next:
+                incq %r12
+                jmp .Lobs_m_hi_loop
+
+            # ── final: libera temp restante e retorna acc ──
+            .Lobs_m_done:
+                testq %r15, %r15
+                jz .Lobs_m_free_done
+                movq %r15, %rdi
+                call kof_free
+            .Lobs_m_free_done:
+                movq %r14, %rax
                 popq %r15
                 popq %r14
                 popq %r13

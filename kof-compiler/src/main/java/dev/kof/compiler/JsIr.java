@@ -35,7 +35,16 @@ final class JsIr {
     // ── Functions / Methods ─────────────────────────────────────────
 
     record JsFunction(String name, List<String> parameters, List<JsStatement> body,
-                      boolean isStatic, boolean isConstructor, boolean isTopLevel) {
+                      boolean isStatic, boolean isConstructor, boolean isTopLevel,
+                      Integer kofLine) {
+        JsFunction(String name, List<String> parameters, List<JsStatement> body,
+                   boolean isStatic, boolean isConstructor, boolean isTopLevel) {
+            this(name, parameters, body, isStatic, isConstructor, isTopLevel, null);
+        }
+    }
+
+    /** Posição de um cabeçalho de função gerado → linha da fonte Kof (source map). */
+    record JsFunctionLine(String name, int generatedLine, int kofLine) {
     }
 
     // ── Statements ──────────────────────────────────────────────────

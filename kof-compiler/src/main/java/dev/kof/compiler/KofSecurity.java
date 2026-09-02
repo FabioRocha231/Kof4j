@@ -179,7 +179,7 @@ final class KofSecurity {
     static boolean supportedOn(String function, Target target) {
         return switch (function) {
             case "kof_sec_aesgcm_encrypt", "kof_sec_aesgcm_decrypt" ->
-                    target == Target.JVM || target.isNative();
+                    target == Target.JVM || target == Target.JS || target.isNative();
             case "kof_sec_password_hash", "kof_sec_password_verify", "kof_sec_password_needs_rehash" ->
                     target == Target.JVM || target == Target.JS || target.isNative();
             case "kof_sec_sha512" -> target == Target.JVM || target == Target.JS || target.isNative();

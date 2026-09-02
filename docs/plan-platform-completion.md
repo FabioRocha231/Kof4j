@@ -96,7 +96,7 @@ Sem isso, os módulos das fases seguintes nascem tortos.
 
 | Item | Referência |
 |------|-----------|
-| Query DSL tipada (nível 3) | `User.query(db) { where age > 18; orderBy name; limit 10 }` — lowering para SQL prepared; sem strings |
+| Query DSL tipada (nível 3) | ✅ 01/09: `User.query(db) { where age > 18; orderBy name; limit 10 }` — lowering para SQL prepared (`db.query<T>`), valores como binds, validação de coluna `ORM003` (`KofOrmE2ETest` 22) |
 | Connection pooling | pool in-process configurável por DSN |
 | MySQL/MariaDB nativo completo | handshake/auth (scramble SHA-1 + parse `user:pass@` feitos — 31/08), query, prepared statements, transactions |
 | kof.db/kof.orm fora do JVM | JS: SQLite WASM ou DB001 definitivo documentado; Native: ORM sobre o SQLite nativo |

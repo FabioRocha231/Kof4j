@@ -24,6 +24,9 @@ public class NativeBackend implements Backend {
     private final Map<String, String> functionMangleMap = new HashMap<>();
     private final Map<String, ClassLayout> layoutCache = new HashMap<>();
     private Map<String, IRClass> allClassesMap = new HashMap<>();
+    /** Debug info nativa (DWARF .debug_line via .file/.loc). */
+    private boolean debugInfo = false;
+    private String sourceFile = "";
 
     public NativeBackend() { this(Target.NATIVE); }
     public NativeBackend(Target target) { this.target = target; }
@@ -206,6 +209,16 @@ public class NativeBackend implements Backend {
     }
 
     @Override
+    public void emit(IRModule module, Path outputDir, boolean debugInfo) throws IOException {
+        // DWARF .debug_line nativo (fase 5 do debugger): .file/.loc gerados a
+        // partir do KofDebugInfo (mesma fonte das line tables do JVM).
+        this.debugInfo = debugInfo;
+        this.sourceFile = (module.sourceName() != null && !module.sourceName().isBlank())
+                ? module.sourceName() : "Main.kf";
+        emit(module, outputDir);
+    }
+
+    @Override
     public void emit(IRModule module, Path outputDir) throws IOException {
         if (target == Target.NATIVE_RISCV64) {
             emitRiscv(module, outputDir);
@@ -227,6 +240,9 @@ public class NativeBackend implements Backend {
             allClassesMap.put(clazz.name(), clazz);
         }
         StringBuilder sb = new StringBuilder();
+        if (debugInfo) {
+            sb.append(".file 1 \"").append(sourceFile).append("\"\n");
+        }
         sb.append(".section .data\n");
         for (IRClass clazz : module.classes()) {
             currentClass = clazz;
@@ -534,6 +550,13 @@ public class NativeBackend implements Backend {
     }
 
     private void emitOperation(StringBuilder sb, KofOperation op, IRMethod currentMethod) {
+        if (debugInfo && currentMethod.debugInfo() != null) {
+            SourcePosition dbg = currentMethod.debugInfo().positions().get(op);
+            if (dbg != null && dbg.line() > 0) {
+                // .loc <file> <line> <col>: o as gera .debug_line (DWARF)
+                sb.append("    .loc 1 ").append(dbg.line()).append(" 0\n");
+            }
+        }
         if (op instanceof KofLoadLiteral lit) {
             lastPushedType = lit.type();
         } else if (op instanceof KofLoadLocal ll) {

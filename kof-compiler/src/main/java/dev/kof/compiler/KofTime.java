@@ -44,14 +44,16 @@ final class KofTime {
 
     record TimeCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.time: now/sleep em todos targets; interval/cancel apenas JVM (TIME001). */
+    /** kof.time: now/sleep em todos targets; interval/cancel em JVM+Native
+     *  (reaproveita o scheduler — SCHED001); JS ainda sem event-loop assíncrono
+     *  (TIME001). */
     static boolean supportedOn(Target target) {
         return true;
     }
 
     static boolean supportedOn(String method, Target target) {
         if ("interval".equals(method) || "cancel".equals(method)) {
-            return target == Target.JVM;
+            return target == Target.JVM || target.isNative();
         }
         return true;
     }

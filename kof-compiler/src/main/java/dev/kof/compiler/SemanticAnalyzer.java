@@ -764,6 +764,18 @@ class SemanticAnalyzer {
                 Type t = resolveType(pe.typeName(), scope);
                 yield t != null ? t : Type.UnknownType.UNKNOWN;
             }
+            case QueryDslExpr q -> {
+                // Query DSL tipada: Entity.query(db) { ... } -> List<Entity>.
+                // where/orderBy referenciam COLUNAS do schema (não variáveis
+                // em escopo) — validadas no lowering; não inferir aqui (senão
+                // SEM011 "undefined variable" nas colunas). dbArg e limit são
+                // expressões reais.
+                inferType(q.dbArg(), scope);
+                if (q.limit() != null) inferType(q.limit(), scope);
+                Type elem = resolveType(q.entityType(), scope);
+                yield new Type.ClassType("kof", "List",
+                        List.of(elem != null ? elem : Type.UnknownType.UNKNOWN));
+            }
             case LiteralExpr lit -> inferLiteralType(lit);
             case IdentifierExpr ie -> {
                 SymbolTable.Symbol sym = scope.resolve(ie.name());

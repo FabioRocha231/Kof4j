@@ -275,6 +275,21 @@ record LambdaExpr(SourcePosition position, List<FormalParameterNode> parameters,
                   List<StatementNode> body) implements ExpressionNode {
 }
 
+/**
+ * Query DSL tipada (ORM001 — nível 3): {@code User.query(db) { where age > 18;
+ * orderBy name desc; limit 10 }}. O compilador baixa para
+ * {@code db.query<User>(db, "SELECT ... WHERE ... ORDER BY ... LIMIT ?",
+ * binds...)} — SQL montado em compile-time, valores como binds preparados
+ * (sem string-concat de entrada).
+ */
+record QueryDslExpr(SourcePosition position, String entityType,
+                    ExpressionNode dbArg,
+                    List<ExpressionNode> whereClauses,
+                    List<ExpressionNode> orderByFields,
+                    List<String> orderByDirs,
+                    ExpressionNode limit) implements ExpressionNode {
+}
+
 sealed interface StatementNode extends AstNode {
 }
 
