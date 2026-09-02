@@ -95,3 +95,39 @@ Fechados em 0.1.0: Map/Set nativo (era COL001), await com unboxing, captura em l
 A semântica Kof é a mesma em todos os targets. Onde um target não suporta
 uma feature ainda, o compilador emite um diagnostic explícito — nunca código
 que funciona de forma diferente ou quebra silenciosamente.
+
+---
+
+## Convenção de gaps por domínio (visão universal)
+
+Todo gap de capacidade tem um **código de diagnóstico** documentado aqui e
+emitido em compile-time. Domínios novos seguem o mesmo padrão dos existentes
+(`SECN00x`, `CONC003`, `DB001`, `HTTP002`, ...):
+
+| Prefixo | Domínio | Exemplos |
+|---------|---------|----------|
+| `HTTP`/`WEB`/`DB`/`ORM`/`MQ`/`LOG`/`SCHED`/`TIME`/`CONC`/`SECN` | Sistemas atuais | `HTTP002`, `WEB001`, `DB001`, `MQ001`, `LOG001`, `SCHED001`, `CONC003`, `SECN002` |
+| `AND` | Android | `AND001..004` |
+| `NATIVE` | codegen multiarch | `NATIVE002` |
+| `INFRA` | infraestrutura / IaC | `INFRA00x` |
+| `DATA` | data engineering / dataframe / ML | `DATA00x` |
+| `SCI` | scientific computing / HPC | `SCI00x` |
+| `BIO` | bioinformática | `BIO00x` |
+| `SECPQ` | criptografia pós-quântica | `SECPQ` (gap de target, nunca stub) |
+
+Regra (R6): gap de domínio sempre tem **código + entrada nesta matriz** —
+nunca stub silencioso, nunca fallback fraco, nunca "paridade parcial" sem
+diagnóstico.
+
+## Tiers de estabilidade (R5)
+
+Cada namespace/pacote carrega um tier:
+
+- **`stable`** — garantia de compatibilidade; promove somente com DoD completo
+  (3 targets ou gap diagnosticado, E2E por target, benchmark quando plausível,
+  docs + `training/` sincronizadas, suíte verde).
+- **`experimental`** — pode mudar; a camada de **pacotes oficiais** nasce
+  `experimental`.
+
+Domínios pesados (`ml`, `bio`, `hpc`, `infra-<cloud>`) são **pacotes
+oficiais** (camada 4), **nunca** stdlib base (R1).
