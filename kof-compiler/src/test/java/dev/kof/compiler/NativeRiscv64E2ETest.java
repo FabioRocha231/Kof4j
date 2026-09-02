@@ -13,8 +13,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * NATIVE002 — E2E riscv64 (qemu). O backend cross emite o {@code kof_main} em
- * asm (stack machine, mesma semântica do x86_64) e um runtime em C compilado
- * com {@code riscv64-linux-gnu-gcc -static}; o binário roda em {@code qemu-riscv64}.
+ * asm (stack machine, mesma semântica do x86_64) + runtime em asm puro
+ * (raw syscalls, sem C — binário estático, {@code riscv64-linux-gnu-as} +
+ * {@code riscv64-linux-gnu-ld}); o binário roda em {@code qemu-riscv64}.
  *
  * Pula (assume) quando a toolchain cruzada ou o qemu não existem, como
  * {@code NativeE2ETest} faz quando o assembler nativo falta.
@@ -37,7 +38,7 @@ class NativeRiscv64E2ETest {
     }
 
     private void assumeToolchain() {
-        Assumptions.assumeTrue(has("riscv64-linux-gnu-gcc", "riscv64-linux-gnu-as", "qemu-riscv64"),
+        Assumptions.assumeTrue(has("riscv64-linux-gnu-as", "riscv64-linux-gnu-ld", "qemu-riscv64"),
                 "cross toolchain riscv64 + qemu ausente — pulando (NATIVE002)");
     }
 

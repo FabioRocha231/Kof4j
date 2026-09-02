@@ -3,9 +3,15 @@
 > **Status:** `EM DESENVOLVIMENTO (parcial)` — **riscv64 com codegen real (02/09)**; aarch64 pendente.
 > **Versão:** 0.2.6-beta · **Data:** 2026-09-02
 > **Gap:** `NATIVE002` (riscv64 parcial — caminho feliz; aarch64 e ops fora do caminho feliz pendentes).
-> **Progresso 02/09:** toolchain cruzada + qemu + **runtime em C** + **codegen riscv64** —
+> **Progresso 02/09:** toolchain cruzada + qemu + **codegen riscv64** (stack machine) —
 > `NativeRiscv64E2ETest 4/4` (`qemu-riscv64`): println(String/Int), `var`, `if/else`,
 > aritmética/comparações Int. Ver §2.3.
+> **Decisão (02/09):** runtime por arch **em assembly puro**, no mesmo estilo do x86_64
+> (`NativeRuntime.generateRuntimeAssembly`) — **sem C** ("Kof é Kof"; o `kof-c-compiler`
+> é outra ferramenta, não um runtime). O C compilado com gcc cruzado que foi usado em
+> 02/09 como validação de ABI foi descartado: o riscv64 passa a emitir runtime asm
+> (bump allocator + syscalls/PLT libc) e linka com `ld -dynamic-linker ... -lc`,
+> idêntico ao caminho x86_64.
 > **Escopo:** expandir o `NativeBackend` (hoje `x86_64` em asm puro) para
 > `riscv64` e `aarch64` Linux, preservando `frontend → Kof IR → backend` e
 > paridade `JVM/Native/JS`. Este doc vive em `docs/` (não em `docs/future/`)
@@ -54,8 +60,7 @@ funciona de ponta a ponta.
 | Ops fora do caminho feliz riscv64 (coleções/classe/`instanceof`/`switch`/FP) | ❌ diagnóstico `NATIVE002` | ops desconhecidos emitem comentário `# NATIVE002: op fora do caminho feliz` (nunca binário mudo) |
 | Os 18 métodos `emit*` reais (x86_64) | ✅ | `emitBinary`/`emitOperation`/`emitMethod`/`emitConditionalJump`/vcall… — o caminho completo continua só em x86_64 |
 | Extração de `NativeBase` (layout/`kof_alloc`/mangle comum) | ❌ não existe | `NativeBackend` ainda é monolítico x86_64 |
-| Runtime por arch (asm) | ❌ não existe | `kof_alloc`/`kof_instanceof`/`kof_string_*` só em x86_64 (asm inline em `NativeRuntime`) |
-| **Runtime por arch (C, gcc cruzado)** | ✅ riscv64 02/09 | `kof_string_from_literal`/`kof_int_to_string`/`kof_println_string` em C compilado com `riscv64-linux-gnu-gcc -static`; roda em `qemu-riscv64` (ver §2.3) |
+| Runtime por arch (asm) | ⚠️ riscv64 happy-path | `kof_alloc`(bump)/`kof_memcpy`/`kof_string_from_literal`/`kof_int_to_string`/`kof_println_string` em **asm riscv64** (bump allocator em `.bss` + PLT `fwrite`/`snprintf`); `qemu-riscv64` (ver §2.3). aarch64 pendente |
 | Testes E2E `qemu` (aarch64/riscv64) | ❌ não existem | nenhum `NativeAarch64E2ETest`/`NativeRiscv64E2ETest` |
 | CI com cross toolchains | ❌ não existe | `aarch64/riscv64` não entram no pipeline |
 | `backend-parity.md` colunas por arch | ⚠️ parcial | delta citado, colunas `NATIVE_X86_64/AARCH64/RISCV64` separadas pendentes |
@@ -64,38 +69,48 @@ funciona de ponta a ponta.
 `switch`) em `native.risc`/`native.arm` **não executa a lógica** — sai `0` sem
 efeto. O stub existe para validar o *encanamento*, não a codegen.
 
-### 2.3 Runtime em C via gcc cruzado (validado 02/09)
+### 2.3 Runtime em assembly puro por arch (decisão 02/09)
 
-Em vez de escrever o runtime (`kof_alloc`, `kof_string_*`, `kof_int_to_string`)
-em assembly puro por arch, a abordagem validada usa **C compilado com o gcc
-cruzado** — o compilador C garante a ABI (culling/restore de `ra`/`s0-s11`,
-alinhamento de stack, chamadas a `malloc`/`snprintf`/`fwrite` corretas), o que
-é a parte que mais buga em asm manual.
+**Não há runtime em C no Kof.** O nativo x86_64 é asm puro de ponta a ponta: o
+runtime (`kof_alloc`, `kof_string_*`, `kof_instanceof`, …) é emitido em
+assembly por `NativeRuntime.generateRuntimeAssembly()` e linkado com
+`ld -dynamic-linker /lib64/ld-linux-x86-64.so.2 -lc` — a libc entra via PLT
+(`printf`/`snprintf`), sem C compilado. (O módulo `kof-c-compiler` é outra
+ferramenta — reimplementação do sectorC — e **não** é um runtime.)
+
+Decisão para riscv64/aarch64: **mesmo caminho** — runtime emitido em asm
+puro por arch + `ld -dynamic-linker /lib/ld-linux-<arch>.so.1 -lc`. Um C
+compilado com gcc cruzado foi usado brevemente (02/09) apenas para validar a
+ABI/estática no qemu; ele foi descartado da arquitetura.
 
 Toolchain instalada (02/09, via `sudo apt`):
 `binutils-riscv64-linux-gnu`, `binutils-aarch64-linux-gnu`, `qemu-user`,
-`gcc-riscv64-linux-gnu`, `gcc-aarch64-linux-gnu`, `libc6-riscv64-cross`,
-`libc6-arm64-cross`.
+`gcc-riscv64-linux-gnu`/`gcc-aarch64-linux-gnu` (debug),
+`libc6-riscv64-cross`, `libc6-arm64-cross`.
 
-Pipeline validado (`/tmp/opencode/riscv/`):
+Pipeline alvo (`emitRiscv`/`emitAarch64`):
 ```
-rt.c  (runtime C: KofStr{kof_string_from_literal,kof_int_to_string,kof_println_string}
-       + int main(){ return kof_main(); })
-   └─ riscv64-linux-gnu-gcc -O2 -static → binário
-   └─ qemu-riscv64 → "Hello, Kof!" / "12345" / "-42"  (exit 0) ✅
+Main.s  (programa: kof_main + seções .data/.rodata)
+      + runtime asm riscv64/aarch64 (emitido pelo NativeBackend)
+   └─ <arch>-as → <arch>-ld -dynamic-linker /lib/ld-linux-<arch>.so.1 -lc
+   └─ qemu-<arch> → saída esperada (exit 0)
 ```
 
-Consequência para o `NATIVE002`: o `emitRiscv`/`emitAarch64` precisam apenas
-emitir o **`kof_main` em asm** (stack machine do programa) e linkar
-`gcc -static kof.o rt.o` (o crt1 da libc chama `main`→`kof_main`). O runtime
-passa a ser um `rt.c` por arch, não asm inline — menos código, ABI correta.
+Detalhes do runtime riscv64 (inc-0, 02/09):
+- alocação: **bump allocator** em `.bss` (sem `mmap` — evita problemas de
+  qemu estático; o x86_64 usa `mmap`+free-list, e o riscv64 segue o modelo
+  com bump até a paridade de GC).
+- strings: layout **idêntico ao x86_64** — `[typeId@0 i32][super@4 i32]
+  [vtable@8 ptr][len@16 i32][data@24 …]` (`KOF_STRING_TYPE_ID=1`).
+- saída: PLT `fwrite`/`snprintf` (libc dinâmica), como no x86_64.
+- validação: `NativeRiscv64E2ETest 4/4` via `qemu-riscv64`.
 
-O que **restou** para o próximo incremento (não entregue 02/09):
-- o `emitRiscv`/`emitAarch64` continuam **stub** (`main: ret 0`); o lowering do
-  programa (stack machine riscv64/aarch64, `s11` como frame pointer, operandos
-  na stack com 16-alinhamento) ainda precisa ser escrito contra esse runtime C.
-- `KofJsSourceMap`/paridade de ops fora do caminho feliz (coleções, classe,
-  `instanceof`, `switch`) — mesmo escopo do §2.2.
+O que **restou** para os próximos incrementos:
+- runtime riscv64 completo (objects/arrays/instanceof/strings completas/
+  coleções/JSON/DB/HTTP/concorrência — paridade total com o x86_64).
+- runtime + lowering completos do aarch64 (hoje stub).
+- ops fora do caminho feliz riscv64 (coleções, classe, `instanceof`,
+  `switch`) — mesmo escopo do §2.2.
 
 ## 3. Arquitetura (alvo)
 

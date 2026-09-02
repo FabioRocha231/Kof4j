@@ -1831,15 +1831,16 @@ public class NativeBackend implements Backend {
     }
 
     // ---------------------------------------------------------------------
-    // NATIVE002 — lowering riscv64 (caminho feliz) + runtime em C (gcc cruzado).
+    // NATIVE002 — lowering riscv64 + runtime EM ASSEMBLY PURO (sem C).
+    //
+    // Kof é Kof: o runtime é asm puro (raw syscalls, layout de objeto idêntico
+    // ao x86_64 em NativeRuntime), compilado com riscv64-linux-gnu-as e
+    // linkado com riscv64-linux-gnu-ld — binário estático, sem C.
     //
     // A stack machine é a MESMA do x86_64 (operandos numa pilha), com a ABI
     // RISC-V: `s11` = frame pointer (locais em `s11-(idx+1)*8`), `s2` =
     // ponteiro da pilha de operandos (callee-saved — sobrevive a calls), e
-    // `ra`/`s2` preservados no topo do frame. O RUNTIME (kof_string_*,
-    // kof_int_to_string) é C compilado com `riscv64-linux-gnu-gcc -static`
-    // (o compilador C garante a ABI — ra/s0-s11/alinhamento — que buga em asm
-    // manual), linkado com o `kof_main` em asm via `gcc -static`.
+    // `ra`/`s2` preservados no topo do frame.
     //
     // Caminho feliz (validado em qemu-riscv64): println(String/Int),
     // var x = n, aritmética Int (ADD/SUB/MUL/DIV/MOD), comparações
@@ -1889,6 +1890,17 @@ public class NativeBackend implements Backend {
             }
         }
 
+        // Ponto de entrada: chama kof_main (o main Kof, já manglado) e sai via
+        // syscall exit_group(93). O runtime é asm puro — binário estático.
+        sb.append("\n.globl _start\n");
+        sb.append("_start:\n");
+        sb.append("    andi sp, sp, -16\n");
+        sb.append("    call kof_main\n");
+        sb.append("    li a0, 0\n");
+        sb.append("    li a7, 93\n");
+        sb.append("    ecall\n");
+        sb.append(RISCV_RUNTIME_ASM);
+
         String className = module.classes().isEmpty() ? "Default/Main" : module.classes().getFirst().name();
         Path asmFile = outputDir.resolve(className + ".s");
         Path binFile = outputDir.resolve(className);
@@ -1897,16 +1909,11 @@ public class NativeBackend implements Backend {
         System.err.println("NativeBackend: generated riscv64 " + asmFile);
 
         try {
-            Path cFile = asmFile.resolveSibling("rt.c");
-            Files.writeString(cFile, RISCV_RUNTIME_C);
-            Path rtObj = asmFile.resolveSibling("rt.o");
-            runCommand(new String[]{"riscv64-linux-gnu-gcc", "-O2", "-c", cFile.toString(), "-o", rtObj.toString()}, "riscv64-gcc-c");
-            Path kofObj = asmFile.resolveSibling("kof.o");
-            runCommand(new String[]{"riscv64-linux-gnu-as", "-o", kofObj.toString(), asmFile.toString()}, "riscv64-as");
-            runCommand(new String[]{"riscv64-linux-gnu-gcc", "-O2", "-static", "-o", binFile.toString(), kofObj.toString(), rtObj.toString()}, "riscv64-gcc");
-            Files.deleteIfExists(rtObj);
-            Files.deleteIfExists(kofObj);
-            if (System.getenv("KOF_KEEP_ASM") == null) { Files.deleteIfExists(asmFile); Files.deleteIfExists(cFile); }
+            Path objFile = asmFile.resolveSibling("kof.o");
+            runCommand(new String[]{"riscv64-linux-gnu-as", "-o", objFile.toString(), asmFile.toString()}, "riscv64-as");
+            runCommand(new String[]{"riscv64-linux-gnu-ld", "-o", binFile.toString(), objFile.toString()}, "riscv64-ld");
+            Files.deleteIfExists(objFile);
+            if (System.getenv("KOF_KEEP_ASM") == null) Files.deleteIfExists(asmFile);
             binFile.toFile().setExecutable(true);
         } catch (IOException e) {
             System.err.println("NativeBackend: riscv64 toolchain ausente/falhou (NATIVE002), keeping asm: " + e.getMessage());
@@ -2072,37 +2079,188 @@ public class NativeBackend implements Backend {
         sb.append("    # NATIVE002: call fora do caminho feliz riscv64: ").append(kc.methodName()).append("\n");
     }
 
-    static final String RISCV_RUNTIME_C = """
-            #include <stdio.h>
-            #include <stdlib.h>
-            #include <string.h>
-            #include <stdint.h>
-            typedef struct { int32_t len; char* data; } KofStr;
-            KofStr* kof_string_from_literal(const char* s, int len) {
-                KofStr* p = (KofStr*) malloc(sizeof *p);
-                p->data = (char*) malloc((size_t) len + 1);
-                memcpy(p->data, s, (size_t) len);
-                p->data[len] = 0;
-                p->len = len;
-                return p;
-            }
-            KofStr* kof_int_to_string(int n) {
-                char buf[32];
-                int l = snprintf(buf, sizeof buf, "%d", n);
-                KofStr* p = (KofStr*) malloc(sizeof *p);
-                p->data = (char*) malloc((size_t) l + 1);
-                memcpy(p->data, buf, (size_t) l);
-                p->data[l] = 0;
-                p->len = l;
-                return p;
-            }
-            void kof_println_string(KofStr* s) {
-                if (!s) { puts("null"); return; }
-                fwrite(s->data, 1, (size_t) s->len, stdout);
-                putchar('\\n');
-            }
-            extern int kof_main(void);
-            int main(void) { return kof_main(); }
+    // Runtime riscv64 EM ASSEMBLY PURO (Kof é Kof — sem C; mesmo estilo do
+    // x86_64 em NativeRuntime: raw syscall + layout de objeto idêntico).
+    // Layout de String: typeId@0(i32) super@4(i32) vtable@8(ptr) len@16(i32)
+    // pad@20(i32) data@24(inline). KOF_STRING_TYPE_ID=1.
+    static final String RISCV_RUNTIME_ASM = """
+            .option arch, rv64g
+            .section .text
+
+            # kof_alloc(size) -> ptr (bump allocator em .bss)
+            .globl kof_alloc
+            kof_alloc:
+                la   t0, kof_alloc_ptr
+                ld   t0, 0(t0)
+                addi t1, a0, 15
+                andi t1, t1, -16
+                add  t2, t0, t1
+                la   t3, kof_alloc_ptr
+                sd   t2, 0(t3)
+                mv   a0, t0
+                ret
+
+            # kof_memcpy(dst, src, len)
+            .globl kof_memcpy
+            kof_memcpy:
+                li   t0, 0
+            .Lkf_mcpy:
+                bgeu t0, a2, .Lkf_mcpy_done
+                lbu  t1, 0(a1)
+                sb   t1, 0(a0)
+                addi a0, a0, 1
+                addi a1, a1, 1
+                addi t0, t0, 1
+                j    .Lkf_mcpy
+            .Lkf_mcpy_done:
+                ret
+
+            # kof_string_from_literal(s, len) -> KofStr*
+            .globl kof_string_from_literal
+            kof_string_from_literal:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                sd   s1, 8(sp)
+                sd   s3, 0(sp)
+                mv   s0, a0
+                mv   s1, a1
+                addi t0, s1, 25
+                addi t0, t0, 15
+                andi t0, t0, -16
+                mv   a0, t0
+                call kof_alloc
+                mv   s3, a0
+                li   t0, 1
+                sw   t0, 0(s3)
+                li   t0, 0
+                sw   t0, 4(s3)
+                sd   t0, 8(s3)
+                sw   s1, 16(s3)
+                sw   t0, 20(s3)
+                addi a0, s3, 24
+                mv   a1, s0
+                mv   a2, s1
+                call kof_memcpy
+                li   t0, 0
+                addi t1, s3, 24
+                add  t1, t1, s1
+                sb   t0, 0(t1)
+                mv   a0, s3
+                ld   s0, 16(sp)
+                ld   s1, 8(sp)
+                ld   s3, 0(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
+                ret
+
+            # kof_print_string(str*) — write(1, data=header+24, len)
+            .globl kof_print_string
+            kof_print_string:
+                addi sp, sp, -16
+                sd   ra, 8(sp)
+                addi a1, a0, 24
+                lw   a2, 16(a0)
+                li   a0, 1
+                li   a7, 64
+                ecall
+                ld   ra, 8(sp)
+                addi sp, sp, 16
+                ret
+
+            .globl kof_println_string
+            kof_println_string:
+                addi sp, sp, -16
+                sd   ra, 8(sp)
+                sd   a0, 0(sp)
+                call kof_print_string
+                li   a0, 1
+                la   a1, .Lnewline
+                li   a2, 1
+                li   a7, 64
+                ecall
+                ld   ra, 8(sp)
+                ld   a0, 0(sp)
+                addi sp, sp, 16
+                ret
+
+            # kof_int_to_string(n) -> KofStr*
+            .globl kof_int_to_string
+            kof_int_to_string:
+                addi sp, sp, -48
+                sd   ra, 40(sp)
+                sd   s0, 32(sp)
+                sd   s1, 24(sp)
+                sd   s3, 16(sp)
+                sd   s4, 8(sp)
+                sd   s5, 0(sp)
+                mv   s0, a0
+                li   s4, 0
+                bgez s0, .Lkits_pos
+                li   s4, 1
+                neg  s0, s0
+            .Lkits_pos:
+                mv   s5, s0
+                li   s3, 0
+                mv   t4, s5
+            .Lkits_cnt:
+                li   t1, 10
+                div  t4, t4, t1
+                addi s3, s3, 1
+                bnez t4, .Lkits_cnt
+                beqz s4, .Lkits_cnt_done
+                addi s3, s3, 1
+            .Lkits_cnt_done:
+                addi t0, s3, 25
+                addi t0, t0, 15
+                andi t0, t0, -16
+                mv   a0, t0
+                call kof_alloc
+                mv   s1, a0
+                li   t0, 1
+                sw   t0, 0(s1)
+                li   t0, 0
+                sw   t0, 4(s1)
+                sd   t0, 8(s1)
+                sw   s3, 16(s1)
+                sw   t0, 20(s1)
+                addi t0, s3, 23
+                add  t1, s1, t0
+                mv   t0, s5
+            .Lkits_loop:
+                li   t2, 10
+                rem  t3, t0, t2
+                addi t3, t3, 48
+                sb   t3, 0(t1)
+                addi t1, t1, -1
+                div  t0, t0, t2
+                bnez t0, .Lkits_loop
+                beqz s4, .Lkits_neg_done
+                li   t3, 45
+                sb   t3, 0(t1)
+            .Lkits_neg_done:
+                li   t0, 0
+                addi t1, s1, 24
+                add  t1, t1, s3
+                sb   t0, 0(t1)
+                mv   a0, s1
+                ld   s0, 32(sp)
+                ld   s1, 24(sp)
+                ld   s3, 16(sp)
+                ld   s4, 8(sp)
+                ld   s5, 0(sp)
+                ld   ra, 40(sp)
+                addi sp, sp, 48
+                ret
+
+            .section .data
+            kof_alloc_ptr: .quad _kof_heap
+            .align 16
+            .section .bss
+            _kof_heap: .space 262144
+
+            .section .rodata
+            .Lnewline: .asciz "\\n"
             """;
 
     private void emitAarch64(IRModule module, Path outputDir) throws IOException {
