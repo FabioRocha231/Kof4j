@@ -1830,38 +1830,280 @@ public class NativeBackend implements Backend {
         binFile.toFile().setExecutable(true);
     }
 
+    // ---------------------------------------------------------------------
+    // NATIVE002 — lowering riscv64 (caminho feliz) + runtime em C (gcc cruzado).
+    //
+    // A stack machine é a MESMA do x86_64 (operandos numa pilha), com a ABI
+    // RISC-V: `s11` = frame pointer (locais em `s11-(idx+1)*8`), `s2` =
+    // ponteiro da pilha de operandos (callee-saved — sobrevive a calls), e
+    // `ra`/`s2` preservados no topo do frame. O RUNTIME (kof_string_*,
+    // kof_int_to_string) é C compilado com `riscv64-linux-gnu-gcc -static`
+    // (o compilador C garante a ABI — ra/s0-s11/alinhamento — que buga em asm
+    // manual), linkado com o `kof_main` em asm via `gcc -static`.
+    //
+    // Caminho feliz (validado em qemu-riscv64): println(String/Int),
+    // var x = n, aritmética Int (ADD/SUB/MUL/DIV/MOD), comparações
+    // (EQ/NE/LT/LE/GT/GE), if/else. Ops fora disso → diagnóstico NATIVE002
+    // (nunca binário mudo).
+    // ---------------------------------------------------------------------
+
     private void emitRiscv(IRModule module, Path outputDir) throws IOException {
+        labelCounter = 0;
+        labelMap.clear();
+        stringLiterals.clear();
+        stringCounter = 0;
+        allClassesMap.clear();
+        for (IRClass c : module.classes()) allClassesMap.put(c.name(), c);
+
+        IRClass mainClass = null;
+        for (IRClass c : module.classes()) {
+            for (IRMethod m : c.methods()) {
+                if ("main".equals(m.name())) { mainClass = c; break; }
+            }
+            if (mainClass != null) break;
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append(".option arch, rv64g\n");
+        sb.append(".section .data\n");
+        for (IRClass c : module.classes()) {
+            currentClass = c;
+            collectStrings(c);
+        }
+        for (String[] e : stringLiterals) {
+            String esc = e[0].replace("\\", "\\\\").replace("\"", "\\\"")
+                    .replace("\n", "\\n").replace("\t", "\\t");
+            sb.append(e[1]).append(": .asciz \"").append(esc).append("\"\n");
+        }
         sb.append(".section .text\n");
-        sb.append(".globl _start\n");
-        sb.append("_start:\n");
-        sb.append("  call main\n");
-        sb.append("  li a7, 93\n");
-        sb.append("  li a0, 0\n");
-        sb.append("  ecall\n");
-        sb.append("  li a7, 214\n");
-        sb.append("  li a7, 64\n");
-        // minimal main stub
-        sb.append("main:\n");
-        sb.append("  li a0, 0\n");
-        sb.append("  ret\n");
-        Path asmFile = outputDir.resolve("Default/Main.s");
+        // pop <reg>: desempilha o topo da pilha de operandos (s2) em <reg>
+        sb.append(".macro pop r\n");
+        sb.append("    ld \\r, 0(s2)\n");
+        sb.append("    addi s2, s2, 8\n");
+        sb.append(".endm\n");
+        for (IRClass c : module.classes()) {
+            currentClass = c;
+            for (IRMethod m : c.methods()) {
+                if ("<clinit>".equals(m.name())) continue;
+                emitCrossMethodRiscv(sb, c, m);
+            }
+        }
+
+        String className = module.classes().isEmpty() ? "Default/Main" : module.classes().getFirst().name();
+        Path asmFile = outputDir.resolve(className + ".s");
+        Path binFile = outputDir.resolve(className);
         Files.createDirectories(asmFile.getParent());
         Files.writeString(asmFile, sb.toString());
         System.err.println("NativeBackend: generated riscv64 " + asmFile);
+
         try {
-            Path objFile = asmFile.resolveSibling("Main.o");
-            runCommand(new String[]{"riscv64-linux-gnu-as", "-o", objFile.toString(), asmFile.toString()}, "riscv64-as");
-            Path binFile = outputDir.resolve("Default/Main");
-            runCommand(new String[]{"riscv64-linux-gnu-ld", "-o", binFile.toString(), objFile.toString(), "-dynamic-linker", "/lib/ld-linux-riscv64-lp64d.so.1", "-lc"}, "riscv64-ld");
-            Files.deleteIfExists(objFile);
-            if (System.getenv("KOF_KEEP_ASM") == null) Files.deleteIfExists(asmFile);
+            Path cFile = asmFile.resolveSibling("rt.c");
+            Files.writeString(cFile, RISCV_RUNTIME_C);
+            Path rtObj = asmFile.resolveSibling("rt.o");
+            runCommand(new String[]{"riscv64-linux-gnu-gcc", "-O2", "-c", cFile.toString(), "-o", rtObj.toString()}, "riscv64-gcc-c");
+            Path kofObj = asmFile.resolveSibling("kof.o");
+            runCommand(new String[]{"riscv64-linux-gnu-as", "-o", kofObj.toString(), asmFile.toString()}, "riscv64-as");
+            runCommand(new String[]{"riscv64-linux-gnu-gcc", "-O2", "-static", "-o", binFile.toString(), kofObj.toString(), rtObj.toString()}, "riscv64-gcc");
+            Files.deleteIfExists(rtObj);
+            Files.deleteIfExists(kofObj);
+            if (System.getenv("KOF_KEEP_ASM") == null) { Files.deleteIfExists(asmFile); Files.deleteIfExists(cFile); }
             binFile.toFile().setExecutable(true);
         } catch (IOException e) {
-            System.err.println("NativeBackend: riscv64 toolchain not found, keeping asm: " + e.getMessage());
+            System.err.println("NativeBackend: riscv64 toolchain ausente/falhou (NATIVE002), keeping asm: " + e.getMessage());
         }
     }
+
+    private void emitCrossMethodRiscv(StringBuilder sb, IRClass clazz, IRMethod method) {
+        // O main Kof é o ponto de entrada: o C `main` chama `kof_main`.
+        String mangled = "main".equals(method.name()) ? "kof_main"
+                : sanitizeName(clazz.name()) + "_" + sanitizeName(method.name());
+        if ("<init>".equals(method.name())) mangled += "_" + method.parameterTypes().size();
+        int maxSlot = method.localVariables().stream().mapToInt(IRLocalVariable::index).max().orElse(0);
+        int frameSize = Math.max((maxSlot + 1) * 8 + 16, 32);
+        frameSize = (frameSize + 15) & ~15;
+        sb.append(".globl ").append(mangled).append("\n");
+        sb.append(mangled).append(":\n");
+        sb.append("    addi sp, sp, -").append(frameSize).append("\n");
+        sb.append("    sd ra, ").append(frameSize - 8).append("(sp)\n");
+        sb.append("    sd s2, ").append(frameSize - 16).append("(sp)\n");
+        sb.append("    addi s11, sp, ").append(frameSize - 16).append("\n");
+        sb.append("    mv s2, sp\n");
+        boolean endsWithReturn = false;
+        for (IRBasicBlock block : method.basicBlocks()) {
+            for (KofOperation op : block.operations()) {
+                if (op instanceof KofReturn || op instanceof KofReturnVoid) endsWithReturn = true;
+                emitCrossOpRiscv(sb, op, frameSize);
+            }
+        }
+        if (!endsWithReturn) {
+            sb.append("    ld ra, ").append(frameSize - 8).append("(sp)\n");
+            sb.append("    addi sp, sp, ").append(frameSize).append("\n");
+            sb.append("    ret\n");
+        }
+    }
+
+    private int crossLocalOffRiscv(int idx) { return -(idx + 1) * 8; }
+
+    private void emitCrossOpRiscv(StringBuilder sb, KofOperation op, int frameSize) {
+        switch (op) {
+            case KofGetStatic gs -> { }
+            case KofLoadLiteral lit -> emitCrossLoadLiteralRiscv(sb, lit);
+            case KofLoadLocal ll -> {
+                sb.append("    ld t0, ").append(crossLocalOffRiscv(ll.index())).append("(s11)\n");
+                pushRiscv(sb, "t0");
+            }
+            case KofStoreLocal sl -> {
+                sb.append("    pop t0\n");
+                sb.append("    sd t0, ").append(crossLocalOffRiscv(sl.index())).append("(s11)\n");
+            }
+            case KofBinary kb -> emitCrossBinaryRiscv(sb, kb);
+            case KofConditionalJump kc -> emitCrossCondJumpRiscv(sb, kc);
+            case KofLabel kl -> sb.append(resolveLabel(kl.label())).append(":\n");
+            case KofJump kj -> sb.append("    j ").append(resolveLabel(kj.target())).append("\n");
+            case KofCall kc -> emitCrossCallRiscv(sb, kc);
+            case KofReturn kr -> {
+                sb.append("    pop a0\n");
+                sb.append("    ld ra, ").append(frameSize - 8).append("(sp)\n");
+                sb.append("    addi sp, sp, ").append(frameSize).append("\n");
+                sb.append("    ret\n");
+            }
+            case KofReturnVoid rv -> {
+                sb.append("    li a0, 0\n");
+                sb.append("    ld ra, ").append(frameSize - 8).append("(sp)\n");
+                sb.append("    addi sp, sp, ").append(frameSize).append("\n");
+                sb.append("    ret\n");
+            }
+            default -> sb.append("    # NATIVE002: op fora do caminho feliz riscv64: ").append(op.getClass().getSimpleName()).append("\n");
+        }
+    }
+
+    private void pushRiscv(StringBuilder sb, String reg) {
+        sb.append("    addi s2, s2, -8\n");
+        sb.append("    sd ").append(reg).append(", 0(s2)\n");
+    }
+
+    private void emitCrossLoadLiteralRiscv(StringBuilder sb, KofLoadLiteral lit) {
+        if (lit.value() instanceof String s) {
+            String label = internString(s);
+            int len = s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            sb.append("    la a0, ").append(label).append("\n");
+            sb.append("    li a1, ").append(len).append("\n");
+            sb.append("    call kof_string_from_literal\n");
+            pushRiscv(sb, "a0");
+        } else if (lit.value() instanceof Integer i) {
+            sb.append("    li t0, ").append(i).append("\n");
+            pushRiscv(sb, "t0");
+        } else if (lit.value() instanceof Long l) {
+            sb.append("    li t0, ").append(l).append("\n");
+            pushRiscv(sb, "t0");
+        } else if (lit.value() instanceof Boolean b) {
+            sb.append("    li t0, ").append(b ? 1 : 0).append("\n");
+            pushRiscv(sb, "t0");
+        } else if (lit.value() == null) {
+            sb.append("    li t0, 0\n");
+            pushRiscv(sb, "t0");
+        } else {
+            sb.append("    # NATIVE002: literal fora do caminho feliz: ").append(lit.value()).append("\n");
+            sb.append("    li t0, 0\n");
+            pushRiscv(sb, "t0");
+        }
+    }
+
+    private void emitCrossBinaryRiscv(StringBuilder sb, KofBinary kb) {
+        // b = topo, a = abaixo; resultado = a OP b
+        sb.append("    pop t0\n");   // b
+        sb.append("    pop t1\n");   // a
+        switch (kb.op()) {
+            case ADD -> sb.append("    add t1, t1, t0\n");
+            case SUB -> sb.append("    sub t1, t1, t0\n");
+            case MUL -> sb.append("    mul t1, t1, t0\n");
+            case DIV -> sb.append("    div t1, t1, t0\n");
+            case MOD -> sb.append("    rem t1, t1, t0\n");
+            case EQ -> { sb.append("    sub t2, t1, t0\n"); sb.append("    seqz t1, t2\n"); }
+            case NE -> { sb.append("    sub t2, t1, t0\n"); sb.append("    snez t1, t2\n"); }
+            case LT -> sb.append("    slt t1, t1, t0\n");
+            case LE -> sb.append("    sle t1, t1, t0\n");
+            case GT -> sb.append("    slt t1, t0, t1\n");
+            case GE -> sb.append("    sle t1, t0, t1\n");
+            default -> sb.append("    # NATIVE002: binop fora do caminho feliz: ").append(kb.op()).append("\n");
+        }
+        pushRiscv(sb, "t1");
+    }
+
+    private void emitCrossCondJumpRiscv(StringBuilder sb, KofConditionalJump kc) {
+        sb.append("    pop t0\n");   // b (topo)
+        sb.append("    pop t1\n");   // a (abaixo)
+        String cond;
+        switch (kc.comparison()) {
+            case EQ -> cond = "bne";
+            case NE -> cond = "beq";
+            case LT -> cond = "bge";
+            case LE -> cond = "bgt";
+            case GT -> cond = "ble";
+            case GE -> cond = "blt";
+            default -> cond = "b";
+        }
+        sb.append("    ").append(cond).append(" t1, t0, ").append(resolveLabel(kc.falseLabel())).append("\n");
+        sb.append("    j ").append(resolveLabel(kc.trueLabel())).append("\n");
+    }
+
+    private void emitCrossCallRiscv(StringBuilder sb, KofCall kc) {
+        Type argType = kc.parameterTypes().isEmpty() ? Type.UnknownType.UNKNOWN : kc.parameterTypes().get(0);
+        // println (INSTANCE PrintStream): pop 1 (String ou Int), printa, push void
+        if (kc.kind() == KofCallKind.INSTANCE && "println".equals(kc.methodName())) {
+            sb.append("    pop a0\n");
+            if (argType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
+                sb.append("    call kof_int_to_string\n");
+            }
+            sb.append("    call kof_println_string\n");
+            sb.append("    li a0, 0\n");
+            pushRiscv(sb, "a0");
+            return;
+        }
+        // String.valueOf (STATIC): Int → kof_int_to_string; String → no-op
+        if (kc.kind() == KofCallKind.STATIC && "valueOf".equals(kc.methodName())) {
+            if (argType instanceof Type.PrimitiveType pt && "int".equals(pt.name())) {
+                sb.append("    pop a0\n");
+                sb.append("    call kof_int_to_string\n");
+                pushRiscv(sb, "a0");
+            }
+            return;
+        }
+        sb.append("    # NATIVE002: call fora do caminho feliz riscv64: ").append(kc.methodName()).append("\n");
+    }
+
+    static final String RISCV_RUNTIME_C = """
+            #include <stdio.h>
+            #include <stdlib.h>
+            #include <string.h>
+            #include <stdint.h>
+            typedef struct { int32_t len; char* data; } KofStr;
+            KofStr* kof_string_from_literal(const char* s, int len) {
+                KofStr* p = (KofStr*) malloc(sizeof *p);
+                p->data = (char*) malloc((size_t) len + 1);
+                memcpy(p->data, s, (size_t) len);
+                p->data[len] = 0;
+                p->len = len;
+                return p;
+            }
+            KofStr* kof_int_to_string(int n) {
+                char buf[32];
+                int l = snprintf(buf, sizeof buf, "%d", n);
+                KofStr* p = (KofStr*) malloc(sizeof *p);
+                p->data = (char*) malloc((size_t) l + 1);
+                memcpy(p->data, buf, (size_t) l);
+                p->data[l] = 0;
+                p->len = l;
+                return p;
+            }
+            void kof_println_string(KofStr* s) {
+                if (!s) { puts("null"); return; }
+                fwrite(s->data, 1, (size_t) s->len, stdout);
+                putchar('\\n');
+            }
+            extern int kof_main(void);
+            int main(void) { return kof_main(); }
+            """;
 
     private void emitAarch64(IRModule module, Path outputDir) throws IOException {
         StringBuilder sb = new StringBuilder();

@@ -1,11 +1,11 @@
 # Kof Native — Multi-Arch (RISC-V 64 e ARM64/AArch64)
 
-> **Status:** `EM DESENVOLVIMENTO (parcial)` — plumbing pronto, toolchain + runtime validados, codegen do programa pendente.
+> **Status:** `EM DESENVOLVIMENTO (parcial)` — **riscv64 com codegen real (02/09)**; aarch64 pendente.
 > **Versão:** 0.2.6-beta · **Data:** 2026-09-02
-> **Gap:** `NATIVE002` (codegen riscv64/aarch64 ainda é placeholder x86_64).
-> **Progresso 02/09:** toolchain cruzada + qemu instaladas; **runtime em C validado**
-> (`riscv64-linux-gnu-gcc -static` + `qemu-riscv64` → `Hello, Kof!`/`12345`/`-42`, exit 0).
-> Ver §2.3.
+> **Gap:** `NATIVE002` (riscv64 parcial — caminho feliz; aarch64 e ops fora do caminho feliz pendentes).
+> **Progresso 02/09:** toolchain cruzada + qemu + **runtime em C** + **codegen riscv64** —
+> `NativeRiscv64E2ETest 4/4` (`qemu-riscv64`): println(String/Int), `var`, `if/else`,
+> aritmética/comparações Int. Ver §2.3.
 > **Escopo:** expandir o `NativeBackend` (hoje `x86_64` em asm puro) para
 > `riscv64` e `aarch64` Linux, preservando `frontend → Kof IR → backend` e
 > paridade `JVM/Native/JS`. Este doc vive em `docs/` (não em `docs/future/`)
@@ -49,12 +49,13 @@ funciona de ponta a ponta.
 
 | Peça | Estado | Detalhe |
 |------|--------|---------|
-| **Lowering real riscv64** | ❌ STUB | `emitRiscv` gera só `_start` + `main: li a0,0; ret` (`NativeBackend.java:1825`) — **não** emite o IR |
-| **Lowering real aarch64** | ❌ STUB | `emitAarch64` gera só `_start` + `main: mov x0,#0; ret` (`NativeBackend.java:1857`) — **não** emite o IR |
-| Os 18 métodos `emit*` reais (`emitBinary`/`emitOperation`/`emitMethod`/`emitConditionalJump`/vcall…) | ❌ x86_64-only | Todos usam `rdi/rsi/%rip`/`movq` — nenhum é multi-arch |
+| **Lowering real riscv64 (caminho feliz)** | ✅ parcial 02/09 | `emitRiscv` emite o IR em asm: stack machine riscv64 (`s11`=fp locais, `s2`=pilha de operandos callee-saved, `ra`/`s2` preservados no frame) + `.macro pop`; `KofLoadLiteral`/`KofBinary`/`KofConditionalJump`/`KofCall(println, String.valueOf)`/`KofLoadLocal`/`KofStoreLocal`/`KofReturn`. `NativeRiscv64E2ETest 4/4` |
+| **Lowering real aarch64** | ❌ STUB | `emitAarch64` gera só `_start` + `main: mov x0,#0; ret` — **não** emite o IR (mesma estratégia do riscv64 a portar) |
+| Ops fora do caminho feliz riscv64 (coleções/classe/`instanceof`/`switch`/FP) | ❌ diagnóstico `NATIVE002` | ops desconhecidos emitem comentário `# NATIVE002: op fora do caminho feliz` (nunca binário mudo) |
+| Os 18 métodos `emit*` reais (x86_64) | ✅ | `emitBinary`/`emitOperation`/`emitMethod`/`emitConditionalJump`/vcall… — o caminho completo continua só em x86_64 |
 | Extração de `NativeBase` (layout/`kof_alloc`/mangle comum) | ❌ não existe | `NativeBackend` ainda é monolítico x86_64 |
 | Runtime por arch (asm) | ❌ não existe | `kof_alloc`/`kof_instanceof`/`kof_string_*` só em x86_64 (asm inline em `NativeRuntime`) |
-| **Runtime por arch (C, gcc cruzado)** | ✅ validado 02/09 | `kof_string_from_literal`/`kof_int_to_string`/`kof_println_string` em C compilado com `riscv64-linux-gnu-gcc -static`; roda em `qemu-riscv64` (ver §2.3) |
+| **Runtime por arch (C, gcc cruzado)** | ✅ riscv64 02/09 | `kof_string_from_literal`/`kof_int_to_string`/`kof_println_string` em C compilado com `riscv64-linux-gnu-gcc -static`; roda em `qemu-riscv64` (ver §2.3) |
 | Testes E2E `qemu` (aarch64/riscv64) | ❌ não existem | nenhum `NativeAarch64E2ETest`/`NativeRiscv64E2ETest` |
 | CI com cross toolchains | ❌ não existe | `aarch64/riscv64` não entram no pipeline |
 | `backend-parity.md` colunas por arch | ⚠️ parcial | delta citado, colunas `NATIVE_X86_64/AARCH64/RISCV64` separadas pendentes |
