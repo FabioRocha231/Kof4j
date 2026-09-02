@@ -13,6 +13,11 @@ record Point(Int x, Int y)
 O compilador gera: construtor canônico, accessors (`p.x()`), e no JVM também
 `toString`/`equals`/`hashCode`.
 
+> **`class Point(Int x, Int y)` é idêntico** — o parser trata `class X(...)`
+> como record body (imutável). Use `record` (a forma canônica) para deixar a
+> intenção explícita; `class X(...)` é retrocompatível mas não traz classe
+> mutável (verificado 02/09). Para estado mutável, veja `classes.md`.
+
 ## When to use
 
 - Dados imutáveis (DTO, valor, chave, resultado).

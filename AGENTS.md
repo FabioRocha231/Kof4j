@@ -100,13 +100,26 @@ String? nome2 = null    // nullability: forma TIPO-PRIMEIRO (idiomática no corp
 var idade: Int? = null  // nullability: forma ANOTADA (também válida)
 ```
 
-### Classes (construtor primário é a forma idiomática)
+### Classes (mutable → campos + `constructor(...)`) e o caso `class X(...)` = record
 
 ```kof
-class User(String name, Int age) {           // params viram campos — sem this.x = x
+// ✅ ESTADO MUTÁVEL — campos explícitos + construtor (campos públicos, diretos)
+class User {
+    String name
+    Int age
+    public constructor(String name, Int age) {
+        this.name = name
+        this.age = age
+    }
     String greeting() { return "Hello " + name }
 }
-var u = User("Mel", 26)                      // sem `new`
+var u = User("Mel", 26)     // sem `new`
+u.age = 27                  // escrita direta — mutável
+
+// ⚠️ ATENÇÃO (verificado 02/09): `class User(String name, Int age) { }` NÃO é
+// classe mutável — o parser o trata como RECORD (imutável, accessors p.x()).
+// Leitura `u.name` funciona (vira accessor); escrita `u.name = "x"` NÃO.
+// Para dados imutáveis, use `record` (a forma canônica).
 ```
 
 ### Records (dados imutáveis, zero cerimônia)
@@ -213,7 +226,7 @@ if (nome != null) {
 | `a.equals(b)` | `a == b` | `==` compara conteúdo em Kof |
 | `StringBuilder` em loop | `+` / `+=` | `+` já é eficiente |
 | getters/setters | campo direto (`u.name`, `u.age = 3`) | Kof não tem JavaBeans/reflection ceremony |
-| `new User(...)` com construtor explícito | `class User(String n, Int a) { }` + `User("Mel", 26)` | construtor primário |
+| `new User(...)` com construtor explícito | `User(...)` sem `new` (ambos válidos) | `new` é retrocompatível |
 | utility class com `static` | função top-level | Kof tem funções fora de classes |
 | Service/Repository/Controller | função top-level ou classe direta | sem camadas de injeção |
 | `class Node { Node next ... }` | `List<T>` | coleção da linguagem |
@@ -247,7 +260,7 @@ Se você está prestes a escrever algo desta lista, **pare**:
 | `Thread` / `Executor` / `Runnable` | `spawn` |
 | `match x { A, B => ... }` (multi-case OR) | `switch (x) { case "A": ... case "B": ... }` ou `setOf` |
 | `x instanceof String ? (String) x : null` | `if (x instanceof String) { var s = x as String ... }` ou `case String s:` |
-| primary constructor `class X(val a, val b)` (Kotlin) | `class X(String a, Int b) { }` |
+| primary constructor `class X(val a, val b)` (Kotlin) | `record X(String a, Int b)` (imutável) ou classe mutável com `constructor(...)` |
 
 > Regra: **toda feature nova que você quiser usar, compile antes.**
 > Se não compila, é fake idiom — mesmo que exista em outra linguagem.
@@ -327,7 +340,7 @@ ensine-o para o próximo.
 Kof = intenção + simplicidade.
 
 - Função:  String nome(Int x) { ... }     (sem fun/func)
-- Classe:  class User(String n, Int a) { }  (construtor primário)
+- Classe:  class X { campos; constructor(...) }  (mutável) / class X(...) = record
 - Dados:   record Point(Int x, Int y)
 - String:  a == b  (não .equals)   a + "!"  (não StringBuilder)
 - Coleção: listOf / mapOf / setOf  +  .map/.filter/.reduce

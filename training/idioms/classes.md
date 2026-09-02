@@ -16,7 +16,7 @@ class User {
 
 ## Construtores
 
-### Construtor primário — a forma idiomática
+### `class X(...)` é RECORD — dados imutáveis (verificado 02/09)
 
 ```kof
 class User(String name, Int age) {
@@ -26,14 +26,18 @@ class User(String name, Int age) {
 }
 ```
 
-Os parâmetros do construtor primário são campos reais da classe: nenhum
-`this.name = name` é necessário. A construção usa a forma sem `new`:
+> **Atenção (02/09):** `class X(...)` é **alias de `record X(...)`** — o parser
+> o trata como record body (imutável, `extends java.lang.Record` no JVM). Os
+> "parâmetros" viram componentes com accessors: leitura `user.name` funciona
+> (vira `name()`), mas **escrita `user.name = "x"` NÃO** (campo final →
+> `IllegalAccessError`). Para dados imutáveis use `record` (a forma canônica);
+> para **estado mutável** use campos explícitos + `constructor(...)`.
 
 ```kof
-var user = User("Mel", 26)
+var user = User("Mel", 26)   // record — leitura ok, escrita não
 ```
 
-### Construtor explícito — forma verbosa (retrocompatível)
+### Construtor explícito — estado mutável (a forma de classe real)
 
 ```kof
 class User {
@@ -46,6 +50,8 @@ class User {
     }
 }
 ```
+
+Aqui os campos são **públicos e mutáveis**: `user.name = "Mel"` / `user.age = 30`.
 
 `new User("Mel", 30)` continua válido, mas `User("Mel", 30)` é a forma
 recomendada — o compilador trata ambas como construção de instância.
