@@ -542,7 +542,7 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
- | NativeRiscv64E2ETest | 4 | **riscv64 real (qemu)**: `kof_main` em asm + runtime C (gcc cruzado) — println(String/Int), var, if/else, aritmética/comparações Int (NATIVE002) |
+  | NativeRiscv64E2ETest | 4 | **riscv64 real (qemu)**: `kof_main` + runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações Int (NATIVE002) |
   | **Total kof-compiler** | **775** | |
   | kof-script | 8 | KofScriptGlobals / repl / --watch |
   | kof-c-compiler | 5 | KofC C subset → ELF |
@@ -625,7 +625,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
 20. ~~Ponto flutuante no Native~~ — ✅ FLT001 fechado: FP é XMM real (`vcvtsi2sd`, `mulsd`); dtoa via snprintf alinhado; `kof_string_to_double` parse completo (fração+expoente).
 21. ~~idem~~
-22. riscv64/aarch64 **em desenvolvimento** — ✅ **02/09 riscv64 real**: `Target.NATIVE_RISCV64` + CLI `native.risc` + dispatch + **lowering real** (`kof_main` em asm: stack machine riscv64, `s11`=fp/`s2`=operandos, `ra`/`s2` preservados) + **runtime em C** (`riscv64-linux-gnu-gcc -static`) + qemu; `NativeRiscv64E2ETest 4/4` (println String/Int, var, if/else, aritmética/comparações Int). **Restante do NATIVE002**: aarch64, coleções/classe/`instanceof`/`switch` cross, `KofJsSourceMap` paridade. **Estado real + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
+22. riscv64/aarch64 **em desenvolvimento** — ✅ **02/09 riscv64 real**: `Target.NATIVE_RISCV64` + CLI `native.risc` + dispatch + **lowering real** (`kof_main` em asm: stack machine riscv64, `s11`=fp/`s2`=operandos, `ra`/`s2` preservados) + **runtime em asm puro** (raw syscalls, **sem C** — binário estático via `as`+`ld`; Kof é Kof) + qemu; `NativeRiscv64E2ETest 4/4` (println String/Int, var, if/else, aritmética/comparações Int). **Restante do NATIVE002**: aarch64, coleções/classe/`instanceof`/`switch` cross, `KofJsSourceMap` paridade. **Estado real + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
 23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
 24. ~~`spawn`-statement (fire-and-forget) no Native não era juntado~~ — ✅ 01/09: o `kof_spawn` (stmt) criava a thread mas **não registrava** o handle na lista que `kof_spawn_join_all` percorre; e `join_all` só era emitido no bloco `!endsWithReturn`, que nunca roda para o main (o driver sempre fecha o main com `KofReturnVoid` → `endsWithReturn`). Resultado: o processo saía antes do worker imprimir. Fix: `kof_spawn` agora delega a `kof_spawn_result` (registra o handle) e `join_all` é emitido no **epílogo do return** de main (idempotente — limpa a lista). `SpawnE2ETest 4/4`
 
