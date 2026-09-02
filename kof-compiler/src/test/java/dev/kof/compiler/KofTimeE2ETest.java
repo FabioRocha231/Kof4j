@@ -39,6 +39,28 @@ class KofTimeE2ETest {
         }
     }
 
+    private String runNative(Path tempDir, String kofSource, String expected) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, kofSource);
+        Path outDir = tempDir.resolve("out-native");
+        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native compile should succeed: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default/Main");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(bin.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected native output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
     @Test
     void sleepPausesForMs(@TempDir Path tempDir) throws IOException {
         runJvm(tempDir, """
@@ -53,7 +75,7 @@ class KofTimeE2ETest {
 
     @Test
     void intervalRunsPeriodicallyUntilCancelled(@TempDir Path tempDir) throws IOException {
-        runJvm(tempDir, """
+        String src = """
                 main() {
                     var ticks = 0
                     var job = time.interval(100, () -> {
@@ -66,7 +88,11 @@ class KofTimeE2ETest {
                     println(ticks == after)
                     println(ticks >= 2)
                 }
-                """, "true\ntrue");
+                """;
+        runJvm(tempDir, src, "true\ntrue");
+        // TIME001 (01/09): Native reusa o scheduler.every/cancel (SCHED001) —
+        // mutação por referência da captura (ticks) é validada aqui.
+        runNative(tempDir, src, "true\ntrue");
     }
 
     @Test
@@ -114,7 +140,10 @@ class KofTimeE2ETest {
     }
 
     @Test
-    void nativeAndJsReportTime001ForInterval(@TempDir Path tempDir) throws IOException {
+    void nativeCompilesIntervalAndJsReportsTime001(@TempDir Path tempDir) throws IOException {
+        // TIME001 (01/09): Native agora compila time.interval/cancel (reusa o
+        // scheduler — SCHED001). JS continua gap: event-loop assíncrono +
+        // time.sleep bloqueante são incompatíveis (diagnóstico claro).
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
@@ -122,11 +151,11 @@ class KofTimeE2ETest {
                 }
                 """);
         CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native2"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "Native should reject time.interval");
-        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("TIME001")), "" + nativeResult.diagnostics().getDiagnostics());
+        assertTrue(nativeResult.success(),
+                "Native should now compile time.interval (TIME001 fechado): "
+                        + nativeResult.diagnostics().getDiagnostics());
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js2"), Target.JS);
-        assertFalse(jsResult.success(), "JS should reject time.interval");
+        assertFalse(jsResult.success(), "JS should still reject time.interval");
         assertTrue(jsResult.diagnostics().getDiagnostics().stream()
                 .anyMatch(d -> d.message().contains("TIME001")), "" + jsResult.diagnostics().getDiagnostics());
     }

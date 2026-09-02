@@ -253,7 +253,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | JSON encode/decode (objetos/records no JVM) + arrays nativos | ✅ | ✅ | ✅ |
 | JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
-| kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) |
+| kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep/**interval** — reusa o scheduler, SCHED001) | ✅ (now/sleep; interval = `TIME001`) |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 | kof.http (`http.get/post/put/delete/status` + `timeout/retry/circuit`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop; 30/08 retry/circuit paridade) |
 | kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
@@ -503,7 +503,7 @@ main() { /* ignorado pelo kof test */ }
 | KofCacheE2ETest | 5 | suíte E2E/compilação |
 | KofHigherOrderTest | 5 | funções de ordem superior (map/filter/reduce) |
 | KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
-| KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/JS) |
+| KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native; JS now/sleep — interval gap TIME001) |
 | KofWebTlsTest | 5 | TLS/HTTPS: listenSecure + kof.http sobre TLS |
 | KofObservabilityTest | 4 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS) |
 | FunctionSyntaxTest | 4 | formas de declaração de função |

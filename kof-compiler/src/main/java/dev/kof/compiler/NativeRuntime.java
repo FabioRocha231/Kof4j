@@ -1340,6 +1340,20 @@ final class NativeRuntime {
                 movq %rax, %rsi
                 jmp kof_scheduler_every
 
+            # TIME001 (01/09): time.interval/cancel no Native. Mesmo mecanismo do
+            # scheduler.every/cancel (thread por job, loop com cancel; captura por
+            # referência — mesma lambda). Aliás p/ o símbolo do scheduler.
+            # rdi=ms, rsi=task -> id String (igual a kof_scheduler_every).
+            .globl kof_time_interval
+            .type kof_time_interval, @function
+            kof_time_interval:
+                jmp kof_scheduler_every
+            # rdi=id String -> void (igual a kof_scheduler_cancel).
+            .globl kof_time_cancel
+            .type kof_time_cancel, @function
+            kof_time_cancel:
+                jmp kof_scheduler_cancel
+
             .globl kof_scheduler_cancel
             .type kof_scheduler_cancel, @function
             kof_scheduler_cancel:
