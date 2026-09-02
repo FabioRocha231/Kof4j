@@ -10,6 +10,8 @@ sobre ler/escrever arquivos, trabalhar com paths e listar diretórios.
 - O programador nunca vê POSIX, `java.nio`, syscalls ou separadores por
   plataforma: `kof.io` resolve isso no backend (JVM → `java.nio.file`;
   Native → syscalls POSIX no Linux x86-64).
+- **`readLine()` (top-level, stdin)** → `String?` (02/09): `null` no EOF em
+  JVM e Native (antes o Native devolvia `""`). Trate com `if (line != null)`.
 
 ## Path
 

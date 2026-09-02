@@ -104,6 +104,36 @@ class NullSafetyE2ETest {
             """, "missing\ndone");
     }
 
+    @Test
+    void readLineEofIsNullJvm(@TempDir Path tmp) throws Exception {
+        runJvmEmptyStdin(tmp, """
+            main() {
+                var line = readLine()
+                if (line == null) {
+                    println("eof")
+                } else {
+                    println("got:" + line)
+                }
+                println("done")
+            }
+            """, "eof\ndone");
+    }
+
+    @Test
+    void readLineEofIsNullNative(@TempDir Path tmp) throws Exception {
+        runNativeEmptyStdin(tmp, """
+            main() {
+                var line = readLine()
+                if (line == null) {
+                    println("eof")
+                } else {
+                    println("got:" + line)
+                }
+                println("done")
+            }
+            """, "eof\ndone");
+    }
+
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {
         Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, source);
@@ -118,6 +148,48 @@ class NullSafetyE2ETest {
             int ec = p.waitFor();
             assertEquals(0, ec, "JVM exit code, output: " + output);
             assertEquals(expected, output, "JVM output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new java.io.IOException("interrupted", e);
+        }
+    }
+
+    private String runJvmEmptyStdin(Path tempDir, String source, String expected) throws java.io.IOException {
+        Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
+        Files.writeString(file, source);
+        Path outDir = tempDir.resolve("out-" + System.nanoTime());
+        CompilationResult result = driver.compile(file, outDir, Target.JVM);
+        assertTrue(result.success(), "JVM compile failed: " + result.diagnostics().getDiagnostics());
+        try {
+            Process p = new ProcessBuilder(System.getProperty("java.home") + "/bin/java",
+                    "-cp", outDir.toString(), "Default.Main").redirectErrorStream(true).start();
+            p.getOutputStream().close();   // EOF no stdin do filho
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "JVM exit code, output: " + output);
+            assertEquals(expected, output, "JVM output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new java.io.IOException("interrupted", e);
+        }
+    }
+
+    private String runNativeEmptyStdin(Path tempDir, String source, String expected) throws java.io.IOException {
+        Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
+        Files.writeString(file, source);
+        Path outDir = tempDir.resolve("out-" + System.nanoTime());
+        CompilationResult result = driver.compile(file, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native compile failed: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default/Main");
+        try {
+            Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+            p.getOutputStream().close();   // EOF no stdin do filho
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit code, output: " + output);
+            assertEquals(expected, output, "Native output");
             return output;
         } catch (InterruptedException e) {
             throw new java.io.IOException("interrupted", e);

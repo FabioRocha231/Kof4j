@@ -2615,7 +2615,7 @@ private Target target = Target.JVM;
                 }
                 if (mc.receiver() == null && "readLine".equals(mc.methodName()) && mc.arguments().isEmpty()) {
                     ops.add(new KofCall(new Type.ClassType("kof", "io", List.of()), "kof_read_line",
-                            List.of(), BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                            List.of(), new Type.NullableType(BuiltinTypes.STRING), KofCallKind.FUNCTION));
                     yield localIdx;
                 }
                 if (mc.receiver() == null && KofWeb.isContextFunction(mc.methodName())) {
@@ -5385,7 +5385,7 @@ private Target target = Target.JVM;
                     yield Type.PrimitiveType.VOID;
                 }
                 if ("readLine".equals(mc.methodName()) && mc.receiver() == null) {
-                    yield BuiltinTypes.STRING;
+                    yield new Type.NullableType(BuiltinTypes.STRING);
                 }
                 if ("readFile".equals(mc.methodName()) && mc.receiver() == null) {
                     yield new Type.NullableType(BuiltinTypes.STRING);

@@ -2,7 +2,7 @@
 
 **Status:** Planejado — a Fase 1 da IR (source locations) já alimenta o caminho; DWARF futuro
 **Data:** 27 de agosto de 2026
-**Versão:** 0.2.6-beta (788 testes; 7 targets; free-list + pthread spawn + FP XMM)
+**Versão:** 0.2.6-beta (790 testes; 7 targets; free-list + pthread spawn + FP XMM)
 
 ---
 

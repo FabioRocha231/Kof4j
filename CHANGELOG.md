@@ -40,6 +40,8 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 - **`Map.get` devolve `V?`** para valores de referência (ausência = `null`,
   narrowing via `if (x != null)`); primitivos seguem `V` (modelo atual não
   representa ausência).
+- **`readLine()` → `String?`**: `null` no EOF em JVM e Native (o Native antes
+  devolvia `""`).
 
 ### Corpus / docs
 

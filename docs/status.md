@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 788 testes 771 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 790 testes 773 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -41,7 +41,8 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
   parsear.
 - **stdlib honesta**: `File.readText`/`readFile` → `String?` (Native devolve
   `null` em vez de encerrar); `File.size()` lança em vez do sentinela `-1`;
-  `Map.get` → `V?` para valores de referência.
+  `Map.get` → `V?` para valores de referência; `readLine()` → `String?`
+  (`null` no EOF, JVM e Native).
 - Ver `CHANGELOG.md` [0.2.6-beta] 02/09 e `docs/backend-parity.md`.
 
 ---
@@ -470,7 +471,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (788 = 771 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
+## Testes (790 = 773 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -541,12 +542,12 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | NullSafetyE2ETest | 5 | `String?` narrowing JVM (02/09) |
- | **Total kof-compiler** | **771** | |
+ | NullSafetyE2ETest | 7 | `String?` narrowing JVM (02/09) |
+ | **Total kof-compiler** | **773** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **788** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **790** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da

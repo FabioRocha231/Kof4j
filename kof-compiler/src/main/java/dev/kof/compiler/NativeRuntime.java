@@ -6741,13 +6741,23 @@ final class NativeRuntime {
                 addq %r12, %rdx
                 syscall
                 testq %rax, %rax
-                jle .Lkof_read_line_done
+                jle .Lkof_read_line_eof
                 movq %rbx, %rcx
                 addq %r12, %rcx
                 cmpb $10, (%rcx)
                 je .Lkof_read_line_done
                 incq %r12
                 jmp .Lkof_read_line_loop
+            .Lkof_read_line_eof:
+                # EOF sem nenhum byte lido -> null (paridade com o JVM,
+                # que devolve null no fim do stdin); linha parcial -> devolve
+                cmpq $0, %r12
+                jne .Lkof_read_line_done
+                xorl %eax, %eax
+                addq $512, %rsp
+                popq %r12
+                popq %rbx
+                ret
             .Lkof_read_line_done:
                 leal 25(%r12), %edi
                 call kof_alloc

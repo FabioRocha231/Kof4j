@@ -1,7 +1,7 @@
 # Auditoria de Complexidade
 
 **Última atualização:** 2 de setembro de 2026
-**Versão:** 0.2.6-beta (788 testes; 7 targets: jvm, native x86_64, native.risc/arm, js, kofc, android; free-list GC; `VERSION` 0.2.6-beta)
+**Versão:** 0.2.6-beta (790 testes; 7 targets: jvm, native x86_64, native.risc/arm, js, kofc, android; free-list GC; `VERSION` 0.2.6-beta)
 
 ---
 

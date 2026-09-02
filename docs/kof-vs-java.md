@@ -1,7 +1,7 @@
 # Kof vs Java — Comparação Técnica
 
 **Última atualização:** 2 de setembro de 2026
-**Versão:** 0.2.6-beta (788 testes; 7 targets; pattern matching + `String?` + spawn Native)
+**Versão:** 0.2.6-beta (790 testes; 7 targets; pattern matching + `String?` + spawn Native)
 
 ---
 
@@ -46,20 +46,16 @@ public class User {
 }
 ```
 
-### Kof (PROPOSTA)
+### Kof (implementado)
 
 ```kof
-class User {
-    String name
-    Int age
-    public constructor(String name, Int age) {
-        this.name = name
-        this.age = age
-    }
+class User(String name, Int age) {
+    greeting(): String { return "Hello " + name }
 }
 ```
 
-**Diferença:** Kof não precisa de getters/setters. Fields são acessíveis diretamente.
+**Diferença:** Kof não precisa de getters/setters — fields são acessíveis
+diretamente (`u.name`) e o construtor primário gera os campos sozinho.
 
 ---
 
@@ -316,7 +312,7 @@ arquivo > env > profile > default; JS reporta CONF001).
 
 ---
 
-## Resumo (0.2.6-beta, 31/08/2026 — `VERSION` 0.2.6-beta, `mvn test` 788, 7 targets)
+## Resumo (0.2.6-beta, 31/08/2026 — `VERSION` 0.2.6-beta, `mvn test` 790, 7 targets)
 
 | Feature | Java | Kof 0.2.6-beta | Kof Futuro |
 |---------|------|---------------|------------|

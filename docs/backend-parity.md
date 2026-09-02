@@ -6,7 +6,7 @@
 > Deltas desde 0.1.0: Targets `native.risc` (riscv64) e `native.arm` (aarch64) separados de `native` x86_64 (**em desenvolvimento** — plumbing pronto, codegen stub; ver `docs/native-multiarch.md`); Native free-list (`kof_free_head`) + `kof_gc_collect` (mark-sweep pendente; auto-GC desativado); MySQL wire protocol em progresso (`kof_db_mysql_scramble` + `user:pass@`); pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `List map/filter/reduce` + `Box<T>`; Windows SIGPIPE fix.
 > Deltas 30-31/08: `spawn`/`await` real no Native (pthread + trampoline + join + allocator thread-safe futex — CONC001); FP real em XMM (FLT001); JSON objetos/records + arrays FP no Native (JSN001/JSN002/JSN003); WebSocket/SSE no JVM (`app.ws`/`sse.*`, RFC 6455); `kof.http` retry/circuit JVM+JS (30s window, fail-fast); `kof.cache` 3 targets (fix de clobber de registradores); UI Fase 7 Router (JS real, JVM no-op); SQLite nativo via `.so` direto; `kof fmt` + `kof config gen`.
 > Deltas 02/09: `Set<T>` como tipo declarado no JVM (`kof.Set` → HashSet); null-safety narrowing JVM corrigido (`s.length`/`s.substring(...)`/`if_acmp*`); `mapOf` infere o primeiro par; `String? s = null` prefixado parseia; `readText`/`readFile` → `String?` (Native devolve `null`); `size()` lança em vez de `-1`; `Map.get` → `V?` (referências); gaps `STR001`/`STR002` documentados abaixo.
-> Tabela reflete 0.2.6-beta (02/09) — Build `mvn test` 788 (771+8+5+4), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
+> Tabela reflete 0.2.6-beta (02/09) — Build `mvn test` 790 (773+8+5+4), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -43,6 +43,7 @@
 | JSON encode/decode (primitivos, List) | ✅ | ✅ | ✅ | arrays `JSN003` fechado; `Double[]`/`Float[]` no Native (JSN001, 31/08) |
 | JSON objetos/records (JSN002) | ✅ | ✅ 31/08 | ✅ | composição em compile-time no Native |
 | `kof.io` (File, Path, Directory) | ✅ | ✅ | ✅ | `readText`/`readFile` → `String?` (`null` p/ ausência, 02/09); `size()` lança em vez de `-1` |
+| `readLine` (stdin) | ✅ | ✅ | ✅ | `String?` — `null` no EOF (02/09; Native antes devolvia `""`) |
 | kof.io `readText`/`size` | ✅ | ✅ | ✅ | `STR002` histórico fechado 02/09: Native `readText` devolve `null` (antes encerrava); `size()` sem sentinela `-1` |
 | kof.time (`now()`, `sleep`, `interval`) | ✅ | ✅ (now/sleep) | ✅ (now/sleep) | `interval`/`every` JVM (ScheduledExecutor) + JS (`setInterval`, 27/08); Native SCHED001 |
 | `readLine`, `readFile`, `writeFile` | ✅ | ✅ | ✅ | |

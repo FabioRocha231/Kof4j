@@ -36,7 +36,7 @@ app.use {
 }
 ```
 
-## Suporte por target (0.2.6-beta — 788 testes)
+## Suporte por target (0.2.6-beta — 790 testes)
 
 | Função | JVM | Native | JS |
 |--------|-----|--------|----|
