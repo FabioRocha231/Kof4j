@@ -212,6 +212,39 @@ class SpawnE2ETest {
     }
 
     @Test
+    void nativeSpawnAwaitSpawnDoesNotSegfault(@TempDir Path tempDir) throws IOException, InterruptedException {
+        // Bug pré-existente SEPARADO (docs/status #2): `spawn → await → spawn`
+        // corrompia a pilha/frame da main thread — SIGSEGV no 2º
+        // pthread_create (mesma raiz do println-antes-do-spawn: stack chegou
+        // desalinhada ao call do pthread_create após o pthread_join do await).
+        // Reprodutor mínimo: spawn t1; await; spawn t2. Esperado: sem SIGSEGV.
+        assumeTrue(isLinux(), "Native target runs on Linux");
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+                Int t1() { println("t1"); return 1 }
+                Int t2() { println("t2"); return 2 }
+                main() {
+                    var r = spawn t1()
+                    var v = await r
+                    println("res=" + v)
+                    spawn t2()
+                    println("done")
+                }
+                """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
+        assertTrue(result.success(), "Native: " + result.diagnostics().getDiagnostics());
+        Path bin = tempDir.resolve("out").resolve("Default/Main");
+        ProcessBuilder pb = new ProcessBuilder(bin.toString()).redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+        int ec = p.waitFor();
+        assertEquals(0, ec, "exit code (SIGSEGV=139), output: " + output);
+        for (String e : List.of("t1", "res=1", "done", "t2")) {
+            assertTrue(output.contains(e), "falta " + e + " em: " + output);
+        }
+    }
+
+    @Test
     void nativeSpawnExprAwait(@TempDir Path tempDir) throws IOException, InterruptedException {
         // CONC001: spawn-expr com Handle tipado + await (join no handle)
         Path source = tempDir.resolve("Main2.kf");

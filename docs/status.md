@@ -1,6 +1,6 @@
 # Status do Projeto Kof
 
-**Última atualização:** 1 de setembro de 2026
+**Última atualização:** 2 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 769 testes 752 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 778 testes 761 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -69,6 +69,10 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 | `record Ponto` `hashCode()` reportava `SEM025` falso-positivo | `SemanticAnalyzer.java:1033` ignora `isObjectMethod(hashCode/equals/toString)` |
 | **Regressão `dc849f6` (01/09):** `kof_list_add` sem `POP` no JVM (assumiu que o IR emitiria `KofPop`) → `hasReturnValue` trata `add` como void, então o boolean do `ArrayList.add` ficava na pilha → frame crash (`Index out of bounds`) em 15 testes | POP restaurado no emit `kof_list_add` + `hasReturnValue` blinda `add/push/append/set/clear/put` de coleção (nada de `KofPop` duplo) + `cache` só é namespace se não for local/param (`c7b23a1`…`7c6aca9` + POP `7c6aca9`) |
 | **Surefire: `NativeDebugTest2/3/4/5` nunca rodavam na suíte** — o padrão default `*Test.java` não casa com `…Test2.java` (só `-Dtest` explícito os pegava) | `<includes>*Test*.java</includes>` no surefire do `kof-compiler` — suíte voltou a 752 |
+| **`spawn { lambda c/ captura }` → `VerifyError`/`ClassFormatError`** (JVM) / valor errado (Native): o lowering `SpawnStmt` criava a lambda com `List.of()` (zero capturas), então o corpo resolvia a variável externa para `this` | `SpawnStmt` (JVM + Native) agora coleta via `collectCaptures(le, locals)` e emite o construtor da lambda com os loads das capturas (mesmo padrão do case genérico) — `SpawnE2ETest.spawnLambdaCapturesOuterLocal` |
+| **`&&`/`||` sem short-circuit no JS**: o JsBackend emitia `KofBinaryOp.AND/OR` como `&`/`|` (bitwise), que avalia os DOIS lados → efeitos colaterais do lado de não eram executados | `&&`/`||` booleanos (operandType `bool`) agora viram `&&`/`||` JS (short-circuit nativo); `&`/`|` bitwise intacto — `KofJsE2ETest.logicalAndOrShortCircuit` + `bitwiseAndOrStillWorks` |
+| **`Channel<T>` rejeitado como parâmetro de função**: o tipo do parâmetro saía `ClassType(package="")` e o `isChannel` exigia `kof.concurrent` → dispatch caía no genérico → bytecode inválido (JVM), `undefined reference Channel_receive` (Native), `c.receive()` inexistente (JS) | `Type.of`/`toType` tratam `Channel` como builtin (`kof.concurrent`, paridade com `List`); `JvmTypeMapper` mapeia `Channel` → `java/util/concurrent/LinkedBlockingQueue` (descritor+internalName) — `KofConcurrency2Test.channelAsFunctionParameter{Jvm,Native,Js}` |
+| **`println`/`print` antes de `spawn` → SIGSEGV no Native** (`pthread_create`): a convenção args-by-stack (push) chegava 8 bytes desalinhada no site do `call pthread_create` (`rsp%16==8` vs `0` exigido pela ABI SysV) → glibc segfaultava em `pthread_attr_copy` escrevendo no frame | alinhamento de stack no C call: `andq $-16, %rsp` antes do `call pthread_create` em `kof_spawn_handle_new`, preservando `r15` (callee-saved) e restaurando o frame do caller — `SpawnE2ETest.nativePrintBeforeSpawnDoesNotSegfault` |
 
 ---
 
@@ -453,17 +457,18 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (769 = 752 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (778 = 761 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
 | CompilerDriverTest | 190 | compilação, semântica, fases, isolamento |
 | NativeE2ETest | 50 | execução real de binários nativos |
-| KofJsE2ETest | 35 | execução real JS (GraalJS) |
+| KofJsE2ETest | 37 | execução real JS (GraalJS) + short-circuit `&&`/`||` vs bitwise |
 | JvmE2ETest | 29 | execução real de bytecode JVM |
 | KofSecurityTest | 25 | kof.security: senhas, crypto, JWT, secrets, adversariais |
 | OptimizerTest | 21 | passes de otimização da IR |
 | KofOrmE2ETest | 18 | kof.orm: entity, CRUD, where (+ORM003 validação de coluna tipada, P3-10), migrate, unique, MongoDB (3 skips condicional) |
+| KofConcurrency2Test | 18 | spawn stmt/expr, selectAny, cancel/cancelled, done/poll, awaitTimeout, channel (+`Channel<T>` como parâmetro de função, 3 targets) |
 | IoE2ETest | 15 | kof.io multiplatform |
 | ComponentCoreE2ETest | 14 | kof.ui Component: view/onMount/onDispose |
 | CoreRegressionE2ETest | 14 | regressões de uso real (BOM, toInt, ARITH001...) |
@@ -482,6 +487,7 @@ main() { /* ignorado pelo kof test */ }
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
 | KofMediaE2ETest | 12 | kof.media + serveDir: Image/Audio/WAV/Video(MP4), Range 206/416, conteúdo binário (não base64) |
 | NativeConfigE2ETest | 8 | kof.config Native (asm): precedência, typed, comentários |
+| SpawnE2ETest | 8 | spawn (JVM/Native pthread/JS seq) + join implícito + **lambda c/ captura** + **println antes de spawn** + **`spawn→await→spawn`** (alinhamento de stack no `pthread_create`) |
 | IdiomaticE2ETest | 7 | idiomas consolidados (chaining, primary ctor) |
 | JsonCompleteE2ETest | 7 | JSON completo: Float/Double, arrays decode (JVM) |
 | KofAwaitTest | 7 | spawn/await Handle<T> tipado (JVM) |
@@ -489,15 +495,15 @@ main() { /* ignorado pelo kof test */ }
 | KofWsFrameTest | 7 | frame codec RFC 6455: máscara, limites, ping/pong |
 | NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
 | IdiomaticCoreE2ETest | 6 | field initializers, \uXXXX, listOf<T>() |
+| PackagesE2ETest | 6 | pacotes/módulos multi-arquivo (import a.b.C + moduleRoot do LCA, P1-4) |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FloatingPointGapE2ETest | 5 | FP XMM: encode/decode/arrays (FLT001) |
 | KofCacheE2ETest | 5 | suíte E2E/compilação |
-| KofConcurrency2Test | 13 | spawn stmt/expr, selectAny, cancel/cancelled, done/poll, awaitTimeout, channel (JVM/Native/JS) |
 | KofHigherOrderTest | 5 | funções de ordem superior (map/filter/reduce) |
 | KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
 | KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/JS) |
 | KofWebTlsTest | 5 | TLS/HTTPS: listenSecure + kof.http sobre TLS |
- | PackagesE2ETest | 6 | pacotes/módulos multi-arquivo (import a.b.C + moduleRoot do LCA, P1-4) |
+| KofObservabilityTest | 5 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS; Native histogram = gap OBS002) |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | KofEnumSwitchTest | 4 | switch exaustivo sobre enum + SEM031 |
 | KofEnumTest | 4 | enum: values/valueOf/name, SEM030, mapeamento JVM |
@@ -506,12 +512,11 @@ main() { /* ignorado pelo kof test */ }
 | KofWebStreamE2ETest | 4 | WebSocket/SSE end-to-end (persistent-conn) |
 | LambdaE2ETest | 4 | lambdas + if-expr |
 | RouterE2ETest | 4 | kof.ui Router Fase 7: go/replace/back/forward |
-| SpawnE2ETest | 5 | spawn (JVM virtual threads / Native pthread / JS sequencial) + join implícito |
 | StdlibE2ETest | 4 | now/readFile/writeFile |
+| KofJsBrowserE2ETest | 1 | **KofJS no browser real** (Chrome headless + HTTP + DOM) — kof.ui renderiza de verdade (pula se Chrome ausente) |
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
 | KofMapSetTest | 3 | Map/Set 3 targets (asm próprio no Native) |
- | KofObservabilityTest | 5 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS; Native histogram = gap OBS002) |
 | KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
 | KofValidationTest | 3 | 13 predicados de validação (3 targets) |
 | TetrisEasterEggTest | 3 | registro easter egg oculto |
@@ -524,11 +529,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **752** | |
+ | **Total kof-compiler** | **761** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **769** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **778** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -585,7 +590,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
 2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito + `done`/`poll`/`cancel`/`cancelled`/`selectAny` (cancel cooperativo por TID + selectAny polling 1ms; `SemanticAnalyzer` desambigua `cancel(Handle<T>)→Bool` vs `scheduler.cancel(String)→VOID`)
-   - ⚠️ bug pré-existente SEPARADO (reproduz na tree limpa, sem o feature de CONC001): `spawn→await→spawn` corrompe a pilha/frame da main thread — SIGSEGV no 2º `pthread_create` (retorno viciado), mesmo sem cancel/selectAny. **Gatilho = `pthread_join` na main** (reprodutor mínimo: `spawn t1(); await; spawn t2()`; sem o `join` — ex. `spawn; sleep; spawn` — passa). Alinhamento de pilha já auditado (conforme ABI x86_64) e **descartado** como causa. Reprodutível com `BUG`/`G1`/`M2f`/`G3`. Suspeito: interação `pthread_join`+`kof_alloc`/`pthread_create` no main (possível UAF do bloco do handle).
+   - ✅ ~~bug pré-existente SEPARADO: `spawn→await→spawn` SIGSEGV no 2º `pthread_create`~~ — **resolvido 01/09**: mesmo mecanismo do println-antes-do-spawn. O site do `call pthread_create` exige `rsp ≡ 0 (mod 16)` pela ABI SysV; após `pthread_join` (do `await`) a stack chegava 8 bytes desalinhada e a glibc segfaultava em `pthread_attr_copy`. Alinhamento de stack no C call (`andq $-16, %rsp` em `kof_spawn_handle_new`, preservando `r15` + frame do caller). `SpawnE2ETest.nativeSpawnAwaitSpawnDoesNotSegfault` (sem o fix: SIGSEGV 3/3; com: ok 3/3). **Nota**: alinhamento já tinha sido auditado "conforme ABI" e descartado como causa numa sessão anterior — a medição agora crava que o site do `call pthread_create` efetivamente chegava desalinhado nos casos com output/join antes do spawn.
 3. ~~JSON de objetos/records no Native: JSN002~~ — ✅ fechado (composição compile-time)
 4. ~~JSON Float/Double: JSN001~~ — ✅ fechado 31/08 (parser FP completo: fração+expoente, arrays Double[])
 5. ~~JSON decode de arrays~~ — ✅ JSN003 fechado: Int[]/Long[]/Bool[]/String[]; JSN001 fechou Double[]/Float[] (31/08)
@@ -669,7 +674,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ### Em desenvolvimento
 
 - Standard Library (contratos em estabilização)
-- Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ⚠️ bug pré-existente `spawn→await→spawn` (SIGSEGV no próximo `pthread_create` — ver "Bugs Restantes" #2)
+- Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ~~bug pré-existente `spawn→await→spawn`~~ — ✅ resolvido 01/09 (alinhamento de stack no `pthread_create` — ver "Bugs Restantes" #2)
 - ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
 - ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; binds `?` via substituição client-side; `nativeMysqlWireProtocol`); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — otimização de wire; tentativa de 01/09 revertida, ver "Bugs Restantes" #18)
