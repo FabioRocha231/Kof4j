@@ -53,6 +53,26 @@ class KofDbE2ETest {
         throw new IllegalStateException("H2 jar not found on test classpath");
     }
 
+    private String runNative(Path source, Path outDir, String expected) throws IOException {
+        CompilationResult result = driver.compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native compilation should succeed: " + result.diagnostics().getDiagnostics());
+        Path binFile = outDir.resolve("Default/Main");
+        assertTrue(Files.exists(binFile), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "Native exit code should be 0, output: '" + output + "'");
+            assertEquals(expected, output, "Unexpected native output");
+            return output;
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted while running native binary", e);
+        }
+    }
+
     @Test
     void executeAndQueryRowsAsJson(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Main.kf");
@@ -146,11 +166,55 @@ class KofDbE2ETest {
                 } catch (String e) {
                     println("caught")
                 }
-                var rows = db.query(db, "select count(*) as n from t")
+                 var rows = db.query(db, "select count(*) as n from t")
                 println(rows.get(0))
             }
             """);
         runJvm(source, tempDir.resolve("out"), "caught\n{\"n\":0}");
+    }
+
+    @Test
+    void nativeTransactionCommits(@TempDir Path tempDir) throws IOException {
+        assumeTrue(isLinux(), "Native transaction requires Linux + libsqlite3");
+        Path source = tempDir.resolve("Native.kf");
+        Files.writeString(source, """
+            main() {
+                var db = db.connect("sqlite:%s/tx.db")
+                db.execute(db, "create table if not exists t(x int)")
+                db.execute(db, "delete from t")
+                transaction {
+                    db.execute(db, "insert into t values (1)")
+                    db.execute(db, "insert into t values (2)")
+                }
+                var rows = db.query(db, "select count(*) as n from t")
+                println(rows.get(0))
+            }
+            """.formatted(tempDir));
+        runNative(source, tempDir.resolve("out"), "{\"n\":2}");
+    }
+
+    @Test
+    void nativeTransactionRollsBackOnFailure(@TempDir Path tempDir) throws IOException {
+        assumeTrue(isLinux(), "Native transaction requires Linux + libsqlite3");
+        Path source = tempDir.resolve("Native.kf");
+        Files.writeString(source, """
+            main() {
+                var db = db.connect("sqlite:%s/txr.db")
+                db.execute(db, "create table if not exists t(x int)")
+                db.execute(db, "delete from t")
+                try {
+                    transaction {
+                        db.execute(db, "insert into t values (1)")
+                        throw "boom"
+                    }
+                } catch (String e) {
+                    println("caught")
+                }
+                var rows = db.query(db, "select count(*) as n from t")
+                println(rows.get(0))
+            }
+            """.formatted(tempDir));
+        runNative(source, tempDir.resolve("out"), "caught\n{\"n\":0}");
     }
 
     @Test

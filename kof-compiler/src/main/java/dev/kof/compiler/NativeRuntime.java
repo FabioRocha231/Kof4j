@@ -8693,10 +8693,36 @@ final class NativeRuntime {
         sb.append("""
             .section .data
             .Ldb_null: .asciz "null"
+            # KofStrings (header 24B: 1@0, 0@4, 0@8, len@16, 0@20; dados em +24)
+            # p/ transaction — kf_db_execute lê em leaq 24(%rsi).
+            .Ldb_begin_str:
+                .long 1
+                .long 0
+                .quad 0
+                .long 5
+                .long 0
+                .asciz "begin"
+            .Ldb_commit_str:
+                .long 1
+                .long 0
+                .quad 0
+                .long 6
+                .long 0
+                .asciz "commit"
+            .Ldb_rollback_str:
+                .long 1
+                .long 0
+                .quad 0
+                .long 8
+                .long 0
+                .asciz "rollback"
             .section .bss
             .Ldb_slots: .zero 512
             .Ldb_types: .zero 64
             .Ldb_count: .quad 0
+            # handle (KofString*) da conexão "default" — o que transaction {} usa.
+            # 0 = sem conexão aberta.
+            .Ldb_default_handle: .quad 0
             .Ldb_mysql_buf: .zero 16384
             .Ldb_mysql_names: .zero 1024
             .Ldb_mysql_seq: .zero 1
@@ -9900,6 +9926,7 @@ final class NativeRuntime {
                 jmp .Ldb_handle_copy
             .Ldb_handle_copy_done:
                 movb $0, 24(%r12,%r13)
+                movq %r12, .Ldb_default_handle(%rip)   # conexao atual = default (tx)
                 movq %r12, %rax
                 addq $96, %rsp
                 popq %r15
@@ -9957,6 +9984,74 @@ final class NativeRuntime {
                 movq %rbp, %rsp
                 popq %rbp
                 ret
+
+            # kof_db_transaction(task) — BEGIN; invoca a lambda; COMMIT (ou
+            # ROLLBACK + re-throw). Reusa kof_db_execute (sqlite3_exec / MySQL
+            # COM_QUERY) e o EH (kf_throw_string chega no handler com %rdi=exceção
+            # e a chain apontando p/ o try externo). Conexão: a última aberta
+            # (.Ldb_default_handle), paridade com KOF_DB_DEFAULT no JVM.
+            .globl kof_db_transaction
+            .type kof_db_transaction, @function
+            kof_db_transaction:
+                pushq %rbp
+                movq %rsp, %rbp
+                andq $-16, %rsp
+                pushq %rbx
+                pushq %r12
+                pushq %r14
+                movq %rdi, %rbx                    # task (lambda)
+                movq .Ldb_default_handle(%rip), %r12
+                testq %r12, %r12
+                jz .Ltx_begin_done
+                movq %r12, %rdi
+                leaq .Ldb_begin_str(%rip), %rsi
+                call kof_db_execute
+            .Ltx_begin_done:
+                # ── try start (mesmo layout de KofTryStart no NativeBackend) ──
+                subq $32, %rsp
+                leaq .Ltx_rollback(%rip), %rax
+                movq %rax, 0(%rsp)
+                movq %rsp, 8(%rsp)
+                movq %rbp, 16(%rsp)
+                movq kof_exc_chain(%rip), %rcx
+                movq %rcx, 24(%rsp)
+                movq %rsp, kof_exc_chain(%rip)
+                # invoca a lambda (vtable[0] = invoke); rdi = this (a lambda,
+                # onde ficam as capturas) — mesmo padrão do sched_trampoline.
+                movq %rbx, %rdi
+                movq 8(%rbx), %rax
+                movq (%rax), %rax
+                call *%rax
+                # ── try end / commit ── (re-carrega o handle do BSS: a lambda
+                # pode ter clobberado r12)
+                movq 24(%rsp), %rcx
+                movq %rcx, kof_exc_chain(%rip)
+                addq $32, %rsp
+                movq .Ldb_default_handle(%rip), %r12
+                testq %r12, %r12
+                jz .Ltx_done
+                movq %r12, %rdi
+                leaq .Ldb_commit_str(%rip), %rsi
+                call kof_db_execute
+            .Ltx_done:
+                popq %r14
+                popq %r12
+                popq %rbx
+                movq %rbp, %rsp
+                popq %rbp
+                ret
+            .Ltx_rollback:
+                movq %rdi, %r14                    # preserva a exceção
+                addq $32, %rsp                     # desfaz o subq do try
+                movq .Ldb_default_handle(%rip), %r12   # re-carrega (lambda clobberou)
+                testq %r12, %r12
+                jz .Ltx_rethrow
+                movq %r12, %rdi
+                leaq .Ldb_rollback_str(%rip), %rsi
+                call kof_db_execute
+            .Ltx_rethrow:
+                movq %r14, %rdi
+                call kof_throw_string
 
             # kof_db_execute(id, sql) → sqlite3_exec
             .globl kof_db_execute

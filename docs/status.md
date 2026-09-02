@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 779 testes 762 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 781 testes 764 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -75,6 +75,7 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 | **`println`/`print` antes de `spawn` → SIGSEGV no Native** (`pthread_create`): a convenção args-by-stack (push) chegava 8 bytes desalinhada no site do `call pthread_create` (`rsp%16==8` vs `0` exigido pela ABI SysV) → glibc segfaultava em `pthread_attr_copy` escrevendo no frame | alinhamento de stack no C call: `andq $-16, %rsp` antes do `call pthread_create` em `kof_spawn_handle_new`, preservando `r15` (callee-saved) e restaurando o frame do caller — `SpawnE2ETest.nativePrintBeforeSpawnDoesNotSegfault` |
 | **AES-GCM no JS ignorava tamper no ciphertext** (`SECN002`, 01/09): `kofSecB64Decode` tolerava tamanho não múltiplo de 4 (bits restantes descartados silenciosamente), então `decryptAesGcm(ct + "AA")` decodificava e o tag mismatch passava despercebido — divergente do `java.util.Base64` do JVM (que lança) | `kofSecB64Decode(s, strict)`: `strict=true` rejeita tamanho %4 ≠ 0; `decryptAesGcm` passa `strict=true` em `iv` e `ctTag`; JWT (b64-url sem padding) segue com `strict=false` — `KofSecurityTest.aesGcmJsRoundTrip` (tamper+chave errada) + paridade cross-target JVM↔JS |
 | **OBS002: histogram/metrics no Native** (01/09): implementado em asm — bugs encontrados no smoke-test: (1) appender caía no fluxo principal após o seed (sem `jmp`) → crash em `kf_memcpy` com len lixeira; (2) loop de export com comparação invertida (`cmpq %idx, %len; jge` saía imediatamente) → string vazia; (3) `kf_free` clobbrou `%rsi` (fragmento) no meio do append → `kf_string_concat` com ptr corrompido; (4) `call` com `rsp%16==8` (ABI SysV) | store `.Lkof_obs_histograms` (32B: name+sum+count) + `kof_observability_metrics` via `kof_string_concat`; appender com `pushq` de alinhamento + fragmento em `%r10` (scratch); `cmpq %len, %idx` corrigido — `KofObservabilityTest.observabilityNative` (paridade de conteúdo com o JVM, byte-identical no smoke-test) |
+| **`transaction {}` no Native dava link error** (`kf_db_transaction` não existia; o gate `KofDb.supportedOn` já liberava o Native) + rollback não desfazia (01/09): (1) a lambda não tinha `rdi` (=this, onde ficam as capturas) antes do `call *%rax` → lia `db` no campo errado; (2) `r12` (handle) clobberado pela lambda no caminho do throw; (3) KofStrings de BEGIN/COMMIT/ROLLBACK sem NUL final → `sqlite3_exec` lia "begin\x01" (erro ignorado) e o autocommit persistia os inserts | `kf_db_transaction` em asm: BEGIN via `kf_db_execute`, `movq %rbx, %rdi` (this) antes do invoke, COMMIT/ROLLBACK **re-carregam o handle do BSS** (`.Ldb_default_handle`, gravado no `connect`), re-throw via `kf_throw_string` (a chain aponta p/ o try externo); KofStrings com `.asciz` (NUL) — `KofDbE2ETest.nativeTransaction{Commits,RollsBackOnFailure}` |
 
 ---
 
@@ -123,12 +124,18 @@ main() {
 - **JVM**: JDBC idiomático (`db.connect`, `db.execute`, `db.query`,
   `query<T>` tipado por record/entity, credentials opcionais,
   `transaction {}` com commit/rollback real).
- - **Native**: SQLite via link direto da `.so` (sem driver JDBC) — roundtrip
-   E2E real (`nativeSqliteRoundtrip`). MySQL/MariaDB via wire protocol sobre
-   sockets nativos: **handshake + auth scramble SHA-1 + auth-switch
-   (mysql_native_password) + COM_QUERY + parse de resultset (coldefs + rows
-   + EOF) + binds `?` (substituição de literal client-side, `nativeMysqlWireProtocol`
-   — 31/08)**. Prepared statements via COM_STMT_PREPARE (binário) pendente.
+  - **Native**: SQLite via link direto da `.so` (sem driver JDBC) — roundtrip
+    E2E real (`nativeSqliteRoundtrip`). **`transaction {}` com commit/rollback
+    real** (01/09): `kof_db_transaction` em asm — BEGIN via `kof_db_execute`,
+    invoca a lambda (vtable[0]=invoke, `rdi`=this p/ capturas), COMMIT no
+    sucesso, ROLLBACK + re-throw no erro (EH `kof_exc_chain`/`kof_throw_string`
+    — a exceção chega no handler com `%rdi` e a chain apontando p/ o try
+    externo; conexão default = última aberta, paridade `KOF_DB_DEFAULT` do JVM).
+    MySQL/MariaDB via wire protocol sobre
+    sockets nativos: **handshake + auth scramble SHA-1 + auth-switch
+    (mysql_native_password) + COM_QUERY + parse de resultset (coldefs + rows
+    + EOF) + binds `?` (substituição de literal client-side, `nativeMysqlWireProtocol`
+    — 31/08)**. Prepared statements via COM_STMT_PREPARE (binário) pendente.
 - **JS**: reporta `DB001` (gap documentado).
 - DSNs: `jdbc:*` (JVM), `sqlite:` (JVM/Native), `mongodb://` (ORM).
 
@@ -260,7 +267,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.mq (publish/subscribe/queue) | ✅ | MQ001 | ✅ |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
 | kof.security (passwords, crypto, JWT, secrets) | ✅ | ✅ | ✅ |
-| kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite; MySQL WIP) | DB001 |
+| kof.db (JDBC, query<T>, transaction) + SQLite nativo | ✅ | ✅ (SQLite + transaction; MySQL WIP) | DB001 |
 | kof.orm (entity, CRUD, where, migrate, MongoDB) | ✅ | ORM001 | ORM001 |
 | String.toInt/toLong/toDouble/toFloat | ✅ | ✅ | ✅ |
 | kof.ui (Color, Palette, Theme, Window) | ✅ | ✅ (JS render) | ✅ |
@@ -459,7 +466,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (779 = 762 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (781 = 764 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -485,7 +492,7 @@ main() { /* ignorado pelo kof test */ }
 | KofPatternMatchingTest | 10 | switch case String s / Point(x,y) 3 targets |
 | KofWebE2ETest | 10 | stack web nativa (web.app, rotas, JSON, middleware, `app.health` bypass) |
 | ExceptionsE2ETest | 9 | try/catch/finally JVM + Native |
-| KofDbE2ETest | 9 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, DB001 |
+| KofDbE2ETest | 11 | kof.db: JDBC, query<T>, transaction, rollback, SQLite nativo, transaction Native (commit+rollback), DB001 |
 | KofHttpServerTest | 8 | serve engine (sockets reais) |
 | KofMediaE2ETest | 12 | kof.media + serveDir: Image/Audio/WAV/Video(MP4), Range 206/416, conteúdo binário (não base64) |
 | NativeConfigE2ETest | 8 | kof.config Native (asm): precedência, typed, comentários |
@@ -531,11 +538,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **762** | |
+ | **Total kof-compiler** | **764** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **779** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **781** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
