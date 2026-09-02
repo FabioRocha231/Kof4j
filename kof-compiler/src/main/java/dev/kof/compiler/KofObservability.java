@@ -66,11 +66,9 @@ final class KofObservability {
     }
 
     static boolean supportedOn(String function, Target target) {
-        // histogram/metrics (store + export Prometheus) estão em JVM/JS;
-        // o target Native ainda não tem o store de métricas (OBS002).
-        return !(function.equals("kof_observability_histogram")
-                || function.equals("kof_observability_metrics"))
-                || target != Target.NATIVE;
+        // OBS002 fechado: histogram/metrics (store + export Prometheus) agora
+        // estão nos 3 targets (JVM/JS/Native).
+        return true;
     }
 
     static String gapCode(String function) {

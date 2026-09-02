@@ -14981,8 +14981,18 @@ cmpl %r14d, %r15d
             .Lkof_obs_counter_len: .quad 0
             .Lkof_obs_gauges: .zero 512
             .Lkof_obs_gauge_len: .quad 0
+            .Lkof_obs_histograms: .zero 384
+            .Lkof_obs_histogram_len: .quad 0
             .section .data
             .Lstr_obs_up: .asciz "UP"
+            .Lstr_obs_empty: .asciz ""
+            .Lstr_obs_type_counter: .asciz "# TYPE "
+            .Lstr_obs_ws_nl_counter: .asciz " counter\\n"
+            .Lstr_obs_ws_nl_gauge: .asciz " gauge\\n"
+            .Lstr_obs_space: .asciz " "
+            .Lstr_obs_nl: .asciz "\\n"
+            .Lstr_obs_suffix_count: .asciz "_count"
+            .Lstr_obs_suffix_sum: .asciz "_sum"
             .section .text
 
             """);
@@ -15272,6 +15282,379 @@ cmpl %r14d, %r15d
                 incq %r13
                 movq %r13, .Lkof_obs_gauge_len(%rip)
             .Lobs_gauge_full:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_observability_histogram(rdi=name, rsi=value) -> void (OBS002)
+            # store: entry 32 bytes = [name ptr, sum (long), count (long)];
+            # procura por nome (igual ao counter), atualiza sum+=value, count+=1.
+            .globl kof_observability_histogram
+            .type kof_observability_histogram, @function
+            kof_observability_histogram:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movl %esi, %r12d
+                movq .Lkof_obs_histogram_len(%rip), %r13
+                xorq %r14, %r14
+            .Lobs_hist_search:
+                cmpq %r13, %r14
+                jge .Lobs_hist_notfound
+                leaq .Lkof_obs_histograms(%rip), %r15
+                movq %r14, %rax
+                shlq $5, %rax
+                addq %rax, %r15
+                movq 0(%r15), %rax
+                testq %rbx, %rbx
+                jz .Lobs_hist_check_null
+                testq %rax, %rax
+                jz .Lobs_hist_next
+                movl 16(%rbx), %ecx
+                movl 16(%rax), %edx
+                cmpl %edx, %ecx
+                jne .Lobs_hist_next
+                testl %ecx, %ecx
+                jz .Lobs_hist_found
+                leaq 24(%rbx), %rdi
+                leaq 24(%rax), %rsi
+                movslq %ecx, %rcx
+                xorq %r10, %r10
+            .Lobs_hist_cmp:
+                cmpq %rcx, %r10
+                jge .Lobs_hist_found
+                movzbl (%rdi,%r10), %eax
+                movzbl (%rsi,%r10), %edx
+                cmpl %edx, %eax
+                jne .Lobs_hist_next
+                incq %r10
+                jmp .Lobs_hist_cmp
+            .Lobs_hist_check_null:
+                testq %rax, %rax
+                jnz .Lobs_hist_next
+                jmp .Lobs_hist_found
+            .Lobs_hist_next:
+                incq %r14
+                jmp .Lobs_hist_search
+            .Lobs_hist_found:
+                leaq .Lkof_obs_histograms(%rip), %r10
+                movq %r14, %rcx
+                shlq $5, %rcx
+                addq %rcx, %r10
+                addq %r12, 8(%r10)
+                incq 16(%r10)
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lobs_hist_notfound:
+                cmpq $12, %r13
+                jge .Lobs_hist_full
+                leaq .Lkof_obs_histograms(%rip), %rax
+                movq %r13, %rcx
+                shlq $5, %rcx
+                addq %rcx, %rax
+                movq %rbx, 0(%rax)
+                movq %r12, 8(%rax)
+                movq $1, 16(%rax)
+                incq %r13
+                movq %r13, .Lkof_obs_histogram_len(%rip)
+            .Lobs_hist_full:
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_observability_metrics() -> String (Prometheus text exposition, OBS002)
+            # Exporta counters, gauges e histograms em ordem de inserção, montando
+            # o resultado por kof_string_concat (paridade de conteúdo com o JVM;
+            # nomes de teste simples, sem sanitização promName/ordenação estável):
+            #   counter: "# TYPE <name> counter" + NL + "<name>" + " " + "<v>" + NL
+            #   gauge:   "# TYPE <name> gauge" + NL + "<name>" + " " + "<v>" + NL
+            #   hist:    4 linhas: TYPE <name>_count counter / <name>_count <c> /
+            #            TYPE <name>_sum gauge / <name>_sum <s>
+            # Registros: r14=acc, r15=temp a liberar, r13=flag/len, r12=idx, rbx=entry.
+            # Fragmento em %rsi, flag owned em %r8d (1 = liberar depois do append).
+            .globl kof_observability_metrics
+            .type kof_observability_metrics, @function
+            kof_observability_metrics:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                leaq .Lstr_obs_empty(%rip), %rdi
+                xorl %esi, %esi
+                call kof_string_from_literal
+                movq %rax, %r14
+                xorq %r15, %r15
+                xorq %r12, %r12
+                jmp .Lobs_m_cnt_loop             # pula o appender (só via call)
+
+            # appender: acc = kof_string_concat(acc, frag). Libera o temp anterior
+            # (r15, se owned); se o frag é owned (r8d=1), vira o novo temp (r15).
+            # Um push alinha rsp%16 (8→0) p/ os dois calls; o fragmento fica em r10
+            # (scratch) porque kof_free clobbra %rsi.
+            .Lobs_m_append:
+                pushq %rsi
+                movq %rsi, %r10
+                testq %r15, %r15
+                jz .Lobs_m_append_nodec
+                movq %r15, %rdi
+                call kof_free
+            .Lobs_m_append_nodec:
+                xorq %r15, %r15
+                testl $1, %r8d
+                jz .Lobs_m_append_do
+                movq %r10, %r15
+            .Lobs_m_append_do:
+                movq %r14, %rdi
+                movq %r10, %rsi
+                call kof_string_concat
+                movq %rax, %r14
+                popq %rsi
+                ret
+
+            # ── export counters ──
+            .Lobs_m_cnt_loop:
+                movq .Lkof_obs_counter_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lobs_m_gauges
+                leaq .Lkof_obs_counters(%rip), %rbx
+                movq %r12, %rax
+                shlq $4, %rax
+                addq %rax, %rbx
+                movq 0(%rbx), %rax
+                testq %rax, %rax
+                jz .Lobs_m_cnt_next
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_counter(%rip), %rdi
+                movl $10, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movl 8(%rbx), %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+            .Lobs_m_cnt_next:
+                incq %r12
+                jmp .Lobs_m_cnt_loop
+
+            # ── export gauges ──
+            .Lobs_m_gauges:
+                xorq %r12, %r12
+            .Lobs_m_ga_loop:
+                movq .Lkof_obs_gauge_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lobs_m_hists
+                leaq .Lkof_obs_gauges(%rip), %rbx
+                movq %r12, %rax
+                shlq $4, %rax
+                addq %rax, %rbx
+                movq 0(%rbx), %rax
+                testq %rax, %rax
+                jz .Lobs_m_ga_next
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_gauge(%rip), %rdi
+                movl $9, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movl 8(%rbx), %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+            .Lobs_m_ga_next:
+                incq %r12
+                jmp .Lobs_m_ga_loop
+
+            # ── export histograms ──
+            .Lobs_m_hists:
+                xorq %r12, %r12
+            .Lobs_m_hi_loop:
+                movq .Lkof_obs_histogram_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lobs_m_done
+                leaq .Lkof_obs_histograms(%rip), %rbx
+                movq %r12, %rax
+                shlq $5, %rax
+                addq %rax, %rbx
+                movq 0(%rbx), %rax
+                testq %rax, %rax
+                jz .Lobs_m_hi_next
+                # # TYPE <n>_count counter\n
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_count(%rip), %rdi
+                movl $6, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_counter(%rip), %rdi
+                movl $10, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                # <n>_count <c>\n
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_count(%rip), %rdi
+                movl $6, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 16(%rbx), %rax
+                movl %eax, %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                # # TYPE <n>_sum gauge\n
+                leaq .Lstr_obs_type_counter(%rip), %rdi
+                movl $7, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_sum(%rip), %rdi
+                movl $4, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_ws_nl_gauge(%rip), %rdi
+                movl $9, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                # <n>_sum <s>\n
+                movq 0(%rbx), %rsi
+                xorl %r8d, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_suffix_sum(%rip), %rdi
+                movl $4, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_space(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                movq 8(%rbx), %rax
+                movl %eax, %edi
+                call kof_int_to_string
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+                leaq .Lstr_obs_nl(%rip), %rdi
+                movl $1, %esi
+                call kof_string_from_literal
+                movq %rax, %rsi
+                movl $1, %r8d
+                call .Lobs_m_append
+            .Lobs_m_hi_next:
+                incq %r12
+                jmp .Lobs_m_hi_loop
+
+            # ── final: libera temp restante e retorna acc ──
+            .Lobs_m_done:
+                testq %r15, %r15
+                jz .Lobs_m_free_done
+                movq %r15, %rdi
+                call kof_free
+            .Lobs_m_free_done:
+                movq %r14, %rax
                 popq %r15
                 popq %r14
                 popq %r13

@@ -53,6 +53,14 @@ class KofObservabilityTest {
                 val c3 = observability.increment("obsNativeCounter", 5)
                 assert(c3 == 7)
                 observability.gauge("obsNativeGauge", 99)
+                // OBS002 fechado: histogram + export Prometheus no Native
+                observability.histogram("obsNativeLatency", 10)
+                observability.histogram("obsNativeLatency", 15)
+                val m = observability.metrics()
+                assert(m.contains("obsNativeCounter 7"))
+                assert(m.contains("obsNativeGauge 99"))
+                assert(m.contains("obsNativeLatency_count 2"))
+                assert(m.contains("obsNativeLatency_sum 25"))
                 val r1 = observability.requestId()
                 assert(r1.length() > 0)
                 val r2 = observability.correlationId()
@@ -117,23 +125,6 @@ class KofObservabilityTest {
                 println("done")
             }
             """, "32\n16\ndone");
-    }
-
-    @Test
-    void histogramMetricsNativeIsGap(@TempDir Path tmp) throws Exception {
-        // Native ainda não tem o store de métricas (OBS002) — compilação falha
-        // com o gap documentado, sem crash silencioso.
-        Path file = tmp.resolve("Main-" + System.nanoTime() + ".kf");
-        Files.writeString(file, """
-            main() {
-                observability.histogram("x", 1)
-            }
-            """);
-        Path outDir = tmp.resolve("out-" + System.nanoTime());
-        CompilationResult result = driver.compile(file, outDir, Target.NATIVE);
-        assertFalse(result.success(), "Native histogram deve falhar (OBS002)");
-        String diag = result.diagnostics().getDiagnostics().toString();
-        assertTrue(diag.contains("OBS002"), "gap OBS002: " + diag);
     }
 
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {

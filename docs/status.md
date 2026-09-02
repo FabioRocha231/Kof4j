@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 780 testes 763 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 779 testes 762 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -74,6 +74,7 @@ scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 | **`Channel<T>` rejeitado como parâmetro de função**: o tipo do parâmetro saía `ClassType(package="")` e o `isChannel` exigia `kof.concurrent` → dispatch caía no genérico → bytecode inválido (JVM), `undefined reference Channel_receive` (Native), `c.receive()` inexistente (JS) | `Type.of`/`toType` tratam `Channel` como builtin (`kof.concurrent`, paridade com `List`); `JvmTypeMapper` mapeia `Channel` → `java/util/concurrent/LinkedBlockingQueue` (descritor+internalName) — `KofConcurrency2Test.channelAsFunctionParameter{Jvm,Native,Js}` |
 | **`println`/`print` antes de `spawn` → SIGSEGV no Native** (`pthread_create`): a convenção args-by-stack (push) chegava 8 bytes desalinhada no site do `call pthread_create` (`rsp%16==8` vs `0` exigido pela ABI SysV) → glibc segfaultava em `pthread_attr_copy` escrevendo no frame | alinhamento de stack no C call: `andq $-16, %rsp` antes do `call pthread_create` em `kof_spawn_handle_new`, preservando `r15` (callee-saved) e restaurando o frame do caller — `SpawnE2ETest.nativePrintBeforeSpawnDoesNotSegfault` |
 | **AES-GCM no JS ignorava tamper no ciphertext** (`SECN002`, 01/09): `kofSecB64Decode` tolerava tamanho não múltiplo de 4 (bits restantes descartados silenciosamente), então `decryptAesGcm(ct + "AA")` decodificava e o tag mismatch passava despercebido — divergente do `java.util.Base64` do JVM (que lança) | `kofSecB64Decode(s, strict)`: `strict=true` rejeita tamanho %4 ≠ 0; `decryptAesGcm` passa `strict=true` em `iv` e `ctTag`; JWT (b64-url sem padding) segue com `strict=false` — `KofSecurityTest.aesGcmJsRoundTrip` (tamper+chave errada) + paridade cross-target JVM↔JS |
+| **OBS002: histogram/metrics no Native** (01/09): implementado em asm — bugs encontrados no smoke-test: (1) appender caía no fluxo principal após o seed (sem `jmp`) → crash em `kf_memcpy` com len lixeira; (2) loop de export com comparação invertida (`cmpq %idx, %len; jge` saía imediatamente) → string vazia; (3) `kf_free` clobbrou `%rsi` (fragmento) no meio do append → `kf_string_concat` com ptr corrompido; (4) `call` com `rsp%16==8` (ABI SysV) | store `.Lkof_obs_histograms` (32B: name+sum+count) + `kof_observability_metrics` via `kof_string_concat`; appender com `pushq` de alinhamento + fragmento em `%r10` (scratch); `cmpq %len, %idx` corrigido — `KofObservabilityTest.observabilityNative` (paridade de conteúdo com o JVM, byte-identical no smoke-test) |
 
 ---
 
@@ -458,7 +459,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (780 = 763 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
+## Testes (779 = 762 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 01/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -504,7 +505,7 @@ main() { /* ignorado pelo kof test */ }
 | KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
 | KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/JS) |
 | KofWebTlsTest | 5 | TLS/HTTPS: listenSecure + kof.http sobre TLS |
-| KofObservabilityTest | 5 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS; Native histogram = gap OBS002) |
+| KofObservabilityTest | 4 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS) |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
 | KofEnumSwitchTest | 4 | switch exaustivo sobre enum + SEM031 |
 | KofEnumTest | 4 | enum: values/valueOf/name, SEM030, mapeamento JVM |
@@ -530,11 +531,11 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest3 | 1 | harnesses de debug nativo (3) |
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
- | **Total kof-compiler** | **763** | |
+ | **Total kof-compiler** | **762** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **780** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **779** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -639,7 +640,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 12. ~~MySQL/MariaDB nativo (handshake+query)~~ — ✅ 31/08 (wire protocol: handshake+scramble+auth-switch+COM_QUERY+resultset); restam **prepared statements** + binds `?` no MySQL nativo
 
  **P4 — Observabilidade:**
- 13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS; Native `OBS002`). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
+ 13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS + **Native** — `OBS002` fechado: store asm 32B + export via `kof_string_concat`, paridade de conteúdo com o JVM). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
   14. ✅ Health `app.health("/health")` + tracing leve — ✅ 01/09 `app.health(path)` (built-in, responde `{"status":"UP","ready":true,"alive":true}` **antes dos middlewares** — sonda de load balancer não passa por auth); `observability.health()/readiness()/liveness()` (3 targets). **Tracing W3C**: `observability.traceId()` (32 hex) + `observability.spanId()` (16 hex) — IDs puros, sem store, **3 targets** (JVM `SecureRandom`, JS `Math.random`, Native `getrandom`); `KofObservabilityTest.tracingJvmNativeJs`. **OpenTelemetry** (spans com timing/propagação) pendente
 
  **P5 — DX:**
