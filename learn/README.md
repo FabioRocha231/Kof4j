@@ -17,7 +17,7 @@ Kof é uma linguagem de programação compilada para múltiplas plataformas, for
 * Distribuição oficial (JDK embutido, tooling, editor support)
 * CLI (18 comandos): build, run, serve, check, test, script, repl, c, fmt, config gen, bench, profile, inspect, debug, info, lsp, install, version — `kof script` (`let`→`KofScriptGlobals`, repl, --watch), `kof c` (C subset nativo-only), `kof fmt` (parser real, idempotente — 31/08)
 * kof.io: File, Path, Directory (JVM + Native) + kof.http (JVM+JS, HTTP002 Native)
-* 736 testes
+* 805 testes
 
 ## Para quem é
 
@@ -112,7 +112,7 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 05 | Controle de Fluxo | ✅ |
 | 06 | Funções | ✅ |
 | 07 | Classes e Objetos | ✅ |
-| 08 | Propriedades | ✅ (planejado) |
+| 08 | Propriedades (campos diretos, sem getters/setters) | ✅ (reescrito 02/09 — campo direto; `class X(...)` = record) |
 | 09 | Interfaces | ✅ |
 | 10 | Herança | ✅ |
 | 11 | Generics (erasure) | ✅ |
@@ -142,11 +142,11 @@ Consulte também `training/` para corpus estruturado de conhecimento Kof.
 | 37 | KofJS (caminho da Web) | ✅ (alpha) |
 
 Kof está em fase de consolidação. O compilador é funcional com backends JVM,
-Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 736 testes).
+Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 805 testes).
 
-**Testes:** 736
+**Testes:** 805
 
-**O que funciona hoje (0.2.6-beta — 31 ago 2026 — 736 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
+**O que funciona hoje (0.2.6-beta — 02 set 2026 — 805 testes — `jvm/native/native.risc/native.arm/js/kofc`):**
 - Frontend completo (lexer, parser, type system, semântica) — `intention->Kof->frontend->IR->backend->runtime`
 - Seis targets: JVM (ASM), Native x86-64 (free-list GC), Native.risc, Native.arm, KofJS (GraalJS) e KofC (C subset nativo-only)
 - Classes, records, herança, interfaces, virtual dispatch, generics (erasure), imports `a.b.C` fix (largeproj)
@@ -166,40 +166,3 @@ Native (x86-64 free-list), Native.risc, Native.arm, KofJS e KofC (0.2.6-beta, 73
 - `when` guards em pattern matching, flow analysis profundo para `String?`
 - Hover/completion completos no LSP, Debugger nativo (DWARF) e JS (source maps)
 
-## Arquivos
-
-| Capítulo | Arquivo | Status |
-|----------|---------|--------|
-| Introdução | `00-introduction.md` | ✅ |
-| Instalação | `01-installation.md` | ✅ |
-| Primeiro Programa | `02-first-program.md` | ✅ |
-| Fundamentos | `03-language-basics.md` | ✅ |
-| Variáveis e Tipos | `04-variables-and-types.md` | ✅ |
-| Controle de Fluxo | `05-control-flow.md` | ✅ |
-| Funções | `06-functions.md` | ✅ |
-| Classes e Objetos | `07-classes-and-objects.md` | ✅ Parcial |
-| Propriedades | `08-properties.md` | Planejado |
-| Interfaces | `09-interfaces.md` | ✅ |
-| Herança | `10-inheritance.md` | ✅ |
-| Generics | `11-generics.md` | ✅ (erasure) |
-| Collections | `12-collections.md` | ✅ (List/Map/Set + map/filter/reduce) |
-| Nullability | `13-nullability.md` | ✅ Básico (`String?`) |
-| Exceptions | `14-exceptions.md` | ✅ (JVM+Native) |
-| Pattern Matching | `15-pattern-matching.md` | ✅ (`case String s` + `Point(x,y)`) |
-| Lambdas | `16-lambdas.md` | ✅ (com capturas) |
-| Programação Funcional | `17-functional-programming.md` | ✅ (`map/filter/reduce`) |
-| Concorrência | `18-concurrency.md` | ✅ (JVM + Native pthread; JS sequencial) |
-| Packages e Módulos | `19-packages-and-modules.md` | ✅ (`a.b.C` fix) |
-| Annotations | `20-annotations.md` | Implementado (JVM/KofJS) |
-| Java Interop | `21-java-interoperability.md` | Parcial (chamada Java direta funcional) |
-| JVM | `22-jvm.md` | ✅ |
-| Testes | `23-testing.md` | ✅ |
-| Build Tools | `24-build-tools.md` | ✅ |
-| Spring | `25-spring.md` | Planejado (visão; `kof.web` cobre hoje) |
-| Aplicação Real | `26-real-world-application.md` | Planejado com Spring; `kof.web`/`kof.orm` hoje |
-| Boas Práticas | `27-best-practices.md` | ✅ |
-| Design da Linguagem | `28-language-design.md` | ✅ |
-| Internals do Compilador | `29-compiler-internals.md` | ✅ |
-| Contribuindo | `30-contributing.md` | ✅ |
-| Glossário | `glossary.md` | ✅ |
-| Multiplatform | `native/README.md` | ✅ |

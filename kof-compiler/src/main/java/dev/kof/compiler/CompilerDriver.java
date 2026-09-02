@@ -2801,11 +2801,14 @@ private Target target = Target.JVM;
                     } else if ("+".equals(be.operator())
                             && (Type.isString(accType) || Type.isString(rightType))) {
                         // concatenação com float/double no Native formataria
-                        // os bits como inteiro — diagnóstico em vez de lixo
-                        if ((Type.isString(accType) && isFloatingPoint(rightType))
-                                || (Type.isString(rightType) && isFloatingPoint(accType))) {
-                            fpSupportedOnNative(isFloatingPoint(rightType) ? rightType : accType,
-                                    be.position());
+                        // os bits como inteiro — diagnóstico em vez de lixo.
+                        // SÓ pula quando o target não suporta FP (agora os 3
+                        // suportam — FLT001 fechado; o yield incondicional
+                        // descartava o operando: "a=" + 1.5 virava só "a=").
+                        if (((Type.isString(accType) && isFloatingPoint(rightType))
+                                || (Type.isString(rightType) && isFloatingPoint(accType)))
+                                && !fpSupportedOnNative(isFloatingPoint(rightType) ? rightType : accType,
+                                        be.position())) {
                             yield localIdx;
                         }
                         if (!Type.isString(accType) && isPrimitiveType(accType)) boxPrimitive(ops, accType);

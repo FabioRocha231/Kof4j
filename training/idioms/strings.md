@@ -42,8 +42,10 @@ var c = String.valueOf(104 as Char)   // "h" — codepoint→caractere
 // Para o caractere: String.valueOf(x as Char)
 ```
 
-- Concat com mistura de tipos (`str + Int + Long + char`) é suportado; o
-  compilador boxa e chama `valueOf` no ponto certo (fix frame COMP002 01/09).
+- Concat com mistura de tipos (`str + Int + Long + Double + Float + char`) é
+  suportado; o compilador boxa e chama `valueOf` no ponto certo (fixes:
+  COMP002 01/09; **`"str" + double` descartava o operando FP → saída vazia,
+  corrigido 02/09**).
 - Não construa conversão manual dígito-a-dígito — use `String.valueOf`.
 
 ## BAD — equals de Java
