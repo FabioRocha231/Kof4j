@@ -1,11 +1,12 @@
 # Backend Parity — Kof JVM × Native × KofJS
 
-**Última atualização:** 31 de agosto de 2026
+**Última atualização:** 1 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 > Deltas desde 0.1.0: Targets `native.risc` (riscv64) e `native.arm` (aarch64) separados de `native` x86_64 (**em desenvolvimento** — plumbing pronto, codegen stub; ver `docs/native-multiarch.md`); Native free-list (`kof_free_head`) + `kof_gc_collect` (mark-sweep pendente; auto-GC desativado); MySQL wire protocol em progresso (`kof_db_mysql_scramble` + `user:pass@`); pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) native-only C subset; `List map/filter/reduce` + `Box<T>`; Windows SIGPIPE fix.
 > Deltas 30-31/08: `spawn`/`await` real no Native (pthread + trampoline + join + allocator thread-safe futex — CONC001); FP real em XMM (FLT001); JSON objetos/records + arrays FP no Native (JSN001/JSN002/JSN003); WebSocket/SSE no JVM (`app.ws`/`sse.*`, RFC 6455); `kof.http` retry/circuit JVM+JS (30s window, fail-fast); `kof.cache` 3 targets (fix de clobber de registradores); UI Fase 7 Router (JS real, JVM no-op); SQLite nativo via `.so` direto; `kof fmt` + `kof config gen`.
-> Tabela reflete 0.2.6-beta (31/08) — Build `mvn test` 747 (734+8+5), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
+> Deltas 01/09: **`spawn` com lambda que captura variável externa** (`SpawnStmt` emitia a lambda com zero capturas → `VerifyError`/valor errado; agora coleta via `collectCaptures`); **`&&`/`||` booleanos short-circuitam no JS** (backend emitia `&`/`|` bitwise que avalia os dois lados; agora `&&`/`||` JS para `bool`, bitwise intacto); **`Channel<T>` como parâmetro de função** (tipo saía com package vazio e o `isChannel` exigia `kof.concurrent` → mapeado como builtin + `JvmTypeMapper` → `LinkedBlockingQueue`); **`println`/`print` antes de `spawn` no Native** e o bug pré-existente **`spawn→await→spawn`** (SIGSEGV no `pthread_create` — stack chegava desalinhada ao C call; alinhado com `andq $-16` preservando `r15` + frame); **KofJS no browser real** (`KofJsBrowserE2ETest` — Chrome headless + HTTP + DOM).
+> Tabela reflete 0.2.6-beta (01/09) — Build `mvn test` **778** (761+8+5+4), golden 16/16, integration 9/9. DoD em `docs/plan-platform-completion.md`.
 
 ---
 
@@ -32,7 +33,7 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive / `scheduler.every`+`at`+`cancel` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue; scheduler = ScheduledExecutor) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex; **scheduler SCHED001** = thread por job + `usleep` ms→us + flag `active`) | ✅ sequencial (async real = CONC003; canal = array; scheduler = setInterval) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 15/15 · `SpawnE2ETest` 4/4 |
+| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive / `scheduler.every`+`at`+`cancel` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue; scheduler = ScheduledExecutor) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex; **scheduler SCHED001** = thread por job + `usleep` ms→us + flag `active`) | ✅ sequencial (async real = CONC003; canal = array; scheduler = setInterval) | **01/09:** lambda c/ captura (`collectCaptures`), `Channel<T>` como parâmetro, `println`/`spawn→await→spawn` sem SIGSEGV (alinhamento de stack no `pthread_create`). `KofAwaitTest` 7/7 · `KofConcurrency2Test` 18/18 · `SpawnE2ETest` 8/8 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | |
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
 | `List<T>`, `listOf`, for-in | ✅ | ✅ | ✅ | |
@@ -66,6 +67,7 @@
 | `KofCcompiler` (`kof c`) C subset | — | ✅ x86_64 native-only | — | `kof_c`, while/if/deref &/* |
 | `native.risc` (riscv64) / `native.arm` (aarch64) | — | **em desenvolvimento**: plumbing pronto / codegen stub — `docs/native-multiarch.md` | — | target separation 0.2.0 |
 | `kof fmt` (formatter parser real, idempotente) | ✅ 31/08 | ✅ | ✅ | `KofFormatter` (2c3e794) |
+| **KofJS no browser real** (`kof.ui` renderizando DOM via ES Modules) | — | — | ✅ 01/09 (`KofJsBrowserE2ETest` — Chrome headless + HTTP + captura de DOM; pula se Chrome ausente) | ESM via HTTP local (módulos não carregam via `file://`); `KofJsRunner` serve `appDir` em `127.0.0.1` |
 | Android (Fase 1: `kof build --target android` → projeto Maven + APK, host Activity em Kof) | ✅ (bytecode JVM) | — | — | gaps `AND00x` em compile-time |
 
 ## Gaps documentados (não mascarados)
@@ -80,9 +82,10 @@
 | JSON Float/Double | ✅ 31/08 (JSN001 fechado — XMM + parser fração/expoente) | |
 | JSON objetos/records no Native | ✅ 31/08 (JSN002 fechado — composição em compile-time) | |
 | GC mark-sweep no Native | — | pendente; auto-GC desativado após hang (memória devolvida só no `munmap` fallback) |
-| MySQL nativo completo | — | WIP: auth scramble SHA-1 + parse `user:pass@`; falta handshake completo, query e prepared |
+| MySQL nativo completo | — | WIP: **wire protocol ✅** (handshake + scramble SHA-1 + auth-switch `mysql_native_password` + COM_QUERY + resultset coldefs/rows/EOF + binds `?` client-side — `nativeMysqlWireProtocol`, 31/08); falta **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — tentativa de 01/09 revertida; binds `?` já cobrem o uso funcional) |
 | Native riscv64/aarch64 codegen | `NATIVE002` | **em desenvolvimento**: plumbing pronto (enum `NATIVE_RISCV64/AARCH64` + CLI `native.risc/arm` + dispatch + cross-as/ld); codegen ainda stub (`main: ret 0`). **Ver `docs/native-multiarch.md`** (estado real + como finalizar) |
 
+Fechados em 0.2.6-beta (01/09): `spawn` com lambda que captura variável externa (JVM+Native), `&&`/`||` booleanos com short-circuit no JS (bitwise intacto), `Channel<T>` como parâmetro de função (JVM/Native/JS), `println`/`print` antes de `spawn` e `spawn→await→spawn` no Native sem SIGSEGV (alinhamento de stack no `pthread_create`), KofJS `kof.ui` renderizando em browser real (Chrome headless E2E), LSP `references`+`rename`, tracing W3C `traceId`/`spanId` (3 targets), `moduleRoot` por LCA (P1-4), validação tipada de coluna no ORM (P3-10, `ORM003`).
 Fechados em 0.2.6-beta (30-31/08): `spawn` Native (CONC001 — pthread), FP XMM (FLT001), JSON completo no Native (JSN001/JSN002/JSN003 — objetos/records + arrays incl. Double/Float), WebSocket/SSE JVM (RFC 6455), `kof.http` retry/circuit JVM+JS (30s window, fail-fast), `kof.cache` 3 targets (fix de clobber de registradores), SQLite nativo `.so` direto, UI Fase 7 Router (JS), `kof fmt` + `kof config gen`.
 Fechados em 0.2.6-beta (27/08): pattern matching `switch case String s` + record `Point(x,y)` (JVM/Native/JS), `String?` null safety básica, `kof.http` no JS via `Java HttpClient`, `List map/filter/reduce`, large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, free-list GC (`kof_free_head`), Windows SIGPIPE.
 Fechados em 0.1.0: Map/Set nativo (era COL001), await com unboxing, captura em lambdas (BoxN), resultado de tarefa (`await`).
