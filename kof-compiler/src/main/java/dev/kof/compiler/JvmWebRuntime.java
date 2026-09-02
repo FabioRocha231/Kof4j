@@ -23,7 +23,6 @@ final class JvmWebRuntime {
                 private static final ThreadLocal<Integer> KOF_WEB_STATUS = new ThreadLocal<>();
                 private static final ThreadLocal<java.util.Map<String, String>> KOF_WEB_HEADERS =
                         ThreadLocal.withInitial(java.util.HashMap::new);
-                private static final ThreadLocal<SseConnection> KOF_SSE_CONNECTION = new ThreadLocal<>();
                 private static final ThreadLocal<WsConnection> KOF_WS_CONNECTION = new ThreadLocal<>();
                 private static final ThreadLocal<String> KOF_WS_MESSAGE = new ThreadLocal<>();
 
@@ -35,12 +34,6 @@ final class JvmWebRuntime {
                 public static String kof_web_header_set(String name, String value) {
                     KOF_WEB_HEADERS.get().put(name, value);
                     return value;
-                }
-
-                public static String kof_web_sse_send(String data) {
-                    SseConnection sse = KOF_SSE_CONNECTION.get();
-                    if (sse != null) sse.send(data);
-                    return data;
                 }
 
                 public static String kof_web_ws_message() {
