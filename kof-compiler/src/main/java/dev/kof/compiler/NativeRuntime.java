@@ -16074,6 +16074,426 @@ cmpl %r14d, %r15d
                 movq $8, %rdi
                 jmp kof_sec_random_hex
 
+            # kof_observability_span_start(rdi=name) -> String handle
+            # handle = traceId(32 hex) + spanId(16 hex) = 48 chars
+            .globl kof_observability_span_start
+            .type kof_observability_span_start, @function
+            kof_observability_span_start:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                # traceId
+                movq $16, %rdi
+                call kof_sec_random_hex
+                movq %rax, %rbx
+                # spanId
+                movq $8, %rdi
+                call kof_sec_random_hex
+                movq %rax, %r12
+                # handle = traceId + spanId
+                movq %rbx, %rdi
+                movq %r12, %rsi
+                call kof_string_concat
+                movq %rax, %r14
+                # registrar start (ms) na tabela de spans
+                movq .Lkof_obs_span_len(%rip), %r13
+                cmpq $64, %r13
+                jge .Lobs_span_start_done
+                call kof_now
+                movq %r13, %rcx
+                imulq $16, %rcx
+                leaq .Lkof_obs_span_handles(%rip), %rdx
+                addq %rcx, %rdx
+                movq %r14, 0(%rdx)
+                movq %rax, 8(%rdx)
+                incq %r13
+                movq %r13, .Lkof_obs_span_len(%rip)
+            .Lobs_span_start_done:
+                movq %r14, %rax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # kof_observability_span_end(rdi=handle) -> String (JSON)
+            .globl kof_observability_span_end
+            .type kof_observability_span_end, @function
+            kof_observability_span_end:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                movq %rdi, %rbx
+                movq .Lkof_obs_span_len(%rip), %r12
+                xorq %r13, %r13
+            .Lobs_span_end_search:
+                cmpq %r12, %r13
+                jge .Lobs_span_end_missing
+                leaq .Lkof_obs_span_handles(%rip), %r14
+                movq %r13, %rax
+                imulq $16, %rax
+                addq %rax, %r14
+                movq 0(%r14), %r15
+                testq %r15, %r15
+                jz .Lobs_span_end_next
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_equals
+                testl %eax, %eax
+                jnz .Lobs_span_end_found
+            .Lobs_span_end_next:
+                incq %r13
+                jmp .Lobs_span_end_search
+            .Lobs_span_end_found:
+                movq 8(%r14), %r15          # start ms
+                call kof_now
+                subq %r15, %rax             # duration ms
+                movq %rax, %r12
+                # limpar a entrada
+                movq $0, 0(%r14)
+                movq $0, 8(%r14)
+                # traceId = handle.substring(0, 32)
+                movq %rbx, %rdi
+                movq $0, %rsi
+                movq $32, %rdx
+                call kof_string_substring
+                movq %rax, %r15            # traceId
+                # spanId = handle.substring(32, 48)
+                movq %rbx, %rdi
+                movq $32, %rsi
+                movq $48, %rdx
+                call kof_string_substring
+                movq %rax, %r14            # spanId
+                # acc = "{"traceId":"
+                leaq .Lstr_obs_span_1(%rip), %rdi
+                movq $12, %rsi
+                call kof_string_from_literal
+                movq %rax, %r13            # acc
+                # acc = concat(acc, traceId)
+                movq %r13, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %r13
+                # acc = concat(acc, ","spanId":")
+                leaq .Lstr_obs_span_2(%rip), %rdi
+                movq $12, %rsi
+                call kof_string_from_literal
+                movq %r13, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r13
+                # acc = concat(acc, spanId)
+                movq %r13, %rdi
+                movq %r14, %rsi
+                call kof_string_concat
+                movq %rax, %r13
+                # acc = concat(acc, ","durationMs":")
+                leaq .Lstr_obs_span_3(%rip), %rdi
+                movq $14, %rsi
+                call kof_string_from_literal
+                movq %r13, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r13
+                # acc = concat(acc, duration)
+                movq %r12, %rdi
+                call kof_long_to_string
+                movq %r13, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r13
+                # acc = concat(acc, "}")
+                leaq .Lstr_obs_span_4(%rip), %rdi
+                movq $1, %rsi
+                call kof_string_from_literal
+                movq %r13, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %r13
+                movq %r13, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+            .Lobs_span_end_missing:
+                movq $0, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+                        .section .bss
+            .Lkof_obs_span_handles: .zero 1024
+            .Lkof_obs_span_len: .quad 0
+            .section .data
+            .Lstr_obs_span_1: .asciz "{\\"traceId\\":\\""
+            .Lstr_obs_span_2: .asciz "\\",\\"spanId\\":\\""
+            .Lstr_obs_span_3: .asciz "\\",\\"durationMs\\":"
+            .Lstr_obs_span_4: .asciz "}"
+            .section .text
+
+            # kof_observability_metrics() -> String (Prometheus text exposition)
+            # Formato por métrica: "# TYPE <name> <type>", depois "<name> <value>";
+            # histogramas expostos como <name>_count (counter) + <name>_sum (gauge).
+            .section .data
+            .Lstr_pm_type:  .asciz "# TYPE "
+            .Lstr_pm_counter: .asciz " counter\\n"
+            .Lstr_pm_gauge:  .asciz " gauge\\n"
+            .Lstr_pm_count_type: .asciz "_count counter\\n"
+            .Lstr_pm_count_val: .asciz "_count "
+            .Lstr_pm_sum_type: .asciz "_sum gauge\\n"
+            .Lstr_pm_sum_val:  .asciz "_sum "
+            .Lstr_pm_space: .asciz " "
+            .Lstr_pm_nl:    .asciz "\\n"
+            .Lstr_pm_0:     .asciz ""
+            .section .text
+
+            .globl kof_observability_metrics
+            .type kof_observability_metrics, @function
+            kof_observability_metrics:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                # acc = ""
+                leaq .Lstr_pm_0(%rip), %rdi
+                movq $0, %rsi
+                call kof_string_from_literal
+                movq %rax, %rbx               # acc (callee-saved)
+
+                # ── counters ──
+                xorq %r12, %r12               # i = 0
+            .Lpm_cnt_loop:
+                movq .Lkof_obs_counter_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lpm_gauges
+                leaq .Lkof_obs_counters(%rip), %r14
+                movq %r12, %rax
+                shlq $4, %rax
+                addq %rax, %r14               # entry
+                movq 0(%r14), %r15            # name
+                movslq 8(%r14), %r13          # value
+                # acc = concat(acc, "# TYPE ")
+                movq %rbx, %rdi
+                leaq .Lstr_pm_type(%rip), %rsi
+                movq $7, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                # acc = concat(acc, name)
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                # acc = concat(acc, " counter", newline)
+                movq %rbx, %rdi
+                leaq .Lstr_pm_counter(%rip), %rsi
+                movq $9, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                # acc = concat(acc, name)
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                # acc = concat(acc, " ")
+                movq %rbx, %rdi
+                leaq .Lstr_pm_space(%rip), %rsi
+                movq $1, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                # acc = concat(acc, value)
+                movq %r13, %rdi
+                call kof_long_to_string
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                # acc = concat(acc, newline)
+                movq %rbx, %rdi
+                leaq .Lstr_pm_nl(%rip), %rsi
+                movq $1, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                incq %r12
+                jmp .Lpm_cnt_loop
+
+            .Lpm_gauges:
+                xorq %r12, %r12               # i = 0
+            .Lpm_gauge_loop:
+                movq .Lkof_obs_gauge_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lpm_hists
+                leaq .Lkof_obs_gauges(%rip), %r14
+                movq %r12, %rax
+                shlq $4, %rax
+                addq %rax, %r14               # entry
+                movq 0(%r14), %r15            # name
+                movslq 8(%r14), %r13          # value
+                movq %rbx, %rdi
+                leaq .Lstr_pm_type(%rip), %rsi
+                movq $7, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_gauge(%rip), %rsi
+                movq $7, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_space(%rip), %rsi
+                movq $1, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq %r13, %rdi
+                call kof_long_to_string
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_nl(%rip), %rsi
+                movq $1, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                incq %r12
+                jmp .Lpm_gauge_loop
+
+            .Lpm_hists:
+                xorq %r12, %r12               # i = 0
+            .Lpm_hist_loop:
+                movq .Lkof_obs_hist_len(%rip), %r13
+                cmpq %r13, %r12
+                jge .Lpm_done
+                leaq .Lkof_obs_hists(%rip), %r14
+                movq %r12, %rax
+                imulq $24, %rax
+                addq %rax, %r14               # entry
+                movq 0(%r14), %r15            # name
+                # TYPE + name + count_type
+                movq %rbx, %rdi
+                leaq .Lstr_pm_type(%rip), %rsi
+                movq $7, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_count_type(%rip), %rsi
+                movq $15, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                # name + count_val + count + newline
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_count_val(%rip), %rsi
+                movq $7, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq 16(%r14), %rdi
+                call kof_long_to_string
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_nl(%rip), %rsi
+                movq $1, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                # TYPE + name + sum_type
+                movq %rbx, %rdi
+                leaq .Lstr_pm_type(%rip), %rsi
+                movq $7, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_sum_type(%rip), %rsi
+                movq $10, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                # name + sum_val + sum + newline
+                movq %rbx, %rdi
+                movq %r15, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_sum_val(%rip), %rsi
+                movq $5, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                movq 8(%r14), %rdi
+                call kof_long_to_string
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                movq %rax, %rbx
+                movq %rbx, %rdi
+                leaq .Lstr_pm_nl(%rip), %rsi
+                movq $1, %rdx
+                call kof_string_append_literal
+                movq %rax, %rbx
+                incq %r12
+                jmp .Lpm_hist_loop
+
+            .Lpm_done:
+                movq %rbx, %rax
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # helper: kof_string_append_literal(rdi=acc, rsi=lit, rdx=len) -> String
+            # cria a string literal (rdi=lit, esi=len) e concatena com acc.
+            .globl kof_string_append_literal
+            .type kof_string_append_literal, @function
+            kof_string_append_literal:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                movl %edx, %r13d
+                # literal -> string
+                movq %r12, %rdi
+                movl %r13d, %esi
+                call kof_string_from_literal
+                # concat(acc, lit)
+                movq %rbx, %rdi
+                movq %rax, %rsi
+                call kof_string_concat
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+
                         .section .bss
             .Lkof_sec_rl_keys: .zero 256
             .Lkof_sec_rl_counts: .zero 128

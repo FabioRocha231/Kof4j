@@ -61,6 +61,10 @@ final class KofObservability {
                     ? new ObservabilityCall("kof_observability_trace_id", STR, List.of()) : null;
             case "spanId" -> argc == 0
                     ? new ObservabilityCall("kof_observability_span_id", STR, List.of()) : null;
+            case "spanStart" -> argc == 1 && isString(argTypes.get(0))
+                    ? new ObservabilityCall("kof_observability_span_start", STR, List.of(STR)) : null;
+            case "spanEnd" -> argc == 1 && isString(argTypes.get(0))
+                    ? new ObservabilityCall("kof_observability_span_end", STR, List.of(STR)) : null;
             default -> null;
         };
     }

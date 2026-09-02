@@ -5030,6 +5030,32 @@ class JsBackend implements Backend {
                 h.count += 1;
             }
 
+            const __kofObsSpans = new Map();
+            let __kofObsActiveTrace = null;
+
+            export function kofObservabilitySpanStart(name) {
+                const id = kofObservabilityTraceId() + kofObservabilitySpanId();
+                __kofObsSpans.set(id, Date.now() * 1000);
+                return id;
+            }
+
+            export function kofObservabilitySpanEnd(handle) {
+                const start = __kofObsSpans.get(handle);
+                if (start === undefined) return "{}";
+                __kofObsSpans.delete(handle);
+                const end = Date.now() * 1000;
+                const trace = __kofObsActiveTrace || kofObservabilityTraceId();
+                return JSON.stringify({
+                    traceId: trace,
+                    spanId: handle.substring(32),
+                    parentSpanId: "",
+                    name: "span",
+                    startMicros: start,
+                    endMicros: end,
+                    durationMicros: end - start
+                });
+            }
+
             function __kofPromName(name, suffix) {
                 let out = String(name).replace(/[^a-zA-Z0-9_:]/g, "_");
                 if (out.length === 0) out = "k";
