@@ -151,8 +151,8 @@ no JS (CONC003). Ver [docs/concurrency.md](docs/concurrency.md).
 **Null safety**: `String?`/`Int?` + `if (x != null)` narrowing nos 3 targets
 (fix JVM 02/09). `Map.get` devolve `V?` para valores de referência.
 
-**Testes**: `test "nome" { }` + `assert(cond, "msg")` + `kof test` — 805 testes
-(788 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli). Ver
+**Testes**: `test "nome" { }` + `assert(cond, "msg")` + `kof test` — 810 testes
+(793 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli). Ver
 [learn/23-testing.md](learn/23-testing.md).
 
 **Depuração**: `kof debug <file.kf>` — servidor DAP sobre stdio com JDWP cru

@@ -1,7 +1,7 @@
 # Kof vs Java — Comparação Técnica
 
 **Última atualização:** 2 de setembro de 2026
-**Versão:** 0.2.6-beta (805 testes; 7 targets; pattern matching + `String?` + spawn Native)
+**Versão:** 0.2.6-beta (810 testes; 7 targets; pattern matching + `String?` + spawn Native)
 
 ---
 
@@ -312,7 +312,7 @@ arquivo > env > profile > default; JS reporta CONF001).
 
 ---
 
-## Resumo (0.2.6-beta, 31/08/2026 — `VERSION` 0.2.6-beta, `mvn test` 805, 7 targets)
+## Resumo (0.2.6-beta, 31/08/2026 — `VERSION` 0.2.6-beta, `mvn test` 810, 7 targets)
 
 | Feature | Java | Kof 0.2.6-beta | Kof Futuro |
 |---------|------|---------------|------------|

@@ -1,102 +1,90 @@
 # 21 — Java Interoperability
 
-> **Status: parcial — bytecode JVM compatível, chamada Java direta funcional (0.2.6-beta)**
+> **Status: parcial — bytecode JVM compatível; chamada Java direta funciona
+> para o que está no classpath (verificado 02/09)**
 >
-> O compilador gera bytecode JVM padrão compatível com Java (chamar e ser chamado, libs, annotations). A sintaxe `import java.util.*` + `new ArrayList<String>()` já funciona; `super.metodo()` contra classes do classpath (`.jar`/`.aar`) resolve descritores via `CompilerDriver.setExternalClasspath`.
+> O compilador gera bytecode JVM padrão (V21). **Antes de assumir que uma API
+> Java funciona, compile e rode.** Verificado em 02/09: `java.util` collections
+> ✅; `java.time`/`java.util.stream` ❌ (tipos não resolvem sem classpath
+> externo); `java.io.FileWriter.write` ❌ (resolução de overload errada →
+> `NoSuchMethodError`).
 
 ## A premissa
 
-Kof não precisa reimplementar o ecossistema Java para utilizá-lo.
+Kof gera bytecode JVM padrão — V21, com exception table real e virtual
+threads. Bibliotecas Java podem funcionar, mas **o caminho idiomático é a
+stdlib Kof** (`listOf`/`mapOf`/`kof.io`/`json.*`).
 
-O bytecode gerado por Kof é bytecode JVM padrão — **V21**, com exception
-table real (try/catch no `.class`) e virtual threads para `spawn`. Isso
-significa que qualquer biblioteca Java funciona automaticamente.
-
-## Usando Java Collections
+## Usando Java Collections (verificado ✅)
 
 ```kf
 import java.util.ArrayList;
 import java.util.HashMap;
 
-var lista = new ArrayList<String>();
-lista.add("Kof");
-lista.add("é");
-lista.add("legal");
+main() {
+    var lista = new ArrayList<String>()
+    lista.add("Kof")
+    lista.add("legal")
+    println(lista.size())    // 2
+    println(lista.get(0))    // Kof
 
-var mapa = new HashMap<String, Integer>();
-mapa.put("kof", 1);
-```
-
-## Usando Java IO
-
-```kf
-import java.io.File;
-import java.io.FileWriter;
-
-var arquivo = new File("saida.txt");
-var writer = new FileWriter(arquivo);
-writer.write("olá mundo");
-writer.close();
-```
-
-## Usando Java Time
-
-```kf
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-
-var hoje = LocalDate.now();
-var agora = LocalDateTime.now();
-```
-
-## Usando Java Streams
-
-```kf
-import java.util.stream.Collectors;
-
-var numeros = [1, 2, 3, 4, 5];
-var pares = numeros.stream()
-    .filter(n -> n % 2 == 0)
-    .collect(Collectors.toList());
-// [2, 4]
-```
-
-## Usando JDBC
-
-```kf
-import java.sql.Connection;
-import java.sql.DriverManager;
-
-var conn = DriverManager.getConnection("jdbc:mysql://localhost/db", "user", "pass");
-var stmt = conn.createStatement();
-var rs = stmt.executeQuery("SELECT * FROM users");
-```
-
-## Usando Spring
-
-```kf
-import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
-
-@Service
-class UserService {
-    @Autowired
-    UserRepository repository;
-
-    User find(UUID id) {
-        return repository.findById(id).orElse(null);
-    }
+    var mapa = new HashMap<String, Integer>()
+    mapa.put("kof", 1)
 }
+```
+
+## O idiomático: use as collections do Kof
+
+Para o caso comum, `List<T>`/`Map<K,V>` da linguagem já resolvem — sem
+`import java.util.*`:
+
+```kf
+var lista = listOf("Kof", "legal")
+println(lista.size)
+var mapa = mapOf("kof", 1)
+```
+
+## Transformação de dados — use `map/filter`, não Java Streams
+
+```kf
+// ✅ Kof idiomático — sem Stream, sem Collectors
+var numeros = listOf(1, 2, 3, 4, 5)
+var pares = numeros.filter((n: Int) -> n % 2 == 0)
+println(pares.size)          // 2
+
+// ❌ Java Streams NÃO compila sem classpath externo:
+//   var pares = numeros.stream().filter(...).collect(Collectors.toList())
+```
+
+## Arquivos — use `kof.io`
+
+```kf
+// ✅ kof.io idiomático
+File("/tmp/x.txt").writeText("olá")
+println(File("/tmp/x.txt").readText())
+
+// ⚠️ java.io.FileWriter.write(String) → NoSuchMethodError (02/09, não usar)
+```
+
+## O que requer classpath externo (parcial)
+
+Tipos fora de `java.lang`/`java.util` (ex.: `java.time.*`, JDBC, Spring)
+precisam do classpath externo configurado (`setExternalClasspath` /
+`--classpath`) e ainda não têm paridade completa:
+
+```kf
+// Requer classpath externo + pode não resolver overloads
+var hoje = LocalDate.now()          // ❌ SEM011 sem classpath
+var conn = DriverManager.getConnection(url, user, pass)   // ❌ idem
 ```
 
 ## Regras de interoperabilidade
 
 1. **Tipos Kof → Java**: mapeados diretamente (`Int` → `int`, `String` → `String`)
-2. **Java → Kof**: APIs Java são chamadas normalmente
-3. **Generics**: funcionam entre as linguagens
-4. **Exceptions**: checked exceptions propagam corretamente
-5. **Reflection**: enxerga classes Kof normalmente
-6. **Annotations**: chegam ao bytecode corretamente
+2. **Generics**: funcionam entre as linguagens (collections ✅)
+3. **Annotations**: chegam ao bytecode corretamente (ver cap. 20)
+4. **Antes de usar API Java**: compile e rode — o suporte é parcial e a
+   resolução de overloads ainda tem falhas (02/09)
 
 ## Próximo passo
 

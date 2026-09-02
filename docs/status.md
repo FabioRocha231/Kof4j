@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → XX testes YY kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 810 testes 793 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -486,7 +486,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (XX = YY kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
+## Testes (810 = 793 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -524,7 +524,7 @@ main() { /* ignorado pelo kof test */ }
 | KofWebSseE2ETest | 7 | SSE: sse.send/event/close (sockets reais) |
 | KofWsFrameTest | 7 | frame codec RFC 6455: máscara, limites, ping/pong |
 | NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
-| IdiomaticCoreE2ETest | 6 | field initializers, \uXXXX, listOf<T>() |
+| IdiomaticCoreE2ETest | 6 | field initializers, \u810810, listOf<T>() |
 | PackagesE2ETest | 6 | pacotes/módulos multi-arquivo (import a.b.C + moduleRoot do LCA, P1-4) |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FloatingPointGapE2ETest | 5 | FP XMM: encode/decode/arrays (FLT001) |
@@ -565,11 +565,11 @@ main() { /* ignorado pelo kof test */ }
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
  | NullSafetyE2ETest | 7 | `String?` narrowing JVM + readLine EOF null (02/09) |
  | NativeRiscv64E2ETest | 4 | **riscv64 real (qemu)**: `kof_main` + runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações Int (NATIVE002) |
- | **Total kof-compiler** | **YY** | |
+ | **Total kof-compiler** | **793** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **XX** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **810** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -582,7 +582,7 @@ plataforma vazando para a linguagem.
 | `this` não obrigatório | ✅ |
 | Field initializers aplicados no construtor | ✅ (0.0.5) |
 | Resolução de métodos independente da ordem textual | ✅ |
-| Escapes `\n` `\t` `\r` `\uXXXX` | ✅ (0.0.5) |
+| Escapes `\n` `\t` `\r` `\u810810` | ✅ (0.0.5) |
 | `listOf<T>()` vazio preserva o tipo | ✅ (0.0.5) |
 | `List<User>` + for-in tipado | ✅ |
 | `++`/`--` em campos | ✅ |
