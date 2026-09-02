@@ -336,12 +336,98 @@ class KofSecurityTest {
     }
 
     @Test
-    void aesGcmRejectedElsewhere(@TempDir Path tempDir) throws IOException {
-        Path source = tempDir.resolve("Main.kf");
-        Files.writeString(source, "main() { var ct = crypto.encryptAesGcm(\"x\", \"k\") }");
-        CompilationResult jsResult = driver.compile(source, tempDir.resolve("out-j"), Target.JS);
-        assertFalse(jsResult.success());
-        assertTrue(jsResult.diagnostics().getDiagnostics().toString().contains("SECN002"));
+    void aesGcmJsRoundTrip(@TempDir Path tempDir) throws IOException {
+        // SECN002 fechado 01/09: AES-256-GCM puro JS (GraalJS + browser),
+        // formato idêntico ao JVM/Native. Roundtrip + detecção de tamper +
+        // chave errada (mesmo contrato do teste JVM).
+        runJs(tempDir, """
+                main() {
+                    var key = crypto.randomHex(32)
+                    var ct = crypto.encryptAesGcm("segredo", key)
+                    println(crypto.decryptAesGcm(ct, key) == "segredo")
+                    var bad = false
+                    try {
+                        var x = crypto.decryptAesGcm(ct + "AA", key)
+                        println("never")
+                    } catch (String e) {
+                        bad = true
+                    }
+                    println(bad)
+                    var bad2 = false
+                    try {
+                        var y = crypto.decryptAesGcm(ct, crypto.randomHex(32))
+                        println("never2")
+                    } catch (String e) {
+                        bad2 = true
+                    }
+                    println(bad2)
+                }
+                """, "true\ntrue\ntrue");
+    }
+
+    @Test
+    void aesGcmCrossTargetParityJvmToJs(@TempDir Path tempDir) throws IOException {
+        // Paridade byte-a-byte: o ciphertext produzido no JVM (AES/GCM do JDK)
+        // é decifrado pelo runtime JS puro — mesma chave, mesmo formato.
+        String key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        Path encSrc = tempDir.resolve("Enc.kf");
+        Files.writeString(encSrc, """
+            main() {
+                var ct = crypto.encryptAesGcm("paridade-jvm-js", "%s")
+                println(ct)
+            }
+            """.formatted(key));
+        CompilationResult enc = driver.compile(encSrc, tempDir.resolve("out-enc"), Target.JVM);
+        assertTrue(enc.success(), "JVM encrypt: " + enc.diagnostics().getDiagnostics());
+        String ct;
+        try {
+            Process p = new ProcessBuilder(System.getProperty("java.home") + "/bin/java",
+                    "-cp", tempDir.resolve("out-enc").toString(), "Default.Main")
+                    .redirectErrorStream(true).start();
+            ct = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, p.waitFor(), "JVM encrypt exit");
+        } catch (InterruptedException e) {
+            throw new IOException("interrupted", e);
+        }
+        assertTrue(ct.startsWith("aesgcm$"), "formato esperado: " + ct);
+        // JS decifra o ciphertext do JVM
+        String decSource = """
+            main() {
+                println(crypto.decryptAesGcm("%s", "%s"))
+            }
+            """.formatted(ct, key);
+        runJs(tempDir, decSource, "paridade-jvm-js");
+    }
+
+    @Test
+    void aesGcmCrossTargetParityJsToJvm(@TempDir Path tempDir) throws IOException {
+        // Paridade inversa: o ciphertext produzido pelo runtime JS puro é
+        // decifrado pelo JVM (AES/GCM do JDK).
+        String key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        Path encSrc = tempDir.resolve("EncJs.kf");
+        Files.writeString(encSrc, """
+            main() {
+                var ct = crypto.encryptAesGcm("paridade-js-jvm", "%s")
+                println(ct)
+            }
+            """.formatted(key));
+        CompilationResult enc = driver.compile(encSrc, tempDir.resolve("out-encjs"), Target.JS);
+        assertTrue(enc.success(), "JS encrypt: " + enc.diagnostics().getDiagnostics());
+        String ct;
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            int ec = dev.kof.runtime.KofJsRunner.run(findJsEntry(tempDir.resolve("out-encjs")), buf,
+                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+            assertEquals(0, ec, "JS encrypt exit");
+            ct = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+        }
+        assertTrue(ct.startsWith("aesgcm$"), "formato esperado: " + ct);
+        // JVM decifra o ciphertext do JS
+        String decSource = """
+            main() {
+                println(crypto.decryptAesGcm("%s", "%s"))
+            }
+            """.formatted(ct, key);
+        runJvm(tempDir, decSource, "paridade-js-jvm");
     }
 
     @Test
