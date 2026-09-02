@@ -4807,6 +4807,11 @@ private Target target = Target.JVM;
                     localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
                     Type recvType = inferExprType(aa.receiver(), locals);
                     Type elemType = Type.arrayElementType(recvType);
+                    // valor com primitivo ≠ slot (ex.: Int em Long[]) →
+                    // converter no IR (I2L/L2I), senão o emit gera aastore/
+                    // lastore com tipo errado e o verifier rejeita (o
+                    // frame crash COMP002 em new Long[] + a[i] = i*3)
+                    emitPrimWidenNarrow(ops, ae.value(), elemType, locals);
                     ops.add(new KofArrayStore(elemType));
                     yield localIdx;
                 }
@@ -7048,6 +7053,21 @@ private Target target = Target.JVM;
             case "!=" -> KofComparison.EQ;
             default -> KofComparison.NE;
         };
+    }
+
+    // Int → Long[] slot (I2L) ou Long → Int[] slot (L2I): sem isso o emit
+    // do array store usa o opcode do slot com um valor do outro tipo e o
+    // verifier rejeita (frame crash / VerifyError "JavaFX").
+    private void emitPrimWidenNarrow(List<KofOperation> ops, ExpressionNode value,
+                                     Type elemType, List<IRLocalVariable> locals) {
+        Type vt = inferExprType(value, locals);
+        if (elemType instanceof Type.PrimitiveType et && vt instanceof Type.PrimitiveType st) {
+            if ("long".equals(et.name()) && "int".equals(st.name())) {
+                ops.add(new KofUnary(KofUnaryOp.I2L, Type.PrimitiveType.INT));
+            } else if ("int".equals(et.name()) && "long".equals(st.name())) {
+                ops.add(new KofUnary(KofUnaryOp.L2I, Type.PrimitiveType.LONG));
+            }
+        }
     }
 
     private boolean hasReturnValue(ExpressionNode expr, List<IRLocalVariable> locals) {
