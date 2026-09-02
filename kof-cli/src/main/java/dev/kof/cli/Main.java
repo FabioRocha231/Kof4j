@@ -31,6 +31,7 @@ public final class Main {
             case "script" -> System.exit(script(args));
             case "repl" -> System.exit(repl(args));
             case "init" -> System.exit(init(args));
+            case "deps" -> System.exit(Deps.run(args));
             case "c" -> c(args);
             case "fmt" -> System.exit(Fmt.run(args));
             case "config" -> config(args);
@@ -40,18 +41,29 @@ public final class Main {
     }
 
     private static void run(String[] args) {
-        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js|android] [args...]"); return; }
+        if (args.length < 2) { System.err.println("usage: kof run <file.kf> [--target jvm|native|js|android] [--deps] [args...]"); return; }
         if ("--help".equals(args[1]) || "-h".equals(args[1]) || "--version".equals(args[1])) {
-            System.out.println("usage: kof run <file.kf> [--target jvm|native|js|android] [args...]");
+            System.out.println("usage: kof run <file.kf> [--target jvm|native|js|android] [--deps] [args...]");
             return;
         }
-        Path file = Path.of(args[1]);
+        // O arquivo é o primeiro arg não-flag; --target/--deps/--release podem
+        // vir antes ou depois dele.
+        int fileIdx = 1;
+        while (fileIdx < args.length && args[fileIdx].startsWith("-")) {
+            if (args[fileIdx].equals("--target") && fileIdx + 1 < args.length) fileIdx += 2;
+            else if (args[fileIdx].startsWith("--target=")) fileIdx += 1;
+            else fileIdx += 1;
+        }
+        if (fileIdx >= args.length) { System.err.println("usage: kof run <file.kf> [--target ...]"); return; }
+        Path file = Path.of(args[fileIdx]);
         if (!Files.exists(file)) { System.err.println("file not found: " + file); System.exit(1); return; }
 
         Target target = Target.JVM;
         boolean release = false;
-        int argStart = 2;
-        for (int i = 2; i < args.length; i++) {
+        boolean useDeps = false;
+        int argStart = fileIdx + 1;
+        for (int i = 1; i < args.length; i++) {
+            if (i == fileIdx) continue;
             if (args[i].startsWith("--target=")) {
                 target = parseTarget(args[i].substring("--target=".length()));
                 argStart = i + 1;
@@ -61,8 +73,13 @@ public final class Main {
                 i++;
             } else if (args[i].equals("--release")) {
                 release = true;
+            } else if (args[i].equals("--deps")) {
+                useDeps = true;
+                argStart = i + 1;
             }
         }
+        // program args: sempre após o arquivo e após as flags
+        if (argStart <= fileIdx) argStart = fileIdx + 1;
 
         Path tempDir;
         try { tempDir = Files.createTempDirectory("kof-run-"); }
@@ -81,6 +98,24 @@ public final class Main {
             }
         }
         Path runRoot = siblingDir != null ? siblingDir : file.toAbsolutePath().getParent();
+        if (useDeps) {
+            try {
+                String depsCp = Deps.classpath();
+                if (!depsCp.isBlank()) {
+                    java.util.List<Path> entries = new ArrayList<>();
+                    for (String part : depsCp.split(java.util.regex.Pattern.quote(
+                            System.getProperty("os.name", "").toLowerCase().contains("win") ? ";" : ":"))) {
+                        if (!part.isBlank()) entries.add(Path.of(part));
+                    }
+                    driver.setExternalClasspath(entries);
+                }
+            } catch (IOException e) {
+                System.err.println("run: falha ao ler kofdeps: " + e.getMessage());
+                cleanup(tempDir);
+                System.exit(1);
+                return;
+            }
+        }
         CompilationResult result = driver.compileSources(sources, tempDir, target, runRoot);
         for (Diagnostic d : result.diagnostics().getDiagnostics()) System.err.println(d.format());
         if (!result.success()) { cleanup(tempDir); System.exit(1); return; }
@@ -157,7 +192,15 @@ public final class Main {
         javaArgs.add(javaExecutable());
         javaArgs.add("-Dkof.root=" + file.toAbsolutePath().normalize().getParent());
         javaArgs.add("-cp");
-        javaArgs.add(tempDir.toString());
+        String jvmCp = tempDir.toString();
+        if (useDeps) {
+            try {
+                String depsCp = Deps.classpath();
+                if (!depsCp.isBlank()) jvmCp += java.io.File.pathSeparator + depsCp;
+            } catch (IOException ignored) {
+            }
+        }
+        javaArgs.add(jvmCp);
         javaArgs.add(className);
         for (int i = argStart; i < args.length; i++) javaArgs.add(args[i]);
         executeProcess(javaArgs, tempDir);
@@ -215,6 +258,7 @@ private static void build(String[] args) {
         String storepass = null;
         String keypass = null;
         String keyalias = null;
+        boolean useDeps = false;
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             if (arg.startsWith("--target=")) {
@@ -231,6 +275,8 @@ private static void build(String[] args) {
                 release = true;
             } else if (arg.equals("--apk")) {
                 apk = true;
+            } else if (arg.equals("--deps")) {
+                useDeps = true;
             } else if (arg.startsWith("--classpath=")) {
                 classpath = arg.substring("--classpath=".length());
             } else if (arg.equals("--classpath") && i + 1 < args.length) {
@@ -263,6 +309,23 @@ private static void build(String[] args) {
                 if (!part.isBlank()) entries.add(Path.of(part));
             }
             driver.setExternalClasspath(entries);
+        }
+        // kofdeps: dependências Maven resolvidas no cache ~/.kof/deps
+        if (useDeps) {
+            try {
+                String depsCp = Deps.classpath();
+                if (!depsCp.isBlank()) {
+                    List<Path> entries = new ArrayList<>();
+                    for (String part : depsCp.split(java.util.regex.Pattern.quote(
+                            System.getProperty("os.name", "").toLowerCase().contains("win") ? ";" : ":"))) {
+                        if (!part.isBlank()) entries.add(Path.of(part));
+                    }
+                    driver.setExternalClasspath(entries);
+                }
+            } catch (IOException e) {
+                System.err.println("build: falha ao ler kofdeps: " + e.getMessage());
+                return;
+            }
         }
         List<Path> files = collect(src);
         if (files.isEmpty()) { System.out.println("no .kf files found"); return; }
@@ -448,6 +511,7 @@ private static void build(String[] args) {
         System.out.println("  info [--json]                environment and platform report");
         System.out.println("  lsp                          Language Server (stdio, LSP protocol)");
         System.out.println("  install <dir>                install this build as a distribution");
+        System.out.println("  deps <init|add|remove|list|resolve>   package manager (kofdeps)");
         System.out.println("  version");
         System.out.println();
         System.out.println("note: the js target is in development (alpha); it runs on Kof's embedded JS engine");

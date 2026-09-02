@@ -368,7 +368,9 @@ kof update
 
 Arquivo próprio da linguagem (`kofdeps`). Para Kof4J, o sistema poderá gerar `pom.xml` temporário em memória durante o build e utilizar Maven para resolução/download.
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 MVP 01/09 — `kof deps init/add/remove/list/resolve` (arquivo
+`kofdeps`, resolução Maven Central → `~/.kof/deps`, classpath via
+`kof build|run --deps`); dependências transitivas do POM e registry pendentes.
 
 ---
 
