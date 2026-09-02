@@ -206,8 +206,10 @@ customizados (`status(201, body)`/`headerSet`), **WebSocket** `app.ws("/chat") {
 
 - [ ] Resolução de dependências em compile-time quando possível
       (`service UserService(UserRepository repository)` ou equivalente).
-- [ ] `application { onStart/onShutdown }` sem SpringApplication.
-- [ ] Testes + docs.
+- [x] `application { onStart/onShutdown }` sem SpringApplication (01/09:
+      construção de intenção desugarada em funções sintetizadas chamadas no
+      prólogo/epílogo do main — JVM/Native/JS).
+- [ ] Testes + docs (parcial: `KofObservabilityTest.applicationLifecycle*`).
 
 ### Fase 10 — Testing nativo completo
 

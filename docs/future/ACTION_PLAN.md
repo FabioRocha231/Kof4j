@@ -39,6 +39,9 @@ contida) · `H` alto (arquitetural) · `R` pesquisa.
 1.4 Package manager MVP (`kof init`, `kofdeps`, registry) + generalizar
 capability/link-por-uso (R2) — **M–H**
 1.5 Tracing/OpenTelemetry + lifecycle `application{}` — **M**
+> ✅ 01/09 — spans W3C com timing (`observability.spanStart/spanEnd`, 3
+> targets); lifecycle `application { onStart/onShutdown }` (desugar →
+> prólogo/epílogo do main, 3 targets). OpenTelemetry full (export) pendente.
 
 ## TIER 2 — Fundações de compilador para a plataforma (M, §7)
 

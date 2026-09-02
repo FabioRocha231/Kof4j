@@ -65,6 +65,16 @@ record TestDeclarationNode(SourcePosition position, String name,
                            List<StatementNode> body) implements AstNode {
 }
 
+/**
+ * Lifecycle: {@code application { onStart { ... } onShutdown { ... } }} —
+ * os blocos são reduzidos pelo compilador a funções sintetizadas chamadas
+ * no prólogo/epílogo do main (zero container, zero reflection).
+ */
+record ApplicationDeclarationNode(SourcePosition position,
+                                  List<StatementNode> onStart,
+                                  List<StatementNode> onShutdown) implements AstNode {
+}
+
 sealed interface TypeDeclarationNode extends AstNode {
     String name();
     List<String> modifiers();

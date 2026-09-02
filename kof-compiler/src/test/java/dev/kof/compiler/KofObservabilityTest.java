@@ -162,6 +162,60 @@ class KofObservabilityTest {
             """, "ok");
     }
 
+@Test
+    void applicationLifecycle(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            application {
+                onStart {
+                    println("started")
+                }
+                onShutdown {
+                    println("stopped")
+                }
+            }
+            main() {
+                println("work")
+            }
+            """, "started\nwork\nstopped");
+        runNative(tmp, """
+            application {
+                onStart {
+                    println("started")
+                }
+                onShutdown {
+                    println("stopped")
+                }
+            }
+            main() {
+                println("work")
+            }
+            """, "started\nwork\nstopped");
+        runJs(tmp, """
+            application {
+                onStart {
+                    println("started")
+                }
+                onShutdown {
+                    println("stopped")
+                }
+            }
+            main() {
+                println("work")
+            }
+            """, "started\nwork\nstopped");
+    }
+
+    @Test
+    void applicationLifecycleEmptyBlocks(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            application {
+            }
+            main() {
+                println("ok")
+            }
+            """, "ok");
+    }
+
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {
         Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, source);

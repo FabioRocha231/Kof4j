@@ -413,6 +413,7 @@ private Target target = Target.JVM;
             if (d instanceof EnumDeclarationNode en) BuiltinTypes.registerEnum(en.name());
         }
             unit = desugarTests(unit);
+            unit = desugarApplication(unit);
             discoveredConfigKeys.clear();
             if (target == Target.ANDROID) {
                 unit = appendAndroidHostIfNeeded(unit);
@@ -650,6 +651,61 @@ private Target target = Target.JVM;
         }
         return new CompilationUnitNode(unit.position(), unit.packageName(), unit.imports(),
                 java.util.Collections.unmodifiableList(decls));
+    }
+
+
+    /**
+     * Desugar `application { onStart { ... } onShutdown { ... } }` para duas
+     * funções void sintetizadas e embrulha o main para chamá-las no prólogo
+     * (onStart) e no epílogo (onShutdown). Zero container, zero reflection —
+     * mesmo padrão do `test "nome" {}`.
+     */
+    private CompilationUnitNode desugarApplication(CompilationUnitNode unit) {
+        java.util.List<AstNode> decls = new ArrayList<>();
+        boolean hasOnStart = false;
+        boolean hasOnShutdown = false;
+        for (AstNode d : unit.declarations()) {
+            if (d instanceof ApplicationDeclarationNode app) {
+                if (!app.onStart().isEmpty()) {
+                    decls.add(new FunctionDeclarationNode(app.position(), List.of(), "void",
+                            "kof_app_on_start", List.of(), List.of(), List.of(), app.onStart()));
+                    hasOnStart = true;
+                }
+                if (!app.onShutdown().isEmpty()) {
+                    decls.add(new FunctionDeclarationNode(app.position(), List.of(), "void",
+                            "kof_app_on_shutdown", List.of(), List.of(), List.of(), app.onShutdown()));
+                    hasOnShutdown = true;
+                }
+            } else {
+                decls.add(d);
+            }
+        }
+        if (!hasOnStart && !hasOnShutdown) {
+            return unit;
+        }
+        // Embrulha o main do usuário (se existir) com as chamadas de lifecycle.
+        java.util.List<AstNode> wrapped = new ArrayList<>();
+        for (AstNode d : decls) {
+            if (d instanceof FunctionDeclarationNode f && "main".equals(f.name())) {
+                java.util.List<StatementNode> body = new ArrayList<>();
+                if (hasOnStart) {
+                    body.add(new ExpressionStmt(f.position(),
+                            new MethodCallExpr(f.position(), null, "kof_app_on_start", List.of(), List.of())));
+                }
+                body.addAll(f.body());
+                if (hasOnShutdown) {
+                    body.add(new ExpressionStmt(f.position(),
+                            new MethodCallExpr(f.position(), null, "kof_app_on_shutdown", List.of(), List.of())));
+                }
+                wrapped.add(new FunctionDeclarationNode(f.position(), f.modifiers(), f.returnType(),
+                        f.name(), f.parameters(), f.thrownExceptions(), f.typeParameters(), body,
+                        f.annotations()));
+            } else {
+                wrapped.add(d);
+            }
+        }
+        return new CompilationUnitNode(unit.position(), unit.packageName(), unit.imports(),
+                java.util.Collections.unmodifiableList(wrapped));
     }
 
 
