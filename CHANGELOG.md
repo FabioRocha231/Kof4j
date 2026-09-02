@@ -42,6 +42,21 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
   representa ausência).
 - **`readLine()` → `String?`**: `null` no EOF em JVM e Native (o Native antes
   devolvia `""`).
+- **Captura mutável de lambda — mutação fora da lambda** (`fix`): a detecção
+  só marcava mutações DENTRO da lambda (`inLambda`); `var f = (x) -> x +
+  offset; offset = 20` capturava por valor (15 em vez de 25). Agora
+  `collectMutatedCaptures` computa as capturas REAIS (via `collectCaptures`)
+  e boxa qualquer variável capturada + mutada em qualquer lugar (JVM
+  verificado; `LambdaE2ETest`). Native: a direção "lambda escreve" funciona;
+  "lê boxed após mutação externa" é bug conhecido.
+- **Concat `"str" + double/float` descartava o operando FP** (`fix`): o guard
+  de concat FP fazia `yield` incondicional (ignorava `fpSupportedOnNative`,
+  que é true desde o FLT001) → `"a=" + 1.5` compilava só como `"a="` (saída
+  vazia silenciosa). Agora só pula quando o target não suporta FP
+  (`BackendParityTest.parityStringDoubleConcat`).
+- **riscv64 codegen real (merge da main, 02/09)**: stack machine riscv64 +
+  runtime em asm puro (sem C), `NativeRiscv64E2ETest 4/4` via qemu
+  (`NATIVE002` parcial); aarch64 segue placeholder.
 
 ### Corpus / docs
 
