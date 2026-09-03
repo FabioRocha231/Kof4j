@@ -36,8 +36,11 @@ final class NativeWebRuntime {
             .Lweb_crlfx2: .asciz "\\r\\n\\r\\n"
 
             .section .bss
-            .Lweb_reqbuf:  .space 16384
-            .Lweb_skb:     .space 8192
+            .Lweb_reqbuf:     .space 16384
+            .Lweb_skb:        .space 8192
+            .Lweb_last_body:  .space 8192     # body extraído da última request
+            .Lweb_last_blen:  .quad 0
+            .Lweb_last_path:  .space 512
 
             .section .text
 
@@ -96,6 +99,41 @@ final class NativeWebRuntime {
             .type kof_web_app_new, @function
             kof_web_app_new:
                 movq $1, %rax
+                ret
+
+            # ------------------------------------------------------------------
+            # kof_web_body(): body da última request (vazio se não há)
+            # ------------------------------------------------------------------
+            .globl kof_web_body
+            .type kof_web_body, @function
+            kof_web_body:
+                leaq .Lweb_last_body(%rip), %rdi
+                movq .Lweb_last_blen(%rip), %rsi
+                call kof_string_from_literal
+                ret
+
+            # ------------------------------------------------------------------
+            # kof_web_set_body_ctx(rdi=ptr, rsi=len) — chamado pelo handle_client
+            # ------------------------------------------------------------------
+            .globl kof_web_set_body_ctx
+            .type kof_web_set_body_ctx, @function
+            kof_web_set_body_ctx:
+                cmpq $8191, %rsi
+                jle .Lsbc_ok
+                movl $8191, %esi
+            .Lsbc_ok:
+                movq %rsi, .Lweb_last_blen(%rip)
+                leaq .Lweb_last_body(%rip), %rdx
+                xorq %rcx, %rcx
+            .Lsbc_cp:
+                cmpq %rsi, %rcx
+                jae .Lsbc_done
+                movb (%rdi,%rcx), %al
+                movb %al, (%rdx,%rcx)
+                incq %rcx
+                jmp .Lsbc_cp
+            .Lsbc_done:
+                movb $0, (%rdx,%rcx)
                 ret
 
             # ------------------------------------------------------------------
@@ -216,6 +254,40 @@ final class NativeWebRuntime {
                 testq %rax, %rax
                 jle .Lwh_404
                 movq %rax, %r15                  # len total
+
+                # ------- T4: detecta body (apos CRLF CRLF) -------
+                leaq .Lweb_reqbuf(%rip), %r8     # cursor
+                leaq (%r8,%r15), %r9             # end
+                leaq .Lweb_reqbuf(%rip), %rsi    # scan todas: \r\n\r\n
+            .Lwh_bodyseek:
+                cmpq %r9, %rsi
+                jae .Lwh_nobody
+                movb (%rsi), %al
+                cmpb $13, %al
+                jne .Lwh_seeknext
+                movb 1(%rsi), %al
+                cmpb $10, %al
+                jne .Lwh_seeknext
+                movb 2(%rsi), %al
+                cmpb $13, %al
+                jne .Lwh_seeknext
+                movb 3(%rsi), %al
+                cmpb $10, %al
+                jne .Lwh_seeknext
+                # achou body separator: body comeca em rsi+4
+                leaq 4(%rsi), %rdi               # body ptr
+                movq %r9, %rsi                   # end
+                subq %rdi, %rsi                  # body len
+                call kof_web_set_body_ctx
+                jmp .Lwh_parsedone
+            .Lwh_seeknext:
+                incq %rsi
+                jmp .Lwh_bodyseek
+            .Lwh_nobody:
+                leaq .Lweb_reqbuf(%rip), %rdi
+                xorq %rsi, %rsi
+                call kof_web_set_body_ctx
+            .Lwh_parsedone:
 
                 # ------- parse METHOD -------
                 leaq .Lweb_reqbuf(%rip), %r8     # cursor
