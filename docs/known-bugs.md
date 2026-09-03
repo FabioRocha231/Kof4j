@@ -560,3 +560,10 @@ EXTERNA produz lixo
   `CompilerDriverTest.toArrayOnCollectionGivesCleanDiagnostic`. Relacionado:
   `sublist()` (retorno de coleção) também gera bytecode inválido — mesmo
   tratamento pendente.
+- **Bug 11** (`==` em records usa igualdade de REFERÊNCIA) — **corrigido
+  03/09 (JVM+JS)**: `==`/`!=` em records despacham para `equals` (conteúdo).
+  JVM já gerava equals; o JS agora gera `equals()` por componente (retorna
+  Kof bool 0/1). **Gap Native**: records não geram `equals` lá → `==` dá
+  `undefined reference Ponto_equals` (COMP001) — gerar equals no NativeBackend
+  é pendência (coordenar com agente nativo). Prova:
+  `CoreRegressionE2ETest.recordEqualityByContent`.
