@@ -308,7 +308,12 @@ spawn {
 - JVM: virtual threads; o programa espera as tarefas (join implícito).
 - Native: pthread_create + trampoline + `await`/pthread_join + allocator
   thread-safe (futex) + `done`/`poll`/`cancel`/`cancelled`/`selectAny` — ✅ 31/08 (CONC001 fechado).
-- JS: sequencial (spawn statement/expr cobre via inline; CONC003 **fechado** `7402101` — o erro CONC003 remanescente no lowering era código morto, removido 01/09; `SpawnE2ETest.jsSpawnStmtRunsSequentially`).
+- JS: concorrência real via `async`/`await`/`Promise` do GraalJS — `CONC003`
+  **fechado de fato 03/09** (a marcação anterior `7402101` era sobre código
+  morto no lowering, não a feature; `spawn`/`await`/`channel<T>()` agora
+  deferem de verdade via microtask, `KofJsRunner` drena `kofActiveTasks` até
+  todas as tasks terminarem — ver `docs/concurrency.md` seção 4,
+  `docs/targets/KOFJS.md`).
 - Zero API de plataforma exposta (Thread/Runnable são internos do runtime).
 - Ver: `docs/concurrency.md`.
 
@@ -723,7 +728,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ### Em desenvolvimento
 
 - Standard Library (contratos em estabilização)
-- Async / Concurrency residual: JS async real sobre Promises/event-loop (CONC003); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ~~bug pré-existente `spawn→await→spawn`~~ — ✅ resolvido 01/09 (alinhamento de stack no `pthread_create` — ver "Bugs Restantes" #2)
+- Async / Concurrency: ~~JS async real sobre Promises (CONC003)~~ — ✅ 03/09 (`async`/`await`/`Promise` do GraalJS, coloração async por fixpoint no compilador, `KofJsRunner` drena a fila de microtasks — ver `docs/concurrency.md`); ~~Android `AND001`~~ — ✅ 31/08 (platform threads no ART, fallback quando `Thread.startVirtualThread` ausente); ~~bug pré-existente `spawn→await→spawn`~~ — ✅ resolvido 01/09 (alinhamento de stack no `pthread_create` — ver "Bugs Restantes" #2)
 - ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
 - ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; binds `?` via substituição client-side; `nativeMysqlWireProtocol`) + **prepared statements binários ✅ 03/09** (COM_STMT_PREPARE/EXECUTE + binary-rows, `NativeDbPrepared` — ver "Bugs Restantes" #18)
