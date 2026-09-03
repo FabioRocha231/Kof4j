@@ -85,11 +85,13 @@ class User(String name, Int age) {
 }
 ```
 
-O construtor primário gera campos, construtor e acesso dentro de métodos —
-sem `this.name = name`. `User(...)` e `new User(...)` são equivalentes
-(`new` é retrocompatível). Inicializadores de campo rodam em todos os
-construtores (JVM, Native, KofJS). Herança, virtual dispatch e interfaces
-funcionam.
+O construtor record-style (`class X(...)`) gera um **record** — componentes,
+construtor e accessors (`u.name()`); a leitura `u.name` também vira accessor;
+**escrita** `u.name = "x"` NÃO (imutável, verificado 02/09). Para estado
+mutável, use campos explícitos + `constructor(...)`. `User(...)` e
+`new User(...)` são equivalentes (`new` é retrocompatível). Inicializadores de
+campo rodam em todos os construtores (JVM, Native, KofJS). Herança, virtual
+dispatch e interfaces funcionam.
 
 ### JSON
 

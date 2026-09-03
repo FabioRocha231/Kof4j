@@ -54,8 +54,10 @@ class User(String name, Int age) {
 }
 ```
 
-**Diferença:** Kof não precisa de getters/setters — fields são acessíveis
-diretamente (`u.name`) e o construtor primário gera os campos sozinho.
+**Diferença:** Kof não precisa de getters/setters. `class X(...)` é
+**record-style** (imutável — leitura `u.name` vira accessor; escrita `u.name =
+"x"` não). Para **estado mutável**, use campos + `constructor(...)` (acesso
+direto `u.name` / `u.age = 30`).
 
 ---
 

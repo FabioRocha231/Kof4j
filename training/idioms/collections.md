@@ -25,7 +25,8 @@ var vazio = listOf<Int>()
 // Higher-order (0.2.6-beta, 3 targets)
 var dobrados = l.map((x: Int) -> x * 2)
 var pares = l.filter((x: Int) -> x % 2 == 0)
-var soma = l.reduce((a: Int, b: Int) -> a + b, 0)
+var soma = l.reduce((a: Int, b: Int) -> a + b, 0)   // ordem: (lambda, init)
+// `reduce(0, (a, b) -> ...)` (init, lambda) também é aceito
 
 // Map / Set
 var m = mapOf("a", 1)

@@ -64,7 +64,7 @@ main() {
     var pares = nums.filter((x: Int) -> x % 2 == 0)     // [2,4]
     println(pares.size())                          // 2
 
-    var soma = nums.reduce(0, (acc: Int, x: Int) -> acc + x) // 15
+    var soma = nums.reduce((acc: Int, x: Int) -> acc + x, 0) // 15
     println(soma)
 
     // encadeando:
