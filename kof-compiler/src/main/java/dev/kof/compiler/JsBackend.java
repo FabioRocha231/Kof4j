@@ -2908,6 +2908,7 @@ class JsBackend implements Backend {
             // owns the tree, the render schedule and the lifecycle.
             const kofUiComponents = new Map();
             let kofUiSeq = 0;
+            let kofNodeSeq = 0;
             let kofUiFlushing = false;
             const kofUiDirty = [];
             const KOF_UI_EV = {
@@ -3247,7 +3248,7 @@ class JsBackend implements Backend {
                 a.rel = "noopener";
                 a.className = "kof-link";
                 if (typeof window.__kofNodes === "undefined") window.__kofNodes = {};
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = a;
                 return id;
             }
@@ -3283,7 +3284,7 @@ class JsBackend implements Backend {
                 img.className = "kof-image";
                 img.alt = "";
                 if (typeof window.__kofNodes === "undefined") window.__kofNodes = {};
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = img;
                 return id;
             }
@@ -3339,7 +3340,7 @@ class JsBackend implements Backend {
                 svg.appendChild(p);
                 svg.dataset.kofIcon = name;
                 if (typeof window.__kofNodes === "undefined") window.__kofNodes = {};
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = svg;
                 return id;
             }
@@ -3406,7 +3407,7 @@ class JsBackend implements Backend {
                 if (typeof window.__kofNodes === "undefined") {
                     window.__kofNodes = {};
                 }
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = span;
                 return id;
             }
@@ -3491,7 +3492,7 @@ class JsBackend implements Backend {
                 if (typeof window.__kofNodes === "undefined") {
                     window.__kofNodes = {};
                 }
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = el;
                 return id;
             }

@@ -543,3 +543,8 @@ EXTERNA produz lixo
   saída quebrada) — **corrigido 03/09**: o SemanticAnalyzer rejeita method
   call sobre tipo array com `SEM028` ("use o operador arr[i]"). Prova:
   `CompilerDriverTest.arrayMethodCallGivesCleanDiagnostic`.
+- **Bug 18** (kof-ui: ID de widget reutilizado após `remove()` → colisão) —
+  **corrigido 03/09**: os 5 factories (Label/Link/Image/Icon/Font) usavam
+  `Object.keys(__kofNodes).length + 1`; após `remove()` o length encolhia e o
+  próximo widget reusava o ID de um nó vivo. Agora contador monotônico
+  `kofNodeSeq`. Prova: `KofJsE2ETest.uiWidgetIdsUseMonotonicCounter`.

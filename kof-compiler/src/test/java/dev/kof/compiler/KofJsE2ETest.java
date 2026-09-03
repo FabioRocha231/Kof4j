@@ -725,6 +725,28 @@ class KofJsE2ETest {
         assertTrue(Files.exists(outDir.resolve("Default.mjs.map")), "Source map should exist");
     }
 
+    // known-bugs #18 — kof-ui widget ids were `Object.keys(__kofNodes).length
+    // + 1`: after remove() the length shrinks and the next widget REUSED a
+    // live node's id (collision). Must use a monotonic counter.
+    @Test
+    void uiWidgetIdsUseMonotonicCounter(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Main.kf");
+        Files.writeString(source, """
+            main() {
+                var l = Label("hello")
+                println("ok")
+            }
+            """);
+        Path outDir = tempDir.resolve("out");
+        CompilationResult result = driver.compile(source, outDir, Target.JS);
+        assertTrue(result.success(), "Compilation should succeed");
+        String runtime = Files.readString(outDir.resolve("kof-runtime.mjs"));
+        assertFalse(runtime.contains("Object.keys(window.__kofNodes).length + 1"),
+                "Length-based widget id would be reused after remove()");
+        assertTrue(runtime.contains("kofNodeSeq"),
+                "Runtime should use the monotonic kofNodeSeq counter");
+    }
+
     // 18. Multiple source files ──────────────────────────────────────
 
     @Test
