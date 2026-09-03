@@ -41,7 +41,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 |---|---|---|---|
 | ~~GC mark-sweep~~ Native | ~~alta~~ | ✅ fechado 03/09 | ver Concluídos |
 | **HTTP002** parcial restante | média | `delete/put/patch/options` + headers + `timeout/retry/circuit` Native | após get/post/status fecharem |
-| **WEB002** — kof.web no Native | média | server HTTP/1.1 listen/accept sobre `kof_net_*` | depois de HTTP002 |
+| **WEB002** — kof.web no Native | média | server HTTP/1.1 listen/accept sobre `kof_net_*` | **grande** — precisa handler→closure trampoline, não só socket. HTTP002 client fechou; este é maior — trabalhar sozinho e só trocar se ocorrer conflito de arquivo (NativeBackend/NativeRuntime) |
 | **CONC003** — JS async real | média | Promises/event-loop GraalJS | design primeiro |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 |
