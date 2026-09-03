@@ -1,7 +1,7 @@
 # Filosofia do Kof
 
-**Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (747 testes; 7 targets; `VERSION` 0.2.6-beta)
+**Última atualização:** 2 de setembro de 2026
+**Versão:** 0.2.6-beta (810 testes; 7 targets; `VERSION` 0.2.6-beta)
 
 ---
 
@@ -190,10 +190,10 @@ Se a linguagem pode resolver um problema diretamente, não crie um framework par
 
 | Problema | Solução Framework | Solução Kof |
 |----------|------------------|-------------|
-| HTTP routing | Spring MVC | Proposta: `route GET "/users" { ... }` |
-| Validação | Bean Validation | Proposta: `name: String required` |
-| Serialização | Jackson | Proposta: implícita |
-| Configuração | application.properties | Proposta: `config { port = 8080 }` |
+| HTTP routing | Spring MVC | ✅ `app.get("/users") { ... }` (implementado — `web.app()` no JVM) |
+| Validação | Bean Validation | ✅ `kof.validation` (13 predicados, 3 targets) — sintaxe `name: String required` é **proposta futura** |
+| Serialização | Jackson | ✅ `json.encode/decode` (3 targets) |
+| Configuração | application.properties | ✅ `config.int("server.port", 8080)` — bloco `config { port = 8080 }` é **proposta futura** |
 
 ### 11. Não Copiar o Java
 
@@ -214,10 +214,10 @@ Criar um servidor HTTP não deve exigir:
 
 Deveria ser algo como:
 ```kof
-route GET "/users" {
-    return users.all()
-}
+var app = web.app()
+app.get("/users") { return users.all() }
 ```
+(implementado no JVM — ver `docs/stdlib-web.md`)
 
 ### 13. Performance Sem Sacrificar Ergonomia
 
@@ -250,7 +250,7 @@ tooling, editor support e um OpenJDK 21 embutido (Temurin 21, `release.yml`
 com 2 jobs — `test-and-bump` → `package-and-release` — por plataforma
 linux-x86_64/macos-arm64/windows-x86_64, `scripts/package.sh` PASS). A
 instalação não depende de Java externo, `JAVA_HOME` ou SDKMAN. Build
-`mvn test` 747 (734+8+5), golden 16/16, integration 9/9.
+`mvn test` 810 (793+8+5+4), golden 16/16, integration 9/9.
 
 O usuário que instala o Kof recebe tudo o que precisa para desenvolver,
 compilar, executar e usar o tooling da linguagem (18 comandos:

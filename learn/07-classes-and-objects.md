@@ -1,74 +1,27 @@
 # 07 — Classes e Objetos
 
-> **Kof 0.2.6-beta — `Point(x,y)` destructuring + `String?` + `intention->Kof->frontend->IR->backend->runtime`**
+> **Kof 0.2.6-beta — exemplos verificados no compilador (02/09)**
+>
+> Kof tem **dois** modelos de "dado com parâmetros": `record`/`class X(...)`
+> (imutável, accessors) e classe com campos + `constructor(...)` (mutável,
+> campos diretos). **Sem getters/setters** — o campo é o dado.
 
-## O que você vai aprender
+## 1. Dados imutáveis → record
 
-Neste capítulo você vai entender como definir classes, criar objetos, e como a orientação a objetos funciona em Kof.
-
-## Construtor primário (a forma idiomática)
-
-A forma recomendada para declarar dados em Kof:
-
-```kf
-class User(String name, String email)
-```
-
-O compilador gera semanticamente:
-
-```text
-field name: String
-field email: String
-constructor(String, String)
-```
-
-Sem exigir `this.name = name`:
+A forma canônica para dados imutáveis:
 
 ```kf
-class User(
-    String name,
-    String email
-) {
-    greeting(): String {
-        return name + " <" + email + ">"
-    }
-}
+record User(String name, String email)
 
 main() {
-    var user = User("Mel", "mel@kof.dev")
-    println(user.greeting())
+    var u = User("Mel", "mel@kof.dev")
+    println(u.name())          // accessor
+    println(u.email())         // mel@kof.dev
 }
 ```
 
-Os parâmetros do construtor primário são campos reais da classe: métodos
-acessam `name` e `email` diretamente, e o programa externo acessa `user.name`.
-
-## Construção: `new` é opcional
-
-Kof permite ambas as formas, com a mesma semântica:
-
-```kf
-var user = User("Mel", 26)      // forma idiomática (recomendada)
-var old = new User("Mel", 26)   // forma explícita (retrocompatível)
-```
-
-`new` continua válido para código legado; o compilador trata ambas como
-construção de instância.
-
-## Records
-
-Um `record` é um construto de dados com valor semântico:
-
-```kf
-record Token(String kind, String text)
-```
-
-Isso gera:
-- classe `Token` que estende `java.lang.Record`
-- campos `kind` e `text` (privados, finais)
-- construtor `(String, String)`
-- métodos `kind()` e `text()`
-- `toString()`, `equals()`, `hashCode()`
+O compilador gera: construtor canônico, accessors (`name()`), e no JVM
+`toString`/`equals`/`hashCode`.
 
 Records podem ter métodos:
 
@@ -80,29 +33,61 @@ record Token(String kind, String text) {
 }
 ```
 
-## Classes
+## 2. `class X(...)` = record (mesma coisa — verificado 02/09)
 
-Para algo mais complexo, com corpo:
+`class User(String name, String email)` é **alias de `record`** — o parser o
+trata como record body (imutável, `extends java.lang.Record` no JVM):
 
 ```kf
-class Calculadora {
-    Int resultado = 0
-
-    void somar(Int valor) {
-        resultado += valor
+class User(String name, String email) {
+    greeting(): String {
+        return "Hello " + name
     }
+}
 
-    Int getResultado() {
-        return resultado
-    }
+main() {
+    var u = User("Mel", "mel@kof.dev")
+    println(u.greeting())      // Hello Mel
+    println(u.name)            // leitura ok (vira o accessor)
+    // u.name = "Ana"          // ERRO de runtime: record é imutável
 }
 ```
 
-## Construtores
+> Prefira `record` (a intenção é explícita). `class X(...)` é retrocompatível.
 
-### Construtor padrão
+## 3. Estado mutável → classe com campos + `constructor(...)`
 
-Se você não definir nenhum construtor, um padrão vazio é gerado:
+Para **mutar**, use campos públicos explícitos:
+
+```kf
+class Conta {
+    String titular
+    Double saldo
+
+    public constructor(String titular, Double saldo) {
+        this.titular = titular
+        this.saldo = saldo
+    }
+
+    depositar(Double valor) {
+        saldo = saldo + valor     // acesso direto ao campo
+    }
+}
+
+main() {
+    var c = Conta("Mel", 100.0)
+    c.saldo = 50.0                // escrita direta — sem setter
+    c.depositar(25.0)
+    println(c.saldo)              // 75.0 — leitura direta, sem getter
+}
+```
+
+**Sem getters/setters**: `c.saldo` lê, `c.saldo = x` escreve. `getSaldo()`/
+`setSaldo()` são cerimônia Java sem razão em Kof (ver cap. 08).
+
+## Construtor padrão
+
+Sem `constructor(...)`, um construtor vazio é gerado:
 
 ```kf
 class Config {
@@ -110,77 +95,59 @@ class Config {
     Int porta
 }
 
-var config = Config()          // funciona
-var legacy = new Config()      // também funciona
-```
-
-### Construtor primário
-
-```kf
-class Connection(String host, Int porta) {
-    hostInfo(): String {
-        return host + ":" + porta
-    }
+main() {
+    var config = Config()
+    config.host = "localhost"
+    println(config.host)
 }
 ```
 
-### Construtor explícito (forma verbosa, ainda válida)
+`new Config()` também é aceito (retrocompatível).
 
-```kf
-class Connection {
-    String host
-    Int porta
-
-    constructor(String host, Int porta) {
-        this.host = host
-        this.porta = porta
-    }
-}
-```
-
-A forma explícita existe para compatibilidade, mas não é necessária.
-
-## Campos
+## Campos com inicializador
 
 ```kf
 class User {
     String name
-    String email
     Bool active = true
 }
 ```
 
-Inicializadores de campo são aplicados em todos os construtores, antes do
-corpo — em JVM, Native e KofJS.
+Inicializadores rodam em todos os construtores (JVM, Native, JS).
 
-### Modificadores de acesso
+## Modificadores de acesso
+
+`private` existe para encapsulamento real — mas **não crie getter para
+expor**; ou o campo é público, ou o método tem semântica:
 
 ```kf
 class Conta {
     private Double saldo
-    public String titular
 
-    public void depositar(Double valor) {
-        saldo += valor
-    }
+    public constructor(Double saldo) { this.saldo = saldo }
 
-    public Double getSaldo() {
-        return saldo
+    // método com SEMÂNTICA, não getter
+    Double totalComJuros(Double taxa) {
+        return saldo * (1 + taxa)
     }
 }
 ```
 
-## Métodos
+## Funções utilitárias → top-level (não classe static)
 
 ```kf
+// ❌ utility class com static (Java)
 class StringUtils {
-    static String repetir(String texto, Int vezes) {
-        var resultado = ""
-        for (var i = 0; i < vezes; i++) {
-            resultado += texto
-        }
-        return resultado
+    static String repetir(String texto, Int vezes) { ... }
+}
+
+// ✅ função top-level (Kof)
+String repetir(String texto, Int vezes) {
+    var resultado = ""
+    for (var i = 0; i < vezes; i++) {
+        resultado += texto
     }
+    return resultado
 }
 ```
 
@@ -190,7 +157,7 @@ class StringUtils {
 class Animal {
     String nome
 
-    constructor(String nome) {
+    public constructor(String nome) {
         this.nome = nome
     }
 }
@@ -198,46 +165,34 @@ class Animal {
 class Cachorro extends Animal {
     String raca
 
-    constructor(String nome, String raca) {
-        super(nome)
+    public constructor(String nome, String raca) {
+        super(nome)          // super(args) é a 1ª instrução
         this.raca = raca
     }
 }
 ```
 
+Override é implícito (mesmo nome de método); dispatch é virtual.
+
 ## Status atual
 
-✅ Construtor primário gera campos + construtor + acesso dentro de métodos
-✅ Records com métodos funcionam
-✅ `Classe(...)` sem `new` e `new Classe(...)` com a mesma semântica
-✅ Inicializadores de campo (JVM, Native, KofJS)
-✅ Herança, virtual dispatch, interfaces
-✅ Classes com construtor explícito
-
-## Multiplatform
-
-A mesma fonte funciona em JVM, Native e KofJS:
-
-```kf
-record Point(Int x, Int y)
-```
-
-**JVM:** classe que estende `java.lang.Record` (campos, accessors, construtor)
-**Nativo:** struct equivalente com fields e métodos
-**KofJS:** classe ES com a mesma semântica observável
+- ✅ `record` / `class X(...)` — dados imutáveis, accessors (3 targets)
+- ✅ Classe mutável — campos públicos + `constructor(...)`
+- ✅ Campos com inicializador (JVM, Native, JS)
+- ✅ Herança, virtual dispatch, interfaces
+- ✅ Sem getters/setters — campo direto
 
 ## Exercício 1
 
-Crie uma classe `ContaBancaria` com:
-- campos `titular` e `saldo`
-- método `depositar(valor)`
-- método `sacar(valor)`
-- método `getSaldo()`
+Crie `class ContaBancaria` com campos `titular` e `saldo`, construtor e
+métodos `depositar`/`sacar` — **sem** `getSaldo()`, acesse `c.saldo`
+diretamente. Valide com `kof run`.
 
 ## Exercício 2
 
-Crie um record `Retangulo` com `largura` e `altura`. Adicione um método `area()` que retorne a área.
+Crie `record Retangulo(Double largura, Double altura)` com um método
+`area()`. Teste. Depois tente `r.largura = 5.0` — o que acontece e por quê?
 
 ## Próximo passo
 
-[Propriedades →](08-properties.md)
+[Campos e Acesso a Dados →](08-properties.md)

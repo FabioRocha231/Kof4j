@@ -13,6 +13,11 @@ record Point(Int x, Int y)
 O compilador gera: construtor canônico, accessors (`p.x()`), e no JVM também
 `toString`/`equals`/`hashCode`.
 
+> **`class Point(Int x, Int y)` é idêntico** — o parser trata `class X(...)`
+> como record body (imutável). Use `record` (a forma canônica) para deixar a
+> intenção explícita; `class X(...)` é retrocompatível mas não traz classe
+> mutável (verificado 02/09). Para estado mutável, veja `classes.md`.
+
 ## When to use
 
 - Dados imutáveis (DTO, valor, chave, resultado).
@@ -109,6 +114,26 @@ main() {
 ```
 
 O compilador gera `if-chain` com `getfield` nos 3 targets (JVM `INVOKEVIRTUAL`, Native `rcx/r15`, JS `typeof/instanceof`).
+
+## Acesso: record `p.x()` vs classe `u.name` (02/09 — documentado)
+
+Um record expõe os componentes por **accessors** (`p.x()`), uma classe por
+**campo direto** (`u.name`). É a diferença de contrato entre dados imutáveis
+(record — leitura via método) e estado mutável (classe — campo). Não é
+acidente: o record é um valor; a classe é estado.
+
+```kof
+record Point(Int x, Int y)
+var p = Point(10, 20)
+p.x()                          // accessor (método)
+
+class User {
+    String name
+    public constructor(String name) { this.name = name }
+}
+var u = User("Mel")
+u.name                         // campo direto
+```
 
 ## JSON
 

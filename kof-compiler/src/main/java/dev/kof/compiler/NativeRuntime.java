@@ -7139,13 +7139,23 @@ final class NativeRuntime {
                 addq %r12, %rdx
                 syscall
                 testq %rax, %rax
-                jle .Lkof_read_line_done
+                jle .Lkof_read_line_eof
                 movq %rbx, %rcx
                 addq %r12, %rcx
                 cmpb $10, (%rcx)
                 je .Lkof_read_line_done
                 incq %r12
                 jmp .Lkof_read_line_loop
+            .Lkof_read_line_eof:
+                # EOF sem nenhum byte lido -> null (paridade com o JVM,
+                # que devolve null no fim do stdin); linha parcial -> devolve
+                cmpq $0, %r12
+                jne .Lkof_read_line_done
+                xorl %eax, %eax
+                addq $512, %rsp
+                popq %r12
+                popq %rbx
+                ret
             .Lkof_read_line_done:
                 leal 25(%r12), %edi
                 call kof_alloc
@@ -7215,8 +7225,12 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lkof_read_file_err:
-                leaq .Lstr_read_err(%rip), %rdi
-                call kof_panic
+                xorl %eax, %eax
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
 
             .globl kof_write_file
             .type kof_write_file, @function
@@ -8395,6 +8409,7 @@ final class NativeRuntime {
                 popq %rbx
                 ret
 
+            .Lstr_io_size_prefix: .byte 115,105,122,101,58,32,102,105,108,101,32,110,111,116,32,102,111,117,110,100,58,32
             .globl kof_io_file_size
             .type kof_io_file_size, @function
             kof_io_file_size:
@@ -8414,10 +8429,14 @@ final class NativeRuntime {
                 popq %rbx
                 ret
             .Lio_size_err:
-                movq $-1, %rax
-                addq $144, %rsp
-                popq %rbx
-                ret
+                leaq .Lstr_io_size_prefix(%rip), %rdi
+                movl $22, %esi
+                call kof_string_from_literal   # rax = KofString "size: file not found: "
+                movq %rax, %rdi
+                movq %rbx, %rsi                 # path (preservado em rbx)
+                call kof_string_concat          # rax = prefixo + path
+                movq %rax, %rdi
+                call kof_throw_string           # longjmp p/ o try; panic se não houver — não retorna
 
             // ── Bytes ────────────────────────────────────────────
 

@@ -1,92 +1,124 @@
 # 13 — Nullability
 
-> **Status: básico implementado (0.2.6-beta) — `String?` + verificação via `kof check`**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — exemplos verificados no compilador**
 >
-> `String?` (e `Tipo?` em geral) já é reconhecido pelo parser/type system (`NullableType`, `parseTypeRef` com `?`); o compilador exige tratamento antes de dereferenciar e `kof check` valida. Interop com Java mapeia retornos que podem ser `null` para `String?`. No runtime, `String?` é erasure para `String` (mesma carga), a guarda é do type system — `intention->Kof->frontend->IR->backend->runtime`.
+> `Tipo?` (ex.: `String?`) declara que um valor **pode** ser `null`. O
+> compilador exige um check (`if (x != null)`) antes de usar — e o narrowing
+> foi corrigido no JVM em 02/09 (antes `s.length` com narrowing emitia
+> bytecode inválido).
 
 ## O problema
 
-`NullPointerException` é a causa mais comum de erros em Java.
+`NullPointerException` é a causa mais comum de erros em Java:
 
 ```java
 String nome = null;
 System.out.println(nome.length());  // NullPointerException!
 ```
 
-## A solução (0.2.6-beta)
-
-Kof adiciona tipos nullable com `?`:
+## A solução: `?`
 
 ```kf
 String nome = "Mel"           // não pode ser null
-var apelido: String? = null   // pode ser null (nullable básico 0.2.0)
+String? apelido = null        // pode ser null
+var outro: String? = "Kof"    // forma anotada (também válida)
 ```
 
-Verificação com `kof check` (compile-time):
+## Narrowing: `if (x != null)`
 
-```bash
-kof check null.kf   # valida String? e exige guard
+```kf
+String? nome = obterNome()    // pode vir null
+if (nome != null) {
+    println(nome.length)      // seguro — o check libera o acesso
+} else {
+    println("sem nome")
+}
 ```
 
-Exemplo que passa no `kof check`:
+Acessar **sem** o check é erro de compilação:
+
+```kf
+var nome: String? = obterNome()
+println(nome.length)   // ERRO: nome pode ser null — exige if (nome != null)
+```
+
+## A stdlib devolve `?` (02/09)
+
+As funções de leitura da stdlib são tipadas de forma honesta — ausência é
+`null`, não sentinela:
 
 ```kf
 main() {
-    var nome: String? = null
-    if (nome == null) {
-        println("sem nome")
+    var conteudo = readFile("config.json")     // String?
+    if (conteudo != null) {
+        println(conteudo.length)
+    } else {
+        println("arquivo não existe")
     }
-    var comNome: String? = "Mel"
-    if (comNome != null) {
-        println(comNome)  // seguro: guard libera o acesso
+
+    var linha = readLine()                     // String? — null no EOF
+    if (linha != null) {
+        println("linha: " + linha)
+    }
+
+    var m = mapOf("nome", "Mel")
+    var v = m.get("nome")                      // V? — valores de referência
+    if (v != null) {
+        println(v.length)                      // 3
     }
 }
 ```
 
-```bash
-kof check null.kf          # ✅ sem erros
-kof run null.kf --target=js # ✅ JS (GraalJS) executa com erasure para String
-# kof run --target=jvm ainda usa erasure; guard é só verificação — runtime é String normal
-```
+> `Map.get` devolve `V?` para valores de **referência** (`Map<String, String>`).
+> Para valores primitivos (`Map<String, Int>`) o tipo fica `V` — o modelo
+> atual não representa ausência nesse caso; cheque com `contains`/`containsKey`.
 
-Se você tentar acessar sem verificar, o compilador reporta:
+## Nullable em funções e retornos
 
 ```kf
-var nome: String? = obterNome()
-println(nome.length())  // ERRO: nome pode ser null — exige `if (nome != null)` antes
-```
+String? find(Int id) {
+    if (id == 1) { return "mel" }
+    return null
+}
 
-O padrão idiomático (compile-time, runnable via `kof check` + execução):
-
-```kf
-var nome: String? = obterNome()
-if (nome != null) {
-    println(nome)  // seguro — guard libera o acesso (erasure para String no runtime)
-} else {
-    println("vazio")
+main() {
+    var s = find(1)
+    if (s != null) {
+        println(s.length)    // 3
+    }
 }
 ```
 
-## Interoperabilidade com Java
+## Regra de ouro
 
-Java não tem nullability. Quando você chama código Java que pode retornar `null`:
+- **Ausência como valor** (o dado pode não existir) → `String?`/`Tipo?` +
+  `if (x != null)`.
+- **Erro real** (a ausência é um defeito) → `throw "mensagem"` + `catch`.
 
 ```kf
-var resultado: String? = javaMethod()   // força o tipo nullable
-if (resultado != null) {
-    println(resultado)
+String findOrThrow(Int id) {
+    if (id == 1) { return "mel" }
+    throw "not found: " + id
 }
 ```
 
-## Onde estamos (0.2.0)
+## Onde estamos (0.2.6-beta)
 
-- ✅ `String?`, `Int?` e `Tipo?` no parser (`parseTypeRef` consome `?`) e `Type.of` (`NullableType`)
-- ✅ `kof check` valida `String?` e exige `if (x != null)` antes de dereferenciar
-- ✅ `var x: String? = null` / `var x: String? = "Mel"` como forma runnable (var + `:`)
-- 🚧 Flow analysis mais profundo e operadores `?.` / `?:` ainda planejados
-- 🚧 Codegen JVM/JS é erasure (nullable vira String no bytecode); `length()` após guard ainda passa pelo type checker mas runtime é String normal
+- ✅ `String?`, `Int?`, `Tipo?` no parser e type system (`NullableType`).
+- ✅ Narrowing `if (x != null)` nos 3 targets — **JVM corrigido 02/09**
+  (antes `s.length`/`s.substring(...)` com narrowing emitiam
+  `getfield "?".length`/`"".substring` → erro de launcher/`ClassFormatError`).
+- ✅ `Map.get` → `V?`, `readFile`/`readText`/`readLine` → `String?`.
+- 🚧 Flow analysis mais profundo e operadores `?.` / `?:` ainda planejados.
 
-Antes de 0.2.0, `null` era tratado como qualquer valor Java. Agora `?` é a forma oficial de documentar e checar nulabilidade (736 testes).
+## Exercícios
+
+1. Escreva `String? saudacao(String? nome)` que devolve `"oi, X"` quando
+   `nome != null` e `"oi"` caso contrário — use narrowing.
+2. Leia um arquivo que pode não existir e trate os dois casos com
+   `readFile`.
+3. Por que `Map.get` de `Map<String, Int>` **não** devolve `Int?`? (dica:
+   como `Int?` é armazenado no runtime).
 
 ## Próximo passo
 

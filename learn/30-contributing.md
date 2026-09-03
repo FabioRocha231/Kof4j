@@ -1,6 +1,6 @@
 # 30 — Contribuindo
 
-> **Kof 0.2.6-beta — 31 ago 2026 — 736 testes — targets jvm/native/native.risc/native.arm/js/kofc**
+> **Kof 0.2.6-beta — 02 set 2026 — 810 testes — targets jvm/native/native.risc/native.arm/js/kofc**
 
 ## Estrutura do repositório
 
@@ -13,7 +13,7 @@ kof/
 ├── kof-runtime/        ← runtime nativo (free-list GC)
 ├── docs/               ← documentação interna
 ├── learn/              ← este material (intention->Kof->frontend->IR->backend->runtime)
-├── tests/              ← testes golden (736)
+├── tests/              ← testes golden (810)
 ├── pom.xml             ← build Maven (0.2.6-beta)
 └── README.md
 ```
@@ -148,7 +148,7 @@ Sempre que uma feature mudar:
 
 ## Estado atual do projeto
 
-O projeto está em 0.2.6-beta (736 testes), funcional:
+O projeto está em 0.2.6-beta (810 testes), funcional:
 
 **Funciona hoje:**
 - Frontend completo: lexer, parser, `SemanticAnalyzer` (type checking + nullability `String?`)
@@ -161,7 +161,7 @@ O projeto está em 0.2.6-beta (736 testes), funcional:
 - KofJS — ES Modules via GraalJS (`kof.http` via Java HttpClient interop)
 - KofScript (`let`→`KofScriptGlobals`, repl, --watch) + KofC (`kof c` nativo-only)
 - stdlib: kof.io, kof.web, kof.http, kof.security, kof.db, kof.orm, kof.ui, kof.config, kof.log, kof.cache, kof.mq
-- Testes: 736 (golden 16/16, integração 9/9)
+- Testes: 810 (golden 16/16, integração 9/9)
 
 **Em desenvolvimento:**
 - GC mark-sweep no Native (hoje free-list)

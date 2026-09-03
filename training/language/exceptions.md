@@ -1,11 +1,14 @@
 # Kof Exceptions Reference
 
+**Exceptions são Strings** — `throw "mensagem"` / `catch (String e)`. Não há
+objeto de exceção nem `throw 42`/`catch (Int e)` (geram bytecode inválido no
+JVM — verificado 02/09). Para ausência como valor, use `String?` (não erro).
+
 ## Throw
 
 ```kof
 throw "error message"
-throw 42
-throw "custom error"
+throw "user not found: " + id
 ```
 
 ## Try/Catch
@@ -40,16 +43,14 @@ try {
 }
 ```
 
-## Multiple Catch
+## Ausência vs erro
+
+- **Ausência** (o dado pode não existir) → `String?` + `if (x != null)`.
+- **Erro real** (a ausência é um defeito) → `throw "not found: " + id`.
 
 ```kof
-try {
-    riskyOperation()
-} catch (String e) {
-    println("String error: " + e)
-} catch (Int e) {
-    println("Int error: " + e)
-}
+String? find(String key) { if (found) return value; return null }
+String findOrThrow(String key) { if (found) return value; throw "not found: " + key }
 ```
 
 ## Runtime Errors
@@ -62,8 +63,8 @@ try {
 
 ## Behavior
 
-- **JVM**: Exceptions propagate naturally via the JVM exception table; the thrown
-  String is wrapped in a `RuntimeException` and unwrapped back in the catch.
+- **JVM**: Exceptions propagate via the JVM exception table; the thrown String
+  is wrapped in a `RuntimeException` and unwrapped back in the catch.
 - **Native**: real unwinding via an exception frame chain (`kof_throw_string`):
   frames restore `rsp`/`rbp` and jump to the handler; `finally` runs and the
   exception is rethrown; propagation across function frames works.
@@ -74,6 +75,6 @@ try {
 ## Limitations (0.2.6-beta)
 
 - No stack traces in Native
-- In Native, multiple catches on one try: the first one captures
-- Exceptions are Strings (no exception object model yet) — use `String?` for ausência como valor
+- Exceptions are **Strings** — `throw 42`/`catch (Int e)` geram bytecode
+  inválido no JVM (02/09); use `String?` para ausência como valor
 - Native exceptions propagate via unwinding (not fatal); `finally` always runs

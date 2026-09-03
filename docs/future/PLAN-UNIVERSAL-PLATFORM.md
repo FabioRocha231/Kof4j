@@ -1,13 +1,13 @@
 # Plano Estratégico — Kof como Plataforma Universal
 
 **Tipo:** visão de longo prazo / arquitetura futura (NÃO é ordem de implementação)
-**Data:** 31 de agosto de 2026
+**Data:** 2 de setembro de 2026
 **Base:** estado real 0.2.6-beta — frontend próprio (lexer, parser, AST, symbol
 table, semantic, type checking), Kof IR backend-agnóstica, 7 targets
 (jvm estável, native x86_64 estável, native.risc/native.arm toolchain+qemu,
 js alpha GraalJS, kofc native-only, android Fase 1), stdlib como **tabelas de
 dispatch em compile-time** com gaps diagnosticados, FFI real (SQLite `.so`
-direto, FFM Vulkan compute, interop Java + GraalJS), `mvn test` 747.
+direto, FFM Vulkan compute, interop Java + GraalJS), `mvn test` 810.
 
 > **Regra deste documento:** este é um exercício de planejamento estratégico
 > e arquitetura futura. Ele NÃO altera, interrompe, reorganiza ou substitui o
@@ -1586,7 +1586,7 @@ arquiteturais futuras e guardrails.)
 
 ## R12 — Não interromper o presente (meta-regra)
 - **O quê:** nenhum item deste plano é **ação** sobre o estado atual. O estado
-  atual (0.2.6-beta, 747 testes, 7 targets) permanece **100% intacto**. Os
+  atual (0.2.6-beta, 810 testes, 7 targets) permanece **100% intacto**. Os
   itens **C/D** acima são **dependências arquiteturais futuras**, a serem
   retomadas pelo roadmap vigente (`roadmap.md` / `plan-platform-completion.md`)
   **após** a consolidação atual (P0-P5) — nunca como frente paralela agora.

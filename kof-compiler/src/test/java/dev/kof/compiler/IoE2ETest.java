@@ -171,8 +171,32 @@ class IoE2ETest {
             var f = File("%s/nope.txt")
             println(f.exists())
             println(f.isFile())
-            println(f.size())
-            """, "false\nfalse\n-1");
+            try {
+                println(f.size())
+            } catch (String e) {
+                println("size-error")
+            }
+            """, "false\nfalse\nsize-error");
+    }
+
+    @Test
+    void readTextMissingReturnsNull(@TempDir Path tempDir) throws IOException {
+        both(tempDir, "readTextMissing", """
+            var f = File("%s/nope.txt")
+            var t = f.readText()
+            if (t != null) {
+                println("content")
+            } else {
+                println("missing")
+            }
+            var top = readFile("%s/nope.txt")
+            if (top != null) {
+                println("top-content")
+            } else {
+                println("top-missing")
+            }
+            println("done")
+            """, "missing\ntop-missing\ndone");
     }
 
     @Test

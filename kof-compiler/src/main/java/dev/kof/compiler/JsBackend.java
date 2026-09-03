@@ -1009,9 +1009,20 @@ class JsBackend implements Backend {
             }
             List<Object> stack = new ArrayList<>();
             stack.add(new JsIr.JsIdentifier(subjectName));
+            boolean stringEq = false;
             while (true) {
                 KofOperation op = ctx.ops.get(pos[0]);
                 if (op instanceof KofBinary kb && kb.op() == KofBinaryOp.SUB && stack.size() == 2) {
+                    pos[0]++;
+                    break;
+                }
+                // bug 4: switch de String usa kof_string_equals em vez de SUB
+                // (String - String gerava bytecode inválido no JVM). O call é
+                // pulado aqui: no JS o `switch` já compara strings por valor
+                // (===), então o caseValue coletado é o literal.
+                if (op instanceof KofCall kc && "kof_string_equals".equals(kc.methodName())
+                        && stack.size() == 2) {
+                    stringEq = true;
                     pos[0]++;
                     break;
                 }
@@ -1028,8 +1039,11 @@ class JsBackend implements Backend {
             }
             pos[0]++;
             if (!(ctx.ops.get(pos[0]) instanceof KofConditionalJump cj
-                    && cj.comparison() == KofComparison.EQ)) {
-                throw new IllegalStateException("KofJS: switch case expected CJump(EQ)");
+                    && (stringEq
+                        ? cj.comparison() == KofComparison.NE
+                        : cj.comparison() == KofComparison.EQ))) {
+                throw new IllegalStateException("KofJS: switch case expected CJump("
+                        + (stringEq ? "NE" : "EQ") + ")");
             }
             pos[0]++;
             caseValues.add(caseValue);
@@ -1945,6 +1959,8 @@ class JsBackend implements Backend {
             case NEG -> new JsIr.JsUnary("-", operand);
             case NOT -> new JsIr.JsConditional(operand, new JsIr.JsNumber("0"), new JsIr.JsNumber("1"));
             case I2L, I2F, I2D, I2C, L2I, L2F, L2D, F2D, D2F -> operand;
+            case D2I, F2I, D2L, F2L -> new JsIr.JsCall(new JsIr.JsIdentifier("Math.trunc"),
+                    List.of(operand));
         };
     }
 
@@ -2892,6 +2908,7 @@ class JsBackend implements Backend {
             // owns the tree, the render schedule and the lifecycle.
             const kofUiComponents = new Map();
             let kofUiSeq = 0;
+            let kofNodeSeq = 0;
             let kofUiFlushing = false;
             const kofUiDirty = [];
             const KOF_UI_EV = {
@@ -3231,7 +3248,7 @@ class JsBackend implements Backend {
                 a.rel = "noopener";
                 a.className = "kof-link";
                 if (typeof window.__kofNodes === "undefined") window.__kofNodes = {};
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = a;
                 return id;
             }
@@ -3267,7 +3284,7 @@ class JsBackend implements Backend {
                 img.className = "kof-image";
                 img.alt = "";
                 if (typeof window.__kofNodes === "undefined") window.__kofNodes = {};
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = img;
                 return id;
             }
@@ -3323,7 +3340,7 @@ class JsBackend implements Backend {
                 svg.appendChild(p);
                 svg.dataset.kofIcon = name;
                 if (typeof window.__kofNodes === "undefined") window.__kofNodes = {};
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = svg;
                 return id;
             }
@@ -3390,7 +3407,7 @@ class JsBackend implements Backend {
                 if (typeof window.__kofNodes === "undefined") {
                     window.__kofNodes = {};
                 }
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = span;
                 return id;
             }
@@ -3475,7 +3492,7 @@ class JsBackend implements Backend {
                 if (typeof window.__kofNodes === "undefined") {
                     window.__kofNodes = {};
                 }
-                const id = Object.keys(window.__kofNodes).length + 1;
+                const id = ++kofNodeSeq;
                 window.__kofNodes[id] = el;
                 return id;
             }

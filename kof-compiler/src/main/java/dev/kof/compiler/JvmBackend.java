@@ -701,7 +701,9 @@ class JvmBackend implements Backend {
                     // Unknown NÃO é referência (int não-inferido também infere Unknown)
                     boolean isRef = kb.operandType() instanceof Type.ClassType
                             || kb.operandType() instanceof Type.ArrayType
-                            || kb.operandType() instanceof Type.TypeVariable;
+                            || kb.operandType() instanceof Type.TypeVariable
+                            || (kb.operandType() instanceof Type.NullableType nt
+                                && !(nt.inner() instanceof Type.PrimitiveType));
                     int cmpOpcode;
                     if (isRef) {
                         cmpOpcode = switch (kb.op()) {
@@ -770,6 +772,14 @@ class JvmBackend implements Backend {
                 mv.visitInsn(F2D);
             } else if (ku.op() == KofUnaryOp.D2F) {
                 mv.visitInsn(D2F);
+            } else if (ku.op() == KofUnaryOp.D2I) {
+                mv.visitInsn(D2I);
+            } else if (ku.op() == KofUnaryOp.F2I) {
+                mv.visitInsn(F2I);
+            } else if (ku.op() == KofUnaryOp.D2L) {
+                mv.visitInsn(D2L);
+            } else if (ku.op() == KofUnaryOp.F2L) {
+                mv.visitInsn(F2L);
             }
         } else if (op instanceof KofLabel kl) {
             mv.visitLabel(resolveLabel(kl.label()));
@@ -783,7 +793,9 @@ class JvmBackend implements Backend {
             // também infere Unknown — if_acmp sobre int = VerifyError
             boolean isRef = kc.operandType() instanceof Type.ClassType
                     || kc.operandType() instanceof Type.ArrayType
-                    || kc.operandType() instanceof Type.TypeVariable;
+                    || kc.operandType() instanceof Type.TypeVariable
+                    || (kc.operandType() instanceof Type.NullableType nt
+                        && !(nt.inner() instanceof Type.PrimitiveType));
             if (isLong) {
                 mv.visitInsn(LCMP);
             } else if (isFloat) {

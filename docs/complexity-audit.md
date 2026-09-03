@@ -1,7 +1,7 @@
 # Auditoria de Complexidade
 
-**Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (747 testes; 7 targets: jvm, native x86_64, native.risc/arm, js, kofc, android; free-list GC; `VERSION` 0.2.6-beta)
+**Última atualização:** 2 de setembro de 2026
+**Versão:** 0.2.6-beta (810 testes; 7 targets: jvm, native x86_64, native.risc/arm, js, kofc, android; free-list GC; `VERSION` 0.2.6-beta)
 
 ---
 
@@ -95,6 +95,46 @@ Não queremos acumular features até virar outro Java.
 3. **Remover FieldLayout.naturalSize()** — não é usado
 4. **Remover ClassLayout.clearCache()** — no-op
 5. **Simplificar CompilerDriver** — extrair helpers
+
+---
+
+## Regra de arquitetura — limite de 500 linhas por classe (futura)
+
+> **Registrada 02/09/2026 — refactor geral obrigatório no futuro.**
+
+**Regra:** nenhuma classe pode ter mais de **500 linhas**. Classes grandes
+são um cheiro de arquitetura: múltiplas responsabilidades, acoplamento, diffs
+dolorosos e barreira para agentes/humanos entenderem.
+
+**Estado atual (violações):**
+
+| Arquivo | Linhas | O que é |
+|---------|--------|---------|
+| `NativeRuntime.java` | **~17.300** | Assembly x86-64 embutido (free-list, spawn pthread, FP XMM, JSON, config/log/security/cache/db) + runtime C |
+| `CompilerDriver.java` | **~8.200** | Lowering IR + dispatch da stdlib inteira |
+| `JsBackend.java` | **~5.700** | Backend JS (GraalJS) + runtime DOM/UI |
+| `Parser.java` | **~1.800** | Análise sintática |
+| `SemanticAnalyzer.java` | **~2.000** | Análise semântica |
+| `JvmBackend.java` | **~1.400** | Backend JVM (ASM) |
+
+**Como chegar lá (refactor futuro):**
+
+1. **`NativeRuntime.java`** — o assembly embutido (strings Java gigantes) deve
+   virar **módulos separados por domínio** (ex.: `native/asm/*.s` incluídos em
+   build, ou classes `NativeRuntimeMemory`/`NativeRuntimeJson`/…) com um
+   concatenador. É o maior esforço (é a fonte das "dezenas de milhares de
+   linhas de assembly").
+2. **`CompilerDriver.java`** — extrair helpers por área (lowering de
+   expressões, stdlib dispatch, collections, json, web) em classes dedicadas.
+3. **`JsBackend.java`** — separar emitter do runtime embutido.
+4. `Parser`/`SemanticAnalyzer`/`JvmBackend` — extrair sub-parsers/validators.
+
+**Critério de aceite:** `find src -name '*.java' | xargs wc -l | sort -n |
+tail` não deve mostrar nenhuma classe acima de 500 linhas.
+
+**Nota:** o `git` não divide por classes — usar `grep -n '^class '`/ide para
+contar por declaração, ou ferramenta de métricas (ex.: `cloc` por classe) no
+PR de refactor.
 
 ---
 

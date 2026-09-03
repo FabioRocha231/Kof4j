@@ -11,7 +11,7 @@ O modelo pode inventar `users.map(...)`, `Option<T>`, `async/await`,
 porque existem em outras linguagens. Código assim **não compila** ou
 **compila por acidente** com semântica errada.
 
-## Status real (verificado no compilador — 0.2.6-beta, 31 Aug 2026, 747 testes)
+## Status real (verificado no compilador — 0.2.6-beta, 02 Sep 2026, 810 testes)
 
 | Feature | Status |
 |---|---|
@@ -38,6 +38,10 @@ porque existem em outras linguagens. Código assim **não compila** ou
 | `longVal as Int` (narrowing Long→Int) | ✅ Implemented (L2I real, 01/09) |
 | `new Long[n]` (array de 64 bits) | ✅ Implemented (01/09) |
 | `String.valueOf(x)` receiver estático builtin | ✅ Implemented (01/09) |
+| `Set<T>` como tipo declarado (campo/retorno/param) | ✅ Implemented (02/09 — descriptor JVM `kof.Set` → `java/util/HashSet`) |
+| Retorno/método com tipo genérico em classe (`List<String> foo()`) | ✅ Implemented (02/09 — parser parse-then-decide) |
+| Forma prefixada nullable `String? s = null` e retorno `String? f()` | ✅ Implemented (02/09 — statements, funções e classes) |
+| `Map.get` devolvendo `V?` para valores de referência | ✅ Implemented (02/09 — ausência = null, narrowing) |
 
 ## Bad example (ainda não compila)
 

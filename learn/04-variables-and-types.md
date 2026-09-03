@@ -76,10 +76,18 @@ class User(String name)
 
 ### Arrays
 
+Não existe literal de array (`{1, 2, 3}` / `[1, 2, 3]` não compilam). Use
+`new Tipo[n]` e preencha por índice:
+
 ```kf
-Int[] numeros = {1, 2, 3}
-String[] nomes = {"Ana", "Bob"}
+var numeros = new Int[3]
+numeros[0] = 1
+numeros[1] = 2
+numeros[2] = 3
+println(numeros.length)    // 3
 ```
+
+Para uma sequência dinâmica, use `listOf(1, 2, 3)` (ver cap. 12).
 
 ### Enums
 
@@ -166,7 +174,7 @@ String? s = null     // nullable básico
 if (s != null) { println(s.length()) }
 ```
 
-## Status atual (0.2.6-beta, 736 testes)
+## Status atual (0.2.6-beta, 810 testes)
 
 ✅ `var` e `val` funcionam
 ✅ `let`/`const` (alias → `KofScriptGlobals` no KofScript)
@@ -179,7 +187,7 @@ if (s != null) { println(s.length()) }
 
 ## Exercício 1
 
-Declare variáveis de todos os tipos primitivos e imprima seus valores usando Java.
+Declare variáveis de todos os tipos primitivos (Int, Double, Bool, Char...) e imprima seus valores com println.
 
 ## Exercício 2
 

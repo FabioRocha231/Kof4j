@@ -1,6 +1,6 @@
 # Kof — Roadmap de Longo Prazo
 
-**Última atualização:** 31 de agosto de 2026
+**Última atualização:** 2 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
@@ -55,7 +55,7 @@ Objetivos:
 - possibilidade de utilizar frameworks legados como Spring, Hibernate etc.;
 - backend principal durante a consolidação inicial.
 
-Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 747 testes 31/08;
+Estado atual: ✅ estável (JVM V21, ASM, virtual threads, 819 testes 02/09;
 web stack nativa com WebSocket/SSE e `kof.http` retry/circuit — 30/08)
 
 ### KofNative — Binário Nativo
@@ -76,9 +76,8 @@ mark-sweep pendente — auto-GC desativado após hang, memória devolvida só no
 `munmap` fallback; `spawn`/`await` via `pthread_create` + trampoline +
 `pthread_join` com allocator thread-safe (futex) — 31/08; FP real em XMM —
 FLT001; JSON objetos/records + arrays FP — JSN001/002/003; SQLite nativo `.so`
-direto; MySQL wire protocol WIP) + `native.risc` (riscv64: toolchain
-`riscv64-linux-gnu-as/ld` + qemu; codegen ainda x86_64 placeholder) +
-`native.arm` (aarch64: toolchain + qemu; codegen ainda x86_64 placeholder)
+direto; MySQL wire protocol WIP) + `native.risc` (riscv64: codegen real 02/09 — asm puro + qemu, NATIVE002
+parcial) + `native.arm` (aarch64: toolchain + qemu; codegen ainda placeholder)
 
 ### KofJS — Web
 
@@ -665,6 +664,21 @@ contratos estabilizarem.
 - messaging / RPC;
 - observability / deployment / cloud integrations.
 
+### Fase 9 — Refactor Interno: regra de 500 linhas por classe
+
+> **Registrado 02/09/2026.** Regra de arquitetura: nenhuma classe pode
+> ultrapassar **500 linhas**. Violações atuais obrigam refactor geral:
+
+- `NativeRuntime.java` (~17.300 — assembly embutido) → módulos por domínio
+  (`native/asm/*.s` ou classes `NativeRuntime*` por área);
+- `CompilerDriver.java` (~8.200) → extrair helpers por área;
+- `JsBackend.java` (~5.400) → separar emitter do runtime embutido;
+- `Parser.java` / `SemanticAnalyzer.java` / `JvmBackend.java` → sub-parsers.
+
+Critério de aceite: `cloc`/`wc -l` por classe — nenhuma acima de 500.
+Detalhes e tabela de tamanhos: `docs/complexity-audit.md` → "Regra de
+arquitetura — limite de 500 linhas por classe".
+
 ---
 
 ## 16. Não Fazer
@@ -690,7 +704,7 @@ O Kof é uma plataforma distribuível, não apenas um JAR:
 - distribuição autocontida (compiler, CLI, runtime, stdlib, tooling, editor support, JDK 21 embutido);
 - OpenJDK embutido no pacote oficial (Temurin 21, Tooling API Level 21);
 - versionamento centralizado (`VERSION` 0.2.6-beta → pom/properties via `scripts/bump-version.sh`);
-- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 747 → bump → package 3 plataformas → GitHub Release);
+- releases por 2 jobs (`release.yml`: `test-and-bump` exporta `bump_sha` → `package-and-release` checkeia o commit de bump + sanity check de versão) por push na `main`, por plataforma linux-x86_64 / macos-arm64 / windows-x86_64 (testes 819 → bump → package 3 plataformas → GitHub Release);
 - `scripts/package.sh` PASS (layout dist + tar.gz/zip + SHA256SUMS + jars), golden 16/16, integration 9/9;
 - editor support oficial: grammar TextMate + LSP (hover/completion + diagnostics reais);
 - `kof build/run/serve/check/test/script/repl/c/fmt/config/bench/profile/inspect/debug/info/lsp/install/version` PASS (18 comandos; `fmt` e `config gen` 31/08).

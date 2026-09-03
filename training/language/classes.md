@@ -1,14 +1,22 @@
 # Kof Classes
 
-**Version:** 0.2.6-beta (31 Aug 2026)
+**Version:** 0.2.6-beta (02 Sep 2026)
 
-## Basic Class (idiomático: primary constructor)
+## Basic Class — dois modelos (verificado 02/09)
+
+> `class User(String name, Int age)` é **alias de `record`** (imutável,
+> `extends java.lang.Record` no JVM; accessors `u.name()`; escrita `u.name =
+> "x"` NÃO). Para **estado mutável**, use campos + `constructor(...)` (campos
+> públicos, escrita direta).
 
 ```kof
+// Imutável (record-style): class X(...) == record X(...)
 class User(String name, Int age) { }
 var u = User("Mel", 30)
+println(u.name)      // leitura ok (accessor)
+// u.age = 31         // ERRO de runtime: record é imutável
 
-// Verboso ainda válido
+// Mutável — forma de classe real
 class User2 {
     String name
     Int age
@@ -17,6 +25,8 @@ class User2 {
         this.age = age
     }
 }
+var u2 = User2("Mel", 30)
+u2.age = 31           // ok — campo público mutável
 ```
 
 ## Records (Immutable Data)

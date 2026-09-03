@@ -1,6 +1,6 @@
 # 02 — Primeiro Programa
 
-> **Kof 0.2.6-beta — 31 ago 2026 — targets jvm/native/native.risc/native.arm/js/kofc — 736 testes**
+> **Kof 0.2.6-beta — 02 set 2026 — targets jvm/native/native.risc/native.arm/js/kofc — 810 testes**
 
 ## O construto mais básico
 

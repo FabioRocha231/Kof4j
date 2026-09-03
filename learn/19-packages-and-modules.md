@@ -19,11 +19,15 @@ Isso gera a classe no package `com.exemplo.users` (JVM: internal name `com/exemp
 ## Imports
 
 ```kf
-import java.util.List
-import java.util.Map
-import java.util.HashMap
 import a.b.C          // 0.2.0: resolve tanto o arquivo C.kf quanto o diretório a/b/
+import a.b.*          // diretório inteiro
+import kof.http       // stdlib
 ```
+
+> **`java.util.*` é interop, não o idiomático.** Para coleções Kof, `List<T>`/
+> `Map<K,V>`/`Set<T>` + `listOf`/`mapOf`/`setOf` vêm da stdlib **sem import**.
+> `import java.util.ArrayList` etc. só é necessário ao chamar APIs Java
+> diretamente (ver cap. 21).
 
 `kof build` agora compila `largeproj` corretamente:
 
@@ -58,9 +62,17 @@ main() {
 
 ```bash
 kof build src --target=jvm     # gera Main.class + a/b/C.class
-kof build src --target=native  # ELF com ambas as units linkadas
 kof build src --target=js      # Default.mjs com import C
 ```
+
+> ⚠️ **Native (x86_64) quebra com classe importada de outro pacote** — o
+> mangling do construtor usa o nome simples (`C_init_0`) em vez do internal
+> name (`a_b_C_init_0`) → `undefined reference`. Bug 22 em
+> `docs/known-bugs.md`. Use `--target=jvm`/`js` enquanto isso, ou corrija o
+> `NativeBackend.java:1725`.
+
+> ⚠️ **Nomes iguais em pacotes diferentes são rejeitados** (PKG005) — `pkgA.Data`
+> + `pkgB.Data` não compilam juntos. Bug 21 em `docs/known-bugs.md`.
 
 ### Import estático (planejado)
 

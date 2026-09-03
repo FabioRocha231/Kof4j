@@ -10,6 +10,8 @@ sobre ler/escrever arquivos, trabalhar com paths e listar diretórios.
 - O programador nunca vê POSIX, `java.nio`, syscalls ou separadores por
   plataforma: `kof.io` resolve isso no backend (JVM → `java.nio.file`;
   Native → syscalls POSIX no Linux x86-64).
+- **`readLine()` (top-level, stdin)** → `String?` (02/09): `null` no EOF em
+  JVM e Native (antes o Native devolvia `""`). Trate com `if (line != null)`.
 
 ## Path
 
@@ -31,11 +33,11 @@ sobre ler/escrever arquivos, trabalhar com paths e listar diretórios.
 |----------|---------------|
 | `File("x").exists()` | Bool |
 | `File("x").isFile()` / `.isDirectory()` | Bool |
-| `File("x").readText()` | String UTF-8; `null` se falhar |
+| `File("x").readText()` | `String?` — `null` se falhar (JVM e Native) |
 | `File("x").writeText(s)` / `.appendText(s)` | Bool |
 | `File("x").readBytes()` | `Int[]` (0-255); `null` se falhar |
 | `File("x").writeBytes(b)` / `.appendBytes(b)` | Bool |
-| `File("x").size()` | Long; `-1` se não existir |
+| `File("x").size()` | Long; **lança exceção** se o arquivo não existe (02/09 — sem sentinela `-1`) |
 | `File("x").delete()` | Bool |
 | `File("x").name()` / `.path()` | String |
 
@@ -90,11 +92,12 @@ println(file.readBytes().length)
 
 ## Erros
 
-- Leituras que falham retornam `null` (JVM); no Native, `readText` de
-  arquivo inexistente encerra com erro (exceptions recuperáveis no Native
-  ainda não existem — verifique `exists()` antes).
+- **Ausência como valor (02/09):** `readText()`/`readFile()` devolvem `String?`
+  (`null` quando o arquivo não existe) — em JVM **e** Native (o Native antes
+  encerrava com erro; agora devolve `null` como o JVM).
+- `size()` **lança** exceção recuperável (`catch (String e)`) para arquivo
+  inexistente — o `-1` sentinela foi removido (era anti-pattern do corpus).
 - Operações booleanas retornam `true`/`false`.
-- `size()` retorna `-1` para arquivo inexistente.
 
 ## Limitações atuais (0.2.6-beta)
 

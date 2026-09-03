@@ -100,6 +100,80 @@ class CompilerDriverTest {
         assertTrue(result.diagnostics().hasErrors(), "Should have error diagnostics");
     }
 
+    // known-bugs #25 — literal Long fora do range dava NumberFormatException
+    // crua (crash do compilador); agora é diagnóstico limpo PARSE084
+    @Test
+    void outOfRangeLongLiteralGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var big = 9223372036854775808
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Out-of-range Long literal should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("PARSE084"), "Should be a clean diagnostic, was: " + diags);
+        assertFalse(diags.contains("NumberFormatException"), "Must not crash, was: " + diags);
+    }
+
+    // known-bugs #1 — `throw <não-String>` gerava bytecode inválido no JVM.
+    // Exceções são Strings em Kof: rejeita em compile-time (SEM026), inclusive
+    // dentro de try (que antes nem passava pela análise semântica).
+    @Test
+    void throwNonStringGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                try { throw 42 } catch (String e) { println("ok") }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "throw <Int> should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM026"), "Should be a clean diagnostic, was: " + diags);
+        assertFalse(diags.contains("NumberFormatException"), "Must not crash, was: " + diags);
+    }
+
+    // known-bugs #17 — array has no get()/set() methods (API is arr[i]); the
+    // compiler used to accept them and emit broken bytecode (ClassFormatError
+    // JVM / undefined reference Native). Now a clean SEM028.
+    @Test
+    void arrayMethodCallGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var arr = new Int[3]
+                arr.set(0, 5)
+                println(arr.get(0))
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "arr.get()/set() should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM028"), "Should be a clean diagnostic, was: " + diags);
+    }
+
+    // known-bugs #12 — `var c = a = b` (assignment as an expression VALUE)
+    // produced invalid bytecode. Kof has no assignment-expression: reject with
+    // SEM027. Statement `a = b` must keep working.
+    @Test
+    void chainedAssignmentRejectedAsExpression(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var a = 1
+                var b = 2
+                var c = a = b
+                println(c)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Assignment as expression should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM027"), "Should be a clean diagnostic, was: " + diags);
+    }
+
     @Test
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");

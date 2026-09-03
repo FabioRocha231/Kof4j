@@ -51,3 +51,11 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 - **≤500 linhas por classe** (refactor futuro de NativeRuntime: módulo novo por área, ex: `NativeHttpRuntime.java`).
 - Nunca duas frentes no mesmo arquivo gigante ao mesmo tempo — se for inevitável, combine no chat antes.
+- **Congelamento de comportamento** (AGENTS.md, obrigatório): zero regressão (suíte **840** é gate de merge), features novas **aditivas** (retrocompatibilidade), refactor de 500 linhas preserva semântica (mesma suíte + golden E2E; output mudou = bug do refactor), bugs em `docs/known-bugs.md` são corrigidos **no código** para atingir o comportamento previsto (nunca "documentar em volta"), paridade JVM/Native/JS é regra.
+
+## Frentes de validação/docs (não são gaps de feature — avisar antes de mexer)
+
+| Frente | Estado | Dono | Branch | Arquivos | Notas |
+|---|---|---|---|---|---|
+| **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **13/25 bugs corrigidos 03/09** (1,2,3,4,5,6,7,10,13,14,22,24,25 — todos com teste de regressão). Restantes: 8,9,11,12,15,16,17,18,19,20,21,23. Corrigir bug = reivindicar aqui e fix no código, não no corpus. |
+| **Auditoria idiomática de docs/training** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `learn/`, `training/`, `docs/` | Revisar corpus contra o compilador (fake idioms, casos obsoletos). |

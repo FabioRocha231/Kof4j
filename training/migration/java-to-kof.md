@@ -1,6 +1,6 @@
 # Java to Kof Migration
 
-**Version:** 0.2.6-beta (31 Aug 2026)
+**Version:** 0.2.6-beta (02 Sep 2026)
 
 ## Classes
 
@@ -20,25 +20,31 @@ public class User {
 }
 ```
 
-### Kof (0.2.6-beta — primary constructor idiomático)
+### Kof (0.2.6-beta — record-style para dados imutáveis)
 ```kof
+// class X(...) == record X(...): imutável, accessors, leitura u.name ok
 class User(String name, Int age) {
 }
 var u = User("Mel", 30)
 println(u.name)
 ```
 
-Forma verbosa ainda válida:
-```kof
-class User2 {
-    String name
-    Int age
-    public constructor(String name, Int age) {
-        this.name = name
-        this.age = age
-    }
-}
-```
+> **Estado mutável (o Java `private` + setters NÃO se traduz 1:1):** em Kof o
+> campo é público e mutável — sem getter/setter. Se a entidade muda, use
+> classe com campos + `constructor(...)`:
+> ```kof
+> class User2 {
+>     String name
+>     Int age
+>     public constructor(String name, Int age) {
+>         this.name = name
+>         this.age = age
+>     }
+> }
+> var u2 = User2("Mel", 30)
+> u2.age = 31      // campo direto — sem setAge()
+> ```
+> Dados imutáveis → `record User(String name, Int age)` (accessors `u.name()`).
 
 ## Records
 

@@ -557,11 +557,59 @@ class SemanticAnalyzer {
         }
     }
 
+    /**
+     * Assignment como STATEMENT (`a = b`, `i = i + 1` no update do for):
+     * infere alvo/valor e valida assignability (SEM012) SEM emitir o SEM027
+     * (que é reservado para assignment usado como VALOR — bug 12).
+     */
+    private Type analyzeAssignmentStatement(AssignmentExpr ae, SymbolTable scope) {
+        Type valueType = inferType(ae.value(), scope);
+        Type targetType = Type.UnknownType.UNKNOWN;
+        if (ae.target() instanceof IdentifierExpr ie) {
+            SymbolTable.Symbol sym = scope.resolve(ie.name());
+            if (sym != null) {
+                targetType = sym.type();
+                if (diagnostics != null && !Type.isUnknown(targetType)
+                        && !Type.isUnknown(valueType)
+                        && !isAssignable(valueType, targetType)) {
+                    diagnostics.error("", 0, 0, 0,
+                            "Type mismatch: cannot assign " + valueType + " to " + targetType,
+                            "SEM012");
+                }
+            } else {
+                targetType = inferType(ae.target(), scope);
+            }
+        } else if (ae.target() != null) {
+            targetType = inferType(ae.target(), scope);
+        }
+        return targetType;
+    }
+
     private void analyzeStatement(StatementNode stmt, SymbolTable scope, Type returnType) {
         switch (stmt) {
             case BlockStmt block -> {
                 SymbolTable blockScope = scope.enterScope();
                 for (StatementNode s : block.statements()) analyzeStatement(s, blockScope, returnType);
+            }
+            case TryStmt tryStmt -> {
+                // corpos de try/catch/finally eram ignorados pela análise
+                // semântica (ex.: `throw 42` dentro de try passava e gerava
+                // bytecode inválido). Analisa os três blocos.
+                SymbolTable tryScope = scope.enterScope();
+                for (StatementNode s : tryStmt.tryBody()) analyzeStatement(s, tryScope, returnType);
+                for (CatchClause cc : tryStmt.catchClauses()) {
+                    SymbolTable catchScope = scope.enterScope();
+                    if (cc.exceptionName() != null) {
+                        Type excType = "String".equals(cc.exceptionType()) ? BuiltinTypes.STRING
+                                : Type.of(cc.exceptionType());
+                        catchScope.define(new SymbolTable.LocalVariableSymbol(cc.exceptionName(), excType, 0));
+                    }
+                    for (StatementNode s : cc.body()) analyzeStatement(s, catchScope, returnType);
+                }
+                if (tryStmt.finallyBody() != null) {
+                    SymbolTable finScope = scope.enterScope();
+                    for (StatementNode s : tryStmt.finallyBody()) analyzeStatement(s, finScope, returnType);
+                }
             }
             case VarDeclStmt vds -> {
                 Type varType;
@@ -646,7 +694,15 @@ class SemanticAnalyzer {
                 if (fs.init() != null) analyzeStatement(fs.init(), forScope, returnType);
                 if (fs.condition() != null) inferType(fs.condition(), forScope);
                 analyzeStatement(fs.body(), forScope, returnType);
-                if (fs.update() != null) inferType(fs.update(), forScope);
+                if (fs.update() != null) {
+                    // `i = i + 1` no update é statement, não valor
+                    if (fs.update() instanceof AssignmentExpr ae) {
+                        inferType(ae.value(), forScope);
+                        if (ae.target() != null) inferType(ae.target(), forScope);
+                    } else {
+                        inferType(fs.update(), forScope);
+                    }
+                }
             }
             case ForInStmt fis -> {
                 SymbolTable forScope = scope.enterScope();
@@ -727,12 +783,33 @@ class SemanticAnalyzer {
             }
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
-                    Type exprType = inferType(es.expression(), scope);
-                    expressionTypes.put(es.expression(), exprType);
+                    // `a = b` como STATEMENT é legítimo: check de assignability
+                    // (SEM012) sem o SEM027 (que é só para uso como VALOR —
+                    // bug 12). Mesmo helper usado pelo update do for.
+                    if (es.expression() instanceof AssignmentExpr ae) {
+                        expressionTypes.put(es.expression(),
+                                analyzeAssignmentStatement(ae, scope));
+                    } else {
+                        Type exprType = inferType(es.expression(), scope);
+                        expressionTypes.put(es.expression(), exprType);
+                    }
                 }
             }
             case ThrowStmt ts -> {
-                if (ts.expression() != null) inferType(ts.expression(), scope);
+                if (ts.expression() != null) {
+                    Type t = inferType(ts.expression(), scope);
+                    // bug 1: `throw <não-String>` gerava bytecode inválido no
+                    // JVM (wrap em RuntimeException assumindo String). Exceções
+                    // são Strings em Kof — rejeita com diagnóstico limpo.
+                    if (diagnostics != null && t != null && !Type.isUnknown(t)
+                            && !BuiltinTypes.isString(t)) {
+                        diagnostics.error("", 0, 0, 0,
+                                "throw exige uma String (exceções são Strings em Kof),"
+                                        + " recebeu " + Type.canonicalPrimitiveName(
+                                        t instanceof Type.ClassType ct ? ct.name() : t.toString()),
+                                "SEM026");
+                    }
+                }
             }
             case SpawnStmt ss -> {
                 if (ss.expression() != null) inferType(ss.expression(), scope);
@@ -829,6 +906,15 @@ class SemanticAnalyzer {
                 yield Type.UnknownType.UNKNOWN;
             }
             case AssignmentExpr ae -> {
+                // bug 12: assignment como VALOR de expressão (`var c = a = b`)
+                // gerava bytecode inválido no JVM. Kof não tem assignment como
+                // expressão — rejeita com diagnóstico limpo (statements passam
+                // pelo ExpressionStmt, que não chega aqui).
+                if (diagnostics != null) {
+                    diagnostics.error("", 0, 0, 0,
+                            "atribuição é um statement, não uma expressão (use '=' em linha própria)",
+                            "SEM027");
+                }
                 Type valueType = inferType(ae.value(), scope);
                 Type targetType = Type.UnknownType.UNKNOWN;
                 if (ae.target() instanceof IdentifierExpr ie) {
@@ -900,6 +986,16 @@ class SemanticAnalyzer {
                 // F10: métodos de instância do handle de process.spawn
                 if (mc.receiver() != null) {
                     Type recv = inferType(mc.receiver(), scope);
+                    // bug 17: array não tem método get()/set() — a API é o
+                    // operador arr[i]. Antes o compilador aceitava e emitia
+                    // bytecode inválido (ClassFormatError no JVM, undefined
+                    // reference no Native).
+                    if (recv instanceof Type.ArrayType && diagnostics != null) {
+                        diagnostics.error("", 0, 0, 0,
+                                "array não tem método '" + mc.methodName()
+                                        + "()'; use o operador arr[i] / arr[i] = v",
+                                "SEM028");
+                    }
                     if (KofProcess.isHandle(recv)) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -911,6 +1007,27 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
                         if ("send".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
                         if ("receive".equals(mc.methodName())) yield BuiltinTypes.channelElement(recv);
+                    }
+                    // Map<K,V>: get() devolve V? para valores de referência (ausência = null,
+                    // narrowing via if (x != null)); primitivos/UI não representam ausência
+                    if (BuiltinTypes.isMap(recv)) {
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        Type valueType = BuiltinTypes.mapValue(recv);
+                        if ("get".equals(mc.methodName())) {
+                            yield valueType instanceof Type.ClassType ct
+                                    && !KofUi.isUiType(ct) && !KofMedia.isHandleType(ct)
+                                    ? new Type.NullableType(valueType) : valueType;
+                        }
+                        if ("put".equals(mc.methodName()) || "remove".equals(mc.methodName())) yield valueType;
+                        if ("size".equals(mc.methodName()) || "length".equals(mc.methodName())
+                                || "count".equals(mc.methodName())) yield Type.PrimitiveType.INT;
+                        if ("contains".equals(mc.methodName()) || "containsKey".equals(mc.methodName())
+                                || "isEmpty".equals(mc.methodName())) yield Type.PrimitiveType.BOOL;
+                        if ("clear".equals(mc.methodName())) yield Type.PrimitiveType.VOID;
+                        if ("keys".equals(mc.methodName())) yield new Type.ClassType("kof", "List",
+                                List.of(BuiltinTypes.mapKey(recv)));
+                        if ("values".equals(mc.methodName())) yield new Type.ClassType("kof", "List",
+                                List.of(valueType));
                     }
                 }
                 if (mc.receiver() == null && "channel".equals(mc.methodName())
@@ -935,7 +1052,14 @@ class SemanticAnalyzer {
                 }
                 if (mc.receiver() == null && "mapOf".equals(mc.methodName())) {
                     for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
-                    yield new Type.ClassType("kof", "Map", List.of(Type.UnknownType.UNKNOWN, Type.UnknownType.UNKNOWN));
+                    // pinning no primeiro par (k1, v1, ...) — espelha o emit e o
+                    // CompilerDriver.inferExprType; sem isso Map<Unknown,Unknown>
+                    // vazava para var x = mapOf(...) e get() devolvia Unknown
+                    Type keyType = mc.arguments().isEmpty() ? Type.UnknownType.UNKNOWN
+                            : inferType(mc.arguments().get(0), scope);
+                    Type valueType = mc.arguments().size() < 2 ? Type.UnknownType.UNKNOWN
+                            : inferType(mc.arguments().get(1), scope);
+                    yield new Type.ClassType("kof", "Map", List.of(keyType, valueType));
                 }
                 if (mc.receiver() == null && "setOf".equals(mc.methodName())) {
                     Type elemType = Type.UnknownType.UNKNOWN;
