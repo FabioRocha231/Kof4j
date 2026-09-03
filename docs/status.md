@@ -1,15 +1,15 @@
 # Status do Projeto Kof
 
-**Última atualização:** 2 de setembro de 2026
+**Última atualização:** 3 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
 
 ## Build
 
-```
+``` 
 mvn clean package    → PASSA
-mvn test             → 801 testes 784 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 814 testes 797 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -214,8 +214,8 @@ main() {
 |--------|---------|----------|--------|
 | `jvm` | `JvmBackend` (ASM) | bytecode V21, exception table, virtual threads | estável |
 | `native` | `NativeBackend` (x86_64) | ELF x86_64, syscalls, free-list alloc, GC mark pending | estável |
-| `native.risc` | `NativeBackend` (riscv64) | ELF riscv64 via `riscv64-linux-gnu-as/ld` + qemu (em desenvolvimento — ver `docs/native-multiarch.md`) | em progresso |
-| `native.arm` | `NativeBackend` (aarch64) | ELF aarch64 via `aarch64-linux-gnu-as/ld` + qemu (em desenvolvimento — ver `docs/native-multiarch.md`) | em progresso |
+| `native.risc` | `NativeBackend` (riscv64) | ELF riscv64 via `riscv64-linux-gnu-as/ld` + qemu (core completo 02/09, 13/13 — ver `docs/native-multiarch.md`) | estável (core) |
+| `native.arm` | `NativeBackend` (aarch64) | ELF aarch64 via `aarch64-linux-gnu-as/ld` + qemu (core completo 03/09, 13/13 via tradução — ver `docs/native-multiarch.md`) | estável (core) |
 | `js` | `JsBackend` + `KofJsRunner` | ES Modules via GraalJS, `kof.http` via `Java HttpClient` interop | alpha |
 | `kofc` | `KofCcompiler` | C subset (`int` globals, `void` funcs, `if`/`while`/`*(int*)`/`&`) → nativo x86_64 | nativo-only |
 
@@ -468,7 +468,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (801 = 784 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
+## Testes (814 = 797 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 03/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -542,8 +542,9 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
-  | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core) |
-  | **Total kof-compiler** | **784** | |
+   | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core 02/09) |
+   | NativeAarch64E2ETest | 13 | **aarch64 real (qemu)**: runtime em **asm puro** via tradução riscv→aarch64 (`translateRiscvToAarch64`), raw syscalls — mesmo core do riscv64; 13/13 (NATIVE002 core 03/09) |
+   | **Total kof-compiler** | **797** | |
   | kof-script | 8 | KofScriptGlobals / repl / --watch |
   | kof-c-compiler | 5 | KofC C subset → ELF |
   | kof-cli | 4 | LSP references + rename (mock) |
@@ -625,7 +626,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
 20. ~~Ponto flutuante no Native~~ — ✅ FLT001 fechado: FP é XMM real (`vcvtsi2sd`, `mulsd`); dtoa via snprintf alinhado; `kof_string_to_double` parse completo (fração+expoente).
 21. ~~idem~~
-22. riscv64/aarch64 **em desenvolvimento** — ✅ **02/09 riscv64 real**: `Target.NATIVE_RISCV64` + CLI `native.risc` + dispatch + **lowering real** (`kof_main` em asm: stack machine riscv64, `s11`=fp/`s2`=operandos, `ra`/`s2` preservados) + **runtime em asm puro** (raw syscalls, **sem C** — binário estático via `as`+`ld`; Kof é Kof) + qemu; `NativeRiscv64E2ETest 4/4` (println String/Int, var, if/else, aritmética/comparações Int). **Restante do NATIVE002**: aarch64, coleções/classe/`instanceof`/`switch` cross, `KofJsSourceMap` paridade. **Estado real + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
+22. riscv64/aarch64 **core completo** — ✅ **02/09 riscv64 + 03/09 aarch64 reais**: `Target.NATIVE_RISCV64`/`NATIVE_AARCH64` + CLI `native.risc`/`native.arm` + dispatch + **lowering real** (stack machine: riscv64 `sp`/`s11`/`ra`, aarch64 `sp`/`x29`/`x30` via tradução linha-a-linha) + **runtime em asm puro** (raw syscalls `write` 64 / `exit` 93, bump allocator, sem C — binários estáticos via `as`+`ld`; Kof é Kof) + qemu; `NativeRiscv64E2ETest 13/13` + `NativeAarch64E2ETest 13/13` (core: println String/Int, var, if/else, aritmética, classes virtual/fields, arrays, List, switch, try/catch/throw, pattern matching, String methods, recursão). **Restante do NATIVE002**: paridade total x86 (JSON/DB/HTTP/concorrência/UI/net) nos dois. **Estado real + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
 23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
 24. ~~`spawn`-statement (fire-and-forget) no Native não era juntado~~ — ✅ 01/09: o `kof_spawn` (stmt) criava a thread mas **não registrava** o handle na lista que `kof_spawn_join_all` percorre; e `join_all` só era emitido no bloco `!endsWithReturn`, que nunca roda para o main (o driver sempre fecha o main com `KofReturnVoid` → `endsWithReturn`). Resultado: o processo saía antes do worker imprimir. Fix: `kof_spawn` agora delega a `kof_spawn_result` (registra o handle) e `join_all` é emitido no **epílogo do return** de main (idempotente — limpa a lista). `SpawnE2ETest 4/4`
 
@@ -692,7 +693,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - ~~KofAndroid Fase 2~~ — ✅ 31/08 (`--apk` standalone + `--keystore` release signing + label/permissões derivados do programa)
 - ~~`kof.media` residual (31/08)~~ — ✅ 31/08: **video** (`Video.open` + metadados do container + streaming) e **Range requests** (206/416) fechados; restam câmera (MEDIA002 — sem lib externa no JVM) e paridade Native/JS (MEDIA001 — ART sem javax.imageio; app Android roda no WebView KofJS)
 - MySQL/MariaDB nativo — **wire protocol ✅ 31/08** (handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset; binds `?` via substituição client-side; `nativeMysqlWireProtocol`); restam **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — otimização de wire; tentativa de 01/09 revertida, ver "Bugs Restantes" #18)
-- `native.risc` (riscv64) + `native.arm` (aarch64) **em desenvolvimento** — plumbing pronto (enum + CLI + dispatch + cross-as/ld), codegen stub; **detalhe + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
+- `native.risc` (riscv64) + `native.arm` (aarch64) **core completo (02-03/09)** — plumbing + codegen/runtimes em asm puro + qemu, `NativeRiscv64E2ETest 13/13` + `NativeAarch64E2ETest 13/13` (core: classes/arrays/List/strings/instanceof/switch/try-catch/FP/recursão); paridade avançada (JSON/DB/HTTP/concorrência/UI/net) pendente — **detalhe + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
 - Debugger — MVP JVM (DAP sobre stdio) + **JS source maps V3 em nível de linha (01/09)**; Native DWARF pendente
 - KofJS — plataforma web no browser (ES Modules via GraalJS já em alpha)
 
