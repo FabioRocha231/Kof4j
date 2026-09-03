@@ -1434,6 +1434,17 @@ class Parser {
                 case NULL_LITERAL -> ConcreteLiteralKind.NULL;
                 default -> ConcreteLiteralKind.NULL;
             };
+            // faixa de literais numéricos: Long fora do range crashava o
+            // emit (NumberFormatException crua em CompilerDriver.emitExpression);
+            // aqui vira diagnóstico limpo (bug 25).
+            if (t.type() == TokenType.LONG_LITERAL) {
+                try {
+                    Long.parseLong(t.value().replaceAll("[lL]$", ""));
+                } catch (NumberFormatException e) {
+                    error("numeric literal out of range: " + t.value(), "PARSE084");
+                    return new LiteralExpr(pos(), ConcreteLiteralKind.NULL, "0");
+                }
+            }
             return new LiteralExpr(pos(), kind, t.value());
         }
         if (check(TokenType.THIS)) {

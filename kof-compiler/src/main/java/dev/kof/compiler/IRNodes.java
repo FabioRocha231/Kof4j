@@ -147,7 +147,7 @@ record KofPutStatic(Type ownerType, String name, Type fieldType) implements KofO
 
 
 enum KofBinaryOp { ADD, SUB, MUL, DIV, MOD, EQ, NE, LT, LE, GT, GE, AND, OR, XOR, SHL, SHR, USHR }
-enum KofUnaryOp { NEG, NOT, I2L, I2F, I2D, I2C, L2I, L2F, L2D, F2D, D2F }
+enum KofUnaryOp { NEG, NOT, I2L, I2F, I2D, I2C, L2I, L2F, L2D, F2D, D2F, D2I, F2I, D2L, F2L }
 
 record KofBinary(KofBinaryOp op, Type operandType) implements KofOperation {
 }

@@ -772,6 +772,14 @@ class JvmBackend implements Backend {
                 mv.visitInsn(F2D);
             } else if (ku.op() == KofUnaryOp.D2F) {
                 mv.visitInsn(D2F);
+            } else if (ku.op() == KofUnaryOp.D2I) {
+                mv.visitInsn(D2I);
+            } else if (ku.op() == KofUnaryOp.F2I) {
+                mv.visitInsn(F2I);
+            } else if (ku.op() == KofUnaryOp.D2L) {
+                mv.visitInsn(D2L);
+            } else if (ku.op() == KofUnaryOp.F2L) {
+                mv.visitInsn(F2L);
             }
         } else if (op instanceof KofLabel kl) {
             mv.visitLabel(resolveLabel(kl.label()));

@@ -2754,13 +2754,10 @@ private Target target = Target.JVM;
                                 && ("char".equals(tp2.name()) || "Char".equals(tp2.name()))) {
                             ops.add(new KofUnary(KofUnaryOp.I2C, fromT));
                         }
-                        // narrowing Long→Int: L2I (widening acima não cobre)
-                        if (fromT instanceof Type.PrimitiveType fp2
-                                && ("long".equals(fp2.name()) || "Long".equals(fp2.name()))
-                                && targetType instanceof Type.PrimitiveType tp3
-                                && ("int".equals(tp3.name()) || "Int".equals(tp3.name()))) {
-                            ops.add(new KofUnary(KofUnaryOp.L2I, fromT));
-                        }
+                        // narrowing numérico (cast explícito): L2I, F2I, D2I,
+                        // F2L, D2L — sem isso FP→Int gerava bytecode inválido
+                        // (bug 5) e Long→Int via wid().não cobria
+                        emitPrimNarrow(ops, fromT, targetType);
                     } else {
                         ops.add(new KofCheckCast(targetType));
                         // o resultado do cast tem o tipo alvo — o próximo
@@ -6583,12 +6580,36 @@ private Target target = Target.JVM;
             case "float", "Float" -> switch (fn) {
                 case "int", "Int", "char", "Char", "short", "Short", "byte", "Byte" -> KofUnaryOp.I2F;
                 case "long", "Long" -> KofUnaryOp.L2F;
+                case "double", "Double" -> KofUnaryOp.D2F;
                 default -> null;
             };
             case "double", "Double" -> switch (fn) {
                 case "int", "Int", "char", "Char", "short", "Short", "byte", "Byte" -> KofUnaryOp.I2D;
                 case "long", "Long" -> KofUnaryOp.L2D;
                 case "float", "Float" -> KofUnaryOp.F2D;
+                default -> null;
+            };
+            default -> null;
+        };
+        if (conv != null) {
+            ops.add(new KofUnary(conv, from));
+        }
+    }
+
+    private void emitPrimNarrow(List<KofOperation> ops, Type from, Type to) {
+        if (from.equals(to)) return;
+        String fn = primitiveName(from);
+        String tn = primitiveName(to);
+        KofUnaryOp conv = switch (tn) {
+            case "int", "Int" -> switch (fn) {
+                case "long", "Long" -> KofUnaryOp.L2I;
+                case "float", "Float" -> KofUnaryOp.F2I;
+                case "double", "Double" -> KofUnaryOp.D2I;
+                default -> null;
+            };
+            case "long", "Long" -> switch (fn) {
+                case "float", "Float" -> KofUnaryOp.F2L;
+                case "double", "Double" -> KofUnaryOp.D2L;
                 default -> null;
             };
             default -> null;
@@ -6671,10 +6692,6 @@ private Target target = Target.JVM;
             if (formal != null && erasesToReference(formal) && isPrimitiveType(argType)
                     && !BuiltinTypes.isString(formal)) {
                 emitErasureBox(ops, argType);
-            }
-            if (formal instanceof Type.PrimitiveType fp && "float".equals(fp.name())
-                    && argType instanceof Type.PrimitiveType ap && "double".equals(ap.name())) {
-                ops.add(new KofUnary(KofUnaryOp.D2F, Type.PrimitiveType.DOUBLE));
             }
         }
         return localIdx;

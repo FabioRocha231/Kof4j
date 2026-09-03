@@ -1064,6 +1064,34 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        if (ku.op() == KofUnaryOp.D2I) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    cvttsd2si %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.F2I) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    cvttss2si %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.D2L) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    cvttsd2si %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.F2L) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    cvttss2si %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (ku.op() == KofUnaryOp.I2L) {
             sb.append("    popq %rax\n");
             sb.append("    movslq %eax, %rax\n");
@@ -2204,6 +2232,10 @@ public class NativeBackend implements Backend {
             case L2D -> sb.append("    fcvt.l.d f0, t0, rtz\n    fmv.x.d t0, f0\n");
             case F2D -> sb.append("    fmv.w.x f0, t0\n    fcvt.s.d f0, f0\n    fmv.x.d t0, f0\n");
             case D2F -> sb.append("    fmv.d.x f0, t0\n    fcvt.d.s f0, f0\n    fmv.x.w t0, f0\n");
+            case D2I -> sb.append("    fmv.d.x f0, t0\n    fcvt.w.d f0, f0, rtz\n    fmv.x.w t0, f0\n");
+            case F2I -> sb.append("    fmv.w.x f0, t0\n    fcvt.w.s f0, f0, rtz\n    fmv.x.w t0, f0\n");
+            case D2L -> sb.append("    fmv.d.x f0, t0\n    fcvt.l.d f0, f0, rtz\n    fmv.x.d t0, f0\n");
+            case F2L -> sb.append("    fmv.w.x f0, t0\n    fcvt.l.s f0, f0, rtz\n    fmv.x.d t0, f0\n");
         }
         pushRiscv(sb, "t0");
     }

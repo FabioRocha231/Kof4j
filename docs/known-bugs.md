@@ -487,3 +487,16 @@ EXTERNA produz lixo
   **corrigido 03/09**: constant folding usava `~i` (bitwise) em vez de `i == 0
   ? 1 : 0` (lógico) em `Optimizer.foldUnary`. Prova:
   `CoreRegressionE2ETest.logicalNotAsExpressionValue` (JVM+JS+Native).
+- **Bug 5** (cast FP→Int/Long gera bytecode inválido) — **corrigido 03/09**:
+  faltavam os ops de conversão `D2I`/`F2I`/`D2L`/`F2L` no IR e nos backends
+  (JVM/Native/JS/riscv). Cast agora trunca para zero (`3.9 as Int` → `3`).
+  Prova: `CoreRegressionE2ETest.fpToIntAndDoubleToFloatConversions`.
+- **Bug 24** (Double→Float narrowing gera bytecode inválido) — **corrigido
+  03/09**: `Float f = 3.4` e `d as Float` não emitiam `D2F` (o caso especial
+  só cobria argumentos de função). `emitWideningIfNeeded` agora cobre
+  Double→Float e o caso redundante em `emitArgumentsWithFormalTypes` foi
+  removido. Prova: mesmo teste do Bug 5.
+- **Bug 25** (literal Long fora do range crasha o compilador com
+  `NumberFormatException` crua) — **corrigido 03/09**: `Parser.parsePrimary`
+  valida a faixa do literal e emite `PARSE084: numeric literal out of range`.
+  Prova: `CompilerDriverTest.outOfRangeLongLiteralGivesCleanDiagnostic`.

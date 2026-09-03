@@ -383,4 +383,25 @@ class CoreRegressionE2ETest {
                 }
                 """, "8\n5\n1\n30\n15\n10\n10", tempDir, "compound-order");
     }
+
+    // known-bugs #5/#24 — FP→Int/Long casts and Double→Float narrowing were
+    // missing conversion ops → invalid bytecode (ClassFormatError). Now D2I/
+    // F2I/D2L/F2L (truncate toward zero) and D2F are emitted.
+    @Test
+    void fpToIntAndDoubleToFloatConversions(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var d = 3.9
+                    println(d as Int)
+                    println(d as Long)
+                    var f = 2.7f
+                    println(f as Int)
+                    println(-3.9 as Int)
+                    var g: Float = 3.4
+                    println(g)
+                    var h = d as Float
+                    println(h)
+                }
+                """, "3\n3\n2\n-3\n3.4\n3.9", tempDir, "fp-casts");
+    }
 }

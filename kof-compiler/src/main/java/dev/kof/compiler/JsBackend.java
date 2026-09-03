@@ -1945,6 +1945,8 @@ class JsBackend implements Backend {
             case NEG -> new JsIr.JsUnary("-", operand);
             case NOT -> new JsIr.JsConditional(operand, new JsIr.JsNumber("0"), new JsIr.JsNumber("1"));
             case I2L, I2F, I2D, I2C, L2I, L2F, L2D, F2D, D2F -> operand;
+            case D2I, F2I, D2L, F2L -> new JsIr.JsCall(new JsIr.JsIdentifier("Math.trunc"),
+                    List.of(operand));
         };
     }
 

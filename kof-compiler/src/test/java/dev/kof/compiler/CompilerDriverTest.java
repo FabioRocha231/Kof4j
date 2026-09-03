@@ -100,6 +100,23 @@ class CompilerDriverTest {
         assertTrue(result.diagnostics().hasErrors(), "Should have error diagnostics");
     }
 
+    // known-bugs #25 — literal Long fora do range dava NumberFormatException
+    // crua (crash do compilador); agora é diagnóstico limpo PARSE084
+    @Test
+    void outOfRangeLongLiteralGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var big = 9223372036854775808
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Out-of-range Long literal should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("PARSE084"), "Should be a clean diagnostic, was: " + diags);
+        assertFalse(diags.contains("NumberFormatException"), "Must not crash, was: " + diags);
+    }
+
     @Test
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
