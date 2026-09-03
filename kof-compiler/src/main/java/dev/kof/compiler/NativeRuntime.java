@@ -7724,6 +7724,15 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+
+            # M36: kof_vk_dispatch64 — stub GPU001 no native: retorna -1 e o
+            # caller usa o golden CPU int64. Implementação asm real é futura
+            # (buffers ivec2 + matmul64.spv; mesmos 6 args do dispatch int32).
+            .globl kof_vk_dispatch64
+            .type kof_vk_dispatch64, @function
+            kof_vk_dispatch64:
+                movl $-1, %eax
+                ret
             """);
     }
 

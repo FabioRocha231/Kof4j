@@ -12,6 +12,7 @@ final class KofGpu {
     private KofGpu() {}
     static final Type GPU = new Type.ClassType("kof.gpu", "Gpu", List.of());
     private static final Type INT = Type.PrimitiveType.INT;
+    private static final Type LONG = Type.PrimitiveType.LONG;
     private static final Type BOOL = Type.PrimitiveType.BOOL;
     private static final Type STR = BuiltinTypes.STRING;
     private static final Type VOID = Type.PrimitiveType.VOID;
@@ -20,7 +21,7 @@ final class KofGpu {
 
     static boolean isGpuMethod(String name) {
         return switch (name) {
-            case "available", "dispatchMatmul", "failReason" -> true;
+            case "available", "dispatchMatmul", "dispatchMatmul64", "failReason" -> true;
             default -> false;
         };
     }
@@ -40,6 +41,12 @@ final class KofGpu {
             case "dispatchMatmul" -> argTypes.size() == 6
                     ? new GpuCall("kof_vk_dispatch", INT,
                         List.of(new Type.ArrayType(INT), new Type.ArrayType(INT), new Type.ArrayType(INT),
+                                INT, INT, INT))
+                    : null;
+            // M36: acumulador int64 p/ ponto fixo NANO (produto 9.3e18).
+            case "dispatchMatmul64" -> argTypes.size() == 6
+                    ? new GpuCall("kof_vk_dispatch64", INT,
+                        List.of(new Type.ArrayType(LONG), new Type.ArrayType(LONG), new Type.ArrayType(LONG),
                                 INT, INT, INT))
                     : null;
             default -> null;

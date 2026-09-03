@@ -44,7 +44,12 @@ final class JvmVkRuntime {
                 private static String VK_ERR = "not initialized";
                 private static java.lang.invoke.MethodHandle VK_INIT;
                 private static java.lang.invoke.MethodHandle VK_DISP;
+                private static java.lang.invoke.MethodHandle VK_DISP64;
                 private static java.lang.invoke.MethodHandle VK_REASON;
+                private static java.lang.invoke.MethodHandle VK_INIT64_REASON;
+                private static java.lang.invoke.MethodHandle VK_INIT64;
+                private static volatile boolean VK64_INITED = false;
+                private static volatile boolean VK64_OK = false;
 
                 public static boolean kof_vk_available() {
                     if (!VK_INITED) {
@@ -79,12 +84,111 @@ final class JvmVkRuntime {
                     }
                 }
 
+                // M36: matmul int64 — acumulador long sem overflow (koflama
+                // NANO: produto unitário 9.3e18 > int32). libvkchain64.so +
+                // matmul64.spv (buffers ivec2 hi/lo). Golden CPU no caller.
+                // FFM não passa heap array como pointer: copia p/ segment nativo
+                private static java.lang.foreign.MemorySegment seg64(long[] v,
+                        java.lang.foreign.Arena arena) {
+                    var seg = arena.allocate((long) v.length * 8);
+                    java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(v),
+                            0, seg, 0, (long) v.length * 8);
+                    return seg;
+                }
+
+                public static int kof_vk_dispatch64(long[] a, long[] b, long[] c,
+                                                    int m, int n, int k) {
+                    kof_vk_available(); // lazy: carrega handles das DUAS libs (32 e 64)
+                    if (!kof_vk64_ready() || VK_DISP64 == null) return -1;
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var sa = seg64(a, arena);
+                        var sb = seg64(b, arena);
+                        var sc = seg64(c, arena);
+                        int rc = (int) VK_DISP64.invoke(sa, sb, sc, m, n, k);
+                        if (rc == 0) {
+                            java.lang.foreign.MemorySegment.copy(sc, 0,
+                                    java.lang.foreign.MemorySegment.ofArray(c), 0,
+                                    (long) c.length * 8);
+                        }
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                // init separado da lib64 (vkchain64_init + matmul64.spv):
+                // mesma cadeia Vulkan mas com buffers 8B e SPV próprio.
+                private static boolean kof_vk64_ready() {
+                    if (!VK64_INITED) {
+                        try {
+                            VK64_OK = kof_vk64_init();
+                        } catch (Throwable t) {
+                            VK64_OK = false;
+                        }
+                        VK64_INITED = true;
+                    }
+                    return VK64_OK;
+                }
+
+                private static boolean kof_vk64_init() {
+                    if (VK_INIT64 == null) return false;
+                    String spv = System.getenv("KOF_GPU_SPV64");
+                    if (spv == null || spv.isEmpty()) spv = "gpu/shaders/matmul64.spv";
+                    int rc;
+                    try {
+                        rc = (int) VK_INIT64.invoke(
+                                nativeCstr(java.lang.foreign.Arena.global(), spv));
+                    } catch (Throwable t) {
+                        return false;
+                    }
+                    return rc == 0;
+                }
+
+                // C string NUL-terminated em memória NATIVA (heap segment é
+                // rejeitado em downcalls no JDK 22+/25)
+                private static java.lang.foreign.MemorySegment nativeCstr(
+                        java.lang.foreign.Arena arena, String s) {
+                    byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] nul = new byte[b.length + 1];
+                    System.arraycopy(b, 0, nul, 0, b.length);
+                    var seg = arena.allocate(nul.length);
+                    java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(nul),
+                            0, seg, 0, nul.length);
+                    return seg;
+                }
+
                 private static boolean kof_vk_init() {
                     var arena = java.lang.foreign.Arena.global();
-                    var lib = java.lang.foreign.SymbolLookup.libraryLookup("libvkchain.so", arena);
                     var linker = java.lang.foreign.Linker.nativeLinker();
                     var P = java.lang.foreign.ValueLayout.ADDRESS;
                     var I = java.lang.foreign.ValueLayout.JAVA_INT;
+                    // M36: int64 em lib separada (libvkchain64.so); loader via
+                    // LD_LIBRARY_PATH ou /usr/local/lib (build.sh copia com sudo).
+                    java.lang.foreign.SymbolLookup lib = null;
+                    String err64 = "";
+                    for (String name : new String[]{"libvkchain64.so"}) {
+                        try {
+                            lib = java.lang.foreign.SymbolLookup.libraryLookup(name, arena);
+                            break;
+                        } catch (Throwable t) {
+                            err64 = t.getMessage();
+                        }
+                    }
+                    if (lib != null) {
+                        try {
+                            VK_DISP64 = linker.downcallHandle(lib.find("vkchain64_dispatch").orElseThrow(),
+                                    java.lang.foreign.FunctionDescriptor.of(I, P, P, P, I, I, I));
+                            VK_INIT64_REASON = linker.downcallHandle(lib.find("vkchain64_fail_reason").orElseThrow(),
+                                    java.lang.foreign.FunctionDescriptor.of(P));
+                            VK_INIT64 = linker.downcallHandle(lib.find("vkchain64_init").orElseThrow(),
+                                    java.lang.foreign.FunctionDescriptor.of(I, P));
+                        } catch (Throwable t) {
+                            VK_DISP64 = null; // lib 64 sem símbolos esperados
+                        }
+                    }
+                    lib = java.lang.foreign.SymbolLookup.libraryLookup("libvkchain.so", arena);
                     VK_INIT = linker.downcallHandle(lib.find("vkchain_init").orElseThrow(),
                             java.lang.foreign.FunctionDescriptor.of(I, P));
                     VK_DISP = linker.downcallHandle(lib.find("vkchain_dispatch").orElseThrow(),
@@ -95,15 +199,10 @@ final class JvmVkRuntime {
                     // spv path: env KOF_GPU_SPV ou default gpu/shaders/matmul.spv
                     String spv = System.getenv("KOF_GPU_SPV");
                     if (spv == null || spv.isEmpty()) spv = "gpu/shaders/matmul.spv";
-                    // JDK 21: Arena não tem allocateFrom(String) (API JDK 22+);
-                    // ofArray + copy mantém compatibilidade com release 21.
-                    byte[] spvBytes = spv.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    byte[] spvNul = new byte[spvBytes.length + 1];
-                    System.arraycopy(spvBytes, 0, spvNul, 0, spvBytes.length);
-                    var off = java.lang.foreign.MemorySegment.ofArray(spvNul);
+                    // JDK 25+: heap segment rejeitado em downcall — aloca nativo
                     int rc;
                     try {
-                        rc = (int) VK_INIT.invoke(off);
+                        rc = (int) VK_INIT.invoke(nativeCstr(arena, spv));
                     } catch (Throwable t) {
                         VK_ERR = "init: " + t;
                         return false;
