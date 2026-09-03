@@ -19,6 +19,7 @@ public class NativeBackend implements Backend {
     private Type lastPushedType = Type.UnknownType.UNKNOWN;
     private IRClass currentClass = null;
     private boolean usesDb = false;
+    private boolean usesHttp = false;
     private boolean usesMysql = false;
     private boolean usesConcurrency = false;
     private final Map<String, String> functionMangleMap = new HashMap<>();
@@ -267,6 +268,9 @@ public class NativeBackend implements Backend {
                     List<KofOperation> ops = block.operations();
                     for (int i = 0; i < ops.size(); i++) {
                         KofOperation op = ops.get(i);
+                        if (op instanceof KofCall kc && kc.methodName().startsWith("kof_http_")) {
+                            usesHttp = true;
+                        }
                         if (op instanceof KofCall kc && kc.methodName().startsWith("kof_db_")) {
                             usesDb = true;
                             if (kc.methodName().equals("kof_db_connect")
@@ -285,6 +289,9 @@ public class NativeBackend implements Backend {
         if (usesDb) {
             NativeRuntime.emitDbSqlite(sb);
             NativeDbPrepared.emitMysqlPrepared(sb);
+        }
+        if (usesHttp) {
+            NativeHttpRuntime.emitHttpFunctions(sb);
         }
         IRClass mainClass = null;
         // pré-registro do mangle de TODOS os métodos antes de emitir —
@@ -1065,6 +1072,34 @@ public class NativeBackend implements Backend {
             sb.append("    pushq %rax\n");
             return;
         }
+        if (ku.op() == KofUnaryOp.D2I) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    cvttsd2si %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.F2I) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    cvttss2si %xmm0, %eax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.D2L) {
+            sb.append("    popq %rax\n");
+            sb.append("    movq %rax, %xmm0\n");
+            sb.append("    cvttsd2si %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
+        if (ku.op() == KofUnaryOp.F2L) {
+            sb.append("    popq %rax\n");
+            sb.append("    movd %eax, %xmm0\n");
+            sb.append("    cvttss2si %xmm0, %rax\n");
+            sb.append("    pushq %rax\n");
+            return;
+        }
         if (ku.op() == KofUnaryOp.I2L) {
             sb.append("    popq %rax\n");
             sb.append("    movslq %eax, %rax\n");
@@ -1723,14 +1758,28 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR) {
             if (kc.ownerType() instanceof Type.ClassType ct) {
-                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>") + "_" + kc.parameterTypes().size();
+                return classTypeManglePrefix(ct) + "_" + sanitizeName("<init>") + "_" + kc.parameterTypes().size();
             }
         }
         if (kc.ownerType() instanceof Type.ClassType ct) {
             String key = ct.name() + "." + kc.methodName();
-            return functionMangleMap.getOrDefault(key, sanitizeName(ct.name()) + "_" + sanitizeName(kc.methodName()));
+            return functionMangleMap.getOrDefault(key,
+                    classTypeManglePrefix(ct) + "_" + sanitizeName(kc.methodName()));
         }
         return sanitizeName(kc.methodName());
+    }
+
+    /**
+     * Prefixo de mangle de uma classe com PACKAGE: o call site precisa do
+     * internal name (com/acme/User → com_acme_User), não do nome simples
+     * (User) — senão `C()` de uma classe importada vira undefined reference
+     * `C_init_0` (a definição usa clazz.name()). Bug 22.
+     */
+    private String classTypeManglePrefix(Type.ClassType ct) {
+        String internal = ct.packageName() != null && !ct.packageName().isEmpty()
+                ? ct.packageName().replace('.', '/') + "/" + ct.name()
+                : ct.name();
+        return sanitizeName(internal);
     }
 
     private int resolveFieldOffset(Type ownerType, String fieldName) {
@@ -1755,6 +1804,10 @@ public class NativeBackend implements Backend {
                 .anyMatch(m -> !m.parameterTypes().isEmpty());
         sb.append("\n.globl _start\n");
         sb.append("_start:\n");
+        // grava o TID do main thread (SYS_gettid=186) — limita GC ao main
+        sb.append("    movq $186, %rax\n");
+        sb.append("    syscall\n");
+        sb.append("    movq %rax, kof_main_tid(%rip)\n");
         if (mainHasArgs) {
             // N3: passa array vazio — evita segfault ao tratar argc como ponteiro
             sb.append("    xorl %edi, %edi\n");
@@ -2205,6 +2258,10 @@ public class NativeBackend implements Backend {
             case L2D -> sb.append("    fcvt.l.d f0, t0, rtz\n    fmv.x.d t0, f0\n");
             case F2D -> sb.append("    fmv.w.x f0, t0\n    fcvt.s.d f0, f0\n    fmv.x.d t0, f0\n");
             case D2F -> sb.append("    fmv.d.x f0, t0\n    fcvt.d.s f0, f0\n    fmv.x.w t0, f0\n");
+            case D2I -> sb.append("    fmv.d.x f0, t0\n    fcvt.w.d f0, f0, rtz\n    fmv.x.w t0, f0\n");
+            case F2I -> sb.append("    fmv.w.x f0, t0\n    fcvt.w.s f0, f0, rtz\n    fmv.x.w t0, f0\n");
+            case D2L -> sb.append("    fmv.d.x f0, t0\n    fcvt.l.d f0, f0, rtz\n    fmv.x.d t0, f0\n");
+            case F2L -> sb.append("    fmv.w.x f0, t0\n    fcvt.l.s f0, f0, rtz\n    fmv.x.d t0, f0\n");
         }
         pushRiscv(sb, "t0");
     }

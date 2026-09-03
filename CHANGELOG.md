@@ -7,6 +7,96 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 `build:`, `tooling:`). A seção de cada release é gerada por
 `scripts/changelog.sh` e inserida pela pipeline neste marcador:
 
+## [0.2.6-beta] - 2026-09-02
+
+### Fix — filosofia idiomática (revisão do corpus)
+
+- **`Set<T>` como tipo declarado no JVM** (`feat`): descriptor `kof.Set`
+  materializado como `java/util/HashSet` (`JvmTypeMapper`). `Set<T>` em campo,
+  retorno e parâmetro agora funciona nos 3 targets — antes `NoClassDefFoundError:
+  kof/Set` no JVM (`KofMapSetTest`).
+- **Parser: membros de classe com retorno genérico** (`fix`): `Set<Int> foo()`,
+  `List<String> bar()` em classe não parseavam (lookahead de 1 token).
+  Refatorado para parse-then-decide (`Parser.parseClassMember`).
+- **Null-safety narrowing no JVM corrigido** (`fix`): `if (s != null) {
+  s.length }` emitia `getfield "?".length` e `s.substring(...)` emitia
+  `"".substring` (bytecode inválido → erro de launcher/`ClassFormatError`).
+  Agora desempacota `NullableType` no dispatch de field-access e method-call
+  (`NullSafetyE2ETest`). `if (x != null)` usa `if_acmp*` (era `if_icmp*`).
+- **`mapOf(k1, v1, ...)` infere o tipo do primeiro par** (`fix`): antes
+  `Map<Unknown,Unknown>` vazava para `var m = mapOf(...)` e `get()` devolvia
+  Unknown (SemanticAnalyzer + CompilerDriver).
+- **Parser: forma prefixada nullable** (`feat`): `String? s = null` e retorno
+  `String? f()` agora parseiam em statements, funções e classes — simétrica a
+  `String s`; a forma anotada `var s: String? = null` também é válida.
+
+### Fix — stdlib exemplifica os idioms que ensina
+
+- **`File.readText()`/`readFile()` → `String?`**: ausência = `null` (JVM e
+  Native — o Native antes encerrava o programa).
+- **`File.size()` sem sentinela `-1`**: lança exceção recuperável
+  (`catch (String e)`) quando o arquivo não existe (JVM + Native asm via
+  `kof_throw_string`).
+- **`Map.get` devolve `V?`** para valores de referência (ausência = `null`,
+  narrowing via `if (x != null)`); primitivos seguem `V` (modelo atual não
+  representa ausência).
+- **`readLine()` → `String?`**: `null` no EOF em JVM e Native (o Native antes
+  devolvia `""`).
+- **Captura mutável de lambda — mutação fora da lambda** (`fix`): a detecção
+  só marcava mutações DENTRO da lambda (`inLambda`); `var f = (x) -> x +
+  offset; offset = 20` capturava por valor (15 em vez de 25). Agora
+  `collectMutatedCaptures` computa as capturas REAIS (via `collectCaptures`)
+  e boxa qualquer variável capturada + mutada em qualquer lugar (JVM
+  verificado; `LambdaE2ETest`). Native: a direção "lambda escreve" funciona;
+  "lê boxed após mutação externa" é bug conhecido.
+- **Concat `"str" + double/float` descartava o operando FP** (`fix`): o guard
+  de concat FP fazia `yield` incondicional (ignorava `fpSupportedOnNative`,
+  que é true desde o FLT001) → `"a=" + 1.5` compilava só como `"a="` (saída
+  vazia silenciosa). Agora só pula quando o target não suporta FP
+  (`BackendParityTest.parityStringDoubleConcat`).
+- **riscv64 codegen real (merge da main, 02/09)**: stack machine riscv64 +
+  runtime em asm puro (sem C), `NativeRiscv64E2ETest 4/4` via qemu
+  (`NATIVE002` parcial); aarch64 segue placeholder.
+
+- **Bug-hunt 02/09 — 9 bugs documentados para o próximo agente** em
+  `docs/known-bugs.md` (reprodução + causa provável + arquivos): compound
+  assignment `-=`/`/=`/`%=` (resultado errado, JVM+Native), `s += "x"` em loop
+  (crash do compilador), `switch` de String (bytecode inválido), cast FP→Int,
+  sufixo numérico maiúsculo `42L`/`1.5F`, `listOf<String?>()` (não parseia),
+  tipo de função em generic (`listOf<(Int) -> Int>()`), `throw` não-String,
+  captura mutável Native.
+
+- **Noite 03/09 — 14 bugs corrigidos** (todos com teste de regressão que
+  falhava antes/passa depois; `known-bugs.md` atualizado a cada fix):
+  1. `throw <não-String>` → SEM026 (try/catch agora passa por análise
+     semântica — antes corpos de try eram ignorados)
+  2. compound `-=`/`/=`/`%=` (ordem dos operandos invertida)
+  3. `s += "x"` em loop (RHS empurrado duas vezes → crash de frame)
+  4. `switch` de String no JVM (usava SUB em vez de igualdade de conteúdo)
+  5. cast FP→Int/Long (novos ops D2I/F2I/D2L/F2L nos 3 backends)
+  6. sufixos numéricos maiúsculos `42L`/`1.5F` (lexer)
+  7. `listOf<String?>()` não parseia (lookahead de call genérico)
+  10. `!` NOT como valor (fold usava `~i` bitwise)
+  13. `(x as Int) + 1` crashava (flattening de cadeia incluía `as`)
+  14. `Map.size`/`Set.size` propriedade (NoSuchFieldError)
+  17. array `.get()/.set()` → SEM028 (API é `arr[i]`)
+  22. Native: construtor de classe importada (mangle com package)
+  24. `Float f = 3.4` (D2F no widening)
+  25. literal Long fora do range (PARSE084 em vez de crash)
+  Suíte subiu de 840 → **854**; zero regressão (Congelamento de comportamento).
+
+### Corpus / docs
+
+- `training/datasets/kof-idioms.json` atualizado para 0.2.6-beta (17 → 20
+  entradas; `;` estilo Java removido; kof-004 separa ausência vs erro).
+- `AGENTS.md` corrigido: forma nullable padrão `String? s = null`; `spawn`
+  fire-and-forget sozinho é válido.
+- `docs/philosophy.md`: propostas futuras (`config {}`, `name: required`)
+  marcadas como tal; `route GET` substituído pela API implementada.
+- `docs/backend-parity.md`: gap `STR001` (length UTF-8 vs UTF-16) e
+  `STR002` (io) documentados; `docs/stdlib/IO.md` e `training/language/io.md`
+  refletem o novo contrato.
+
 ## [0.1.0] - 2026-08-25
 
 Primeira release estável da plataforma base — P0 (ecossistema) e P1

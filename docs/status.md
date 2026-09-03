@@ -9,7 +9,7 @@
 
 ``` 
 mvn clean package    → PASSA
-mvn test             → 814 testes 797 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 854 testes 837 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas (03/09 pós-merge HTTP002/MySQL)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -26,6 +26,24 @@ tests/run-golden.sh  → 16/16 (8 casos × jvm+native)
 tests/run-integration.sh → 9/9 (CLI + serve + kof test)
 scripts/package.sh   → PASS (layout dist + tar.gz/zip + SHA256SUMS + jars)
 ```
+
+---
+
+## 02/09 — Revisão da filosofia idiomática
+
+- **`Set<T>` como tipo declarado no JVM**: descriptor `kof.Set` → `java/util/HashSet`
+  (`NoClassDefFoundError: kof/Set` fechado); parser de membros de classe com
+  retorno genérico (`Set<Int> foo()`, `List<String> bar()`).
+- **Null-safety narrowing no JVM corrigido**: `if (s != null) { s.length }` /
+  `s.substring(...)` emitiam `getfield "?".length`/`"".substring` (bytecode
+  inválido); `if (x != null)` usava `if_icmp*` em referência. `mapOf(k1,v1,...)`
+  infere o tipo do primeiro par. Forma prefixada `String? s = null` passa a
+  parsear.
+- **stdlib honesta**: `File.readText`/`readFile` → `String?` (Native devolve
+  `null` em vez de encerrar); `File.size()` lança em vez do sentinela `-1`;
+  `Map.get` → `V?` para valores de referência; `readLine()` → `String?`
+  (`null` no EOF, JVM e Native).
+- Ver `CHANGELOG.md` [0.2.6-beta] 02/09 e `docs/backend-parity.md`.
 
 ---
 
@@ -264,7 +282,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
 | kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep/**interval** — reusa o scheduler, SCHED001) | ✅ (now/sleep/**interval** — fila cooperativa bombeada por `time.sleep` no GraalJS; `setInterval` no browser/Node, TIME001 fechado 02/09) |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
-| kof.http (`http.get/post/put/delete/status` + `timeout/retry/circuit`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop; 30/08 retry/circuit paridade) |
+| kof.http (`http.get/post/put/delete/status` + `timeout/retry/circuit`) | ✅ | ✅ **HTTP002 fechado 03/09** (`NativeHttpRuntime` — HTTP/1.1 asm: socket/parse/status/body; IPv4 literal, https→throw) | ✅ (27/08 JS via `Java HttpClient` interop; 30/08 retry/circuit paridade) |
 | kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
 | kof.mq (publish/subscribe/queue) | ✅ | ✅ (01/09, pub/sub + filas in-process, asm) | ✅ |
 | kof.log (`log.info/warn/error/debug`) | ✅ | ✅ (asm; UTC, sem JSON) | LOG001 |
@@ -468,7 +486,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (814 = 797 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 03/09, suíte completa verde)
+## Testes (854 = 837 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 03/09 pós-merge HTTP002/MySQL/riscv; suíte completa verde, só KofMediaE2ETest falha por hardware de mic ausente)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -480,7 +498,8 @@ main() { /* ignorado pelo kof test */ }
 | OptimizerTest | 21 | passes de otimização da IR |
 | KofOrmE2ETest | 22 | kof.orm: entity, CRUD, where (+ORM003 validação de coluna tipada, P3-10), **Query DSL `User.query(db){ where; orderBy; limit }` (nível 3, ORM001)**, migrate, unique, MongoDB (3 skips condicional) |
 | KofConcurrency2Test | 18 | spawn stmt/expr, selectAny, cancel/cancelled, done/poll, awaitTimeout, channel (+`Channel<T>` como parâmetro de função, 3 targets) |
-| IoE2ETest | 15 | kof.io multiplatform |
+| IoE2ETest | 16 | kof.io multiplatform (+ `readText`/`size` contratos honestos 02/09) |
+
 | ComponentCoreE2ETest | 14 | kof.ui Component: view/onMount/onDispose |
 | CoreRegressionE2ETest | 14 | regressões de uso real (BOM, toInt, ARITH001...) |
 | JsonE2ETest | 14 | JSON JVM + Native |
@@ -505,7 +524,7 @@ main() { /* ignorado pelo kof test */ }
 | KofWebSseE2ETest | 7 | SSE: sse.send/event/close (sockets reais) |
 | KofWsFrameTest | 7 | frame codec RFC 6455: máscara, limites, ping/pong |
 | NativeLogE2ETest | 7 | kof.log Native (asm): níveis, stderr, formato civil, off |
-| IdiomaticCoreE2ETest | 6 | field initializers, \uXXXX, listOf<T>() |
+| IdiomaticCoreE2ETest | 6 | field initializers, \u810810, listOf<T>() |
 | PackagesE2ETest | 6 | pacotes/módulos multi-arquivo (import a.b.C + moduleRoot do LCA, P1-4) |
 | AssertE2ETest | 5 | assert JVM + Native |
 | FloatingPointGapE2ETest | 5 | FP XMM: encode/decode/arrays (FLT001) |
@@ -528,7 +547,9 @@ main() { /* ignorado pelo kof test */ }
 | KofJsSourceMapTest | 1 | **source map V3 do KofJS** (mappings VLQ reais, nível de linha: função gerada → linha Kof via `KofDebugInfo`; antes era stub `"mappings":""`) |
 | ConfigGenTest | 3 | kof config gen: template kof.config do código |
 | KofHttpResilienceE2ETest | 3 | kof.http timeout/retry/circuit (JVM + JS paridade) |
-| KofMapSetTest | 4 | Map/Set 3 targets (asm próprio no Native) + `Set<T>`/`Map<K,V>` como campo/retorno de classe (JVM: `NoClassDefFoundError` → `HashSet`/`HashMap`; parse de método de classe c/ retorno genérico) |
+| KofMapSetTest | 10 | Map/Set 3 targets (asm próprio no Native) + `Set<T>`/`Map<K,V>` como campo/retorno de classe (JVM: `NoClassDefFoundError` → `HashSet`/`HashMap`; parse de método de classe c/ retorno genérico) + `Map.get` → `V?` (02/09) |
+ | KofObservabilityTest | 5 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS; Native histogram = gap OBS002) |
+
 | KofSecurityG9Test | 3 | web security: rateLimit/session/apiKey |
 | KofValidationTest | 3 | 13 predicados de validação (3 targets) |
 | TetrisEasterEggTest | 3 | registro easter egg oculto |
@@ -542,13 +563,14 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
-   | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core 02/09) |
-   | NativeAarch64E2ETest | 13 | **aarch64 real (qemu)**: runtime em **asm puro** via tradução riscv→aarch64 (`translateRiscvToAarch64`), raw syscalls — mesmo core do riscv64; 13/13 (NATIVE002 core 03/09) |
-   | **Total kof-compiler** | **797** | |
-  | kof-script | 8 | KofScriptGlobals / repl / --watch |
-  | kof-c-compiler | 5 | KofC C subset → ELF |
-  | kof-cli | 4 | LSP references + rename (mock) |
-  | **Total** | **801** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+| NullSafetyE2ETest | 7 | `String?` narrowing JVM + readLine EOF null (02/09) |
+ | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core 02/09) |
+ | NativeAarch64E2ETest | 13 | **aarch64 real (qemu)**: runtime em **asm puro** via tradução riscv→aarch64 (`translateRiscvToAarch64`), raw syscalls — mesmo core do riscv64; 13/13 (NATIVE002 core 03/09) |
+ | **Total kof-compiler** | **823** | |
+ | kof-script | 8 | KofScriptGlobals / repl / --watch |
+ | kof-c-compiler | 5 | KofC C subset → ELF |
+ | kof-cli | 4 | LSP references + rename (mock) |
+ | **Total** | **840** (+31 skips condicionais: Mongo/MySQL/Postgres, windows/mac; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
@@ -561,7 +583,7 @@ plataforma vazando para a linguagem.
 | `this` não obrigatório | ✅ |
 | Field initializers aplicados no construtor | ✅ (0.0.5) |
 | Resolução de métodos independente da ordem textual | ✅ |
-| Escapes `\n` `\t` `\r` `\uXXXX` | ✅ (0.0.5) |
+| Escapes `\n` `\t` `\r` `\u810810` | ✅ (0.0.5) |
 | `listOf<T>()` vazio preserva o tipo | ✅ (0.0.5) |
 | `List<User>` + for-in tipado | ✅ |
 | `++`/`--` em campos | ✅ |
@@ -603,7 +625,17 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 ## Bugs Restantes (reais)
 
-1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
+> **Lista completa com reprodução + correção sugerida: `docs/known-bugs.md`**
+> (23+ bugs verificados 02/09 — rodada 3 de usuários: kof-ui reutiliza ID de
+> widget após remove, lambda→lambda e lambda-em-lista invocados quebram, PKG005
+> rejeita nomes iguais em pacotes diferentes, Native perde construtor de
+> classe de outro pacote (undefined reference), ExternalClasspath não resolve
+> superclasse fora dos entries).
+
+1. ~~GC automático no Native~~ — ✅ sweep real 03/09 (`kof_gc_sweep` fechado);
+   **auto-collect pendente**: safe-points exigidos (chamar de dentro de
+   `kof_alloc` sem mapa de raízes = double-free). `kof_gc_collect_now`
+   disponível pra uso explícito futuro
 2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito + `done`/`poll`/`cancel`/`cancelled`/`selectAny` (cancel cooperativo por TID + selectAny polling 1ms; `SemanticAnalyzer` desambigua `cancel(Handle<T>)→Bool` vs `scheduler.cancel(String)→VOID`)
    - ✅ ~~bug pré-existente SEPARADO: `spawn→await→spawn` SIGSEGV no 2º `pthread_create`~~ — **resolvido 01/09**: mesmo mecanismo do println-antes-do-spawn. O site do `call pthread_create` exige `rsp ≡ 0 (mod 16)` pela ABI SysV; após `pthread_join` (do `await`) a stack chegava 8 bytes desalinhada e a glibc segfaultava em `pthread_attr_copy`. Alinhamento de stack no C call (`andq $-16, %rsp` em `kof_spawn_handle_new`, preservando `r15` + frame do caller). `SpawnE2ETest.nativeSpawnAwaitSpawnDoesNotSegfault` (sem o fix: SIGSEGV 3/3; com: ok 3/3). **Nota**: alinhamento já tinha sido auditado "conforme ABI" e descartado como causa numa sessão anterior — a medição agora crava que o site do `call pthread_create` efetivamente chegava desalinhado nos casos com output/join antes do spawn.
 3. ~~JSON de objetos/records no Native: JSN002~~ — ✅ fechado (composição compile-time)
@@ -621,14 +653,16 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 14. ~~Módulos multi-arquivo imports perdidos em projetos grandes~~ — ✅ 27/08 `CompilerDriver.java:243` `import a.b.C` file import `+` `a.b` dir import, `largeproj` `a/b/C.kf` `decls=2` `Main.class+a/b/C.class` ok
 15. ~~`List.get` native~~ — ✅ verificado `listOf(1,2,3).get(1) → 2` nativo `kof_list_get` bounds OK (caso `List.of` era `listOf`)
 16. Web: status codes/headers customizados por handler: ✅ `kof.web.status(201, body)` + `headerSet("X","y")` em `KofWeb.java:107` + `JvmWebRuntime.java:22` `KOF_WEB_STATUS/HEADERS` + `JvmRuntime.java:489` `kof_web_dispatch` `+wired` `kof_web_build` headers `+wired` `status_text 201 Created 202 Accepted` `JVM: 201/hellox 202/value` `KofWebE2ETest 9/9` (27/08)
-17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS (`Java HttpClient`), Native HTTP002
-18. ~~MySQL/MariaDB no Native: wire protocol~~ — ✅ 31/08: handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset (coldefs/rows/EOF) + **binds `?`** — e ✅ 03/09: **prepared statements binários (COM_STMT_PREPARE/EXECUTE)** reais. `kof_db_mysql_prepare`/`kof_db_mysql_exec`/`kof_db_mysql_prep_query` em `NativeDbPrepared.java` (módulo novo, ≤500 linhas): PREPARE (0x16) → OK + drena metadata (params coldefs + EOF, cols coldefs + EOF, capturando name+type), EXECUTE (0x17, null-bitmap + type pairs + valores crus Int 4B/8B, strings lenenc); parse de binary-rows no resultset. `db.execute`/`db.query` com binds usam o binário; fallback COM_QUERY substituição só se PREPARE falhar. Binds com aspas/SQL-injection intactos (sem escape manual). Validado contra MySQL 8.0 real (127.0.0.1:13306), strace confirma 0x16/0x17 na wire. `KofDbE2ETest` 12/12 (+ `nativeMysqlPreparedBinary`). **Nota 01/09**: tentativa de COM_STMT_PREPARE/EXECUTE em assembly (protocolo binário: PREPARE OK → skip coldefs/paramdefs/EOF → EXECUTE com nullmap/types/values) foi revertida — o packet EXECUTE saía malformado (servidor não respondia; hang no socket read) e era otimização de wire sem benefício funcional (binds `?` já funcionam via COM_QUERY). Continua gap documentado.
+17. Web: `kof.web` nativo sem servidor (P2) — `kof.http` ✅ JVM+JS+**Native 03/09** (HTTP/1.1 asm, `NativeHttpRuntime`); kof.web server separado → WEB002
+18. ~~MySQL/MariaDB no Native: wire protocol~~ — ✅ 31/08: handshake + scramble SHA-1 + auth-switch + COM_QUERY + resultset (coldefs/rows/EOF) + **binds `?`** — e ✅ 03/09: **prepared statements binários (COM_STMT_PREPARE/EXECUTE)** reais. `kof_db_mysql_prepare`/`kof_db_mysql_exec`/`kof_db_mysql_prep_query` em `NativeDbPrepared.java` (módulo novo, ≤500 linhas): PREPARE (0x16) → OK + drena metadata (params coldefs + EOF, cols coldefs + EOF, capturando name+type), EXECUTE (0x17, null-bitmap + type pairs + valores crus Int 4B/8B, strings lenenc); parse de binary-rows no resultset. `db.execute`/`db.query` com binds usam o binário; fallback COM_QUERY substituição só se PREPARE falhar. Binds com aspas/SQL-injection intactos (sem escape manual). Validado contra MySQL 8.0 real (127.0.0.1:13306), strace confirma 0x16/0x17 na wire. `KofDbE2ETest` 12/12 (+ `nativeMysqlPreparedBinary`). (01/09 reverso; 03/09 resolvido com `NativeDbPrepared.java` ≤500 linhas).
 19. ~~`kof_sec_secret_get` no Native~~ — ✅ resolvido: reescrito no padrão linear dos demais; segfault e fragmentos errados eliminados.
 20. ~~Ponto flutuante no Native~~ — ✅ FLT001 fechado: FP é XMM real (`vcvtsi2sd`, `mulsd`); dtoa via snprintf alinhado; `kof_string_to_double` parse completo (fração+expoente).
 21. ~~idem~~
 22. riscv64/aarch64 **core completo** — ✅ **02/09 riscv64 + 03/09 aarch64 reais**: `Target.NATIVE_RISCV64`/`NATIVE_AARCH64` + CLI `native.risc`/`native.arm` + dispatch + **lowering real** (stack machine: riscv64 `sp`/`s11`/`ra`, aarch64 `sp`/`x29`/`x30` via tradução linha-a-linha) + **runtime em asm puro** (raw syscalls `write` 64 / `exit` 93, bump allocator, sem C — binários estáticos via `as`+`ld`; Kof é Kof) + qemu; `NativeRiscv64E2ETest 13/13` + `NativeAarch64E2ETest 13/13` (core: println String/Int, var, if/else, aritmética, classes virtual/fields, arrays, List, switch, try/catch/throw, pattern matching, String methods, recursão). **Restante do NATIVE002**: paridade total x86 (JSON/DB/HTTP/concorrência/UI/net) nos dois. **Estado real + como finalizar: `docs/native-multiarch.md`** (gap `NATIVE002`)
 23. ~~`kof.cache` nativo: segfault em `set_ttl` (index `%rax` clobberado) + `get/ttl` (exp em `%rdi` clobberado) + `println(null)` segfault~~ — ✅ 30/08: registradores preservados (`%r14/%r13/%r15`), branch `jle` de expiração corrigido, `kof_print_string` guarda null, `find_slot` sobrescreve chave existente; `KofCacheE2ETest 5/5 x3 targets`
 24. ~~`spawn`-statement (fire-and-forget) no Native não era juntado~~ — ✅ 01/09: o `kof_spawn` (stmt) criava a thread mas **não registrava** o handle na lista que `kof_spawn_join_all` percorre; e `join_all` só era emitido no bloco `!endsWithReturn`, que nunca roda para o main (o driver sempre fecha o main com `KofReturnVoid` → `endsWithReturn`). Resultado: o processo saía antes do worker imprimir. Fix: `kof_spawn` agora delega a `kof_spawn_result` (registra o handle) e `join_all` é emitido no **epílogo do return** de main (idempotente — limpa a lista). `SpawnE2ETest 4/4`
+25. **`throw <não-String>` / `catch <não-String>` gera bytecode inválido no JVM** (documentado 02/09) — `throw 42` compila mas o `.class` falha no load (`ClassFormatError`, disfarçado de "JavaFX launcher error"). Exceções são Strings; o compilador deveria **rejeitar** `throw <não-String>` em compile-time. Reprodução + arquivos prováveis em **`docs/known-bugs.md` #1**.
+26. **Captura mutável no Native: ler variável boxeada DENTRO da lambda após mutação EXTERNA produz lixo** (documentado 02/09) — `var f = (x) -> x + offset; offset = 20; f(5)` retorna ponteiro/offset no Native (JVM correto). A direção "lambda escreve" funciona. `NativeBackend.resolveFieldOffset` resolve o layout do box contra a classe da lambda (fallback HEADER_SIZE). Reprodução + arquivos em **`docs/known-bugs.md` #2**.
 
 ---
 
@@ -671,7 +705,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - `kof.web` — rotas e middleware (JVM); WebSocket RFC 6455 + SSE nativo (JVM, 0.2.6-beta); TLS/HTTPS `web.listenSecure` (JVM)
 - `kof.db` — JDBC + SQLite nativo; `kof.orm` — entity, CRUD, migrate, MongoDB (JVM)
 - `kof.log` nativo; `kof.config` (arquivo > env > profile, tipado, `${key}`, 3 targets); `kof.mq` pub/sub (JVM)
-- cliente HTTP (JVM) + JS via `Java HttpClient` interop (HTTP002 JS fechado) + retry/circuit (3 targets, 30/08)
+- cliente HTTP (JVM) + JS via `Java HttpClient` interop + **Native 03/09** (`NativeHttpRuntime.java` — HTTP/1.1 asm: parse URL, socket+connect, request parse, status; https throw; DNS↦127.0.0.1 fallback) + retry/circuit (3 targets, 30/08)
 - `kof.security` v1 (JVM/Native/JS); web security G9 — rateLimit, sessões, API keys (3 targets)
 - `kof.validation` (13 predicados, 3 targets); `kof.observability` (health/métricas/request IDs, 3 targets); `kof.ui` widgets com render KofJS
 - `kof.process` execução de processos externos; `process.spawn` stdin/stdout vivos (F10, JVM/JS)
@@ -682,7 +716,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - otimizador de IR sempre ativo; pattern matching (switch com tipos + destructuring, 3 targets); null safety básica (`String?`, 3 targets); higher-order em coleções (map/filter/reduce, 3 targets); módulos multi-arquivo (`import a.b.C`)
 - KofScript — top-level let/const (`KofScriptGlobals`, repl, `--watch`); KofC compiler — C subset → ELF x86_64 (`kof c`)
 - LSP com hover/completion + diagnostics reais; widening de return
-- Native GC — free-list `kof_free_head` (reuso mmap, 27/08); `kof_gc_collect` mark-sweep emitido (auto-GC desligado após hang — memória devolvida só no `munmap` fallback; ver "Bugs Restantes" #1)
+- Native GC — ✅ mark-sweep 03/09 (`kof_gc_mark` fecha o grafo, `kof_gc_sweep` libera para free-list com bit1 flag; `kof_alloc` coleta na exaustão); ver `KofGcE2ETest`
 - Ponto flutuante real no Native (FLT001 fechado 31/08 — XMM); JSON objetos/records no Native (JSN002 fechado) + arrays FP (JSN001/003)
 - releases multiplataforma (2 jobs: `test-and-bump` → `package-and-release`; linux-x86_64 / macos-arm64 / windows-x86_64)
 

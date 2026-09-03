@@ -1,7 +1,7 @@
 # Plano de Ação — Kof como Plataforma Completa de Desenvolvimento
 
-**Data:** 31 de agosto de 2026
-**Base:** estado real 0.2.6-beta (747 testes: 734 kof-compiler +8 kof-script +5 kof-c-compiler, 7 targets: jvm stable, native x86_64 stable (free-list, pthread spawn 31/08, FP XMM), native.risc/native.arm (toolchain + qemu, codegen x86_64 placeholder), js alpha GraalJS (kof.http + retry/circuit), kofc native-only, android Fase 1; pattern matching + null safety básica; KofScriptGlobals; JSON completo nos 3 targets; web ws/sse JVM)
+**Data:** 2 de setembro de 2026
+**Base:** estado real 0.2.6-beta (810 testes: 793 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 7 targets: jvm stable, native x86_64 stable (free-list, pthread spawn 31/08, FP XMM), native.risc/native.arm (toolchain + qemu, codegen x86_64 placeholder), js alpha GraalJS (kof.http + retry/circuit), kofc native-only, android Fase 1; pattern matching + null safety básica; KofScriptGlobals; JSON completo nos 3 targets; web ws/sse JVM)
 **Versão:** 0.2.6-beta
 **Filosofia:** [docs/philosophy.md](philosophy.md) · Auditoria: [docs/ecosystem-coverage.md](ecosystem-coverage.md) · Visão: [docs/roadmap.md](roadmap.md) · Status: [docs/status.md](status.md)
 
@@ -46,7 +46,7 @@ Seguir `docs/performance.md` §40-§41. Resumo operacional:
 | stdlib | `web.app()` (rotas/middleware + **WebSocket/SSE JVM** 30/08 + `status`/`headerSet` 27/08), `kof.io`, `kof.time` (scheduler `every` JVM+JS), `kof.cache` (3 targets, 30/08), `kof.config` (JVM+Native asm), `kof.log` (JVM+Native asm), `kof.security` v1+G9+G10 (3 targets), `kof.db` (JDBC + SQLite nativo `.so` + MySQL wire WIP), `kof.orm` (entity, CRUD, where com operadores, saveAll, page, migrate, MongoDB), `kof.process`, `kof.ui` (KofJS/webview + **Fase 7 Router** JS), `kof.http` (JVM+JS + **retry/circuit** 30/08), JSON completo (3 targets, 31/08), `List map/filter/reduce` |
 | Tooling | 18 comandos (build/run/serve/check/test/script/repl/c/**fmt**/config/bench/profile/inspect/debug/info/lsp/install/version — `fmt` + `config gen` 31/08), debug (DAP MVP), `kof script --watch` (SIGPIPE fix), packaging multiplataforma (`scripts/package.sh` PASS), CI `release.yml` **2 jobs × 3 plataformas**, golden 16/16, integration 9/9 |
 | Corpus | `docs/` (0.2.6-beta), `learn/` (38 capítulos), `training/` |
-| Build | `mvn clean package` PASS, `mvn test` 747 (734+8+5), `VERSION` 0.2.6-beta |
+| Build | `mvn clean package` PASS, `mvn test` 810 (793+8+5+4), `VERSION` 0.2.6-beta |
 
 ---
 
@@ -61,7 +61,7 @@ Tudo o resto depende disso. Pequeno, alto valor.
 | ✅ JSON Native *(31/08)* | JSN003 (arrays `Int/Long/Bool/String[]`), JSN002 (objetos/records por composição em compile-time) e JSN001 (Float/Double + `Double[]`/`Float[]`, XMM) fechados | parity JSON total JVM×Native ✅ |
 | ✅ Config/Log Native *(LOG001 ✅ 0.0.14; CONFIG001 ✅ 0.1.0)* | `kof.log`/`kof.config` Native completo (asm, free-list 27/08) | LOG001 ✅; CONFIG001 ✅ |
 | ✅ 0.2.6-beta target separation | `Target.NATIVE_RISCV64/AARCH64` + `parseTarget native.risc/native.arm` | toolchain `riscv64-linux-gnu-as`/`aarch64-linux-gnu-as` + qemu; codegen ainda x86_64 placeholder |
-| ✅ 0.2.6-beta GC + MySQL + Bugs | free-list `kof_free_head` (reuso mmap; mark-sweep pendente), MySQL wire protocol WIP (scramble SHA-1 + `user:pass@`), large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, SIGPIPE Windows | `mvn test` 747, `VERSION` 0.2.6-beta |
+| ✅ 0.2.6-beta GC + MySQL + Bugs | free-list `kof_free_head` (reuso mmap; mark-sweep pendente), MySQL wire protocol WIP (scramble SHA-1 + `user:pass@`), large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, SIGPIPE Windows | `mvn test` 810, `VERSION` 0.2.6-beta |
 | ✅ 0.2.6-beta spawn Native *(31/08)* | `pthread_create` + trampoline + `pthread_join` + allocator thread-safe (futex) — CONC001; FP real em XMM — FLT001 | `SpawnE2ETest` + `NativeE2ETest` 50/50 |
 | Processo doc | checklist DoD-doc no PR template; `status.md` regenerado por release (27/08 0.2.0) | docs nunca mais defasam 9 versões |
 

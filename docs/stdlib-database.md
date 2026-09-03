@@ -1,7 +1,7 @@
 # stdlib database — Banco de Dados Nativo do Kof
 
-**Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (747 testes)
+**Última atualização:** 2 de setembro de 2026
+**Versão:** 0.2.6-beta (810 testes)
 **Status:** implementado (Fase 5 do plano de independência do Spring) — JVM (JDBC) + Native (SQLite via `.so` direto + MySQL wire protocol WIP) + `kof.orm` (JVM + MongoDB); JS `DB001`
 
 ---

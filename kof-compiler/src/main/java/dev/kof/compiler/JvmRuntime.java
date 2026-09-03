@@ -2354,7 +2354,9 @@ static boolean hasRuntimeFn(String methodName) {
                     try {
                         return java.nio.file.Files.size(p(path));
                     } catch (java.io.IOException e) {
-                        return -1;
+                        // sentinela -1 era um anti-pattern do próprio corpus: erro é
+                        // exceção recuperável (catch (String e)), nunca valor de dados.
+                        throw new RuntimeException("file not found: " + path);
                     }
                 }
 

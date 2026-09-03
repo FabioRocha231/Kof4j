@@ -64,7 +64,7 @@ main() {
     var pares = nums.filter((x: Int) -> x % 2 == 0)     // [2,4]
     println(pares.size())                          // 2
 
-    var soma = nums.reduce(0, (acc: Int, x: Int) -> acc + x) // 15
+    var soma = nums.reduce((acc: Int, x: Int) -> acc + x, 0) // 15
     println(soma)
 
     // encadeando:
@@ -114,6 +114,12 @@ estoque.put("parafuso", 500)
 assert(estoque.get("parafuso") == 500)   // comparação numérica direta
 ```
 
+> **Cuidado (02/09):** `get`/`remove`/`put` de um `Map<K, primitivo>` devolvem
+> `V` (não-nullable), mas a **ausência** da chave é `null` em runtime → NPE ao
+> desembrulhar. Para valores de referência (`Map<String, String>`) `get`
+> devolve `V?` (use `if (v != null)`). Para primitivos, cheque com
+> `contains`/`containsKey` antes.
+
 ## Set — valores únicos
 
 `Set<T>` rejeita duplicatas: `add` devolve `true` só quando o elemento é
@@ -144,9 +150,10 @@ println(tags.size())   // 1
 
 ```kf
 main() {
-    var resp = http.get("https://api.example.com/users")
-    if (http.status(resp) == 200) {
-        var users = json.decode<List<User>>(http.body(resp))
+    var url = "https://api.example.com/users"
+    var resp = http.get(url)                 // resp é o corpo (String)
+    if (http.status(url) == 200) {
+        var users = json.decode<List<User>>(resp)
         var ativos = users.filter((u: User) -> u.age > 18)
         println(ativos.map((u: User) -> u.name).get(0))
     }

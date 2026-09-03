@@ -1,7 +1,7 @@
 # KOF SECURITY — ARQUITETURA + PLANO DE IMPLEMENTAÇÃO
 
-**Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (747 testes; `VERSION` 0.2.6-beta)
+**Última atualização:** 2 de setembro de 2026
+**Versão:** 0.2.6-beta (810 testes; `VERSION` 0.2.6-beta)
 > Estado baseado em auditoria real do repositório (31/ago/2026, 0.2.6-beta — free-list + riscv64 + pattern matching + `String?` + `kof.http` JVM+JS + retry/circuit + `kof.security` native crypto completo: PBKDF2/SHA-512/AES-GCM/JWT em asm).
 > Obrigações do módulo: **não copiar Spring**, **security by default**,
 > **zero ceremony**, **multi-target honesto** (JVM/Native/JS) e **nunca

@@ -29,11 +29,11 @@ No Windows o separador é `\`; o código Kof nunca concatena separadores.
 |----------|-----------|
 | `exists()` | Bool |
 | `isFile()` / `isDirectory()` | Bool |
-| `readText()` | String UTF-8, `null` se falhar |
+| `readText()` | `String?` — `null` se falhar (JVM e Native) |
 | `writeText(s)` / `appendText(s)` | Bool, UTF-8 |
 | `readBytes()` | `Int[]` (0-255), `null` se falhar |
 | `writeBytes(b)` / `appendBytes(b)` | Bool |
-| `size()` | Long, `-1` se não existir |
+| `size()` | Long; lança exceção se o arquivo não existe (02/09 — sem sentinela `-1`) |
 | `delete()` | Bool (arquivo ou diretório vazio) |
 | `name()` / `path()` | String |
 
@@ -75,9 +75,10 @@ println(path.size())
 ## Erros e encoding
 
 - Texto: UTF-8 sempre.
-- Leituras com falha: `null` (JVM). Native: `readText` de arquivo
-  inexistente encerra com erro — use `exists()` antes.
-- Booleanas: `true`/`false`. `size()`: `-1` quando não existe.
+- Ausência como valor (02/09): `readText()`/`readFile()` devolvem `String?`
+  (`null` para arquivo inexistente) em JVM e Native; `size()` lança exceção
+  recuperável (`catch (String e)`) — o `-1` sentinela foi removido.
+- Booleanas: `true`/`false`. `size()` lança exceção quando o arquivo não existe (sem `-1`).
 
 ## Referência
 

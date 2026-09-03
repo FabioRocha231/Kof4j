@@ -830,4 +830,48 @@ class NativeE2ETest {
             """);
         runNative(source, tempDir.resolve("out"), "oi");
     }
+
+    // known-bugs #22 — native: constructor call to a class from ANOTHER
+    // package produced `undefined reference to 'C_init_0'` (call site used the
+    // simple name; the definition uses the internal name com_acme_C_init_0).
+    @Test
+    void nativeConstructorFromImportedPackage(@TempDir Path tempDir) throws IOException {
+        Path src = tempDir.resolve("src");
+        Files.createDirectories(src.resolve("com/acme"));
+        Files.writeString(src.resolve("Main.kf"), """
+                import com.acme.C
+
+                main() {
+                    var c = C()
+                    println(c.msg())
+                }
+                """);
+        Files.writeString(src.resolve("com/acme/C.kf"), """
+                package com.acme
+
+                class C {
+                    String msg() { return "de C" }
+                }
+                """);
+        Path outDir = tempDir.resolve("out");
+        // coletado como o CLI (`collect` não-recursivo): só o Main.kf na raiz;
+        // o import com.acme.C puxa com/acme/C.kf via moduleRoot.
+        CompilationResult result = driver.compileSources(
+                java.util.List.of(src.resolve("Main.kf")),
+                outDir, Target.NATIVE, src);
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics().getDiagnostics());
+        Path binFile = outDir.resolve("Default/Main");
+        assertTrue(Files.exists(binFile), "Binary should exist");
+        try {
+            ProcessBuilder pb = new ProcessBuilder(binFile.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\r\n", "\n").trim();
+            assertEquals(0, p.waitFor(), "Exit code, output: '" + output + "'");
+            assertEquals("de C", output, "Unexpected output");
+        } catch (InterruptedException e) {
+            throw new IOException("Interrupted", e);
+        }
+    }
 }

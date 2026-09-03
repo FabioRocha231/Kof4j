@@ -1,6 +1,6 @@
 # Database Vision — Persistência como Parte da Linguagem
 
-**Última atualização:** 31 de agosto de 2026
+**Última atualização:** 2 de setembro de 2026
 **Versão:** 0.2.6-beta
 **Status:** Nível 0-2 e 4 implementados (`kof.db` + `kof.orm`, 0.2.6-beta):
 `entity` (schema na linguagem), `orm.create/save/saveAll/find/all/where/
@@ -10,7 +10,7 @@ versionadas) + **MongoDB**; SQLite nativo via `libsqlite3.so.0` direto
 (roundtrip E2E real); MySQL/MariaDB nativo via wire protocol em progresso
 (auth scramble SHA-1 `kof_db_mysql_scramble` + `lenenc` + parse `user:pass@`
 done; handshake completo/query/prepared pendentes); `VERSION` 0.2.6-beta;
-build 747 testes.
+build 810 testes.
 
 ---
 

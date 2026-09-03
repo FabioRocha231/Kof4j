@@ -1,6 +1,6 @@
 # Estado Atual do Projeto Kof
 
-**Última atualização:** 31 de agosto de 2026
+**Última atualização:** 2 de setembro de 2026
 **Versão:** 0.2.6-beta
 
 ---
@@ -9,7 +9,7 @@
 
 Kof é uma linguagem compilada para múltiplos targets (JVM, Native, Web, Script).
 
-O projeto possui um **frontend completo** (lexer + parser + AST + symbol table + semantic + type checking), uma **IR backend-agnóstica** e **três backends funcionais**: JVM (bytecode via ASM), Native (ELF x86-64, syscalls, sem libc obrigatória) e KofJS (ES Modules na engine GraalJS embarcada).
+O projeto possui um **frontend completo** (lexer + parser + AST + symbol table + semantic + type checking), uma **IR backend-agnóstica** e **sete targets**: JVM (bytecode via ASM), Native (ELF x86-64, syscalls, sem libc obrigatória), Native riscv64/aarch64 (toolchain + qemu), KofJS (ES Modules na engine GraalJS embarcada), KofScript (REPL), KofC (C subset → ELF) e Android (Fase 1).
 
 **Fases C, D, E CONCLUÍDAS**: Type System, IR generalizada, NativeBackend ELF.
 
@@ -19,7 +19,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 
 **Plataforma 0.0.7-0.1.0 (25/08)**: kof.ui (widgets + webview nativo via KofJS), kof.db (JDBC idiomático JVM + SQLite nativo via .so + MySQL wire protocol com `kof_db_mysql_scramble`), kof.orm (`entity` declarativo + CRUD/where/migrate + MongoDB), logging estruturado (JSON, correlation ID), JSON completo (Float/Double, arrays), conversões String→numérico, ARITH001, BOM UTF-8, generics `Box<T>` com `T` primitivo fixo (`NativeE2ETest` 50/50; `substituteTypeVariable` `CompilerDriver.java:3972`), `SEM025` sem falso-positivo em `hashCode/equals/toString`.
 
-**0.2.6-beta (27/08)**: Targets separados `native`/`native.risc`/`native.arm` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, Windows SIGPIPE; VERSION 0.2.6-beta; `mvn test` 747 (734+8+5), golden 16/16, integration 9/9.
+**0.2.6-beta (27/08)**: Targets separados `native`/`native.risc`/`native.arm` (`Target.java:1`); riscv64 toolchain `riscv64-linux-gnu-as` + `.option arch,rv64g` + `li a7 214/64/93`; Native free-list (`kof_free_head`) + `kof_gc_collect`; pattern matching `switch case String s` + record destructuring `Point(x,y)` em JVM/Native/JS; `String?` null safety básica; `KofScript` top-level `let` → `KofScriptGlobals`; `KofCcompiler` (`kof c`) C subset → ELF x86_64; `kof.http` JVM+JS (GraalJS `Java HttpClient`); `List map/filter/reduce`; bugs: large-project `import a.b.C` (`CompilerDriver.java:243`), `List.get`/`listOf`, Windows SIGPIPE; VERSION 0.2.6-beta; `mvn test` 810 (793+8+5+4), golden 16/16, integration 9/9.
 
 **0.2.6-beta (30-31/08)**: Native `spawn`/`await` real (`pthread_create` + trampoline + `pthread_join` + allocator thread-safe com futex — CONC001 fechado); FP real em XMM (`vcvtsi2sd`/`mulsd`, dtoa via `snprintf` — FLT001); JSON objetos/records + arrays no Native (Int/Long/Bool/String/Double — JSN001/JSN002/JSN003); SQLite nativo via `.so` direto; MySQL wire protocol em progresso (auth scramble SHA-1 + parse `user:pass@`); JVM `WebSocket` (`app.ws`, handshake RFC 6455 + frame codec com máscara) e `SSE` (`sse.send/event/close`) via `kof.web`; `kof.http` retry/circuit breaker JVM+JS (`KOF_HTTP_RETRIES`/`KOF_HTTP_TRIPS`/`KOF_HTTP_FAILURES`/`KOF_HTTP_OPEN_UNTIL`, janela 30s, fail-fast); `kof.cache` corrigido no Native (clobber de registradores `%rax`/`%rdi`); UI Fase 7 Router (`go/replace/back/forward/param/current/depth` — real em JS, no-op JVM); `KofRuntime.close` + descritores ws; `kof fmt` e `kof config gen` implementados; pipeline de release 2 jobs (`test-and-bump` → `package-and-release` com sanity de versão) × 3 plataformas.
 
@@ -30,7 +30,7 @@ O projeto possui um **frontend completo** (lexer + parser + AST + symbol table +
 | Verificação | Resultado |
 |-------------|-----------|
 | `mvn clean package` | ✅ PASSA |
-| `mvn test` | ✅ PASSA (747 testes: 734 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas); `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4, `KofCacheE2ETest` 5/5 (x3 targets), `KofWebWsE2ETest` 11/11, `KofWebSseE2ETest` 7/7 |
+| `mvn test` | ✅ PASSA (810 testes: 793 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas); `NativeE2ETest` 50/50, `JvmE2ETest` 29/29, `KofJsE2ETest` 35/35, `KofCCompilerTest` 5/5, `KofHttpE2ETest` 4/4, `KofCacheE2ETest` 5/5 (x3 targets), `KofWebWsE2ETest` 11/11, `KofWebSseE2ETest` 7/7 |
 | `kof build` | ✅ PASSA (`--target jvm|native|native.risc|native.arm|js` [--release]; `android` em Fase 1) |
 | `kof run` | ✅ PASSA (jvm|native|native.risc|native.arm|js) [--release] |
 | `kof serve` | ✅ PASSA (web.app() nativo + API legada handle()) |
@@ -85,11 +85,13 @@ class User(String name, Int age) {
 }
 ```
 
-O construtor primário gera campos, construtor e acesso dentro de métodos —
-sem `this.name = name`. `User(...)` e `new User(...)` são equivalentes
-(`new` é retrocompatível). Inicializadores de campo rodam em todos os
-construtores (JVM, Native, KofJS). Herança, virtual dispatch e interfaces
-funcionam.
+O construtor record-style (`class X(...)`) gera um **record** — componentes,
+construtor e accessors (`u.name()`); a leitura `u.name` também vira accessor;
+**escrita** `u.name = "x"` NÃO (imutável, verificado 02/09). Para estado
+mutável, use campos explícitos + `constructor(...)`. `User(...)` e
+`new User(...)` são equivalentes (`new` é retrocompatível). Inicializadores de
+campo rodam em todos os construtores (JVM, Native, KofJS). Herança, virtual
+dispatch e interfaces funcionam.
 
 ### JSON
 
@@ -311,8 +313,8 @@ handles no-ops.
 ### Backends
 - KofJS — alpha (GraalJS embarcado): `while(true)`, `try/finally`, `switch` pattern, `listOf map/filter/reduce`, `kof.http` via `Java HttpClient` (+ retry/circuit paridade JVM, 30/08), decode de objetos — parity JVM/Native/JS; UI via webview nativo; `spawn` sequencial (async real = CONC003)
 - KofScript — ✅ `KofScript` top-level `let` → `KofScriptGlobals` + REPL + `--watch` (Windows SIGPIPE fix 27/08)
-- KofC — ✅ `KofCcompiler` C subset native-only (`kof c`) → ELF x86_64 (while/if/deref `&`/`*(int*)`); riscv64/aarch64 placeholder
-- Native riscv64 — toolchain estável (`riscv64-linux-gnu-as`, `.option arch,rv64g`, `li a7 214/64/93`), codegen riscv64 ainda placeholder (x86_64 via qemu); aarch64 placeholder (target separation done)
+- KofC — ✅ `KofCcompiler` C subset native-only (`kof c`) → ELF x86_64 (while/if/deref `&`/`*(int*)`)
+- Native riscv64 — **codegen real (02/09)** — stack machine riscv64 + runtime em asm puro (raw syscalls, sem C), `NativeRiscv64E2ETest 4/4` via qemu (`NATIVE002` parcial); aarch64 placeholder (target separation done)
 
 ### Runtime
 - GC automático Native — free-list `kof_free_head` (reuso `mmap`, 27/08); GC mark-sweep pendente; auto-GC desativado após hang (memória devolvida só no `munmap` fallback)
@@ -351,7 +353,7 @@ Source (.kf)
   ↓ Optimizer
   ├── JVM Backend (ASM) → .class V21 (virtual threads, KofRuntime com web/ws/sse/cache)
   ├── Native Backend (x86-64, free-list + kof_gc_collect, pthread spawn, FP XMM)
-  ├── Native riscv64 (native.risc — toolchain + placeholder x86_64 via qemu)
+  ├── Native riscv64 (native.risc — codegen real 02/09, asm puro + qemu)
   ├── Native aarch64 (native.arm — toolchain + placeholder x86_64 via qemu)
   ├── JS Backend (GraalJS, kof.http via HttpClient, retry/circuit)
   ├── KofC Backend (C subset → native)
@@ -367,7 +369,7 @@ Source (.kf)
 
 | Métrica | Valor (0.2.6-beta 31/08) |
 |---------|--------------------------|
-| Testes JUnit | 747 (734 kof-compiler +8 kof-script +5 kof-c-compiler, 0 falhas) |
+| Testes JUnit | 810 (793 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas) |
 | E2E JVM | 29 |
 | E2E Native (x86_64) | 50 |
 | E2E JS (KofJS) | 35 (+ kof.http JS) |

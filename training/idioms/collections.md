@@ -1,6 +1,6 @@
 # Idioms — Collections
 
-**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (01 Sep 2026)
+**Status:** available · **Introduced:** 0.0.4-alpha · **Updated:** 0.2.6-beta (02 Sep 2026)
 
 ## What it is
 
@@ -25,7 +25,8 @@ var vazio = listOf<Int>()
 // Higher-order (0.2.6-beta, 3 targets)
 var dobrados = l.map((x: Int) -> x * 2)
 var pares = l.filter((x: Int) -> x % 2 == 0)
-var soma = l.reduce((a: Int, b: Int) -> a + b, 0)
+var soma = l.reduce((a: Int, b: Int) -> a + b, 0)   // ordem: (lambda, init)
+// `reduce(0, (a, b) -> ...)` (init, lambda) também é aceito
 
 // Map / Set
 var m = mapOf("a", 1)
@@ -46,6 +47,15 @@ println(b.all().size())
 ```
 
 Fix 01/09: `Set<T>`/`Map<K,V>` como campo/retorno de classe no JVM — o mapper mapeava só `List`→`ArrayList` (então `Set`/`Map` viravam `Lkof/Set;` → `NoClassDefFoundError`); agora `HashSet`/`HashMap`. Parser: método de classe com retorno genérico (`Set<Int> all(`) agora parseia (antes caía no ramo de campo). `KofMapSetTest.setMapAsFieldAndReturn`.
+
+## `Map.get` devolve `V?` para valores de referência (02/09)
+
+`m.get(chave)` retorna `V?` quando o valor é um tipo de referência
+(`Map<String, String>`, `Map<String, User>`): ausência = `null`, use
+`if (v != null)` para estreitar. Para valores **primitivos** (`Map<String, Int>`)
+o tipo fica `V` — o modelo atual armazena primitivos desembrulhados e não
+representa ausência (limitação documentada; usar `contains`/`containsKey`
+para checar antes).
 
 Fix 27/08: `listOf(...).get(n)` e `size` em projetos grandes com `import a.b.C` agora resolvem corretamente (CompilerDriver file-specific imports). Não é necessário workaround manual de índice.
 

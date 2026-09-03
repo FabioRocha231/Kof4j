@@ -1,7 +1,7 @@
 # Kof Standard Library — Arquitetura
 
-**Última atualização:** 31 de agosto de 2026
-**Versão:** 0.2.6-beta (747 testes: 734 kof-compiler +8 kof-script +5 kof-c-compiler; golden 16/16, integration 9/9)
+**Última atualização:** 2 de setembro de 2026
+**Versão:** 0.2.6-beta (810 testes: 793 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli; golden 16/16, integration 9/9)
 
 > A Standard Library do Kof é a plataforma: HTTP, REST, auth, autorização,
 > validação, serialização, database, messaging, observabilidade e testing
@@ -50,7 +50,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.io` | ✅ | `File/Path/Directory`, readFile/writeFile — JVM/Native/JS |
 | `kof.time` | ✅ | `now()`, `sleep`, `interval`/`cancel` (3 targets — JS via fila cooperativa bombeada por `time.sleep`, TIME001 fechado) — `KofTimeE2ETest` |
 | `kof.json` | ✅ | encode/decode; objetos/records JVM+Native+JS (JSN002), Float/Double + arrays `Double[]`/`Float[]` (JSN001) e arrays `Int[]/Long[]/Bool[]/String[]` (JSN003) — Native completo 31/08 |
-| `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM; `kof.http` client `http.get/post/put/delete/patch/options/status` + `timeout/retry/circuit` — JVM+JS (JS via `Java HttpClient` interop; retry/circuit paridade 30/08) — Native `HTTP002` |
+| `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM; `kof.http` client `http.get/post/put/delete/patch/options/status` — JVM/JS/**Native 03/09** (HTTP/1.1 asm, `NativeHttpRuntime`, IPv4 só; https→throw); retry/circuit/timeout aceitam chamada mas só implementados em JVM/JS (`HTTP003`) |
 | `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use`, `listenSecure(port)` TLS, `status(code[, body])`/`headerSet`, `app.ws` (WebSocket RFC 6455) + `app.sse` (SSE) — JVM (Native `WEB001/002`, JS `WEB001`/`WEB003`/`WEB004`) |
 | `kof.security` | ✅ (v1 + G9) | passwords, crypto, jwt, secrets, auth, security, rateLimit, sessions, apiKeys — 3 targets; free-list Native 27/08 — ver `docs/security.md` |
 | `kof.concurrent` | ✅ | `spawn` (statement) + `val r = spawn f()` / `await r` (handle tipado) — JVM (virtual threads) + Native (pthread, 31/08, `CONC001` fechado) + JS sequencial |
@@ -108,12 +108,12 @@ Resumo executivo (0.2.6-beta, 31/08):
 | observability | DONE (kof.observability: health/metrics/request IDs — JVM/Native/JS) |
 | `KofScript` / `KofCcompiler` / targets riscv64/aarch64 | DONE (KofScript 8, KofC 5, riscv64 toolchain estável) |
 | messaging (`kof.mq` 3 targets), scheduling (`scheduler` JVM+JS), sessions, rate limiting, TLS, WebSocket/SSE (JVM), `kof.cache` (3 targets) | DONE (gaps reais: `SCHED001` Native, `WEB002` TLS, `WEB003/004` WS/SSE) |
-| GC Native free-list | DONE (0.2.6-beta `kof_free_head` + `kof_gc_collect`) |
+| GC Native mark-sweep | DONE (03/09 `kof_gc_mark` + `kof_gc_sweep` + auto-collect on exhaustion; `KofGcE2ETest` 3/3) |
 
 # 6. PRÓXIMAS ETAPAS (residual pós-0.2.0)
 
 1. Native aarch64 codegen completo (placeholder hoje)
-2. GC mark-sweep completo (free-list done)
+2. ~~GC mark-sweep completo~~ ✅ 03/09 (KofGcE2ETest 3/3)
 3. MySQL/MariaDB native completo (auth scramble SHA-1 + lenenc done; handshake/query/prepared pendentes — WIP)
 4. Query DSL tipada `User.query { where age > 18 }` (nível 3 DATABASE_VISION)
 5. `kof fmt` (P5) + LSP completo + Debugger DWARF/JS source maps

@@ -1,78 +1,94 @@
 # 14 — Exceptions
 
-> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — unwinding real nos 3 targets**
+> **Status: implementado (JVM / Native / JS) — 0.2.6-beta — exemplos verificados no compilador**
 >
 > `throw`/`try`/`catch`/`finally` com unwinding real em JVM, Native e KofJS.
-> Kof lança **valores** (`throw "mensagem"` / `catch (String e)`), não
-> instâncias de classe de exceção. A cadeia
-> `intention->Kof->frontend->IR->backend->runtime` mantém a mesma semântica
-> nos três runtimes.
+> Kof lança **Strings** (`throw "mensagem"` / `catch (String e)`), não
+> instâncias de classe de exceção.
 
 ## throw
 
-Kof lança um **valor** (a mensagem vai direto para o `catch`), não uma
-instância de classe de exceção:
+Kof lança um valor (a mensagem vai direto para o `catch`):
 
 ```kf
 throw "valor inválido"
 ```
 
-## try/catch
+> **Importante (verificado 02/09):** a exceção é **String**.
+> `throw 42` / `catch (Int e)` geram bytecode inválido no JVM — não use.
+> Para ausência como valor, use `String?` (cap. 13).
+
+## try/catch/finally
 
 ```kf
-try {
-    var conexao = abrirConexao()
-    // usar conexão
-} catch (String e) {
-    print("erro: " + e)
-} finally {
-    // limpar recursos
+main() {
+    try {
+        var conexao = abrirConexao()
+    } catch (String e) {
+        println("erro: " + e)
+    } finally {
+        println("cleanup")    // roda sempre
+    }
 }
 ```
-
-Vários `catch` podem filtrar pelo tipo do valor lançado:
-
-```kf
-try {
-    processar()
-} catch (String e) {
-    print("erro de texto: " + e)
-} catch (Int e) {
-    print("código de erro: " + e)
-}
-```
-
-## Modelo de exceção (valores)
-
-Kof usa um modelo próprio, mais simples que o de classes de exceção do Java:
-
-- lança-se um **valor** (`String`, `Int`, ...) com `throw`;
-- `catch (Tipo e)` filtra pelo tipo do valor;
-- não há enforcement de "checked/unchecked" em compile-time.
-
-A cláusula `throws` é aceita na sintaxe, mas ainda não é verificada
-(planejado). O modelo de classes de exceção do Java (`extends Exception`,
-`getMessage()`) serve à interoperabilidade e é a direção planejada.
 
 ## Lançando valores contextualizados
 
-Como a exceção é um valor, a "identidade" da falha vem da própria mensagem:
-
-```kf
-throw "user not found: " + id
-```
-
-## Uso prático
+A "identidade" da falha vem da própria mensagem:
 
 ```kf
 User findUser(Int id) {
-    var user = repository.find(id)
-    if (user == null) {
+    if (id < 0) {
         throw "user not found: " + id
     }
-    return user
+    return User("u" + id)
+}
+
+class User(String name) { }
+
+main() {
+    try {
+        var u = findUser(-1)
+        println(u.name)
+    } catch (String e) {
+        println("caught: " + e)    // caught: user not found: -1
+    } finally {
+        println("cleanup")         // cleanup
+    }
 }
 ```
+
+## Ausência vs erro
+
+```kf
+// Ausência (dado pode não existir) → String?
+String? find(Int id) {
+    if (id == 1) { return "mel" }
+    return null
+}
+
+// Erro real (ausência é defeito) → throw
+String findOrThrow(Int id) {
+    if (id == 1) { return "mel" }
+    throw "not found: " + id
+}
+```
+
+## Limitações (02/09, verificadas)
+
+- Exceções são **Strings** apenas — sem objeto de exceção.
+- No Native, o primeiro `catch` de um `try` captura (sem despacho por tipo
+  entre múltiplos catches).
+- Sem stack trace no Native.
+
+## Exercícios
+
+1. Escreva `Double divide(Int a, Int b)` que lança `"division by zero"` quando
+   `b == 0`; trate com `try/catch` no `main`.
+2. Converta uma função que retorna `""` como "não encontrado" para `String?`
+   (cap. 13) e depois para `throw` — explique quando usar cada um.
+3. Verifique que `finally` roda no caminho normal, no capturado e no
+   propagado.
 
 ## Próximo passo
 

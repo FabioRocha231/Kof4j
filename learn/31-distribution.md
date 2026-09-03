@@ -1,6 +1,6 @@
 # 31 — Distribuição
 
-> **Kof 0.2.6-beta — 31 ago 2026 — targets jvm/native/native.risc/native.arm/js/android + kofc**
+> **Kof 0.2.6-beta — 02 set 2026 — targets jvm/native/native.risc/native.arm/js/android + kofc**
 
 ## Kof é uma plataforma, não apenas um JAR
 

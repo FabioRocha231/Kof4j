@@ -2,7 +2,7 @@
 
 **Status:** Implementado nos 3 targets (JVM + JS sequencial + Native pthread) — 0.2.6-beta 31/08
 **Versão:** 0.2.6-beta
-**Data:** 31 de agosto de 2026
+**Data:** 2 de setembro de 2026
 
 ---
 

@@ -3,7 +3,7 @@
 Este é o guia **obrigatório** para qualquer agente de IA (ou humano) que
 escreva código Kof neste repositório. Leia antes de gerar qualquer `.kf`.
 
-**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**)
+**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**, **Congelamento de comportamento**)
 
 ---
 
@@ -85,6 +85,40 @@ Bool isQuery(String op) {
 
 ---
 
+## Congelamento de comportamento (obrigatório)
+
+> **O comportamento previsto é lei.** "Comportamento previsto" = o que o corpus
+> (`training/`, `learn/`, `docs/`) documenta e os testes (golden + E2E + suíte
+> completa) provam. **Nenhum agente pode quebrar comportamento que já funciona.**
+
+1. **Zero regressão.** Nenhum commit pode fazer um teste existente passar a
+   falhar. A suíte completa (`mvn test`, hoje **840**) é **gate de merge** —
+   mudança que não mantém tudo verde não entra. Exceção única: mudança de
+   contrato **deliberada**, com bump de versão + docs atualizados + migração.
+2. **Retrocompatibilidade obrigatória.** Toda feature/API nova é **aditiva**:
+   código Kof que compila e roda hoje continua compilando e rodando. Mudança de
+   semântica existente nunca é silenciosa — só com bump + doc + migração.
+3. **Refactor preserva semântica.** O refactor para a regra **≤500 linhas/
+   classe** (e qualquer outro refactor) mexe em **estrutura**, nunca em
+   **comportamento**. Prova: mesma suíte + golden E2E por target. Se o refactor
+   muda output observável, é **bug do refactor** — corrige ou reverte.
+4. **Bug = alinhar ao previsto, nunca o contrário.** Tudo em
+   `docs/known-bugs.md` é desvio do comportamento previsto e **deve ser
+   corrigido no código** para atingir o comportamento documentado. Proibido
+   "documentar em volta do bug" (mudar o corpus para aceitar o comportamento
+   errado como se fosse o certo). Se o comportamento documentado está errado,
+   é decisão de design → bump de versão + discussão, nunca correção silenciosa.
+5. **Paridade cross-target.** JVM/Native/JS divergindo no mesmo programa é bug
+   de paridade. O comportamento previsto vale nos 3 targets, ou gap `XXX00x`
+   diagnosticado — nunca divergência silenciosa.
+6. **Semântica congelada (0.2.6-beta).** Operadores, precedência, ordem de
+   avaliação, null-safety, `==` de conteúdo, exceções como String,
+   `spawn`/`await`, coleções `List/Map/Set` são **congelados**. Proposta de
+   mudança vira gap/plano em `planning-*`, nunca edição direta da semântica
+   atual.
+
+---
+
 ## Invariantes da plataforma (visão universal — `docs/future/PLAN-UNIVERSAL-PLATFORM.md`)
 
 Estas regras **sempre** se aplicam, mesmo quando não há código de domínio novo
@@ -154,16 +188,30 @@ Int dobro(Int x) { return x * 2 }
 var x = 10              // mutável
 val y = 20              // imutável
 String nome = "Mel"
-var idade: Int? = null  // nullability: forma ANOTADA (não `Int? idade = null`)
+String? nome2 = null    // nullability: forma TIPO-PRIMEIRO (idiomática no corpus)
+var idade: Int? = null  // nullability: forma ANOTADA (também válida)
 ```
 
-### Classes (construtor primário é a forma idiomática)
+### Classes (mutable → campos + `constructor(...)`) e o caso `class X(...)` = record
 
 ```kof
-class User(String name, Int age) {           // params viram campos — sem this.x = x
+// ✅ ESTADO MUTÁVEL — campos explícitos + construtor (campos públicos, diretos)
+class User {
+    String name
+    Int age
+    public constructor(String name, Int age) {
+        this.name = name
+        this.age = age
+    }
     String greeting() { return "Hello " + name }
 }
-var u = User("Mel", 26)                      // sem `new`
+var u = User("Mel", 26)     // sem `new`
+u.age = 27                  // escrita direta — mutável
+
+// ⚠️ ATENÇÃO (verificado 02/09): `class User(String name, Int age) { }` NÃO é
+// classe mutável — o parser o trata como RECORD (imutável, accessors p.x()).
+// Leitura `u.name` funciona (vira accessor); escrita `u.name = "x"` NÃO.
+// Para dados imutáveis, use `record` (a forma canônica).
 ```
 
 ### Records (dados imutáveis, zero cerimônia)
@@ -270,7 +318,7 @@ if (nome != null) {
 | `a.equals(b)` | `a == b` | `==` compara conteúdo em Kof |
 | `StringBuilder` em loop | `+` / `+=` | `+` já é eficiente |
 | getters/setters | campo direto (`u.name`, `u.age = 3`) | Kof não tem JavaBeans/reflection ceremony |
-| `new User(...)` com construtor explícito | `class User(String n, Int a) { }` + `User("Mel", 26)` | construtor primário |
+| `new User(...)` com construtor explícito | `User(...)` sem `new` (ambos válidos) | `new` é retrocompatível |
 | utility class com `static` | função top-level | Kof tem funções fora de classes |
 | Service/Repository/Controller | função top-level ou classe direta | sem camadas de injeção |
 | `class Node { Node next ... }` | `List<T>` | coleção da linguagem |
@@ -299,12 +347,12 @@ Se você está prestes a escrever algo desta lista, **pare**:
 | `{"a", "b"}` (literal de conjunto) | `setOf("a", "b")` |
 | `[1, 2, 3]` (literal de array) | `listOf(1, 2, 3)` ou `new Int[n]` |
 | `Option<T>` / `Result<T>` | `String?` + narrowing; `throw` para erro |
-| `async`/`await` JS-style | `spawn`/`await` (sempre em pares Kof) |
+| `async`/`await` JS-style | `spawn`/`await` (Kof; `spawn f()` fire-and-forget é válido sozinho) |
 | `for (x in coll)` **sem `var`** | `for (var x in coll)` |
 | `Thread` / `Executor` / `Runnable` | `spawn` |
 | `match x { A, B => ... }` (multi-case OR) | `switch (x) { case "A": ... case "B": ... }` ou `setOf` |
 | `x instanceof String ? (String) x : null` | `if (x instanceof String) { var s = x as String ... }` ou `case String s:` |
-| primary constructor `class X(val a, val b)` (Kotlin) | `class X(String a, Int b) { }` |
+| primary constructor `class X(val a, val b)` (Kotlin) | `record X(String a, Int b)` (imutável) ou classe mutável com `constructor(...)` |
 
 > Regra: **toda feature nova que você quiser usar, compile antes.**
 > Se não compila, é fake idiom — mesmo que exista em outra linguagem.
@@ -386,7 +434,7 @@ ensine-o para o próximo.
 Kof = intenção + simplicidade.
 
 - Função:  String nome(Int x) { ... }     (sem fun/func)
-- Classe:  class User(String n, Int a) { }  (construtor primário)
+- Classe:  class X { campos; constructor(...) }  (mutável) / class X(...) = record
 - Dados:   record Point(Int x, Int y)
 - String:  a == b  (não .equals)   a + "!"  (não StringBuilder)
 - Coleção: listOf / mapOf / setOf  +  .map/.filter/.reduce

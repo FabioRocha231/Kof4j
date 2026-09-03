@@ -342,4 +342,169 @@ class CoreRegressionE2ETest {
                 }
                 """, "11", tempDir, "explicit-ctor");
     }
+
+    // known-bugs #10 — `!` (logical NOT) as an expression VALUE must negate
+    // (constant folding used bitwise `~` → `!true` was true, JVM+Native+JS)
+    @Test
+    void logicalNotAsExpressionValue(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var a = !true
+                    var b = !false
+                    var c = !(1 > 2)
+                    println(a)
+                    println(b)
+                    println(c)
+                    println(!(2 > 3))
+                    println(!false && true)
+                }
+                """, "false\ntrue\ntrue\ntrue\ntrue", tempDir, "logical-not");
+    }
+
+    // known-bugs #2/#3 — compound assignment operand order: `a -= 2` must be
+    // `a - 2` (was `2 - a` → -8); `s += "x"` in a loop must not crash the
+    // compiler (old path pushed the RHS twice → stack imbalance at frame merge)
+    @Test
+    void compoundAssignmentOrderAndStringInLoop(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var a = 10; a -= 2; println(a)
+                    var b = 10; b /= 2; println(b)
+                    var c = 10; c %= 3; println(c)
+                    var d = 10; d *= 3; println(d)
+                    var e = 10; e += 5; println(e)
+                    var s = ""
+                    var i = 0
+                    while (i < 10) { s += "x"; i = i + 1 }
+                    println(s.length)
+                    var acc = 0
+                    for (var j = 0; j < 5; j++) { acc += j }
+                    println(acc)
+                }
+                """, "8\n5\n1\n30\n15\n10\n10", tempDir, "compound-order");
+    }
+
+    // known-bugs #5/#24 — FP→Int/Long casts and Double→Float narrowing were
+    // missing conversion ops → invalid bytecode (ClassFormatError). Now D2I/
+    // F2I/D2L/F2L (truncate toward zero) and D2F are emitted.
+    @Test
+    void fpToIntAndDoubleToFloatConversions(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var d = 3.9
+                    println(d as Int)
+                    println(d as Long)
+                    var f = 2.7f
+                    println(f as Int)
+                    println(-3.9 as Int)
+                    var g: Float = 3.4
+                    println(g)
+                    var h = d as Float
+                    println(h)
+                }
+                """, "3\n3\n2\n-3\n3.4\n3.9", tempDir, "fp-casts");
+    }
+
+    // known-bugs #6 — uppercase numeric suffixes (42L, 1.5F, 1.5D) were not
+    // consumed by the lexer (INT_LITERAL(42) + IDENTIFIER(L)) → invalid
+    // bytecode. Lowercase and uppercase must be aliases.
+    @Test
+    void uppercaseNumericSuffixes(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var a = 42L
+                    var b = 42l
+                    var c = 1.5F
+                    var d = 1.5f
+                    var e = 2.5D
+                    println(a)
+                    println(b)
+                    println(a == b)
+                    println(c)
+                    println(d)
+                    println(e)
+                }
+                """, "42\n42\ntrue\n1.5\n1.5\n2.5", tempDir, "upper-suffix");
+    }
+
+    // known-bugs #14 — Map/Set `.size` as a PROPERTY (not just the size()
+    // method): fell through to generic field access → getfield HashMap.size →
+    // NoSuchFieldError, and the property type inferred UNKNOWN → broken
+    // boxing in println. Now dispatched to kof_map_size/kof_set_size.
+    @Test
+    void mapAndSetSizeProperty(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var m = mapOf("a", 1, "b", 2)
+                    println(m.size)
+                    println(m.size())
+                    var s = setOf("x", "y", "z")
+                    println(s.size)
+                    println(s.size())
+                    println(m.size + s.size)
+                }
+                """, "2\n2\n3\n3\n5", tempDir, "map-set-size-prop");
+    }
+
+    // known-bugs #7 — `listOf<String?>()` (nullable type as generic argument in
+    // a method call) didn't parse: looksLikeGenericCall rejected the `?`
+    // token → `<` became a comparison → PARSE041.
+    @Test
+    void nullableGenericArgumentInCall(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var l = listOf<String?>("a", null, "c")
+                    println(l.size)
+                    var m = mapOf<String?, Int>("x", 1)
+                    println(m.size)
+                    List<String?> typed = listOf<String?>()
+                    println(typed.size)
+                }
+                """, "3\n1\n0", tempDir, "nullable-generic-arg");
+    }
+
+    // known-bugs #4 — `switch` with String values generated invalid bytecode
+    // on JVM (the non-enum path used SUB to test equality → String - String).
+    // String switches must compare by content (kof_string_equals).
+    @Test
+    void stringSwitchOnJvm(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var s = "b"
+                    switch (s) {
+                        case "a": println("A"); break
+                        case "b": println("B"); break
+                        default: println("?")
+                    }
+                    var t = "z"
+                    switch (t) {
+                        case "a": println("A"); break
+                        case "b": println("B"); break
+                        default: println("default")
+                    }
+                }
+                """, "B\ndefault", tempDir, "string-switch");
+    }
+
+    // known-bugs #13 — `(x as Int) + 1` (cast result in arithmetic) crashed
+    // the compiler: the left-assoc chain flattening treated `as` as a chain
+    // member → it fell into the default ADD. `as`/`instanceof` now stop the
+    // flattening.
+    @Test
+    void castInArithmetic(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var x = 5
+                    var y = (x as Int) + 1
+                    println(y)
+                    var d = 3.9
+                    var i = (d as Int) * 2
+                    println(i)
+                    var a = 2
+                    var b = 3
+                    var c = 4
+                    println((a + b) * c)
+                }
+                """, "6\n6\n20", tempDir, "cast-in-arith");
+    }
 }

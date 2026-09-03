@@ -75,6 +75,20 @@ class BackendParityTest {
     }
 
     @Test
+    void parityStringDoubleConcat(@TempDir Path tempDir) throws IOException {
+        // 02/09: "str" + double descartava o operando FP (yield incondicional
+        // no guard de concat) → saída vazia. Agora concatena em JVM/JS/Native.
+        runParity("""
+                main() {
+                    println("r=" + 2.5)
+                    println("d=" + 1.5 + 2.5)
+                    println("pi=" + 3.14159)
+                    println("f=" + 1.5f)
+                }
+                """, "r=2.5\nd=1.52.5\npi=3.14159\nf=1.5", tempDir, "concat");
+    }
+
+    @Test
     void parityArithmetic(@TempDir Path tempDir) throws IOException {
         runParity("""
                 main() {
