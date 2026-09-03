@@ -39,12 +39,15 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
-| **HTTP002 restante** | média | `delete/put/patch/options`/`status` `+ timeout/retry/circuit (knobs reais)` no Native | get/post/status já fecham a linha zero — o resto é cauda |
-| **CONC003** — JS async real | média| event-loop real sobre Promises no GraalJS | JS sequencial já funciona; é evolução futura |
+| **GC mark-sweep** Native | ~~alta~~ | ✅ fechado 03/09 | ver Concluídos |
+| **HTTP002 restante** | média | `delete/put/patch/options`/`status` + `timeout/retry/circuit` (knobs no Native) | get/post/status fecham a linha zero — resto é cauda |
+| **WEB002** — kof.web no Native | alta | server HTTP/1.1 sobre `kof_net_*` + dispatch com trampolim | depois de HTTP002 |
+| **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | JS sequencial já funciona; evolução futura |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gap documentado |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
-| **Portar stdlib riscv64/aarch64** | média | `translateRiscvToAarch64` existe | agente-nativo-val está nessa frente |
-| Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | | |
+| **MySQL query binário** (resultset de EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | `FEITO` 03/09 — `02b9ddb`: coldefs+tipos capturados no PREPARE; rows binárias (marker 0x00, null-bitmap +2, valores crus por coltype); `KofDbE2ETest.nativeMysqlPreparedBinary`; suíte 822/0. Fallback COM_QUERY substituição se PREPARE falhar |
+| Portar stdlib riscv64/aarch64 (web/db/mq/cache/time/log/config/observability) | média | `translateRiscvToAarch64` existe | agente-nativo-val (validation/observability ✅ b20aa49+79e101a) |
+| Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
 | OpenTelemetry export | baixa | spans feitos; falta OTLP export | |
 
 ## Regras de convivência (já em AGENTS.md)
