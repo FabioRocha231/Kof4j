@@ -3514,6 +3514,167 @@ public class NativeBackend implements Backend {
                 sw   t0, 16(a0)
                 ret
 
+            # ---- kof.log (minimal, sem threshold/timestamp — apenas println) ----
+            .globl kof_log_debug
+            kof_log_debug:
+                j kof_log_info
+            .globl kof_log_info
+            kof_log_info:
+                addi sp, sp, -16
+                sd   ra, 8(sp)
+                call kof_println_string
+                ld   ra, 8(sp)
+                addi sp, sp, 16
+                ret
+            .globl kof_log_warn
+            kof_log_warn:
+                j kof_log_info
+            .globl kof_log_error
+            kof_log_error:
+                j kof_log_info
+
+            # ---- kof.config (minimal — retorna default / 0 / false) ----
+            .globl kof_config_get
+            kof_config_get:
+                li   a0, 0
+                ret
+            .globl kof_config_env
+            kof_config_env:
+                li   a0, 0
+                ret
+            .globl kof_config_has
+            kof_config_has:
+                li   a0, 0
+                ret
+            .globl kof_config_str
+            kof_config_str:
+                mv   a0, a1
+                ret
+            .globl kof_config_int
+            kof_config_int:
+                mv   a0, a1
+                ret
+            .globl kof_config_long
+            kof_config_long:
+                mv   a0, a1
+                ret
+            .globl kof_config_bool
+            kof_config_bool:
+                mv   a0, a1
+                ret
+            .globl kof_config_required
+            kof_config_required:
+                beqz a0, kof_null_error
+                ret
+
+            # ---- kof.time (minimal) ----
+            .globl kof_time_now
+            kof_time_now:
+                li   a0, 0
+                ret
+            .globl kof_time_sleep
+            kof_time_sleep:
+                ret
+            .globl kof_time_interval
+            kof_time_interval:
+                la   a0, .Lstr_empty_interval
+                li   a1, 10
+                call kof_string_from_literal
+                ret
+            .globl kof_time_cancel
+            kof_time_cancel:
+                ret
+
+            # ---- kof.observability (minimal stubs) ----
+            .globl kof_observability_health
+            kof_observability_health:
+                la   a0, .Lstr_true
+                li   a1, 4
+                call kof_string_from_literal
+                ret
+            .globl kof_observability_metrics
+            kof_observability_metrics:
+                la   a0, .Lstr_empty
+                li   a1, 0
+                call kof_string_from_literal
+                ret
+            .globl kof_observability_request_id
+            kof_observability_request_id:
+                la   a0, .Lstr_empty
+                li   a1, 0
+                call kof_string_from_literal
+                ret
+            .globl kof_observability_trace_id
+            kof_observability_trace_id:
+                la   a0, .Lstr_trace
+                li   a1, 32
+                call kof_string_from_literal
+                ret
+            .globl kof_observability_span_id
+            kof_observability_span_id:
+                la   a0, .Lstr_span
+                li   a1, 16
+                call kof_string_from_literal
+                ret
+            .globl kof_observability_span_start
+            kof_observability_span_start:
+                la   a0, .Lstr_span_handle
+                li   a1, 48
+                call kof_string_from_literal
+                ret
+            .globl kof_observability_span_end
+            kof_observability_span_end:
+                la   a0, .Lstr_empty_json
+                li   a1, 2
+                call kof_string_from_literal
+                ret
+
+            # ---- kof.cache (minimal stubs) ----
+            .globl kof_cache_get
+            kof_cache_get:
+                li   a0, 0
+                ret
+            .globl kof_cache_set
+            kof_cache_set:
+                ret
+            .globl kof_cache_set_ttl
+            kof_cache_set_ttl:
+                ret
+            .globl kof_cache_ttl
+            kof_cache_ttl:
+                li   a0, 0
+                ret
+            .globl kof_cache_delete
+            kof_cache_delete:
+                ret
+            .globl kof_cache_clear
+            kof_cache_clear:
+                ret
+
+            # ---- kof.mq (minimal stubs — já tem core mas faltam alguns) ----
+            .globl kof_mq_subscribe
+            kof_mq_subscribe:
+                ret
+            .globl kof_mq_unsubscribe
+            kof_mq_unsubscribe:
+                ret
+            .globl kof_mq_publish
+            kof_mq_publish:
+                ret
+            .globl kof_mq_queue
+            kof_mq_queue:
+                la   a0, .Lstr_mq
+                li   a1, 4
+                call kof_string_from_literal
+                ret
+            .globl kof_mq_push
+            kof_mq_push:
+                ret
+            .globl kof_mq_pop
+            kof_mq_pop:
+                li   a0, 0
+                ret
+
             .section .data
             kof_alloc_ptr: .quad _kof_heap
             .align 16
@@ -3528,6 +3689,14 @@ public class NativeBackend implements Backend {
             .Lstr_null: .asciz "null"
             .Lstr_null_err: .asciz "Runtime error: null pointer access"
             .Lstr_bounds_err: .asciz "Runtime error: array index out of bounds"
+            .Lstr_empty: .asciz ""
+            .Lstr_empty_interval: .asciz "interval-0"
+            .Lstr_health: .asciz "UP"
+            .Lstr_empty_json: .asciz "{}"
+            .Lstr_trace: .asciz "00000000000000000000000000000000"
+            .Lstr_span: .asciz "0000000000000000"
+            .Lstr_span_handle: .asciz "000000000000000000000000000000000000000000000000"
+            .Lstr_mq: .asciz "mq-0"
             """;
 
     private void emitAarch64(IRModule module, Path outputDir) throws IOException {
