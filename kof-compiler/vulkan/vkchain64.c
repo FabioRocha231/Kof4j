@@ -25,6 +25,12 @@ static VkDescriptorSetLayout dsl;
 static VkBuffer wbuf; static VkDeviceMemory wmem; static void* wmap;
 static VkBuffer xbuf; static VkDeviceMemory xmem; static void* xmap;
 static VkBuffer ybuf; static VkDeviceMemory ymem; static void* ymap;
+// M36 FASE C2b: cache de W residentes por id (pesos por layer ficam no
+// buffer entre calls — zero copia por forward)
+#define WMAX 192
+static VkBuffer wbufs[WMAX]; static VkDeviceMemory wmems[WMAX];
+static void* wmaps[WMAX];
+static long wcap[WMAX];   // elems por id (0 = vazio)
 static VkCommandPool cpool; static VkCommandBuffer cmd;
 static VkFence fence;
 static char errbuf[256] = "not initialized";
@@ -127,15 +133,8 @@ int vkchain64_init(const char* spv_path){
     return 0;
 }
 
-// dimensiona W[m×k], x[k], y[m] (re-aloca buffers que não comportam)
-int vkchain64_set_shape(int m, int k){
-    if (!inited) return -1;
-    curM=m; curK=k;
-    if ((long)m*k > wcapElems){
-        freeBuffer(&wbuf,&wmem,&wmap);
-        if (allocBuffer(&wbuf,&wmem,&wmap,(VkDeviceSize)m*k*8)) return -2;
-        wcapElems=m*k;
-    }
+// dimensiona x[k], y[m] (W central fica p/ API set_shape/load_w clássica)
+static int set_shape_internal(int m, int k){
     if ((long)k > xcapElems){
         freeBuffer(&xbuf,&xmem,&xmap);
         if (allocBuffer(&xbuf,&xmem,&xmap,(VkDeviceSize)k*8)) return -2;
@@ -146,6 +145,19 @@ int vkchain64_set_shape(int m, int k){
         if (allocBuffer(&ybuf,&ymem,&ymap,(VkDeviceSize)m*8)) return -2;
         ycapElems=m;
     }
+    return 0;
+}
+
+// dimensiona W[m×k], x[k], y[m] (re-aloca buffers que não comportam)
+int vkchain64_set_shape(int m, int k){
+    if (!inited) return -1;
+    curM=m; curK=k;
+    if ((long)m*k > wcapElems){
+        freeBuffer(&wbuf,&wmem,&wmap);
+        if (allocBuffer(&wbuf,&wmem,&wmap,(VkDeviceSize)m*k*8)) return -2;
+        wcapElems=m*k;
+    }
+    if (set_shape_internal(m, k)) return -2;
     // desc set com os buffers atuais
     VkDescriptorBufferInfo dbi[3];
     VkWriteDescriptorSet wds[3];
@@ -166,6 +178,75 @@ int vkchain64_load_w(long* w, int m, int k){
     if (!wmap) return -2;
     if ((long)m*k > wcapElems) return -3;  // set_shape primeiro
     memcpy(wmap, w, (size_t)m*k*8);
+    return 0;
+}
+
+// FASE C2b: W residente por id — cria/redimensiona buffer[id] e copia w.
+// Depois de wput, wrun(id,...) usa o buffer sem nova copia.
+int vkchain64_wput(int id, long* w, int m, int k){
+    if (!inited) return -1;
+    if (id < 0 || id >= WMAX) return -2;
+    if ((long)m*k <= 0) return -3;
+    if (wcap[id] < (long)m*k){
+        // (re)aloca: descarta o antigo se existir
+        if (wbufs[id]){ 
+            vkUnmapMemory(dev, wmems[id]);
+            vkDestroyBuffer(dev, wbufs[id], 0);
+            vkFreeMemory(dev, wmems[id], 0);
+            wbufs[id]=0; wmems[id]=0; wmaps[id]=0; wcap[id]=0;
+        }
+        if (allocBuffer(&wbufs[id], &wmems[id], &wmaps[id], (VkDeviceSize)m*k*8)) return -4;
+        wcap[id] = (long)m*k;
+    }
+    memcpy(wmaps[id], w, (size_t)m*k*8);
+    return 0;
+}
+
+// FASE C2b: matvec com W residente do id — bind desc apontando buffer[id]
+// + dispatch + readback y. x copiado por call (k*8 bytes ≤ 45KB).
+int vkchain64_wrun(int id, long* x, long* y, int m, int k){
+    if (!inited) return -1;
+    if (id < 0 || id >= WMAX) return -2;
+    if (!wbufs[id] || wcap[id] < (long)m*k) return -3;
+    if ((long)k > xcapElems || (long)m > ycapElems){
+        if (set_shape_internal(m, k)) return -4;
+    }
+    memcpy(xmap, x, (size_t)k*8);
+    memset(ymap, 0, (size_t)m*8);
+    if (getenv("KOF_MV64_TRACE")) {
+        fprintf(stderr, "wrun id=%d m=%d k=%d x0=%ld x1=%ld ygold0=%ld\n",
+                id, m, k, x[0], x[1], ((long*)wmaps[id])[0]*x[0]);
+    }
+    // rebind descriptor: w = buffer[id]
+    VkDescriptorBufferInfo dbi[3];
+    VkWriteDescriptorSet wds[3];
+    dbi[0]=(VkDescriptorBufferInfo){wbufs[id],0,(VkDeviceSize)wcap[id]*8};
+    dbi[1]=(VkDescriptorBufferInfo){xbuf,0,(VkDeviceSize)xcapElems*8};
+    dbi[2]=(VkDescriptorBufferInfo){ybuf,0,(VkDeviceSize)ycapElems*8};
+    for (int i=0;i<3;i++)
+        wds[i]=(VkWriteDescriptorSet){VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,0,dset,(uint32_t)i,0,1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,0,&dbi[i],0};
+    vkUpdateDescriptorSets(dev,3,wds,0,0);
+
+    VkCommandBufferBeginInfo bbi={VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,0,VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,0};
+    VkResult r = vkBeginCommandBuffer(cmd,&bbi);
+    if (r) { snprintf(errbuf,sizeof errbuf,"begin rc=%d",r); return -5; }
+    vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_COMPUTE,pipe);
+    vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_COMPUTE,pl,0,1,&dset,0,0);
+    int pcs[2]={m,k};
+    vkCmdPushConstants(cmd,pl,VK_SHADER_STAGE_COMPUTE_BIT,0,8,pcs);
+    vkCmdDispatch(cmd,(uint32_t)m,1,1);
+    r = vkEndCommandBuffer(cmd);
+    if (r) { snprintf(errbuf,sizeof errbuf,"end rc=%d",r); return -5; }
+    VkSubmitInfo si={VK_STRUCTURE_TYPE_SUBMIT_INFO,0,0,0,0,1,&cmd,0,0};
+    r = vkQueueSubmit(q,1,&si,fence);
+    if (r) { snprintf(errbuf,sizeof errbuf,"submit rc=%d",r); return -5; }
+    r = vkWaitForFences(dev,1,&fence,VK_TRUE,60000000000ull);
+    if (r) { snprintf(errbuf,sizeof errbuf,"wait rc=%d",r); return -5; }
+    vkResetFences(dev,1,&fence);
+    memcpy(y, ymap, (size_t)m*8);
+    if (getenv("KOF_MV64_TRACE")) {
+        fprintf(stderr, "wrunDONE id=%d y0=%ld y1=%ld\n", id, y[0], y[1]);
+    }
     return 0;
 }
 

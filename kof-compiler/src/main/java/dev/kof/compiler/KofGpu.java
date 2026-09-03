@@ -22,7 +22,7 @@ final class KofGpu {
     static boolean isGpuMethod(String name) {
         return switch (name) {
             case "available", "dispatchMatmul", "dispatchMatmul64", "failReason",
-                 "mvSetShape", "mvLoadW", "mvMatvec" -> true;
+                 "mvSetShape", "mvLoadW", "mvMatvec", "mvPutW", "mvRun" -> true;
             default -> false;
         };
     }
@@ -62,6 +62,14 @@ final class KofGpu {
             case "mvMatvec" -> argTypes.size() == 4
                     ? new GpuCall("kof_mv64_matvec", INT,
                         List.of(new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT))
+                    : null;
+            case "mvPutW" -> argTypes.size() == 4
+                    ? new GpuCall("kof_mv64_wput", INT,
+                        List.of(INT, new Type.ArrayType(LONG), INT, INT))
+                    : null;
+            case "mvRun" -> argTypes.size() == 5
+                    ? new GpuCall("kof_mv64_wrun", INT,
+                        List.of(INT, new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT))
                     : null;
             default -> null;
         };

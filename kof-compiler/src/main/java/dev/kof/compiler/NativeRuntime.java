@@ -7750,6 +7750,16 @@ final class NativeRuntime {
             kof_mv64_matvec:
                 movl $-1, %eax
                 ret
+            .globl kof_mv64_wput
+            .type kof_mv64_wput, @function
+            kof_mv64_wput:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wrun
+            .type kof_mv64_wrun, @function
+            kof_mv64_wrun:
+                movl $-1, %eax
+                ret
             """);
     }
 
