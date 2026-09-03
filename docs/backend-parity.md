@@ -59,9 +59,9 @@
 | `kof.log` | ✅ (JSON + correlation ID) | ✅ (asm; UTC, sem JSON) | ✅ 01/09 (console.* + nível) | `KofLogE2ETest` 11 (incl. JS) + `NativeLogE2ETest` 7 |
 | `kof.security` (passwords/crypto/jwt/secrets + G9) | ✅ | ✅ | ✅ | PBKDF2/SHA512/JWT/AES-GCM (asm no Native, JS puro no KofJS — `SECN002` fechado 01/09) |
 | `kof.db`/`kof.orm` | ✅ | ✅ (SQLite `.so` direto; **`transaction {}` commit/rollback 01/09** (EH asm + BEGIN/COMMIT/ROLLBACK); **MySQL wire protocol** — handshake+scramble+auth-switch+COM_QUERY+resultset 31/08 + **prepared statements binários 03/09**)/ORM001 | DB001/ORM001 | **Query DSL `User.query(db){ where; orderBy; limit }` (nível 3) 01/09** — baixa p/ `db.query` (JVM E2E H2); MySQL native `nativeMysqlWireProtocol` + `nativeMysqlPreparedBinary` (binário q/ binds); `nativeTransaction{Commits,RollsBack}` |
-| `web.app()` + TLS `listenSecure` | ✅ | WEB002 | WEB001 | `KofWebTlsTest` |
-| `web.app()` WebSocket `app.ws` + SSE `sse.*` | ✅ 30/08 (RFC 6455 + frame codec/máscara) | WEB002 | WEB001 | `KofWebWsE2ETest` 11/11 · `KofWebSseE2ETest` 7/7 · `KofWsFrameTest` 7/7 |
-| `status(code, body)` / `headerSet` | ✅ 27/08 | WEB002 | WEB001 | `KofWebE2ETest` 9/9 |
+| `web.app()` + TLS `listenSecure` | ✅ | ✅ 03/09 (WEB002 T1-T4: accept+parse+match+lambda+body) **plain HTTP**; TLS é outro gap | WEB001 | `KofWebNativeE2ETest` |
+| `web.app()` WebSocket `app.ws` + SSE `sse.*` | ✅ 30/08 (RFC 6455 + frame codec/máscara) | WEB003/WEB004 (separado) | WEB001 | `KofWebWsE2ETest` 11/11 · `KofWebSseE2ETest` 7/7 · `KofWsFrameTest` 7/7 |
+| `status(code, body)` / `headerSet` | ✅ 27/08 | ⚠️ parcial 03/09 (status=200/body ok; `status(n)`/`headerSet` não implementados) | WEB001 | `KofWebNativeE2ETest` |
 | UI Fase 7 Router (`go/replace/back/forward/param/current/depth`) | no-op | — | ✅ 31/08 | `RouterE2ETest` |
 | `switch` pattern matching `case String s` | ✅ | ✅ | ✅ | 0.2.6-beta |
 | `switch` record destructuring `Point(x,y)` | ✅ | ✅ | ✅ | 0.2.6-beta |
@@ -81,7 +81,7 @@
 |-----|-----------|--------|
 | spawn/await no Native | ✅ 31/08 (CONC001 fechado — pthread_create + trampoline + pthread_join + allocator thread-safe futex; join implícito) | |
 | spawn/await no JS | ✅ sequencial (stmt + spawn-expr + await/poll/cancel/selectAny) | event-loop async real é `CONC003` (evolução futura) |
-| web no Native/JS (server, TLS, ws/sse) | `WEB002` / `WEB001` | planned |
+| web no Native/JS (server, TLS, ws/sse) | ✅ / `WEB001` | WEB002 **fechado 03/09** (ver `NativeWebRuntime`); JS pending |
 | kof.http no Native | ✅ HTTP/1.1 asm (`NativeHttpRuntime.java`, 03/09) | https + DNS real + retry ficam como gaps (`HTTP003`) |
 | kof.db/orm no JS | `DB001` / `ORM001` | planned |
 | JSON Float/Double | ✅ 31/08 (JSN001 fechado — XMM + parser fração/expoente) | |

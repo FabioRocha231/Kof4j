@@ -158,4 +158,44 @@ class KofWebNativeE2ETest {
         assertTrue(r.contains("HTTP/1.1 200"), "status: " + r);
         assertTrue(r.endsWith("ok-matched"), "body should come from handler, got: " + r);
     }
+
+    private static final String SERVER_T4 = """
+            main() {
+                var app = web.app()
+                app.post("/echo") {
+                    return "got: " + body()
+                }
+                app.listen(PORT)
+            }
+            """;
+
+    @Test
+    void nativeServerReadsBodyContext(@TempDir Path tempDir) throws Exception {
+        int port = freePort();
+        Path src = tempDir.resolve("App.kf");
+        Files.writeString(src, SERVER_T4.replace("PORT", String.valueOf(port)));
+        CompilerDriver driver = new CompilerDriver();
+        CompilationResult result = driver.compile(src, tempDir.resolve("classes"), Target.NATIVE);
+        assertTrue(result.success(), "compile: " + result.diagnostics().getDiagnostics());
+        ProcessBuilder pb = new ProcessBuilder(tempDir.resolve("classes/Default/Main").toString());
+        pb.redirectErrorStream(true);
+        serverProcess = pb.start();
+        long deadline = System.currentTimeMillis() + 5000;
+        boolean up = false;
+        while (System.currentTimeMillis() < deadline && !up) {
+            try (Socket probe = new Socket()) {
+                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 100);
+                up = true;
+            } catch (IOException e) { Thread.sleep(50); }
+        }
+        assertTrue(up);
+        try (Socket s = new Socket("127.0.0.1", port)) {
+            s.getOutputStream().write("POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\nhello"
+                    .getBytes(StandardCharsets.UTF_8));
+            s.getOutputStream().flush();
+            String r = new String(s.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(r.contains("200"), "status: " + r);
+            assertTrue(r.endsWith("got: hello"), "body() should echo, got: " + r);
+        }
+    }
 }
