@@ -21,6 +21,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
 | **NATIVE002** — paridade stdlib riscv64/aarch64 (log/config/time/cache/mq stubs→real) | `EM CURSO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`), `NativeRiscv64E2ETest.java`, `NativeAarch64E2ETest.java` | validação 13/13 + observability real (b20aa49); preparando stubs p/ implementação real (mqtt/sse/interval/cron via `translateRiscvToAarch64`) |
+| **CONC003** — JS async real (fases 3+4: testes concorrência real) | `EM CURSO` | agente-conc003 | conc003-js-async | `KofAwaitTest.java`, `KofConcurrency2Test.java`, `JsBackend.java` | fases 0–2 commitadas; fase 3+4: asserções reescritas + 7 testes novos; bugs fix: kof_spawn_result sem await, POP descartava JsAwait, poll primitivo ?? 0 |
 
 ## Concluídos recentemente
 

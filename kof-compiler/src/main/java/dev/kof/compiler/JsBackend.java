@@ -1463,9 +1463,10 @@ class JsBackend implements Backend {
                     dropped = pop(stack);
                 }
                 stack.clear();
-                if (dropped instanceof JsIr.JsCall || dropped instanceof JsIr.JsSequence) {
-                    // The popped value is a side-effecting call (e.g. a list
-                    // operation used as a statement); it must survive.
+                if (dropped instanceof JsIr.JsCall || dropped instanceof JsIr.JsSequence
+                        || dropped instanceof JsIr.JsAwait) {
+                    // Side-effecting call, sequence, or await used as statement
+                    // (e.g. `await r;` / `await spawn tick();`) must survive POP.
                     return finishExpressionStatement(preamble, preambleExprs,
                             new JsIr.JsExprStmt(dropped));
                 }
@@ -2641,9 +2642,14 @@ class JsBackend implements Backend {
         }
         callArgs.addAll(args);
         JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
-        if (name.equals("kof_spawn_result") || name.equals("kof_await")
-                || name.equals("kof_await_timeout") || name.equals("kof_select_any")) {
+        if (name.equals("kof_await") || name.equals("kof_await_timeout")
+                || name.equals("kof_select_any")) {
             call = new JsIr.JsAwait(call);
+        }
+        if (name.equals("kof_poll") && kc.returnType() instanceof Type.PrimitiveType) {
+            // poll não-pronto devolve default do primitivo (0/false), não null —
+            // paridade JVM/Native e evita await acidental em função síncrona.
+            call = new JsIr.JsBinary(call, "??", defaultForType(kc.returnType()));
         }
         if (Type.isVoid(kc.returnType())) {
             throw new StatementEnd(call);
