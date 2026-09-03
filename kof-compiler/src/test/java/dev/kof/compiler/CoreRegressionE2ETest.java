@@ -507,4 +507,25 @@ class CoreRegressionE2ETest {
                 }
                 """, "6\n6\n20", tempDir, "cast-in-arith");
     }
+
+    // known-bugs #11 — `==` on records was reference equality (JVM `if_acmpeq`,
+    // JS `===`) → `Ponto(1,2) == Ponto(1,2)` was false. Now `==` dispatches to
+    // the generated content `equals` (JVM has it, JS gets one generated).
+    @Test
+    void recordEqualityByContent(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                record Ponto(Int x, Int y)
+                main() {
+                    var a = Ponto(1, 2)
+                    var b = Ponto(1, 2)
+                    var c = Ponto(2, 1)
+                    println(a == b)
+                    println(a == c)
+                    println(a != c)
+                    println(a.equals(b))
+                    var l = listOf(Ponto(1, 2), Ponto(3, 4))
+                    println(l.get(0) == a)
+                }
+                """, "true\nfalse\ntrue\ntrue\ntrue", tempDir, "record-eq");
+    }
 }

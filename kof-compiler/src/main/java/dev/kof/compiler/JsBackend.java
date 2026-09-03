@@ -95,6 +95,11 @@ class JsBackend implements Backend {
                 for (IRMethod m : clazz.methods()) {
                     methodNames.get(clazz.name()).add(m.name());
                 }
+                if ("java/lang/Record".equals(clazz.superName())) {
+                    // record gera equals() no JS (bug 11) — registra para o
+                    // dispatch de .equals()/== não cair em referência (===)
+                    methodNames.get(clazz.name()).add("equals");
+                }
             }
         }
         this.classMethodNames = methodNames;
@@ -216,6 +221,7 @@ class JsBackend implements Backend {
         if (isRecord) {
             methods.add(lowerRecordToString(clazz));
             methods.add(lowerRecordToJson(clazz));
+            methods.add(lowerRecordEquals(clazz));
         }
         return new JsIr.JsClass(jsName, jsSuper, fields, methods);
     }
@@ -254,6 +260,34 @@ class JsBackend implements Backend {
         }
         return new JsIr.JsFunction("toString", List.of(),
                 List.of(new JsIr.JsReturn(joined)), false, false, false);
+    }
+
+    /**
+     * Records: igualdade de conteúdo no JS (bug 11) — compara todos os
+     * componentes. O lowering de `==` em records despacha para `.equals()`
+     * em todos os targets.
+     */
+    private JsIr.JsFunction lowerRecordEquals(IRClass clazz) {
+        List<JsIr.JsExpression> conds = new ArrayList<>();
+        for (IRField field : clazz.fields()) {
+            String backing = "_" + sanitizeName(field.name());
+            conds.add(new JsIr.JsBinary(
+                    new JsIr.JsMember(new JsIr.JsThis(), backing),
+                    "===",
+                    new JsIr.JsMember(new JsIr.JsIdentifier("other"), backing)));
+        }
+        JsIr.JsExpression body = null;
+        for (int i = conds.size() - 1; i >= 0; i--) {
+            body = (body == null) ? conds.get(i)
+                    : new JsIr.JsBinary(conds.get(i), "&&", body);
+        }
+        if (body == null) body = new JsIr.JsNumber("1");
+        // Kof bool é int (0/1): o equals gerado devolve 1/0 para operações
+        // subsequentes (ex.: `a != c` compara com 0) não quebrarem.
+        JsIr.JsExpression kofBool = new JsIr.JsConditional(
+                body, new JsIr.JsNumber("1"), new JsIr.JsNumber("0"));
+        return new JsIr.JsFunction("equals", List.of("other"),
+                List.of(new JsIr.JsReturn(kofBool)), false, false, false);
     }
 
     /**
