@@ -10571,7 +10571,51 @@ final class NativeRuntime {
                 call sqlite3_changes
                 jmp .Ldb_exec_done\\n
             .Ldb_exec_mysql\\n:
-                # binds '?' -> literais (COM_QUERY não suporta ?)
+                .if \\n >= 1
+                # binario: COM_STMT_PREPARE + COM_STMT_EXECUTE (fecha o gap prepared)
+                # stash args
+                leaq .Ldb_prep_args(%rip), %rax
+                movq %r13, 0(%rax)
+                .if \\n >= 2
+                movq %r14, 8(%rax)
+                .endif
+                .if \\n >= 3
+                movq %r15, 16(%rax)
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rcx
+                movq %rcx, 24(%rax)
+                .endif
+                movq 32(%rsp), %rdi
+                movq %r12, %rsi
+                call kof_db_mysql_prepare
+                testl %eax, %eax
+                jz .Ldb_exec_subst\\n
+                movq 32(%rsp), %rdi
+                movl %eax, %esi
+                movl $\\n, %edx
+                call kof_db_mysql_exec
+                # reply: 1 packet OK/ERR — parser reuse
+                movq 32(%rsp), %rdi
+                leaq .Ldb_mysql_buf(%rip), %r13
+                movq %r13, %rsi
+                movl $16384, %edx
+                call kof_net_read
+                testq %rax, %rax
+                jle .Ldb_exec_bad\\n
+                cmpb $0xFF, 4(%r13)
+                je .Ldb_exec_bad\\n
+                cmpb $0x00, 4(%r13)
+                jne .Ldb_exec_bad\\n
+                movzbl 5(%r13), %eax
+                cmpb $0xFC, %al
+                je .Ldb_exec_afc\\n
+                cmpb $0xFD, %al
+                je .Ldb_exec_afd\\n
+                jmp .Ldb_exec_done\\n
+            .Ldb_exec_subst\\n:
+                # fallback: binds '?' -> literais (COM_QUERY não suporta ?)
+                .endif
                 .if \\n >= 1
                 movq %r13, %rdi
                 call kof_db_mysql_render
@@ -10831,7 +10875,9 @@ final class NativeRuntime {
                 movq %r14, %rax
                 jmp .Ldb_query_done\\n
             .Ldb_query_mysql\\n:
-                # binds '?' -> literais (COM_QUERY não suporta ?)
+                # binds '?' -> literais (COM_QUERY texto; EXECUTE retornaria
+                # linhas em formato binario — parse binario p/ resultset fica
+                # como gap documentado em status.md §MySQL)
                 .if \\n >= 1
                 movq %r13, %rdi
                 call kof_db_mysql_render
