@@ -38,12 +38,32 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
-| **HTTP002 restante** | média | `delete/put/patch/options`/`status` + `timeout/retry/circuit` (knobs reais) no Native | get/post/status já fecham a linha zero — o resto é cauda |
-| **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | JS sequencial já funciona; é evolução futura |
-| **MEDIA001/2/3** | baixa | paridade media Native/JS | gap documentado |
+| **~~GC mark-sweep~~ Native** | ✅ fechado 03/09 | `kof_gc_sweep` real; auto-collect desligado (requer safe-points) | ver Concluídos |
+| **HTTP002 restante** | média | `delete/put/patch/options` + `timeout/retry/circuit` reais no Native | `get/post/status` feitos |
+| **WEB002** — kof.web no Native | alta | server HTTP/1.1 accept/parsedispatch em `NativeWebRuntime` (novo, ≤500 linhas) | agente-planning reivindicou |
+| **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | design pendente |
+| **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
-| **Debugger DWARF** variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
-| **OpenTelemetry export** | baixa | spans feitos; falta OTLP export | |
+| **MySQL query binário** (resultset EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | ✅ FEITO 03/09 (`02b9ddb`) |
+| **Portar stdlib riscv64/aarch64** | média | `translateRiscvToAarch64` existe | agente-nativo-val |
+| Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
+| OpenTelemetry export | baixa | spans feitos; falta OTLP export | |
+
+### Trilha universal — Tier 1 e o estágio SYSTEMS
+
+Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
+
+| Pendência | Escopo | Estado |
+|---|---|---|
+| WEB002 | kof.web server nativo | EM CURSO (agente-planning) |
+| WEB001 | kof.web JS real | pendente |
+| CONC003 | async JS real | pendente |
+| MEDIA001/002/003 | media Native/JS | pendente |
+| HTTP002 cauda | delete/put/patch/options + resilience no Native | pendente |
+| GC auto-collect | safe-points | pendente |
+| DB001/ORM001 (JS) | db/orm no JS | pendente |
+
+Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
 ## Regras de convivência (já em AGENTS.md)
 
