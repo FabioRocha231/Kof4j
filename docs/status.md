@@ -563,22 +563,13 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
-<<<<<<< HEAD
- | NullSafetyE2ETest | 7 | `String?` narrowing JVM + readLine EOF null (02/09) |
- | NativeRiscv64E2ETest | 4 | **riscv64 real (qemu)**: `kof_main` + runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações Int (NATIVE002) |
+| NullSafetyE2ETest | 7 | `String?` narrowing JVM + readLine EOF null (02/09) |
+ | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core) |
  | **Total kof-compiler** | **793** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
  | **Total** | **810** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
-=======
-  | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core) |
-  | **Total kof-compiler** | **784** | |
-  | kof-script | 8 | KofScriptGlobals / repl / --watch |
-  | kof-c-compiler | 5 | KofC C subset → ELF |
-  | kof-cli | 4 | LSP references + rename (mock) |
-  | **Total** | **801** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
->>>>>>> origin/main
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
