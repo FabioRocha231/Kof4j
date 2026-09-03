@@ -10856,10 +10856,35 @@ final class NativeRuntime {
                 movq %r14, %rax
                 jmp .Ldb_query_done\\n
             .Ldb_query_mysql\\n:
-                # binds '?' -> literais (COM_QUERY texto; EXECUTE retornaria
-                # linhas em formato binario — parse binario p/ resultset fica
-                # como gap documentado em status.md §MySQL)
                 .if \\n >= 1
+                # binario: PREPARE + EXECUTE + parse de linhas binarias
+                leaq .Ldb_prep_args(%rip), %rax
+                movq %r13, 0(%rax)
+                .if \\n >= 2
+                movq %r14, 8(%rax)
+                .endif
+                .if \\n >= 3
+                movq %r15, 16(%rax)
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rcx
+                movq %rcx, 24(%rax)
+                .endif
+                movq 32(%rsp), %rdi
+                movq %r12, %rsi
+                call kof_db_mysql_prepare
+                testl %eax, %eax
+                jz .Ldb_query_subst\\n
+                movq 32(%rsp), %rdi
+                movl %eax, %esi
+                movl $\\n, %edx
+                call kof_db_mysql_prep_query
+                movq %rax, %r14              # list (ou 0)
+                testq %r14, %r14
+                jz .Ldb_query_subst\\n
+                movq %r14, %rax
+                jmp .Ldb_query_done\\n
+            .Ldb_query_subst\\n:
                 movq %r13, %rdi
                 call kof_db_mysql_render
                 movq %rax, %rsi
