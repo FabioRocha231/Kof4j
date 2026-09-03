@@ -43,6 +43,11 @@ class JsBackend implements Backend {
     private final Set<String> recordClassNames = new HashSet<>();
     private Map<String, Set<String>> classMethodNames = Map.of();
     private Map<String, Map<Integer, String>> fnArityNames = Map.of();
+    private Map<String, Boolean> asyncMethods = Map.of();
+    private Set<String> asyncMethodNamesAnywhere = Set.of();
+
+    private static final Set<String> ASYNC_RUNTIME_OPS = Set.of(
+            "kof_await", "kof_await_timeout", "kof_channel_receive", "kof_select_any");
 
     /** JS name for a top-level function call resolved by (name, arity). */
     private String jsFunctionName(String name, int arity) {
@@ -130,6 +135,7 @@ class JsBackend implements Backend {
                         .put(arity, jsName);
             }
         }
+        computeAsyncColoring(module);
         for (IRClass clazz : module.classes()) {
             if (skipClass(clazz)) continue;
             if (isMainClass(clazz)) {
@@ -160,6 +166,85 @@ class JsBackend implements Backend {
         return new JsIr.JsModule(module.name(), classes, functions,
                 new ArrayList<>(new LinkedHashSet<>(runtimeImports)),
                 new ArrayList<>(new LinkedHashSet<>(ioRuntimeImports)), moduleStatements);
+    }
+
+    private void computeAsyncColoring(IRModule module) {
+        Map<String, Boolean> async = new HashMap<>();
+        for (IRClass clazz : module.classes()) {
+            if (skipClass(clazz)) continue;
+            for (IRMethod method : clazz.methods()) {
+                String key = asyncMethodKey(clazz, method);
+                async.put(key, false);
+            }
+        }
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            Set<String> asyncNamesAnywhere = new HashSet<>();
+            for (Map.Entry<String, Boolean> e : async.entrySet()) {
+                if (!e.getValue()) continue;
+                int hash = e.getKey().lastIndexOf('#');
+                if (hash >= 0) asyncNamesAnywhere.add(e.getKey().substring(hash + 1));
+            }
+            for (IRClass clazz : module.classes()) {
+                if (skipClass(clazz)) continue;
+                for (IRMethod method : clazz.methods()) {
+                    String key = asyncMethodKey(clazz, method);
+                    if (async.get(key)) continue;
+                    List<KofOperation> ops = method.basicBlocks().stream()
+                            .flatMap(b -> b.operations().stream()).toList();
+                    boolean markAsync = false;
+                    for (KofOperation op : ops) {
+                        if (!(op instanceof KofCall kc)) continue;
+                        if (ASYNC_RUNTIME_OPS.contains(kc.methodName())) {
+                            markAsync = true;
+                            break;
+                        }
+                        KofCallKind kind = kc.kind();
+                        if (kind == KofCallKind.STATIC
+                                || kind == KofCallKind.FUNCTION
+                                || kind == KofCallKind.SUPER) {
+                            if (async.getOrDefault(calleeKeyFromCall(kc), false)) {
+                                markAsync = true;
+                                break;
+                            }
+                        } else if (kind == KofCallKind.INSTANCE || kind == KofCallKind.INTERFACE) {
+                            if (asyncNamesAnywhere.contains(kc.methodName())) {
+                                markAsync = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (markAsync) {
+                        async.put(key, true);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        Set<String> finalAsyncNames = new HashSet<>();
+        for (Map.Entry<String, Boolean> e : async.entrySet()) {
+            if (!e.getValue()) continue;
+            int hash = e.getKey().lastIndexOf('#');
+            if (hash >= 0) finalAsyncNames.add(e.getKey().substring(hash + 1));
+        }
+        this.asyncMethods = async;
+        this.asyncMethodNamesAnywhere = finalAsyncNames;
+    }
+
+    private static String asyncMethodKey(IRClass clazz, IRMethod method) {
+        if (isMainClass(clazz)) return "#" + method.name();
+        return clazz.name() + "#" + method.name();
+    }
+
+    private String calleeKeyFromCall(KofCall kc) {
+        String owner = ownerInternalName(kc.ownerType());
+        if (owner.isEmpty() || isMainInternalName(owner)) return "#" + kc.methodName();
+        return owner + "#" + kc.methodName();
+    }
+
+    private static boolean isMainInternalName(String internalName) {
+        return "Main".equals(internalName) || internalName.endsWith("/Main");
     }
 
     private static boolean skipClass(IRClass clazz) {
@@ -312,7 +397,7 @@ class JsBackend implements Backend {
         List<JsIr.JsStatement> body = parseMethodBody(ctx);
         insertFieldDefaults(clazz, body);
         insertSuperCall(clazz, body);
-        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false,
+        return new JsIr.JsFunction("constructor", parameterNames(ctx), body, false, true, false, false,
                 firstKofLine(method));
     }
 
@@ -328,7 +413,7 @@ class JsBackend implements Backend {
             name = jsFunctionName(name, method.parameterTypes().size());
         }
         return new JsIr.JsFunction(name, parameterNames(ctx), parseMethodBody(ctx), isStatic, false, isTopLevel,
-                firstKofLine(method));
+                ctx.isAsync, firstKofLine(method));
     }
 
     /**
@@ -409,6 +494,7 @@ class JsBackend implements Backend {
         final String methodName;
         final int paramCount;
         final boolean recordClass;
+        final boolean isAsync;
         /** slots of lambda capture fields (come before the real parameters) */
         final Set<Integer> captureSlots = new HashSet<>();
         int tempCounter = 0;
@@ -422,6 +508,8 @@ class JsBackend implements Backend {
             this.methodName = method.name();
             this.paramCount = method.parameterTypes().size();
             this.recordClass = clazz != null && "java/lang/Record".equals(clazz.superName());
+            String asyncKey = clazz == null ? "#" + method.name() : asyncMethodKey(clazz, method);
+            this.isAsync = asyncMethods.getOrDefault(asyncKey, false);
             // lambda synthetic classes hold captured locals as private final
             // fields at the first slots; the real parameters come after them.
             Set<String> captureFields = new HashSet<>();

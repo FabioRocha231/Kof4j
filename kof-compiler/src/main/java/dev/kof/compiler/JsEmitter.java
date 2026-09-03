@@ -286,6 +286,7 @@ final class JsEmitter {
         if (e instanceof JsIr.JsArrow ar) {
             return "(" + String.join(", ", ar.parameters()) + ") => " + expr(ar.body());
         }
+        if (e instanceof JsIr.JsAwait aw) return "(await " + expr(aw.operand()) + ")";
         throw new IllegalStateException("unknown JS expression: " + e);
     }
 
