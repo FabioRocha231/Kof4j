@@ -119,4 +119,157 @@ class NativeRiscv64E2ETest {
             """);
         assertEquals("5\n2\n-7", out);
     }
+
+    @Test
+    void riscv64VirtualDispatch(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            class Animal {
+                speak(): String = "animal"
+            }
+            class Dog extends Animal {
+                speak(): String = "dog"
+            }
+            main() {
+                var a = new Dog()
+                println(a.speak())
+                var b = new Animal()
+                println(b.speak())
+            }
+            """);
+        assertEquals("dog\nanimal", out);
+    }
+
+    @Test
+    void riscv64FieldsAndMethods(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            class User {
+                String name
+                greet(): String = "oi " + name
+            }
+            main() {
+                var u = new User()
+                u.name = "Mel"
+                println(u.greet())
+            }
+            """);
+        assertEquals("oi Mel", out);
+    }
+
+    @Test
+    void riscv64Arrays(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            main() {
+                var arr = new Int[3]
+                arr[0] = 10
+                arr[1] = 20
+                arr[2] = 30
+                println(arr[0] + arr[1] + arr[2])
+                println(arr.length)
+            }
+            """);
+        assertEquals("60\n3", out);
+    }
+
+    @Test
+    void riscv64List(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            main() {
+                var l = listOf(1, 2, 3)
+                l.add(4)
+                println(l.size)
+                println(l.get(2))
+            }
+            """);
+        assertEquals("4\n3", out);
+    }
+
+    @Test
+    void riscv64SwitchInt(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            main() {
+                var x = 2
+                switch (x) {
+                    case 1: println("um")
+                    case 2: println("dois")
+                    default: println("outro")
+                }
+            }
+            """);
+        assertEquals("dois", out);
+    }
+
+    @Test
+    void riscv64TryCatchThrow(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            main() {
+                try {
+                    throw "boom"
+                } catch (String e) {
+                    println("caught: " + e)
+                }
+                println("done")
+            }
+            """);
+        assertEquals("caught: boom\ndone", out);
+    }
+
+    @Test
+    void riscv64PatternMatching(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            main() {
+                var x: Object = "hello"
+                switch (x) {
+                    case String s:
+                        println("str:" + s)
+                    default:
+                        println("other")
+                }
+                var a: Object = "world"
+                if (a instanceof String) {
+                    println("is string")
+                }
+                var b: Object = "test" as String
+                println(b)
+            }
+            """);
+        assertEquals("str:hello\nis string\ntest", out);
+    }
+
+    @Test
+    void riscv64StringMethods(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            main() {
+                var s = "Hello, Kof"
+                println(s.length)
+                println(s.substring(7))
+                println(s.contains("Kof"))
+                println(s.startsWith("He"))
+                println(s.charAt(0))
+            }
+            """);
+        assertEquals("10\nKof\ntrue\ntrue\n72", out);
+    }
+
+    @Test
+    void riscv64Recursion(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runRiscv64(tempDir, """
+            Int fib(Int n) {
+                if (n < 2) { return n }
+                return fib(n - 1) + fib(n - 2)
+            }
+            main() {
+                println(fib(10))
+            }
+            """);
+        assertEquals("55", out);
+    }
 }
