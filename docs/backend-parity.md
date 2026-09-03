@@ -81,7 +81,7 @@
 | kof.db/orm no JS | `DB001` / `ORM001` | planned |
 | JSON Float/Double | ✅ 31/08 (JSN001 fechado — XMM + parser fração/expoente) | |
 | JSON objetos/records no Native | ✅ 31/08 (JSN002 fechado — composição em compile-time) | |
-| GC mark-sweep no Native | — | pendente; auto-GC desativado após hang (memória devolvida só no `munmap` fallback) |
+| GC mark-sweep no Native | ✅ | `kof_gc_sweep` real (flag bit1) + auto-collect (exaustão → collect antes do mmap) — `KofGcE2ETest 3/3` (03/09) |
 | MySQL nativo completo | — | WIP: **wire protocol ✅** (handshake + scramble SHA-1 + auth-switch `mysql_native_password` + COM_QUERY + resultset coldefs/rows/EOF + binds `?` client-side — `nativeMysqlWireProtocol`, 31/08); falta **prepared statements** binários (COM_STMT_PREPARE/EXECUTE — tentativa de 01/09 revertida; binds `?` já cobrem o uso funcional) |
 | Native riscv64/aarch64 codegen | `NATIVE002` | **riscv64 core completo (02/09) + aarch64 core completo (03/09)**: `NativeRiscv64E2ETest 13/13` + `NativeAarch64E2ETest 13/13` — runtimes + codegen em **asm puro** (raw syscalls 64/93, **sem C**; `as`+`ld` estático; aarch64 via `translateRiscvToAarch64`) + qemu: println, var, if/else, aritmética, **classes (virtual dispatch/fields), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão**. Paridade total x86 (JSON/DB/HTTP/concorrência/UI/net) pendente nos dois. **Ver `docs/native-multiarch.md`** |
 

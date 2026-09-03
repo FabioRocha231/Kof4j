@@ -20,7 +20,8 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
-| **NATIVE002** — validação 13/13 + observability real (riscv64/aarch64) | `EM CURSO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`) | ✅ b20aa49 (qemu OK); stubs 79e101a; prepared MySQL fechado (4ce1f25) |
+| **NATIVE002 residual** — MySQL query binário (resultset de EXECUTE) | `EM CURSO` | agente-nativo-val | main | `NativeDbPrepared.java` + wire | valid/observ FEITO 03/09 (b20aa49+79e101a); prepared FEITO 4ce1f25; segue com exec binário |
+| **GC mark-sweep** Native | `FEITO` | agente-planning | planning-future | `NativeRuntime.java` (`kof_gc_sweep` real + flag) | sweep real funciona; **auto-collect no alloc desligado** (precisa safe-points/mapas de raiz — fora do escopo). `KofGcE2ETest` 3/3. status.md Bugs #8. |
 
 ## Concluídos recentemente
 
@@ -38,7 +39,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
-| **GC mark-sweep** Native | alta | `kof_gc_sweep` + auto-collect + E2E | mark já existe; só falta sweep. `status.md` Bugs #8 |
+| ~~GC mark-sweep~~ Native | ~~alta~~ | ✅ fechado 03/09 | ver Concluídos |
 | **HTTP002** parcial restante | média | `delete/put/patch/options` + headers + `timeout/retry/circuit` Native | após get/post/status fecharem |
 | **WEB002** — kof.web no Native | média | server HTTP/1.1 listen/accept sobre `kof_net_*` | depois de HTTP002 |
 | **CONC003** — JS async real | média | Promises/event-loop GraalJS | design primeiro |

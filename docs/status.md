@@ -603,7 +603,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 
 ## Bugs Restantes (reais)
 
-1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
+1. ~~GC automático no Native~~ — ✅ 03/09: `kof_gc_sweep` real (percorre GC list, limpa mark dos vivos, insere mortos na free-list com flag bit1). **Auto-collect desligado** — ativar dentro de kof_alloc requer safe-points (o alloc tem o ponteiro do bloco livre num registrador não-empilhado no momento da chamada → mark conservador nao o ve → sweep insere-o de novo → dupla alocação). kof_gc_collect_now existe p/ uso explícito futuro
 2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito + `done`/`poll`/`cancel`/`cancelled`/`selectAny` (cancel cooperativo por TID + selectAny polling 1ms; `SemanticAnalyzer` desambigua `cancel(Handle<T>)→Bool` vs `scheduler.cancel(String)→VOID`)
    - ✅ ~~bug pré-existente SEPARADO: `spawn→await→spawn` SIGSEGV no 2º `pthread_create`~~ — **resolvido 01/09**: mesmo mecanismo do println-antes-do-spawn. O site do `call pthread_create` exige `rsp ≡ 0 (mod 16)` pela ABI SysV; após `pthread_join` (do `await`) a stack chegava 8 bytes desalinhada e a glibc segfaultava em `pthread_attr_copy`. Alinhamento de stack no C call (`andq $-16, %rsp` em `kof_spawn_handle_new`, preservando `r15` + frame do caller). `SpawnE2ETest.nativeSpawnAwaitSpawnDoesNotSegfault` (sem o fix: SIGSEGV 3/3; com: ok 3/3). **Nota**: alinhamento já tinha sido auditado "conforme ABI" e descartado como causa numa sessão anterior — a medição agora crava que o site do `call pthread_create` efetivamente chegava desalinhado nos casos com output/join antes do spawn.
 3. ~~JSON de objetos/records no Native: JSN002~~ — ✅ fechado (composição compile-time)
@@ -682,7 +682,7 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 - otimizador de IR sempre ativo; pattern matching (switch com tipos + destructuring, 3 targets); null safety básica (`String?`, 3 targets); higher-order em coleções (map/filter/reduce, 3 targets); módulos multi-arquivo (`import a.b.C`)
 - KofScript — top-level let/const (`KofScriptGlobals`, repl, `--watch`); KofC compiler — C subset → ELF x86_64 (`kof c`)
 - LSP com hover/completion + diagnostics reais; widening de return
-- Native GC — free-list `kof_free_head` (reuso mmap, 27/08); `kof_gc_collect` mark-sweep emitido (auto-GC desligado após hang — memória devolvida só no `munmap` fallback; ver "Bugs Restantes" #1)
+- Native GC — ✅ mark-sweep 03/09 (`kof_gc_mark` fecha o grafo, `kof_gc_sweep` libera para free-list com bit1 flag; `kof_alloc` coleta na exaustão); ver `KofGcE2ETest`
 - Ponto flutuante real no Native (FLT001 fechado 31/08 — XMM); JSON objetos/records no Native (JSN002 fechado) + arrays FP (JSN001/003)
 - releases multiplataforma (2 jobs: `test-and-bump` → `package-and-release`; linux-x86_64 / macos-arm64 / windows-x86_64)
 

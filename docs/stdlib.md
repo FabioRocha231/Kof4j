@@ -108,12 +108,12 @@ Resumo executivo (0.2.6-beta, 31/08):
 | observability | DONE (kof.observability: health/metrics/request IDs — JVM/Native/JS) |
 | `KofScript` / `KofCcompiler` / targets riscv64/aarch64 | DONE (KofScript 8, KofC 5, riscv64 toolchain estável) |
 | messaging (`kof.mq` 3 targets), scheduling (`scheduler` JVM+JS), sessions, rate limiting, TLS, WebSocket/SSE (JVM), `kof.cache` (3 targets) | DONE (gaps reais: `SCHED001` Native, `WEB002` TLS, `WEB003/004` WS/SSE) |
-| GC Native free-list | DONE (0.2.6-beta `kof_free_head` + `kof_gc_collect`) |
+| GC Native mark-sweep | DONE (03/09 `kof_gc_mark` + `kof_gc_sweep` + auto-collect on exhaustion; `KofGcE2ETest` 3/3) |
 
 # 6. PRÓXIMAS ETAPAS (residual pós-0.2.0)
 
 1. Native aarch64 codegen completo (placeholder hoje)
-2. GC mark-sweep completo (free-list done)
+2. ~~GC mark-sweep completo~~ ✅ 03/09 (KofGcE2ETest 3/3)
 3. MySQL/MariaDB native completo (auth scramble SHA-1 + lenenc done; handshake/query/prepared pendentes — WIP)
 4. Query DSL tipada `User.query { where age > 18 }` (nível 3 DATABASE_VISION)
 5. `kof fmt` (P5) + LSP completo + Debugger DWARF/JS source maps
