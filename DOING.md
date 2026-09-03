@@ -20,8 +20,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
-| **NATIVE002 residual** — MySQL query binário (resultset de EXECUTE) | `EM CURSO` | agente-nativo-val | main | `NativeDbPrepared.java` + wire | valid/observ FEITO 03/09; prepared FEITO 4ce1f25; segue com exec binário |
-| **WEB002** — `kof.web` server no Native | `EM CURSO` | agente-planning | planning-future | `NativeWebRuntime.java` (novo, ≤500) + `KofWeb.java` + `KofWebE2ETest.java` | server HTTP/1.1 asm: listen/accept, parse METHOD+PATH, rota por literal, handler via trampolim para lambda; MVP: `app.get("/x"){\ return "hi" }` |
+| **NATIVE002** — paridade stdlib riscv64/aarch64 (log/config/time/cache/mq stubs→real) | `EM CURSO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`), `NativeRiscv64E2ETest.java`, `NativeAarch64E2ETest.java` | validação 13/13 + observability real (b20aa49); preparando stubs p/ implementação real (mqtt/sse/interval/cron via `translateRiscvToAarch64`) |
 
 ## Concluídos recentemente
 
@@ -29,7 +28,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 |---|---|---|---|---|
 | **GC mark-sweep** Native | `FEITO` | agente-planning | 03/09 | `461ec3b` — sweep real funciona; auto-collect fica desligado (safe-points fora do escopo) |
 | **HTTP002** — `kof.http` no Native | `FEITO` | agente-planning | 03/09 | `71d27f2` — `NativeHttpRuntime.java` (novo, ≤500): parse URL, IPv4, socket/connect, request/read body/status; `KofHttpE2ETest` 6/6 (get/post/status com server Kof real) |
-| **MySQL Native prepared** — COM_STMT_PREPARE/EXECUTE binário | `FEITO` | agente-nativo-val | 03/09 | `4ce1f25` — `NativeDbPrepared.java`; `KofDbE2ETest` 11/11 |
+| **MySQL Native prepared + query binário** | `FEITO` | agente-nativo-val | 03/09 | `4ce1f25` + `02b9ddb` — `NativeDbPrepared.java` (≤500): PREPARE/EXECUTE binário completo (); `KofDbE2ETest` 12/12 com `nativeMysqlPreparedBinary` (aspas+injection intactos) |
 | **NATIVE002 core** — riscv64 + aarch64 13/13 | `FEITO` | outro agente | 02–03/09 | `3fbc29a`, `ac6c598` — asm puro via `translateRiscvToAarch64` |
 | **TIME001** — time.interval/cancel no JS | `FEITO` | agente-planning | 03/09 | `c1db297` — fila cooperativa `kofTimeJobs` bombeada por `kofTimeSleep`; `KofTimeE2ETest` 5/5 |
 | **LOG001** — kof.log no JS | `FEITO` | agente-planning | 01/09 | `console.*` + `KOF_LOG_LEVEL` |
@@ -39,32 +38,32 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
-| **GC mark-sweep** Native | ~~alta~~ | ✅ fechado 03/09 | ver Concluídos |
-| **HTTP002 restante** | média | `delete/put/patch/options`/`status` + `timeout/retry/circuit` (knobs no Native) | get/post/status fecham a linha zero — resto é cauda |
-| **WEB002** — kof.web no Native | alta | server HTTP/1.1 sobre `kof_net_*` + dispatch com trampolim | depois de HTTP002 |
-| **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | JS sequencial já funciona; evolução futura |
-| **MEDIA001/2/3** | baixa | paridade media Native/JS | gap documentado |
+| **~~GC mark-sweep~~ Native** | ✅ fechado 03/09 | `kof_gc_sweep` real; auto-collect desligado (requer safe-points) | ver Concluídos |
+| **HTTP002 restante** | média | `delete/put/patch/options` + `timeout/retry/circuit` reais no Native | `get/post/status` feitos |
+| **WEB002** — kof.web no Native | alta | server HTTP/1.1 accept/parsedispatch em `NativeWebRuntime` (novo, ≤500 linhas) | agente-planning reivindicou |
+| **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | design pendente |
+| **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
-| **MySQL query binário** (resultset de EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | `FEITO` 03/09 — `02b9ddb`: coldefs+tipos capturados no PREPARE; rows binárias (marker 0x00, null-bitmap +2, valores crus por coltype); `KofDbE2ETest.nativeMysqlPreparedBinary`; suíte 822/0. Fallback COM_QUERY substituição se PREPARE falhar |
-| Portar stdlib riscv64/aarch64 (web/db/mq/cache/time/log/config/observability) | média | `translateRiscvToAarch64` existe | agente-nativo-val (validation/observability ✅ b20aa49+79e101a) |
+| **MySQL query binário** (resultset EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | ✅ FEITO 03/09 (`02b9ddb`) |
+| **Portar stdlib riscv64/aarch64** | média | `translateRiscvToAarch64` existe | agente-nativo-val |
 | Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
 | OpenTelemetry export | baixa | spans feitos; falta OTLP export | |
 
 ### Trilha universal — Tier 1 e o estágio SYSTEMS
 
-Tier 0 (guardrails) ✅. Para fechar Tier 1 (SYSTEMS), fechar tudo que segue:
+Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
 
 | Pendência | Escopo | Estado |
 |---|---|---|
 | WEB002 | kof.web server nativo | EM CURSO (agente-planning) |
-| WEB001 | kof.web JS | pendente |
-| CONC003 | async JS real sobre event-loop | pendente |
+| WEB001 | kof.web JS real | pendente |
+| CONC003 | async JS real | pendente |
 | MEDIA001/002/003 | media Native/JS | pendente |
-| HTTP002 cauda | delete/put/patch/options + timeout/retry/circuit Nativo | pendente |
-| GC auto-collect | safe-points (mappa de raízes por frame) no Native | pendente |
-| DB001/ORM001 | db/orm no JS | pendente |
+| HTTP002 cauda | delete/put/patch/options + resilience no Native | pendente |
+| GC auto-collect | safe-points | pendente |
+| DB001/ORM001 (JS) | db/orm no JS | pendente |
 
-When ALL suceder => Tier 1 fechado, Tier 2+ abrem.
+Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
 ## Regras de convivência (já em AGENTS.md)
 
