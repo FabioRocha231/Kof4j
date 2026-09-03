@@ -56,6 +56,7 @@ Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
 | Pendência | Escopo | Estado |
 |---|---|---|
 | WEB002 | kof.web server nativo | ✅ 03/09 (sem path params, sse/ws, keepalive; ver gaps) |
+| WEB001 | kof.web JS | 🔴 EM CURSO — `kofWebRoute`/`kofWebListen` no `JsBackend` (GraalJS→HttpServer, keep-alive com `CountDownLatch`). Handler dispatch precisa invoke() manual. Ver bloco abaixo |
 | WEB001 | kof.web JS real | pendente |
 | CONC003 | async JS real | pendente |
 | MEDIA001/002/003 | media Native/JS | pendente |
@@ -77,3 +78,16 @@ Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 |---|---|---|---|---|---|
 | **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **13/25 bugs corrigidos 03/09** (1,2,3,4,5,6,7,10,13,14,22,24,25 — todos com teste de regressão). Restantes: 8,9,11,12,15,16,17,18,19,20,21,23. Corrigir bug = reivindicar aqui e fix no código, não no corpus. |
 | **Auditoria idiomática de docs/training** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `learn/`, `training/`, `docs/` | Revisar corpus contra o compilador (fake idioms, casos obsoletos). |
+
+### Notas para WEB001 (sessão seguinte)
+
+KofWebNativeE2ETest requisita caminho básico (T1-T4 feitos) com:
+- `NativeWebRuntime.java` (asm, graal puro): accept loop.
+- parse METHOD PATH (gera 200/404).
+- Handler dispatch via trampolim (vírgula, só recebe handler). OK:
+
+- `kof_web_body()` — read request body (após \r\n\r\n).
+
+Estado: kofWebNativeE2ETest 4/4 verde. `84Gap` closes. Dəres轰 faila:
+Não consegui fazer `kof_web_listen` no JS (WEB001) — a abordagem `CountDownLatch` +
+CachedThreadPool não usa Acceptomp callback no main e processo morre antes que accept lupe. WB deve voltar como NO WORinking upgraded.
