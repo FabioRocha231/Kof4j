@@ -4676,6 +4676,22 @@ private Target target = Target.JVM;
                         }
                     }
                     if (recvType instanceof Type.FunctionType ft) {
+                        if (ft.className() == null) {
+                            // bug 8: valor de TIPO DE FUNÇÃO DECLARADO (param
+                            // (s: (Int) -> Int), sem classe sintética) não pode
+                            // ser invocado ainda — precisa de dispatch por
+                            // interface. Diagnóstico limpo em vez de bytecode
+                            // quebrado (owner "").
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0, 0,
+                                        "não é possível invocar valor de tipo de função declarado"
+                                                + " (requer dispatch por interface — ainda não implementado)",
+                                        "SEM032");
+                            }
+                            yield localIdx;
+                        }
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                         for (ExpressionNode arg : mc.arguments()) {
@@ -4683,8 +4699,7 @@ private Target target = Target.JVM;
                         }
                         // f.invoke(): o owner precisa ser a classe sintética
                         // da lambda — FunctionType não tem nome JVM
-                        Type invokeOwner = ft.className() != null
-                                ? new Type.ClassType("", ft.className(), List.of()) : ft;
+                        Type invokeOwner = new Type.ClassType("", ft.className(), List.of());
                         ops.add(new KofCall(invokeOwner, "invoke", argTypes, ft.returnType(), KofCallKind.INSTANCE));
                         yield localIdx;
                     }
@@ -5130,14 +5145,24 @@ private Target target = Target.JVM;
                     } else {
                         IRLocalVariable lambdaVar = findLocalVar(mc.methodName(), locals);
                         if (lambdaVar != null && lambdaVar.type() instanceof Type.FunctionType lft) {
+                            if (lft.className() == null) {
+                                if (currentDiagnostics != null) {
+                                    currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                            mc.position() != null ? mc.position().line() : 0,
+                                            mc.position() != null ? mc.position().column() : 0, 0,
+                                            "não é possível invocar valor de tipo de função declarado"
+                                                    + " (requer dispatch por interface — ainda não implementado)",
+                                            "SEM032");
+                                }
+                            } else {
                             localIdx = emitExpression(new IdentifierExpr(mc.position(), mc.methodName()),
                                     ops, owner, localIdx, locals);
                             List<Type> argTypes = new ArrayList<>();
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                             localIdx = emitArgumentsWithFormalTypes(mc.arguments(), lft.parameterTypes(), ops, owner, localIdx, locals);
-                            Type invokeOwner = lft.className() != null
-                                    ? new Type.ClassType("", lft.className(), List.of()) : lft;
+                            Type invokeOwner = new Type.ClassType("", lft.className(), List.of());
                             ops.add(new KofCall(invokeOwner, "invoke", argTypes, lft.returnType(), KofCallKind.INSTANCE));
+                            }
                         } else {
                             List<Type> argTypes = new ArrayList<>();
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));

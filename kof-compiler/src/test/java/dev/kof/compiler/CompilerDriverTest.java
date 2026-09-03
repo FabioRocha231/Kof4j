@@ -4017,4 +4017,33 @@ class CompilerDriverTest {
             main() { val f = (x: Int) -> y + 1; println(f(10)) }
             """, tempDir, "u13");
     }
+
+    // known-bugs #8 — function types `(Int) -> Int` now PARSE as type
+    // annotations, generic arguments and lambda parameter types. Invoking a
+    // value of a DECLARED function type (no synthetic lambda class) requires
+    // interface dispatch (not implemented) → clean SEM032, not broken bytecode.
+    @Test
+    void functionTypeSyntax(@TempDir Path tempDir) throws IOException {
+        Path ok = tempDir.resolve("ft.kf");
+        Files.writeString(ok, """
+            main() {
+                var fs = listOf<(Int) -> Int>()
+                println(fs.size)
+            }
+            """);
+        assertTrue(driver.compile(ok, tempDir.resolve("out"), Target.JVM).success(),
+                "Function type as generic argument should parse");
+
+        Path bad = tempDir.resolve("bad.kf");
+        Files.writeString(bad, """
+            main() {
+                val f = (s: (Int) -> Int) -> s(1)
+                println(f((x: Int) -> x * 10))
+            }
+            """);
+        CompilationResult result = driver.compile(bad, tempDir.resolve("out2"), Target.JVM);
+        assertFalse(result.success(), "Invoking a declared function type needs interface dispatch");
+        assertTrue(result.diagnostics().getDiagnostics().toString().contains("SEM032"),
+                "Should be a clean SEM032, got: " + result.diagnostics().getDiagnostics());
+    }
 }

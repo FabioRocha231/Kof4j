@@ -590,3 +590,11 @@ EXTERNA produz lixo
   Native**: `Lambda0.invoke` devolve lixo (retorno de FunctionType no
   NativeBackend) — pendência coordenada com agente nativo. Prova:
   `CoreRegressionE2ETest.lambdaReturningLambda` (JVM+JS).
+- **Bug 8** (tipo de função `(Int) -> Int` não parseava como tipo) —
+  **parcialmente corrigido 03/09**: `Parser.parseTypeRef` agora aceita
+  `(params) -> ret`; `Type.of` converte para `FunctionType`; `looksLikeLambdaParams`
+  reconhece `(s: (Int) -> Int) -> ...`. `listOf<(Int) -> Int>()` funciona.
+  **Pendência**: invocar um valor de tipo de função DECLARADO (`s(1)` com
+  `s: (Int) -> Int`) requer dispatch por interface (classes sintéticas de
+  lambda são separadas) — hoje dá SEM032 limpo (não mais bytecode quebrado).
+  Prova: `CompilerDriverTest.functionTypeSyntax`.
