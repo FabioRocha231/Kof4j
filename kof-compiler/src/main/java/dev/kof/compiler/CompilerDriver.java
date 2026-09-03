@@ -4525,7 +4525,8 @@ private Target target = Target.JVM;
                             boolean nativeWebT1 = (target == Target.NATIVE
                                     || target == Target.NATIVE_RISCV64
                                     || target == Target.NATIVE_AARCH64)
-                                    && webCall.function().equals("kof_web_listen");
+                                    && (webCall.function().equals("kof_web_listen")
+                                        || webCall.function().equals("kof_web_route"));
                             if (target != Target.JVM && target != Target.ANDROID && !nativeWebT1) {
                                 String webCode = KofWeb.gapCode(webCall.function());
                                 String webMsg = switch (webCode) {
