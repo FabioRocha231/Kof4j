@@ -625,9 +625,9 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ## Bugs Restantes (reais)
 
 > **Lista completa com reprodução + correção sugerida: `docs/known-bugs.md`**
-> (09 bugs verificados 02/09 — inclui compound assignment `-=`/`/=`/`%=`,
-> `switch` de String, cast FP→Int, `42L` maiúsculo, crash de `s +=` em loop,
-> `listOf<String?>()`, `throw` não-String e captura mutável Native).
+> (15 bugs verificados 02/09 — rodada agressiva inclui: `!` NOT como valor
+> sempre `true`, `==` de records por referência, assignment encadeado crasha,
+> cast em aritmética crasha, `Map.size` propriedade, primitivo→Object).
 
 1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
 2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito + `done`/`poll`/`cancel`/`cancelled`/`selectAny` (cancel cooperativo por TID + selectAny polling 1ms; `SemanticAnalyzer` desambigua `cancel(Handle<T>)→Bool` vs `scheduler.cancel(String)→VOID`)

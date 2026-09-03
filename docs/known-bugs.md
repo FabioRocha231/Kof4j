@@ -188,6 +188,124 @@ EXTERNA produz lixo
 
 ---
 
+## Descobertos na investigação agressiva (02/09, rodada 2)
+
+### 10. `!` (NOT lógico) como VALOR de expressão sempre retorna `true`
+
+- **Sintoma:** `println(!true)` → `true`; `var x = !false` → `true`. Em
+  **condição** de `if`, `!` funciona (`if (!ativo)` ok).
+- **Reprodução:**
+  ```kof
+  main() {
+      var x = !true      // true (deveria false)
+      println(x)
+      println(!false)    // true (deveria true — coincidentemente certo)
+      println(!(1 > 2))  // true (deveria true — coincidência)
+  }
+  ```
+- **Verificado:** JVM e Native — o valor emitido é sempre `1` (true).
+- **Causa provável:** lowering do unário `!` em contexto de expressão
+  (argumento/atribuição) não nega; só o caminho de condição (jump negation)
+  funciona.
+- **Arquivos:** `CompilerDriver.java` (UnaryExpr `!`), backends.
+
+---
+
+### 11. `==` em records usa igualdade de REFERÊNCIA no JVM (não `equals`)
+
+- **Sintoma:** `Ponto(1,2) == Ponto(1,2)` → `false` (deveria `true`);
+  `a.equals(b)` → `true`.
+- **Reprodução:**
+  ```kof
+  record Ponto(Int x, Int y)
+  main() {
+      var a = Ponto(1, 2)
+      var b = Ponto(1, 2)
+      println(a == b)      // false (deveria true — equals é gerado)
+  }
+  ```
+- **Causa provável:** `==` em tipos de referência emite `if_acmpeq`
+  (referência), sem despachar para o `equals` gerado do record.
+- **Arquivos:** `CompilerDriver.java`/`JvmBackend.java` (comparação `==` de
+  referenciais).
+
+---
+
+### 12. Assignment encadeado (`var c = a = b`) crasha o compilador
+
+- **Sintoma:** `var c = a = b` → `Internal compiler error: frame crash
+  COMP002 (Index -1 out of bounds)`.
+- **Reprodução:**
+  ```kof
+  main() {
+      var a = 1
+      var b = 2
+      var c = a = b      // COMP002
+      println(c)
+  }
+  ```
+- **Causa provável:** a expressão de atribuição como RHS de outra deixa a
+  pilha desbalanceada no emit (AssignmentExpr dentro de AssignmentExpr).
+- **Arquivos:** `CompilerDriver.java` (emit de AssignmentExpr).
+
+---
+
+### 13. Cast (`x as T`) usado como operando de aritmética crasha o compilador
+
+- **Sintoma:** `var y = (x as Int) + 1` → `frame crash COMP002 (-1)`.
+  `println(x as Int)` isolado funciona.
+- **Reprodução:**
+  ```kof
+  main() {
+      var x = 5
+      var y = (x as Int) + 1    // COMP002
+      println(y)
+  }
+  ```
+- **Verificado:** não é específico de Char — `(Int as Int) + 1` também crasha.
+- **Causa provável:** o cast (KofCheckCast) deixa um valor na pilha que o
+  binário aritmético assume desbalanceado (push extra).
+- **Arquivos:** `CompilerDriver.java`/`JvmBackend.java` (emit de `as` + binário).
+
+---
+
+### 14. `Map.size` (propriedade) → `NoSuchFieldError` confuso em runtime
+
+- **Sintoma:** `m.size` (sem parênteses) compila mas falha em runtime com
+  `NoSuchFieldError: java.util.HashMap does not have member field 'size'`.
+  `m.size()` (método) funciona. `List.size` (propriedade) funciona.
+- **Reprodução:**
+  ```kof
+  main() {
+      var m = mapOf("a", 1)
+      println(m.size)     // NoSuchFieldError (use m.size())
+  }
+  ```
+- **Inconsistência:** `List` expõe `.size` (propriedade) e `Map` só `size()`
+  (método) — a forma propriedade deveria funcionar (ou rejeitar em
+  compile-time com diagnostic claro, não NoSuchFieldError).
+- **Arquivos:** `CompilerDriver.java` (field-access dispatch de Map).
+
+---
+
+### 15. Primitivo não é atribuível a `Object` (sem auto-boxing)
+
+- **Sintoma:** `Object n = 42` → `SEM021 type mismatch: cannot assign int to
+  Object`. `Object o = "kof"` funciona (String→Object).
+- **Reprodução:**
+  ```kof
+  main() {
+      Object n = 42        // SEM021 — primitivo não boxa para Object
+      println("done")
+  }
+  ```
+- **Impacto:** impede pattern matching/`instanceof` sobre primitivos via
+  `Object` (só funciona com referências). É uma **limitação**, não crash —
+  mas vale decisão de design (auto-boxing ou diagnostic melhor).
+- **Arquivos:** `SemanticAnalyzer.java` (isAssignable primitivo → Object).
+
+---
+
 ## Comportamentos que PAREcem bugs mas são esperados (não corrigir)
 
 | Cenário | Comportamento | Por quê |
