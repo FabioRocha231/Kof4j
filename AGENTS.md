@@ -3,7 +3,26 @@
 Este é o guia **obrigatório** para qualquer agente de IA (ou humano) que
 escreva código Kof neste repositório. Leia antes de gerar qualquer `.kf`.
 
-**Versão:** 0.2.6-beta · Última atualização: 01/09/2026 (casts primitivos, Long[], String.valueOf builtin)
+**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**)
+
+---
+
+## Coordenação multi-agente — DOING.md (obrigatório)
+
+Vários agentes trabalham em paralelo neste repo. **Antes de começar qualquer
+feature/gap, leia `DOING.md`:**
+
+- Se o item já tem **dono + estado `EM CURSO`**, não toque nele — escolha outro.
+- Ao começar um item, **reivindique no `DOING.md` no mesmo commit** (dono,
+  branch, arquivos que vai tocar).
+- **A cada commit, atualize sua linha** no `DOING.md` (o que fez, o que falta).
+- Ao concluir, marque `FEITO` com data + SHA + teste que prova, e feche o gap
+  em `docs/status.md`/`docs/backend-parity.md`.
+- Abandonou? Volte para `ABERTO` com nota do que funciona e o que falta.
+
+Regra de ouro: **nunca dois agentes no mesmo gap ou no mesmo arquivo gigante**
+(`NativeRuntime.java`, `CompilerDriver.java`) ao mesmo tempo. Se for
+inevitável, combine no chat antes.
 
 ---
 
