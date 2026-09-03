@@ -404,4 +404,26 @@ class CoreRegressionE2ETest {
                 }
                 """, "3\n3\n2\n-3\n3.4\n3.9", tempDir, "fp-casts");
     }
+
+    // known-bugs #6 — uppercase numeric suffixes (42L, 1.5F, 1.5D) were not
+    // consumed by the lexer (INT_LITERAL(42) + IDENTIFIER(L)) → invalid
+    // bytecode. Lowercase and uppercase must be aliases.
+    @Test
+    void uppercaseNumericSuffixes(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var a = 42L
+                    var b = 42l
+                    var c = 1.5F
+                    var d = 1.5f
+                    var e = 2.5D
+                    println(a)
+                    println(b)
+                    println(a == b)
+                    println(c)
+                    println(d)
+                    println(e)
+                }
+                """, "42\n42\ntrue\n1.5\n1.5\n2.5", tempDir, "upper-suffix");
+    }
 }

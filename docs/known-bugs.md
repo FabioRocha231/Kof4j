@@ -466,6 +466,7 @@ EXTERNA produz lixo
 | `10 / 0` (variáveis) | `ArithmeticException` runtime | ARITH001 só pega constantes |
 | `"Olá 😀".length` | 6 (JVM UTF-16) | gap `STR001` documentado |
 | `Map<String, Int>.get(ausente)` | NPE no unboxing | primitivos não representam null (limitação documentada) |
+| JS `println(2.0)` | imprime `2` (JVM imprime `2.0`) | JS `String(2.0)` = `"2"` — formato padrão JS; gap de formatação de println cross-target (paridade) |
 
 ## Resolvidos nesta branch (referência)
 
@@ -500,3 +501,8 @@ EXTERNA produz lixo
   `NumberFormatException` crua) — **corrigido 03/09**: `Parser.parsePrimary`
   valida a faixa do literal e emite `PARSE084: numeric literal out of range`.
   Prova: `CompilerDriverTest.outOfRangeLongLiteralGivesCleanDiagnostic`.
+- **Bug 6** (sufixo numérico MAIÚSCULO `42L`/`1.5F` gera bytecode inválido) —
+  **corrigido 03/09**: o `Lexer.readNumber` só consumia sufixos minúsculos;
+  `42L` virava `INT_LITERAL(42) IDENTIFIER(L)`. Agora aceita
+  `f/F`/`d/D`/`l/L` como alias. Prova:
+  `CoreRegressionE2ETest.uppercaseNumericSuffixes` (JVM+JS+Native).

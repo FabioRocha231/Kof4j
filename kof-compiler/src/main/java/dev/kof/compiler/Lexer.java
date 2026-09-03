@@ -304,13 +304,13 @@ class Lexer {
                 advance();
             }
         }
-        if (pos < source.length() && source.charAt(pos) == 'f') {
+        if (pos < source.length() && (source.charAt(pos) == 'f' || source.charAt(pos) == 'F')) {
             isFloat = true;
             advance();
-        } else if (pos < source.length() && source.charAt(pos) == 'd') {
+        } else if (pos < source.length() && (source.charAt(pos) == 'd' || source.charAt(pos) == 'D')) {
             isDouble = true;
             advance();
-        } else if (pos < source.length() && source.charAt(pos) == 'l') {
+        } else if (pos < source.length() && (source.charAt(pos) == 'l' || source.charAt(pos) == 'L')) {
             isLong = true;
             advance();
         }
