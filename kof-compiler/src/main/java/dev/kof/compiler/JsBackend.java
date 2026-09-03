@@ -46,6 +46,12 @@ class JsBackend implements Backend {
     private Map<String, Boolean> asyncMethods = Map.of();
     private Set<String> asyncMethodNamesAnywhere = Set.of();
 
+    // kof_spawn_result/kof_spawn NÃO entram aqui de propósito: spawnar uma
+    // task não bloqueia quem chama, só await/receive/selectAny bloqueiam.
+    // kofSpawnResult() é uma função JS comum (não-async) que devolve um
+    // handle na hora — não exige que quem a chama seja async. O caso de uma
+    // task esquecida (handle nunca esperado) já é coberto independentemente
+    // pelo pump de kofActiveTasks em KofJsRunner, não pela coloração.
     private static final Set<String> ASYNC_RUNTIME_OPS = Set.of(
             "kof_await", "kof_await_timeout", "kof_channel_receive", "kof_select_any");
 
@@ -158,8 +164,12 @@ class JsBackend implements Backend {
         List<JsIr.JsStatement> moduleStatements = new ArrayList<>();
         for (JsIr.JsFunction fn : functions) {
             if ("main".equals(fn.name())) {
-                moduleStatements.add(new JsIr.JsExprStmt(new JsIr.JsCall(
-                        new JsIr.JsIdentifier("main"), List.of())));
+                JsIr.JsExpression entry = new JsIr.JsCall(
+                        new JsIr.JsIdentifier("main"), List.of());
+                if (fn.isAsync()) {
+                    entry = new JsIr.JsAwait(entry);
+                }
+                moduleStatements.add(new JsIr.JsExprStmt(entry));
                 break;
             }
         }
@@ -183,11 +193,13 @@ class JsBackend implements Backend {
             Set<String> asyncNamesAnywhere = new HashSet<>();
             for (Map.Entry<String, Boolean> e : async.entrySet()) {
                 if (!e.getValue()) continue;
-                int hash = e.getKey().lastIndexOf('#');
-                if (hash >= 0) asyncNamesAnywhere.add(e.getKey().substring(hash + 1));
+                asyncNamesAnywhere.add(methodNameFromAsyncKey(e.getKey()));
             }
             for (IRClass clazz : module.classes()) {
                 if (skipClass(clazz)) continue;
+                boolean isTaskLambda = clazz.name() != null && clazz.name().startsWith("LambdaTask");
+                boolean isRegularLambda = clazz.name() != null && clazz.name().startsWith("Lambda")
+                        && !isTaskLambda;
                 for (IRMethod method : clazz.methods()) {
                     String key = asyncMethodKey(clazz, method);
                     if (async.get(key)) continue;
@@ -216,6 +228,12 @@ class JsBackend implements Backend {
                         }
                     }
                     if (markAsync) {
+                        if (isRegularLambda) {
+                            throw new IllegalStateException(
+                                    "CONC003-JS-01: lambda passada para list.map/filter/reduce "
+                                            + "(ou handler de UI/timer/mq) não pode usar "
+                                            + "await/spawn/channel.receive() — só spawn { ... } pode");
+                        }
                         async.put(key, true);
                         changed = true;
                     }
@@ -225,22 +243,30 @@ class JsBackend implements Backend {
         Set<String> finalAsyncNames = new HashSet<>();
         for (Map.Entry<String, Boolean> e : async.entrySet()) {
             if (!e.getValue()) continue;
-            int hash = e.getKey().lastIndexOf('#');
-            if (hash >= 0) finalAsyncNames.add(e.getKey().substring(hash + 1));
+            finalAsyncNames.add(methodNameFromAsyncKey(e.getKey()));
         }
         this.asyncMethods = async;
         this.asyncMethodNamesAnywhere = finalAsyncNames;
     }
 
+    private static String methodNameFromAsyncKey(String key) {
+        int hash = key.lastIndexOf('#');
+        String rest = hash >= 0 ? key.substring(hash + 1) : key;
+        int slash = rest.lastIndexOf('/');
+        return slash >= 0 ? rest.substring(0, slash) : rest;
+    }
+
     private static String asyncMethodKey(IRClass clazz, IRMethod method) {
-        if (isMainClass(clazz)) return "#" + method.name();
-        return clazz.name() + "#" + method.name();
+        int arity = method.parameterTypes().size();
+        if (isMainClass(clazz)) return "#" + method.name() + "/" + arity;
+        return clazz.name() + "#" + method.name() + "/" + arity;
     }
 
     private String calleeKeyFromCall(KofCall kc) {
+        int arity = kc.parameterTypes().size();
         String owner = ownerInternalName(kc.ownerType());
-        if (owner.isEmpty() || isMainInternalName(owner)) return "#" + kc.methodName();
-        return owner + "#" + kc.methodName();
+        if (owner.isEmpty() || isMainInternalName(owner)) return "#" + kc.methodName() + "/" + arity;
+        return owner + "#" + kc.methodName() + "/" + arity;
     }
 
     private static boolean isMainInternalName(String internalName) {
@@ -508,12 +534,15 @@ class JsBackend implements Backend {
             this.methodName = method.name();
             this.paramCount = method.parameterTypes().size();
             this.recordClass = clazz != null && "java/lang/Record".equals(clazz.superName());
-            String asyncKey = clazz == null ? "#" + method.name() : asyncMethodKey(clazz, method);
+            String asyncKey = clazz == null
+                    ? "#" + method.name() + "/" + method.parameterTypes().size()
+                    : asyncMethodKey(clazz, method);
             this.isAsync = asyncMethods.getOrDefault(asyncKey, false);
             // lambda synthetic classes hold captured locals as private final
             // fields at the first slots; the real parameters come after them.
             Set<String> captureFields = new HashSet<>();
-            if (clazz != null && clazz.name() != null && clazz.name().startsWith("Lambda")) {
+            if (clazz != null && clazz.name() != null
+                    && (clazz.name().startsWith("Lambda") || clazz.name().startsWith("LambdaTask"))) {
                 for (IRField f : clazz.fields()) {
                     if ((f.accessFlags() & AccessFlags.PRIVATE) != 0
                             && (f.accessFlags() & AccessFlags.FINAL) != 0) {
@@ -1876,7 +1905,7 @@ class JsBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.FUNCTION) {
             // top-level function call (arity routes default-parameter wrappers)
-            stack.add(new JsIr.JsCall(
+            finishCall(stack, kc, new JsIr.JsCall(
                     new JsIr.JsIdentifier(jsFunctionName(kc.methodName(), kc.parameterTypes().size())),
                     args));
             return;
@@ -1885,17 +1914,13 @@ class JsBackend implements Backend {
             // super.method(args) — JS supports it natively inside class
             // methods; the receiver on the stack is this and is discarded.
             pop(stack);
-            JsIr.JsExpression call = new JsIr.JsCall(
-                    new JsIr.JsMember(new JsIr.JsIdentifier("super"), sanitizeName(kc.methodName())), args);
-            if (Type.isVoid(kc.returnType())) {
-                throw new StatementEnd(call);
-            }
-            stack.add(call);
+            finishCall(stack, kc, new JsIr.JsCall(
+                    new JsIr.JsMember(new JsIr.JsIdentifier("super"), sanitizeName(kc.methodName())), args));
             return;
         }
         if (kc.kind() == KofCallKind.STATIC) {
             String owner = jsClassName(ownerInternalName(kc.ownerType()));
-            stack.add(new JsIr.JsCall(
+            finishCall(stack, kc, new JsIr.JsCall(
                     new JsIr.JsMember(new JsIr.JsIdentifier(owner), sanitizeName(kc.methodName())), args));
             return;
         }
@@ -1907,8 +1932,23 @@ class JsBackend implements Backend {
             stack.add(new JsIr.JsBinary(receiver, "===", args.get(0)));
             return;
         }
-        JsIr.JsExpression call = new JsIr.JsCall(
-                new JsIr.JsMember(receiver, sanitizeName(kc.methodName())), args);
+        finishCall(stack, kc, new JsIr.JsCall(
+                new JsIr.JsMember(receiver, sanitizeName(kc.methodName())), args));
+    }
+
+    private JsIr.JsExpression maybeAwait(KofCall kc, JsIr.JsExpression call) {
+        KofCallKind kind = kc.kind();
+        boolean needsAwait = false;
+        if (kind == KofCallKind.STATIC || kind == KofCallKind.FUNCTION || kind == KofCallKind.SUPER) {
+            needsAwait = asyncMethods.getOrDefault(calleeKeyFromCall(kc), false);
+        } else if (kind == KofCallKind.INSTANCE || kind == KofCallKind.INTERFACE) {
+            needsAwait = asyncMethodNamesAnywhere.contains(kc.methodName());
+        }
+        return needsAwait ? new JsIr.JsAwait(call) : call;
+    }
+
+    private void finishCall(List<Object> stack, KofCall kc, JsIr.JsExpression call) {
+        call = maybeAwait(kc, call);
         if (Type.isVoid(kc.returnType())) {
             throw new StatementEnd(call);
         }
@@ -2139,6 +2179,9 @@ class JsBackend implements Backend {
         callArgs.add(receiver);
         callArgs.addAll(args);
         JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
+        if ("kof_channel_receive".equals(kc.methodName())) {
+            call = new JsIr.JsAwait(call);
+        }
         if (Type.isVoid(kc.returnType())) {
             throw new StatementEnd(call);
         }
@@ -2345,7 +2388,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_config_")
                 || name.startsWith("kof_cache_")
                 || name.startsWith("kof_web_") || name.startsWith("kof_db_") || name.startsWith("kof_http_")
-                || name.equals("kof_spawn_result") || name.equals("kof_await")
+                || name.equals("kof_spawn") || name.equals("kof_spawn_result") || name.equals("kof_await")
                 || name.equals("kof_poll") || name.equals("kof_done")
                 || name.equals("kof_cancel") || name.equals("kof_cancelled")
                 || name.equals("kof_await_timeout")
@@ -2598,6 +2641,10 @@ class JsBackend implements Backend {
         }
         callArgs.addAll(args);
         JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier(fn), callArgs);
+        if (name.equals("kof_spawn_result") || name.equals("kof_await")
+                || name.equals("kof_await_timeout") || name.equals("kof_select_any")) {
+            call = new JsIr.JsAwait(call);
+        }
         if (Type.isVoid(kc.returnType())) {
             throw new StatementEnd(call);
         }
@@ -3843,17 +3890,22 @@ class JsBackend implements Backend {
             }
 
             export function kofChannelNew() {
-                // JS sequencial: canal degenera em FIFO { items: [] }
-                return { items: [] };
+                return { items: [], resolvers: [] };
             }
 
             export function kofChannelSend(chan, value) {
-                chan.items.push(value);
+                if (chan.resolvers.length > 0) {
+                    chan.resolvers.shift()(value);
+                } else {
+                    chan.items.push(value);
+                }
             }
 
             export function kofChannelReceive(chan) {
-                // JS é single-threaded: sempre há item (send executa antes)
-                return chan.items.shift();
+                if (chan.items.length > 0) {
+                    return Promise.resolve(chan.items.shift());
+                }
+                return new Promise(resolve => chan.resolvers.push(resolve));
             }
 
             export function kofListAdd(list, value) {
@@ -3984,59 +4036,92 @@ class JsBackend implements Backend {
                 return list.reduce((acc, x) => (typeof fn.invoke === 'function' ? fn.invoke(acc, x) : fn(acc, x)), initial);
             }
 
-            export function kofSpawnResult(value) {
-                // JS single-threaded: o corpo roda agora (sequencial). O alvo JS
-                // já inlina o corpo e passa o valor pronto; o alvo Android passa
-                // a tarefa (new Lambda0() com invoke) — executa o corpo aqui.
-                const result = (value != null && typeof value.invoke === "function")
-                    ? value.invoke()
-                    : value;
-                return { get: function () { return result; } };
+            let kofActiveTasks = 0;
+            globalThis.kofActiveTasks = kofActiveTasks;
+
+            export function kofSpawn(task) {
+                kofActiveTasks++;
+                globalThis.kofActiveTasks = kofActiveTasks;
+                Promise.resolve().then(() => {
+                    return (task && typeof task.invoke === "function") ? task.invoke() : task;
+                }).catch(err => {
+                    const msg = (err && err.message !== undefined) ? err.message : String(err);
+                    (console.error || console.log)("spawn task failed: " + msg);
+                }).finally(() => {
+                    kofActiveTasks--;
+                    globalThis.kofActiveTasks = kofActiveTasks;
+                });
+            }
+
+            export function kofSpawnResult(task) {
+                kofActiveTasks++;
+                globalThis.kofActiveTasks = kofActiveTasks;
+                const handle = { done: false, value: undefined, error: undefined, cancelled: false };
+                const promise = Promise.resolve().then(() => {
+                    return (task && typeof task.invoke === "function") ? task.invoke() : task;
+                }).then(value => {
+                    handle.done = true;
+                    handle.value = value;
+                    return value;
+                }).catch(err => {
+                    handle.done = true;
+                    handle.error = err;
+                    throw err;
+                }).finally(() => {
+                    kofActiveTasks--;
+                    globalThis.kofActiveTasks = kofActiveTasks;
+                });
+                handle.promise = promise;
+                promise.catch(() => {});
+                return handle;
             }
 
             export function kofPoll(handle) {
-                // sequencial: se o handle existe, o valor já está pronto
-                if (handle != null && typeof handle.get === "function") return handle.get();
-                return null;
+                return handle && handle.done && !handle.error ? handle.value : null;
             }
 
             export function kofDone(handle) {
-                return handle != null ? 1 : 0;
+                return (handle && handle.done) ? 1 : 0;
             }
 
             export function kofCancel(handle) {
-                // sequencial: sem tarefa rodando para cancelar — no-op marcado
-                if (handle != null) handle.cancelled = true;
-                return 1;
+                if (!handle) return 0;
+                const wasDone = handle.done;
+                if (!wasDone) handle.cancelled = true;
+                return wasDone ? 0 : 1;
             }
 
             export function kofCancelled() {
+                // Sem thread-local em JS embutido: não há "task atual" para
+                // consultar — cancelamento cooperativo via handle.cancelled.
                 return 0;
             }
 
             export function kofSelectAny(handles) {
-                // sequencial: o primeiro já está pronto
-                if (handles != null && handles.length > 0) {
-                    const h = handles[0];
-                    return (h != null && typeof h.get === "function") ? h.get() : h;
-                }
-                return null;
+                return Promise.race((handles || []).map(h =>
+                    (h && h.promise !== undefined) ? h.promise : Promise.resolve(h)));
             }
 
             export function kofAwait(handle) {
-                if (handle != null && typeof handle.get === "function") {
-                    return handle.get();
+                if (handle != null && handle.promise !== undefined) {
+                    return handle.promise;
                 }
                 return handle;
             }
 
-            // JS sequencial: a task sempre está pronta (roda em ordem), então o
-            // timeout nunca estoura — equivalente a kofAwait (paridade de API).
-            export function kofAwaitTimeout(handle, timeoutMs) {
-                if (handle != null && typeof handle.get === "function") {
-                    return handle.get();
+            export async function kofAwaitTimeout(handle, timeoutMs) {
+                const deadline = Date.now() + timeoutMs;
+                while (Date.now() < deadline) {
+                    if (handle && handle.done) {
+                        if (handle.error) {
+                            const e = handle.error;
+                            throw (e && e.message !== undefined) ? e.message : String(e);
+                        }
+                        return handle.value;
+                    }
+                    await Promise.resolve();
                 }
-                return handle;
+                throw "await timeout after " + timeoutMs + "ms";
             }
 
             export function kofWebStub() {

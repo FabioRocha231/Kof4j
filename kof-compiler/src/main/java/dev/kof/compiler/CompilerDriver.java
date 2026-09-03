@@ -1219,9 +1219,15 @@ private Target target = Target.JVM;
      * entry, so the body lowers unchanged (captures are read-only snapshots).
      */
     private String lambdaClass(LambdaExpr le, Type.FunctionType ft, List<IRLocalVariable> captures) {
+        return lambdaClass(le, ft, captures, false);
+    }
+
+    /** @param isTask true for spawn bodies ({@code LambdaTask*}), not for map/filter/UI handlers */
+    private String lambdaClass(LambdaExpr le, Type.FunctionType ft, List<IRLocalVariable> captures,
+                               boolean isTask) {
         String existing = lambdaClassNames.get(le);
         if (existing != null) return existing;
-        String name = "Lambda" + (lambdaCounter++);
+        String name = (isTask ? "LambdaTask" : "Lambda") + (lambdaCounter++);
         Type ownerType = new Type.ClassType("", name, List.of());
         // super.metodo() dentro da lambda: captura o this EXTERNO como $outer
         boolean needsOuter = lambdaUsesSuper(le) && currentLoweringOwner != null;
@@ -2352,18 +2358,6 @@ private Target target = Target.JVM;
                 yield localIdx;
             }
             case SpawnStmt ss -> {
-                if (target == Target.JS) {
-                    // JS é single-threaded: fire-and-forget degenera em execução
-                    // imediata do corpo (ordem de output preservada)
-                    LambdaExpr jsLe = ss.expression() instanceof LambdaExpr l0 ? l0
-                            : new LambdaExpr(ss.position(), List.of(),
-                                    List.of(new ExpressionStmt(ss.position(), ss.expression())));
-                    for (StatementNode st : jsLe.body()) {
-                        localIdx = emitStatement(st, ops, owner, localIdx, locals,
-                                Type.PrimitiveType.VOID);
-                    }
-                    yield localIdx;
-                }
                 if (target.isNative()) {
                     // CONC001 fechado: pthread_create no runtime nativo
                     LambdaExpr leN = ss.expression() instanceof LambdaExpr l1 ? l1
@@ -2373,7 +2367,7 @@ private Target target = Target.JVM;
                     List<IRLocalVariable> capN = collectCaptures(leN, locals);
                     List<IRLocalVariable> effN = lambdaEffectiveCaptures.get(leN);
                     if (effN != null) capN = effN;
-                    String lambdaClassN = lambdaClass(leN, ftN, capN);
+                    String lambdaClassN = lambdaClass(leN, ftN, capN, true);
                     Type taskTypeN = new Type.ClassType("", lambdaClassN, List.of());
                     List<Type> capTypesN = new ArrayList<>();
                     for (IRLocalVariable cap : capN) capTypesN.add(cap.type());
@@ -2401,7 +2395,7 @@ private Target target = Target.JVM;
                 List<IRLocalVariable> captures = collectCaptures(le, locals);
                 List<IRLocalVariable> effective = lambdaEffectiveCaptures.get(le);
                 if (effective != null) captures = effective;
-                String lambdaClass = lambdaClass(le, ft, captures);
+                String lambdaClass = lambdaClass(le, ft, captures, true);
                 Type taskType = new Type.ClassType("", lambdaClass, List.of());
                 List<Type> captureTypes = new ArrayList<>();
                 for (IRLocalVariable cap : captures) captureTypes.add(cap.type());
@@ -3387,18 +3381,6 @@ private Target target = Target.JVM;
                     yield localIdx;
                 }
                 if (mc.receiver() == null && "__kof_spawn_expr".equals(mc.methodName())) {
-                    if (target == Target.JS) {
-                        // sequencial: o corpo roda agora; o handle só memoiza
-                        ExpressionNode jsBody = mc.arguments().get(0);
-                        Type jsT = inferExprType(jsBody, locals);
-                        localIdx = emitExpression(jsBody, ops, owner, localIdx, locals);
-                        ops.add(new KofCall(
-                                new Type.ClassType("kof.concurrent", "Handle", List.of(jsT)),
-                                "kof_spawn_result", List.of(jsT),
-                                new Type.ClassType("kof.concurrent", "Handle", List.of(jsT)),
-                                KofCallKind.FUNCTION));
-                        yield localIdx;
-                    }
                     if (target.isNative()) {
                         // CONC001: spawn-expr com handle real (pthread)
                         ExpressionNode bodyN = mc.arguments().get(0);
@@ -3409,7 +3391,7 @@ private Target target = Target.JVM;
                                         List.of(), List.of(new ExpressionStmt(
                                                 bodyN.position() != null ? bodyN.position() : mc.position(), bodyN)));
                         Type.FunctionType ftN2 = new Type.FunctionType(List.of(), resultTN, null);
-                        String lambdaClassN2 = lambdaClass(leN2, ftN2, List.of());
+                        String lambdaClassN2 = lambdaClass(leN2, ftN2, List.of(), true);
                         Type taskTypeN2 = new Type.ClassType("", lambdaClassN2, List.of());
                         ops.add(new KofNewObject(taskTypeN2, List.of()));
                         ops.add(new KofDup());
@@ -3427,7 +3409,7 @@ private Target target = Target.JVM;
                                     List.of(), List.of(new ExpressionStmt(
                                             body.position() != null ? body.position() : mc.position(), body)));
                     Type.FunctionType ft = new Type.FunctionType(List.of(), resultT, null);
-                    String lambdaClass = lambdaClass(le, ft, List.of());
+                    String lambdaClass = lambdaClass(le, ft, List.of(), true);
                     Type taskType = new Type.ClassType("", lambdaClass, List.of());
                     ops.add(new KofNewObject(taskType, List.of()));
                     ops.add(new KofDup());
