@@ -3916,4 +3916,105 @@ class CompilerDriverTest {
         CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.NATIVE);
         assertTrue(result.success(), "Nested switch should compile to native");
     }
+
+    /**
+     * Regressão crítica de correção semântica: NENHUM identificador não
+     * declarado pode ser aceito porque o compilador "inferiu um tipo" para ele.
+     * Não há fallback silencioso para Unknown/Object/Any — todo identificador
+     * não resolvido deve emitir SEM011 em QUALQUER posição.
+     */
+    private void assertUndeclaredRejected(String source, Path tempDir, String name) throws IOException {
+        Path src = tempDir.resolve(name + ".kf");
+        Files.writeString(src, source);
+        CompilationResult result = driver.compile(src, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Undeclared identifier must fail to compile: " + name);
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM011"),
+                "Must report SEM011 (no silent fallback), got: " + diags);
+    }
+
+    @Test
+    void undeclaredIdentifiersNeverInferredIntoVariables(@TempDir Path tempDir) throws IOException {
+        // declaração + uso: válido
+        Path ok = tempDir.resolve("ok.kf");
+        Files.writeString(ok, """
+            main() {
+                val x = 10
+                println(x)
+            }
+            """);
+        assertTrue(driver.compile(ok, tempDir.resolve("okout"), Target.JVM).success(),
+                "Declared variable must work");
+
+        // uso sem declaração: SEM011 em cada posição
+        assertUndeclaredRejected("""
+            main() { println(ghost) }
+            """, tempDir, "u1");
+        assertUndeclaredRejected("""
+            main() { foo(ghost) }
+            """, tempDir, "u2");
+        assertUndeclaredRejected("""
+            main() { var r = ghost + 1; println(r) }
+            """, tempDir, "u3");
+        assertUndeclaredRejected("""
+            main() { ghost = 5 }
+            """, tempDir, "u4");
+        assertUndeclaredRejected("""
+            main() { var s = "v:" + ghost; println(s) }
+            """, tempDir, "u5");
+        assertUndeclaredRejected("""
+            Int f() { return ghost }
+            main() { println(f()) }
+            """, tempDir, "u6");
+        assertUndeclaredRejected("""
+            main() { val a = ghost; println(a) }
+            """, tempDir, "u7");
+        assertUndeclaredRejected("""
+            class C { Int campo = ghost }
+            main() { var c = C(); println("ok") }
+            """, tempDir, "u8");
+        assertUndeclaredRejected("""
+            main() { for (var item in ghost) { println(item) } }
+            """, tempDir, "u9");
+        // dentro de lambda (body analisado)
+        assertUndeclaredRejected("""
+            main() { val f = (x: Int) -> x + ghost; println(f(1)) }
+            """, tempDir, "u10");
+        assertUndeclaredRejected("""
+            main() { var r = listOf(1, 2).map((x: Int) -> ghost + x); println(r.size) }
+            """, tempDir, "u11");
+        // lambda aninhada: corpo do lambda interno também é analisado
+        assertUndeclaredRejected("""
+            main() { val f = (a: Int) -> ((b: Int) -> ghost + b); println("ok") }
+            """, tempDir, "u12");
+    }
+
+    @Test
+    void lambdaParametersBoundInOwnScope(@TempDir Path tempDir) throws IOException {
+        // parâmetros de lambda são registrados no escopo próprio
+        Path ok = tempDir.resolve("lambdascope.kf");
+        Files.writeString(ok, """
+            main() {
+                val f = (x: Int) -> x + 1
+                println(f(10))
+            }
+            """);
+        assertTrue(driver.compile(ok, tempDir.resolve("out"), Target.JVM).success(),
+                "Lambda param in own scope must work");
+        // shadowing: param sombreia variável externa
+        Path sh = tempDir.resolve("shadow.kf");
+        Files.writeString(sh, """
+            main() {
+                val y = 100
+                val f = (y: Int) -> y + 1
+                println(f(10))
+            }
+            """);
+        assertTrue(driver.compile(sh, tempDir.resolve("out2"), Target.JVM).success(),
+                "Lambda param shadowing must work");
+        // identificador desconhecido no corpo do lambda: SEM011
+        assertUndeclaredRejected("""
+            main() { val f = (x: Int) -> y + 1; println(f(10)) }
+            """, tempDir, "u13");
+    }
 }
