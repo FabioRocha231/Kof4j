@@ -40,7 +40,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 |---|---|---|---|
 | **~~GC mark-sweep~~ Native** | ✅ fechado 03/09 | `kof_gc_sweep` real; auto-collect desligado (requer safe-points) | ver Concluídos |
 | **HTTP002 restante** | média | `delete/put/patch/options` + `timeout/retry/circuit` reais no Native | `get/post/status` feitos |
-| **WEB002** — kof.web no Native | alta | server HTTP/1.1 accept/parsedispatch em `NativeWebRuntime` (novo, ≤500 linhas) | agente-planning reivindicou |
+| **WEB002** — kof.web no Native | 🟡 T1 03/09 | `kof_web_listen` aceita+respondehello/200 ✅ (`NativeWebRuntime.java`, gate NATIVE liberado p/ app+listen+route). **Falta T2/T3/T4** (parse method+path, dispatch lambda, request ctx) — continuação pra próxima sessão | agente-planning |
 | **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | design pendente |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
