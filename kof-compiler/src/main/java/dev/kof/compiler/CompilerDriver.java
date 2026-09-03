@@ -5559,6 +5559,18 @@ private Target target = Target.JVM;
                     ops.add(new KofCall(recvType, "kof_list_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
                     yield localIdx;
                 }
+                // Map/Set `.size` propriedade (bug 14): antes caía no field-access
+                // genérico → getfield HashMap.size → NoSuchFieldError em runtime.
+                if (BuiltinTypes.isMap(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(recvType, "kof_map_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
+                    yield localIdx;
+                }
+                if (BuiltinTypes.isSet(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
+                    localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
+                    ops.add(new KofCall(recvType, "kof_set_size", List.of(), Type.PrimitiveType.INT, KofCallKind.INSTANCE));
+                    yield localIdx;
+                }
                 if (Type.isString(recvType) && ("name".equals(fa.fieldName()) || "path".equals(fa.fieldName()))) {
                     localIdx = emitExpression(fa.receiver(), ops, owner, localIdx, locals);
                     yield localIdx;
@@ -6344,6 +6356,12 @@ private Target target = Target.JVM;
                     yield KofUi.COLOR;
                 }
                 if (BuiltinTypes.isList(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
+                    yield Type.PrimitiveType.INT;
+                }
+                if (BuiltinTypes.isMap(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
+                    yield Type.PrimitiveType.INT;
+                }
+                if (BuiltinTypes.isSet(recvType) && ("size".equals(fa.fieldName()) || "length".equals(fa.fieldName()))) {
                     yield Type.PrimitiveType.INT;
                 }
                 if (recvType instanceof Type.ArrayType at && "length".equals(fa.fieldName())) {

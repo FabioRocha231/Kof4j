@@ -506,3 +506,9 @@ EXTERNA produz lixo
   `42L` virava `INT_LITERAL(42) IDENTIFIER(L)`. Agora aceita
   `f/F`/`d/D`/`l/L` como alias. Prova:
   `CoreRegressionE2ETest.uppercaseNumericSuffixes` (JVM+JS+Native).
+- **Bug 14** (`Map.size`/`Set.size` propriedade → `NoSuchFieldError` em
+  runtime) — **corrigido 03/09**: o field-access de `m.size` caía no caminho
+  genérico (getfield em `HashMap`) e o tipo inferia UNKNOWN (boxing errado em
+  `println`). Agora `m.size`/`s.size` despacham para `kof_map_size`/
+  `kof_set_size` (como `List.size`). Prova:
+  `CoreRegressionE2ETest.mapAndSetSizeProperty` (JVM+JS+Native).

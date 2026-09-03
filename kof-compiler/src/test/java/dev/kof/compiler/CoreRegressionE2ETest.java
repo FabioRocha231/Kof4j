@@ -426,4 +426,23 @@ class CoreRegressionE2ETest {
                 }
                 """, "42\n42\ntrue\n1.5\n1.5\n2.5", tempDir, "upper-suffix");
     }
+
+    // known-bugs #14 — Map/Set `.size` as a PROPERTY (not just the size()
+    // method): fell through to generic field access → getfield HashMap.size →
+    // NoSuchFieldError, and the property type inferred UNKNOWN → broken
+    // boxing in println. Now dispatched to kof_map_size/kof_set_size.
+    @Test
+    void mapAndSetSizeProperty(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var m = mapOf("a", 1, "b", 2)
+                    println(m.size)
+                    println(m.size())
+                    var s = setOf("x", "y", "z")
+                    println(s.size)
+                    println(s.size())
+                    println(m.size + s.size)
+                }
+                """, "2\n2\n3\n3\n5", tempDir, "map-set-size-prop");
+    }
 }
