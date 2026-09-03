@@ -3,7 +3,7 @@
 Este é o guia **obrigatório** para qualquer agente de IA (ou humano) que
 escreva código Kof neste repositório. Leia antes de gerar qualquer `.kf`.
 
-**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**)
+**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**, **Congelamento de comportamento**)
 
 ---
 
@@ -82,6 +82,40 @@ Bool isQuery(String op) {
    antes de usar. Sintaxe que não compila é pior que sintaxe verbosa.
 6. **Multi-target honesto.** Código que só roda em um target precisa de
    diagnóstico claro (gap `XXX00x`), nunca fallback silencioso.
+
+---
+
+## Congelamento de comportamento (obrigatório)
+
+> **O comportamento previsto é lei.** "Comportamento previsto" = o que o corpus
+> (`training/`, `learn/`, `docs/`) documenta e os testes (golden + E2E + suíte
+> completa) provam. **Nenhum agente pode quebrar comportamento que já funciona.**
+
+1. **Zero regressão.** Nenhum commit pode fazer um teste existente passar a
+   falhar. A suíte completa (`mvn test`, hoje **840**) é **gate de merge** —
+   mudança que não mantém tudo verde não entra. Exceção única: mudança de
+   contrato **deliberada**, com bump de versão + docs atualizados + migração.
+2. **Retrocompatibilidade obrigatória.** Toda feature/API nova é **aditiva**:
+   código Kof que compila e roda hoje continua compilando e rodando. Mudança de
+   semântica existente nunca é silenciosa — só com bump + doc + migração.
+3. **Refactor preserva semântica.** O refactor para a regra **≤500 linhas/
+   classe** (e qualquer outro refactor) mexe em **estrutura**, nunca em
+   **comportamento**. Prova: mesma suíte + golden E2E por target. Se o refactor
+   muda output observável, é **bug do refactor** — corrige ou reverte.
+4. **Bug = alinhar ao previsto, nunca o contrário.** Tudo em
+   `docs/known-bugs.md` é desvio do comportamento previsto e **deve ser
+   corrigido no código** para atingir o comportamento documentado. Proibido
+   "documentar em volta do bug" (mudar o corpus para aceitar o comportamento
+   errado como se fosse o certo). Se o comportamento documentado está errado,
+   é decisão de design → bump de versão + discussão, nunca correção silenciosa.
+5. **Paridade cross-target.** JVM/Native/JS divergindo no mesmo programa é bug
+   de paridade. O comportamento previsto vale nos 3 targets, ou gap `XXX00x`
+   diagnosticado — nunca divergência silenciosa.
+6. **Semântica congelada (0.2.6-beta).** Operadores, precedência, ordem de
+   avaliação, null-safety, `==` de conteúdo, exceções como String,
+   `spawn`/`await`, coleções `List/Map/Set` são **congelados**. Proposta de
+   mudança vira gap/plano em `planning-*`, nunca edição direta da semântica
+   atual.
 
 ---
 

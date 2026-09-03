@@ -9,7 +9,7 @@
 
 ``` 
 mvn clean package    → PASSA
-mvn test             → (re-medir após merge 03/09: idiomatic-fixes tinha 819 em 02/09; main subiu aarch64 13 + kof.deps + lifecycle + observability, removeu metrics)
+mvn test             → 840 testes 823 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas (03/09 pós-merge)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -486,7 +486,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (re-medir após merge 03/09 — idiomatic-fixes 819 em 02/09; main adicionou NativeAarch64E2ETest 13, kof.deps, lifecycle, observability spans, removeu metrics; suíte completa verde, só KofMediaE2ETest falha por hardware de mic ausente)
+## Testes (840 = 823 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 03/09 pós-merge aarch64/kof.deps/lifecycle/observability; suíte completa verde, só KofMediaE2ETest falha por hardware de mic ausente)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -566,11 +566,11 @@ main() { /* ignorado pelo kof test */ }
 | NullSafetyE2ETest | 7 | `String?` narrowing JVM + readLine EOF null (02/09) |
  | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core 02/09) |
  | NativeAarch64E2ETest | 13 | **aarch64 real (qemu)**: runtime em **asm puro** via tradução riscv→aarch64 (`translateRiscvToAarch64`), raw syscalls — mesmo core do riscv64; 13/13 (NATIVE002 core 03/09) |
- | **Total kof-compiler** | **(re-medir)** | |
+ | **Total kof-compiler** | **823** | |
  | kof-script | 8 | KofScriptGlobals / repl / --watch |
  | kof-c-compiler | 5 | KofC C subset → ELF |
  | kof-cli | 4 | LSP references + rename (mock) |
- | **Total** | **(re-medir)** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+ | **Total** | **840** (+31 skips condicionais: Mongo/MySQL/Postgres, windows/mac; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da
