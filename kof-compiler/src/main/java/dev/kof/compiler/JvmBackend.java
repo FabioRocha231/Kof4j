@@ -919,6 +919,11 @@ class JvmBackend implements Backend {
                             mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toDescriptor(at));
                         } else if (elemType instanceof Type.ClassType ct) {
                             mv.visitTypeInsn(CHECKCAST, JvmTypeMapper.toInternalName(ct.packageName(), ct.name()));
+                        } else if (elemType instanceof Type.FunctionType ft && ft.className() != null) {
+                            // elemento é lambda (bug 20): cast para a classe
+                            // sintética, senão o invokevirtual seguinte falha no
+                            // verifier (Object onde Lambda0 é esperado)
+                            mv.visitTypeInsn(CHECKCAST, ft.className());
                         }
                         // Unknown/other: sem cast — a lista guarda Object
                     }

@@ -1235,7 +1235,12 @@ private Target target = Target.JVM;
             captures = eff;
             lambdaEffectiveCaptures.put(le, eff);
         }
-        Type returnType = toType(typeToString(ft.returnType()));
+        // lambda retornando lambda (bug 19): preservar a FunctionType (o
+        // round-trip por string a destruía) — o className do lambda interno
+        // será preenchido após a emissão do corpo.
+        Type returnType = ft.returnType() instanceof Type.FunctionType
+                ? ft.returnType()
+                : toType(typeToString(ft.returnType()));
         List<FormalParameterNode> params = le.parameters();
         List<Type> paramTypes = new ArrayList<>();
         for (FormalParameterNode p : params) paramTypes.add(toType(p.type()));
@@ -1290,6 +1295,21 @@ private Target target = Target.JVM;
             localIdx = emitStatement(stmt, ops, name, localIdx, locals, returnType);
         }
         mutatedCapturedNames = savedMutated;
+        // bug 19: lambda que RETORNA outra lambda — o lambda interno é
+        // sintetizado durante a emissão do corpo acima; o className dele só
+        // agora está disponível. Atualiza o returnType para o descriptor do
+        // invoke casar com o call site (senão NoSuchMethodError).
+        if (returnType instanceof Type.FunctionType rtFt && rtFt.className() == null) {
+            for (StatementNode stmt : bodyStmts) {
+                if (stmt instanceof ReturnStmt rs && rs.value() instanceof LambdaExpr retLam) {
+                    String cn = lambdaClassNames.get(retLam);
+                    if (cn != null) {
+                        returnType = new Type.FunctionType(rtFt.parameterTypes(), rtFt.returnType(), cn);
+                        break;
+                    }
+                }
+            }
+        }
         KofOperation last = ops.isEmpty() ? null : ops.get(ops.size() - 1);
         if (last == null || !(last instanceof KofReturn || last instanceof KofReturnVoid)) {
             if (Type.isVoid(returnType)) ops.add(new KofReturnVoid());
@@ -1849,6 +1869,26 @@ private Target target = Target.JVM;
                     && (cs.superClass().equals("Record") || cs.superClass().endsWith("Record"))) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    /**
+     * O tipo (ou seus type arguments) contém uma FunctionType com className
+     * null? Isso indica um tipo de lambda vindo da análise semântica (que roda
+     * antes da síntese) — obsoleto para o emit do invoke (bug 20).
+     */
+    private boolean containsLambdaFunctionType(Type t) {
+        if (t instanceof Type.FunctionType ft) {
+            return ft.className() == null;
+        }
+        if (t instanceof Type.ClassType ct && ct.typeArguments() != null) {
+            for (Type arg : ct.typeArguments()) {
+                if (containsLambdaFunctionType(arg)) return true;
+            }
+        }
+        if (t instanceof Type.ArrayType at) {
+            return containsLambdaFunctionType(at.componentType());
         }
         return false;
     }
@@ -4637,6 +4677,22 @@ private Target target = Target.JVM;
                         }
                     }
                     if (recvType instanceof Type.FunctionType ft) {
+                        if (ft.className() == null) {
+                            // bug 8: valor de TIPO DE FUNÇÃO DECLARADO (param
+                            // (s: (Int) -> Int), sem classe sintética) não pode
+                            // ser invocado ainda — precisa de dispatch por
+                            // interface. Diagnóstico limpo em vez de bytecode
+                            // quebrado (owner "").
+                            if (currentDiagnostics != null) {
+                                currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                        mc.position() != null ? mc.position().line() : 0,
+                                        mc.position() != null ? mc.position().column() : 0, 0,
+                                        "não é possível invocar valor de tipo de função declarado"
+                                                + " (requer dispatch por interface — ainda não implementado)",
+                                        "SEM032");
+                            }
+                            yield localIdx;
+                        }
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                         for (ExpressionNode arg : mc.arguments()) {
@@ -4644,8 +4700,7 @@ private Target target = Target.JVM;
                         }
                         // f.invoke(): o owner precisa ser a classe sintética
                         // da lambda — FunctionType não tem nome JVM
-                        Type invokeOwner = ft.className() != null
-                                ? new Type.ClassType("", ft.className(), List.of()) : ft;
+                        Type invokeOwner = new Type.ClassType("", ft.className(), List.of());
                         ops.add(new KofCall(invokeOwner, "invoke", argTypes, ft.returnType(), KofCallKind.INSTANCE));
                         yield localIdx;
                     }
@@ -5091,14 +5146,24 @@ private Target target = Target.JVM;
                     } else {
                         IRLocalVariable lambdaVar = findLocalVar(mc.methodName(), locals);
                         if (lambdaVar != null && lambdaVar.type() instanceof Type.FunctionType lft) {
+                            if (lft.className() == null) {
+                                if (currentDiagnostics != null) {
+                                    currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                            mc.position() != null ? mc.position().line() : 0,
+                                            mc.position() != null ? mc.position().column() : 0, 0,
+                                            "não é possível invocar valor de tipo de função declarado"
+                                                    + " (requer dispatch por interface — ainda não implementado)",
+                                            "SEM032");
+                                }
+                            } else {
                             localIdx = emitExpression(new IdentifierExpr(mc.position(), mc.methodName()),
                                     ops, owner, localIdx, locals);
                             List<Type> argTypes = new ArrayList<>();
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
                             localIdx = emitArgumentsWithFormalTypes(mc.arguments(), lft.parameterTypes(), ops, owner, localIdx, locals);
-                            Type invokeOwner = lft.className() != null
-                                    ? new Type.ClassType("", lft.className(), List.of()) : lft;
+                            Type invokeOwner = new Type.ClassType("", lft.className(), List.of());
                             ops.add(new KofCall(invokeOwner, "invoke", argTypes, lft.returnType(), KofCallKind.INSTANCE));
+                            }
                         } else {
                             List<Type> argTypes = new ArrayList<>();
                             for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
@@ -5869,7 +5934,12 @@ private Target target = Target.JVM;
                 // fonte secundária para os demais casos
                 if (semanticAnalyzer != null) {
                     Type semantic = semanticAnalyzer.getExpressionType(mc);
-                    if (!(semantic instanceof Type.UnknownType)) {
+                    // tipos com FunctionType de className null vêm da análise
+                    // semântica, que roda ANTES da síntese das lambdas — são
+                    // obsoletos para o emit (o invoke de lambda precisaria do
+                    // className → owner "" → ClassFormatError, bug 20). Re-inferir.
+                    if (!(semantic instanceof Type.UnknownType)
+                            && !containsLambdaFunctionType(semantic)) {
                         if (semantic instanceof Type.TypeVariable tv && mc.receiver() != null) {
                             Type recvT = inferExprType(mc.receiver(), locals);
                             Type subst = substituteTypeVariable(tv.name(), recvT);

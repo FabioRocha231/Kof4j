@@ -1494,6 +1494,15 @@ class Parser {
     }
 
     private boolean looksLikeLambdaParams() {
+        // `(x: T) -> ...` — IDENTIFIER COLON no início é inequívoco: uma
+        // expressão entre parênteses não começa com 'id :'. Cobre também
+        // `(s: (Int) -> Int) -> ...` (o ARROW do tipo de função seria
+        // confundido com o delimitador da lambda no scan abaixo).
+        if (checkNext(TokenType.IDENTIFIER)
+                && pos + 2 < tokens.size()
+                && tokens.get(pos + 2).type() == TokenType.COLON) {
+            return true;
+        }
         int i = pos + 1;
         int depth = 0;
         while (i < tokens.size()) {
@@ -1506,7 +1515,10 @@ class Parser {
                 }
                 depth--;
             } else if (t == TokenType.ARROW) {
-                return false;
+                // ARROW no depth 0 é o delimitador da lambda; dentro de parens
+                // aninhados (ex.: `(x) -> ((y) -> ...)`) faz parte de outro
+                // lambda — ignorar.
+                if (depth == 0) return false;
             }
             i++;
         }
@@ -1678,7 +1690,7 @@ class Parser {
                 }
                 case IDENTIFIER, INT_TYPE, LONG_TYPE, FLOAT_TYPE, DOUBLE_TYPE, BOOL_TYPE,
                         BYTE_TYPE, SHORT_TYPE, CHAR_TYPE, STRING_TYPE, DOT, COMMA,
-                        LBRACKET, RBRACKET, QUESTION -> { }
+                        LBRACKET, RBRACKET, QUESTION, LPAREN, RPAREN, ARROW -> { }
                 default -> {
                     return false;
                 }
@@ -1754,6 +1766,10 @@ class Parser {
             advance();
             return "void";
         }
+        // tipo de função: (Int) -> Int ou (Int, String) -> Bool (bug 8)
+        if (check(TokenType.LPAREN)) {
+            return parseFunctionTypeRef();
+        }
         if (isPrimitiveType()) {
             return advance().value();
         }
@@ -1800,6 +1816,29 @@ class Parser {
         return check(TokenType.INT_TYPE, TokenType.LONG_TYPE, TokenType.FLOAT_TYPE,
                 TokenType.DOUBLE_TYPE, TokenType.BOOL_TYPE, TokenType.BYTE_TYPE,
                 TokenType.SHORT_TYPE, TokenType.CHAR_TYPE, TokenType.STRING_TYPE);
+    }
+
+    /**
+     * Tipo de função: `(Int) -> Int`, `(Int, String) -> Bool`. Bug 8 — antes
+     * não parseava como tipo (param de lambda, arg genérico, declaração).
+     */
+    private String parseFunctionTypeRef() {
+        StringBuilder sb = new StringBuilder("(");
+        expect(TokenType.LPAREN, "Expected '('", "PARSE040");
+        boolean first = true;
+        while (!check(TokenType.RPAREN) && !atEnd()) {
+            if (!first) {
+                if (check(TokenType.COMMA)) advance();
+                sb.append(", ");
+            }
+            sb.append(parseTypeRef());
+            first = false;
+        }
+        expect(TokenType.RPAREN, "Expected ')'", "PARSE040");
+        sb.append(")");
+        expect(TokenType.ARROW, "Expected '->'", "PARSE042");
+        sb.append(" -> ").append(parseTypeRef());
+        return sb.toString();
     }
 
     private static boolean isPrimitiveTypeToken(TokenType t) {

@@ -528,4 +528,36 @@ class CoreRegressionE2ETest {
                 }
                 """, "true\nfalse\ntrue\ntrue\ntrue", tempDir, "record-eq");
     }
+
+    // known-bugs #20 — invoking a lambda retrieved from a collection
+    // (`ops.get(0)(4)`) produced invalid bytecode (JVM) / undefined refs
+    // (Native). The list element type was lost and the JVM get lacked the
+    // CHECKCAST to the synthetic lambda class. (Homogêneo: lista de lambdas de
+    // classes diferentes ainda é limitação — classes sintéticas separadas.)
+    @Test
+    void lambdaStoredInCollectionAndInvoked(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var ops = listOf((x: Int) -> x * 2)
+                    var f = ops.get(0)
+                    println(f(4))
+                    println(ops.get(0)(7))
+                }
+                """, "8\n14", tempDir, "lambda-in-list");
+    }
+
+    // known-bugs #19 — a lambda RETURNING a lambda lost the inner lambda's
+    // synthetic class in the invoke descriptor (NoSuchMethodError on JVM).
+    @Test
+    void lambdaReturningLambda(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var make = (x: Int) -> ((y: Int) -> x + y)
+                    var add5 = make(5)
+                    println(add5(3))
+                    var add2 = make(2)
+                    println(add2(10))
+                }
+                """, "8\n12", tempDir, "lambda-returning-lambda");
+    }
 }

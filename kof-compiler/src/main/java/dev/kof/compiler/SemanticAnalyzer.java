@@ -1290,6 +1290,56 @@ class SemanticAnalyzer {
                         yield Type.UnknownType.UNKNOWN;
                     }
                     Type recvType = inferType(mc.receiver(), scope);
+                    // coleções: infere o retorno dos métodos (get → elemento,
+                    // size → Int, ...). Sem isso `var f = l.get(0)` de uma
+                    // List<FunctionType> inferia Unknown → `f(4)` dava SEM015
+                    // (bug 20). Espelha o inferExprType do CompilerDriver.
+                    if (BuiltinTypes.isList(recvType)) {
+                        Type elemType = Type.UnknownType.UNKNOWN;
+                        if (recvType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty())
+                            elemType = ct.typeArguments().get(0);
+                        String mn = mc.methodName();
+                        if ("get".equals(mn)) yield elemType;
+                        if ("remove".equals(mn)) yield elemType;
+                        if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn))
+                            yield Type.PrimitiveType.INT;
+                        if ("contains".equals(mn) || "isEmpty".equals(mn))
+                            yield Type.PrimitiveType.BOOL;
+                        if ("add".equals(mn) || "push".equals(mn) || "append".equals(mn)
+                                || "set".equals(mn) || "clear".equals(mn))
+                            yield Type.PrimitiveType.VOID;
+                    }
+                    if (BuiltinTypes.isMap(recvType)) {
+                        Type valueType = Type.UnknownType.UNKNOWN;
+                        Type keyType = Type.UnknownType.UNKNOWN;
+                        if (recvType instanceof Type.ClassType ct && ct.typeArguments().size() == 2) {
+                            valueType = ct.typeArguments().get(1);
+                            keyType = ct.typeArguments().get(0);
+                        }
+                        String mn = mc.methodName();
+                        if ("get".equals(mn)) yield valueType;
+                        if ("remove".equals(mn)) yield valueType;
+                        if ("put".equals(mn)) yield valueType;
+                        if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn))
+                            yield Type.PrimitiveType.INT;
+                        if ("containsKey".equals(mn) || "contains".equals(mn) || "isEmpty".equals(mn))
+                            yield Type.PrimitiveType.BOOL;
+                        if ("clear".equals(mn)) yield Type.PrimitiveType.VOID;
+                        if ("keys".equals(mn)) yield new Type.ClassType("kof", "List", List.of(keyType));
+                        if ("values".equals(mn)) yield new Type.ClassType("kof", "List", List.of(valueType));
+                    }
+                    if (BuiltinTypes.isSet(recvType)) {
+                        Type elemType = Type.UnknownType.UNKNOWN;
+                        if (recvType instanceof Type.ClassType ct && !ct.typeArguments().isEmpty())
+                            elemType = ct.typeArguments().get(0);
+                        String mn = mc.methodName();
+                        if ("size".equals(mn) || "length".equals(mn) || "count".equals(mn))
+                            yield Type.PrimitiveType.INT;
+                        if ("contains".equals(mn) || "isEmpty".equals(mn))
+                            yield Type.PrimitiveType.BOOL;
+                        if ("add".equals(mn) || "remove".equals(mn)) yield Type.PrimitiveType.BOOL;
+                        if ("clear".equals(mn)) yield Type.PrimitiveType.VOID;
+                    }
                     if (mc.receiver() instanceof IdentifierExpr rid && !isLocalName(rid.name(), scope) && KofDb.isDbNamespace(rid.name())) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
@@ -1521,6 +1571,23 @@ class SemanticAnalyzer {
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));
                         checkArgTypes(mc.methodName(), argTypes, lft.parameterTypes());
                         yield lft.returnType();
+                    }
+                    if (localSym instanceof SymbolTable.LocalVariableSymbol
+                            || localSym instanceof SymbolTable.ParameterSymbol) {
+                        // variável DECLARADA sendo chamada como função, mas não é
+                        // uma FunctionType. Distingue de "função inexistente"
+                        // (SEM015) — ex.: `(s) -> s(1)` com param sem tipo.
+                        if (diagnostics != null) {
+                            String extra = (localSym.type() instanceof Type.UnknownType)
+                                    ? " (sem tipo — declare o tipo do parâmetro da lambda)"
+                                    : "";
+                            diagnostics.error("", 0, 0, 0,
+                                    "variable '" + mc.methodName() + "' is not a function"
+                                            + " and cannot be called" + extra,
+                                    "SEM015");
+                        }
+                        for (ExpressionNode arg : mc.arguments()) inferType(arg, scope);
+                        yield Type.UnknownType.UNKNOWN;
                     }
                     if (currentClassName != null && !currentClassName.isEmpty()) {
                         SymbolTable.Symbol m = resolveInHierarchy(currentClassName, mc.methodName());

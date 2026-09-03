@@ -572,3 +572,29 @@ EXTERNA produz lixo
   `resolveFieldType` emitem warning quando a cadeia de superclasses encontra
   uma classe ausente do classpath ("may not resolve"). Prova:
   `AndroidInteropE2ETest.missingSuperclassOnClasspathWarns`.
+- **Bug 20** (lambda em coleção invocado: `ops.get(0)(4)`/`f(4)` de elemento de
+  lista) — **corrigido 03/09 (3 targets)**: três causas encadeadas —
+  (1) a inferência de métodos de List/Map/Set no SemanticAnalyzer devolvia
+  Unknown (a lista de lambdas perdia o tipo do elemento); (2) o tipo cacheado
+  da análise semântica tinha a FunctionType SEM className (a síntese da lambda
+  é pós-análise) → agora `containsLambdaFunctionType` força re-inferência;
+  (3) o JVM `kof_list_get` não fazia CHECKCAST para a classe sintética da
+  lambda (verifier: Object onde Lambda0). Prova:
+  `CoreRegressionE2ETest.lambdaStoredInCollectionAndInvoked`.
+- **Bug 19** (lambda retornando lambda) — **parcialmente corrigido 03/09
+  (JVM+JS)**: o `returnType` do invoke do lambda externo era destruído por
+  `toType(typeToString(...))` e o className do lambda interno (sintetizado
+  durante a emissão do corpo) não era propagado → descriptor
+  `(I)Ljava/lang/Object;` ≠ call site `(I)LLambda1;` (NoSuchMethodError).
+  Agora preserva a FunctionType e preenche o className pós-corpo. **Gap
+  Native**: `Lambda0.invoke` devolve lixo (retorno de FunctionType no
+  NativeBackend) — pendência coordenada com agente nativo. Prova:
+  `CoreRegressionE2ETest.lambdaReturningLambda` (JVM+JS).
+- **Bug 8** (tipo de função `(Int) -> Int` não parseava como tipo) —
+  **parcialmente corrigido 03/09**: `Parser.parseTypeRef` agora aceita
+  `(params) -> ret`; `Type.of` converte para `FunctionType`; `looksLikeLambdaParams`
+  reconhece `(s: (Int) -> Int) -> ...`. `listOf<(Int) -> Int>()` funciona.
+  **Pendência**: invocar um valor de tipo de função DECLARADO (`s(1)` com
+  `s: (Int) -> Int`) requer dispatch por interface (classes sintéticas de
+  lambda são separadas) — hoje dá SEM032 limpo (não mais bytecode quebrado).
+  Prova: `CompilerDriverTest.functionTypeSyntax`.
