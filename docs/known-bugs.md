@@ -306,6 +306,50 @@ EXTERNA produz lixo
 
 ---
 
+### 16. `List.toArray()` quebra em JVM e Native (retorno de array)
+
+- **Sintoma:** JVM → `ClassFormatError` (disfarçado de JavaFX launcher error);
+  Native → `undefined reference to 'List_toArray'` no link.
+- **Reprodução:**
+  ```kof
+  main() {
+      var arr = listOf(1, 2, 3).toArray()
+      println(arr.length)
+      println(arr[1])
+  }
+  ```
+- **Causa provável:** o retorno de tipo array (`Int[]`) de um método da
+  stdlib não é tratado pelos backends (JVM emite constant-pool inválido para
+  o tipo array; Native não gera o símbolo `List_toArray`).
+- **Arquivos:** `JvmBackend.java`, `NativeBackend.java`, runtime nativo
+  (`kof_c`/`NativeRuntime`).
+- **Verificado 02/09 pós-merge riscv64** — persiste.
+
+---
+
+### 17. Array `.get()`/`.set()` (não existem) são aceitos e geram saída quebrada
+
+- **Sintoma:** a API real de array é o operador `arr[i]` / `arr[i] = v`
+  (ver `training/language/arrays.md`). Porém `arr.get(0)` / `arr.set(0, 5)`
+  **compilam** e produzem: JVM → `ClassFormatError: Illegal class name ""`;
+  Native → `undefined reference to 'get'/'set'`.
+- **Reprodução:**
+  ```kof
+  main() {
+      var arr = new Int[3]
+      arr.set(0, 5)     // JVM: ClassFormatError / Native: undefined ref 'set'
+      println(arr.get(0))
+  }
+  ```
+- **O que deveria acontecer:** rejeitar em compile-time com diagnostic claro
+  ("array não tem método get()/set(); use arr[i]").
+- **Causa provável:** método call sobre tipo array cai no caminho genérico de
+  dispatch em vez de emitir o array load/store.
+- **Arquivos:** `CompilerDriver.java`/`SemanticAnalyzer.java` (dispatch sobre
+  array type), `JvmBackend.java`, `NativeBackend.java`.
+
+---
+
 ## Comportamentos que PAREcem bugs mas são esperados (não corrigir)
 
 | Cenário | Comportamento | Por quê |
