@@ -40,7 +40,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 |---|---|---|---|
 | **~~GC mark-sweep~~ Native** | ✅ fechado 03/09 | `kof_gc_sweep` real; auto-collect desligado (requer safe-points) | ver Concluídos |
 | **HTTP002 restante** | média | `delete/put/patch/options` + `timeout/retry/circuit` reais no Native | `get/post/status` feitos |
-| **WEB002** — kof.web no Native | 🟡 T1 03/09 | `kof_web_listen` aceita+respondehello/200 ✅ (`NativeWebRuntime.java`, gate NATIVE liberado p/ app+listen+route). **Falta T2/T3/T4** (parse method+path, dispatch lambda, request ctx) — continuação pra próxima sessão | agente-planning |
+| **WEB002** — kof.web no Native | ✅ fechado 03/09 | servidor HTTP/1.1 asm: accept+parse+match+lambda-dispatch+body context; 4/4 no KofWebNativeE2ETest; pendências honestas: path params {id}, headers/param/query, SSE/WS (WEB003/4), keepalive (sempre Connection: close) | agente-planning (T1..T4: 89ac0d9 → 2ead1df) |
 | **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | design pendente |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
@@ -55,7 +55,7 @@ Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
 
 | Pendência | Escopo | Estado |
 |---|---|---|
-| WEB002 | kof.web server nativo | EM CURSO (agente-planning) |
+| WEB002 | kof.web server nativo | ✅ 03/09 (sem path params, sse/ws, keepalive; ver gaps) |
 | WEB001 | kof.web JS real | pendente |
 | CONC003 | async JS real | pendente |
 | MEDIA001/002/003 | media Native/JS | pendente |
