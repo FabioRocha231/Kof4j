@@ -557,6 +557,34 @@ class SemanticAnalyzer {
         }
     }
 
+    /**
+     * Assignment como STATEMENT (`a = b`, `i = i + 1` no update do for):
+     * infere alvo/valor e valida assignability (SEM012) SEM emitir o SEM027
+     * (que é reservado para assignment usado como VALOR — bug 12).
+     */
+    private Type analyzeAssignmentStatement(AssignmentExpr ae, SymbolTable scope) {
+        Type valueType = inferType(ae.value(), scope);
+        Type targetType = Type.UnknownType.UNKNOWN;
+        if (ae.target() instanceof IdentifierExpr ie) {
+            SymbolTable.Symbol sym = scope.resolve(ie.name());
+            if (sym != null) {
+                targetType = sym.type();
+                if (diagnostics != null && !Type.isUnknown(targetType)
+                        && !Type.isUnknown(valueType)
+                        && !isAssignable(valueType, targetType)) {
+                    diagnostics.error("", 0, 0, 0,
+                            "Type mismatch: cannot assign " + valueType + " to " + targetType,
+                            "SEM012");
+                }
+            } else {
+                targetType = inferType(ae.target(), scope);
+            }
+        } else if (ae.target() != null) {
+            targetType = inferType(ae.target(), scope);
+        }
+        return targetType;
+    }
+
     private void analyzeStatement(StatementNode stmt, SymbolTable scope, Type returnType) {
         switch (stmt) {
             case BlockStmt block -> {
@@ -666,7 +694,15 @@ class SemanticAnalyzer {
                 if (fs.init() != null) analyzeStatement(fs.init(), forScope, returnType);
                 if (fs.condition() != null) inferType(fs.condition(), forScope);
                 analyzeStatement(fs.body(), forScope, returnType);
-                if (fs.update() != null) inferType(fs.update(), forScope);
+                if (fs.update() != null) {
+                    // `i = i + 1` no update é statement, não valor
+                    if (fs.update() instanceof AssignmentExpr ae) {
+                        inferType(ae.value(), forScope);
+                        if (ae.target() != null) inferType(ae.target(), forScope);
+                    } else {
+                        inferType(fs.update(), forScope);
+                    }
+                }
             }
             case ForInStmt fis -> {
                 SymbolTable forScope = scope.enterScope();
@@ -747,8 +783,16 @@ class SemanticAnalyzer {
             }
             case ExpressionStmt es -> {
                 if (es.expression() != null) {
-                    Type exprType = inferType(es.expression(), scope);
-                    expressionTypes.put(es.expression(), exprType);
+                    // `a = b` como STATEMENT é legítimo: check de assignability
+                    // (SEM012) sem o SEM027 (que é só para uso como VALOR —
+                    // bug 12). Mesmo helper usado pelo update do for.
+                    if (es.expression() instanceof AssignmentExpr ae) {
+                        expressionTypes.put(es.expression(),
+                                analyzeAssignmentStatement(ae, scope));
+                    } else {
+                        Type exprType = inferType(es.expression(), scope);
+                        expressionTypes.put(es.expression(), exprType);
+                    }
                 }
             }
             case ThrowStmt ts -> {
@@ -862,6 +906,15 @@ class SemanticAnalyzer {
                 yield Type.UnknownType.UNKNOWN;
             }
             case AssignmentExpr ae -> {
+                // bug 12: assignment como VALOR de expressão (`var c = a = b`)
+                // gerava bytecode inválido no JVM. Kof não tem assignment como
+                // expressão — rejeita com diagnóstico limpo (statements passam
+                // pelo ExpressionStmt, que não chega aqui).
+                if (diagnostics != null) {
+                    diagnostics.error("", 0, 0, 0,
+                            "atribuição é um statement, não uma expressão (use '=' em linha própria)",
+                            "SEM027");
+                }
                 Type valueType = inferType(ae.value(), scope);
                 Type targetType = Type.UnknownType.UNKNOWN;
                 if (ae.target() instanceof IdentifierExpr ie) {

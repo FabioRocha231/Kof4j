@@ -548,3 +548,8 @@ EXTERNA produz lixo
   `Object.keys(__kofNodes).length + 1`; após `remove()` o length encolhia e o
   próximo widget reusava o ID de um nó vivo. Agora contador monotônico
   `kofNodeSeq`. Prova: `KofJsE2ETest.uiWidgetIdsUseMonotonicCounter`.
+- **Bug 12** (assignment encadeado `var c = a = b` gerava bytecode inválido) —
+  **corrigido 03/09**: assignment usado como VALOR é rejeitado com `SEM027`
+  ("atribuição é um statement, não uma expressão"). Statements (`a = b`,
+  `i = i + 1` no for) seguem passando com o check de assignability intacto
+  (SEM012). Prova: `CompilerDriverTest.chainedAssignmentRejectedAsExpression`.

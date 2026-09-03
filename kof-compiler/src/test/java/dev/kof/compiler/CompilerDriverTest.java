@@ -154,6 +154,26 @@ class CompilerDriverTest {
         assertTrue(diags.contains("SEM028"), "Should be a clean diagnostic, was: " + diags);
     }
 
+    // known-bugs #12 — `var c = a = b` (assignment as an expression VALUE)
+    // produced invalid bytecode. Kof has no assignment-expression: reject with
+    // SEM027. Statement `a = b` must keep working.
+    @Test
+    void chainedAssignmentRejectedAsExpression(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var a = 1
+                var b = 2
+                var c = a = b
+                println(c)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "Assignment as expression should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM027"), "Should be a clean diagnostic, was: " + diags);
+    }
+
     @Test
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
