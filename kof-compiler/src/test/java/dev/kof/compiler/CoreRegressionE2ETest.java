@@ -342,4 +342,45 @@ class CoreRegressionE2ETest {
                 }
                 """, "11", tempDir, "explicit-ctor");
     }
+
+    // known-bugs #10 — `!` (logical NOT) as an expression VALUE must negate
+    // (constant folding used bitwise `~` → `!true` was true, JVM+Native+JS)
+    @Test
+    void logicalNotAsExpressionValue(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var a = !true
+                    var b = !false
+                    var c = !(1 > 2)
+                    println(a)
+                    println(b)
+                    println(c)
+                    println(!(2 > 3))
+                    println(!false && true)
+                }
+                """, "false\ntrue\ntrue\ntrue\ntrue", tempDir, "logical-not");
+    }
+
+    // known-bugs #2/#3 — compound assignment operand order: `a -= 2` must be
+    // `a - 2` (was `2 - a` → -8); `s += "x"` in a loop must not crash the
+    // compiler (old path pushed the RHS twice → stack imbalance at frame merge)
+    @Test
+    void compoundAssignmentOrderAndStringInLoop(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var a = 10; a -= 2; println(a)
+                    var b = 10; b /= 2; println(b)
+                    var c = 10; c %= 3; println(c)
+                    var d = 10; d *= 3; println(d)
+                    var e = 10; e += 5; println(e)
+                    var s = ""
+                    var i = 0
+                    while (i < 10) { s += "x"; i = i + 1 }
+                    println(s.length)
+                    var acc = 0
+                    for (var j = 0; j < 5; j++) { acc += j }
+                    println(acc)
+                }
+                """, "8\n5\n1\n30\n15\n10\n10", tempDir, "compound-order");
+    }
 }

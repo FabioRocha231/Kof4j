@@ -474,3 +474,16 @@ EXTERNA produz lixo
 - Null-safety narrowing JVM (`s.length` pós-guard) — corrigido 02/09.
 - Concat `"str" + double` — corrigido 02/09.
 - Captura mutável JVM (mutação externa) — corrigido 02/09.
+- **Bug 2** (compound `-=`/`/=`/`%=` resultado errado) — **corrigido 03/09**:
+  a ordem dos operandos estava invertida (`a -= 2` virava `2 - a`; `+=`/`*=` só
+  funcionavam por serem comutativos). Agora o LHS é empurrado antes do RHS.
+  Prova: `CoreRegressionE2ETest.compoundAssignmentOrderAndStringInLoop`
+  (JVM+JS+Native).
+- **Bug 3** (crash do compilador com `s += "x"` em loop) — **corrigido 03/09**:
+  mesma raiz do Bug 2 — o caminho de compound empurrava o RHS duas vezes
+  (stack extra que quebrava o merge de frames no loop). Prova: mesmo teste
+  acima.
+- **Bug 10** (`!` NOT como valor de expressão sempre retorna `true`) —
+  **corrigido 03/09**: constant folding usava `~i` (bitwise) em vez de `i == 0
+  ? 1 : 0` (lógico) em `Optimizer.foldUnary`. Prova:
+  `CoreRegressionE2ETest.logicalNotAsExpressionValue` (JVM+JS+Native).

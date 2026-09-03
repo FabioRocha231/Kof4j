@@ -5292,40 +5292,59 @@ private Target target = Target.JVM;
                         }
                     }
                 }
-                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
-                if (ae.target() instanceof IdentifierExpr ie) {
+                // composto sobre local: LHS empurrado ANTES do RHS (a ordem do
+                // binário é lhs op rhs). O caminho antigo empurrava o RHS na
+                // linha compartilhada e o LHS depois → `a -= 2` virava `2 - 10`
+                // (bugs 2 e 3: resultado errado + stack extra no concat de s+=).
+                if (ae.target() instanceof IdentifierExpr cie) {
+                    IRLocalVariable targetLocal = null;
                     for (int i = locals.size() - 1; i >= 0; i--) {
-                        if (locals.get(i).name().equals(ie.name())) {
-                            String op = ae.operator();
-                            if ("+=".equals(op) && BuiltinTypes.isString(locals.get(i).type())) {
-                                ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
-                                ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
-                                        List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
-                                        KofCallKind.STATIC));
-                                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
-                                ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
-                                        List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
-                                        KofCallKind.STATIC));
-                                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
-                                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
-                                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
-                            } else if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
-                                    || "/=".equals(op) || "%=".equals(op)
-                                    || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
-                                ops.add(new KofLoadLocal(locals.get(i).type(), locals.get(i).index()));
-                                KofBinaryOp binOp = switch (op) {
-                                    case "+=" -> KofBinaryOp.ADD;
-                                    case "-=" -> KofBinaryOp.SUB;
-                                    case "*=" -> KofBinaryOp.MUL;
-                                    case "/=" -> KofBinaryOp.DIV;
-                                    case "%=" -> KofBinaryOp.MOD;
-                                    case "&=" -> KofBinaryOp.AND;
-                                    case "|=" -> KofBinaryOp.OR;
-                                    case "^=" -> KofBinaryOp.XOR;
-                                    default -> KofBinaryOp.ADD;
-                                };
-                                ops.add(new KofBinary(binOp, locals.get(i).type()));
-                            }
+                        if (locals.get(i).name().equals(cie.name())) { targetLocal = locals.get(i); break; }
+                    }
+                    if (targetLocal != null) {
+                        String op = ae.operator();
+                        if ("+=".equals(op) && BuiltinTypes.isString(targetLocal.type())) {
+                            ops.add(new KofLoadLocal(targetLocal.type(), targetLocal.index()));
+                            ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                    List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
+                                    KofCallKind.STATIC));
+                            localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                                    List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING,
+                                    KofCallKind.STATIC));
+                            ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                                    List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                    BuiltinTypes.STRING, KofCallKind.FUNCTION));
+                            ops.add(new KofStoreLocal(targetLocal.type(), targetLocal.index()));
+                            yield localIdx;
+                        } else if ("+=".equals(op) || "-=".equals(op) || "*=".equals(op)
+                                || "/=".equals(op) || "%=".equals(op)
+                                || "&=".equals(op) || "|=".equals(op) || "^=".equals(op)) {
+                            ops.add(new KofLoadLocal(targetLocal.type(), targetLocal.index()));
+                            localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                            KofBinaryOp binOp = switch (op) {
+                                case "+=" -> KofBinaryOp.ADD;
+                                case "-=" -> KofBinaryOp.SUB;
+                                case "*=" -> KofBinaryOp.MUL;
+                                case "/=" -> KofBinaryOp.DIV;
+                                case "%=" -> KofBinaryOp.MOD;
+                                case "&=" -> KofBinaryOp.AND;
+                                case "|=" -> KofBinaryOp.OR;
+                                case "^=" -> KofBinaryOp.XOR;
+                                default -> KofBinaryOp.ADD;
+                            };
+                            ops.add(new KofBinary(binOp, targetLocal.type()));
+                            emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), targetLocal.type());
+                            ops.add(new KofStoreLocal(targetLocal.type(), targetLocal.index()));
+                            yield localIdx;
+                        }
+                    }
+                }
+                // atribuição simples: empurra o RHS e guarda no slot do local
+                localIdx = emitExpression(ae.value(), ops, owner, localIdx, locals);
+                if (ae.target() instanceof IdentifierExpr sie) {
+                    for (int i = locals.size() - 1; i >= 0; i--) {
+                        if (locals.get(i).name().equals(sie.name())) {
                             emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), locals.get(i).type());
                             ops.add(new KofStoreLocal(locals.get(i).type(), locals.get(i).index()));
                             yield localIdx;
