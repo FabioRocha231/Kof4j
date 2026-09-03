@@ -1009,9 +1009,20 @@ class JsBackend implements Backend {
             }
             List<Object> stack = new ArrayList<>();
             stack.add(new JsIr.JsIdentifier(subjectName));
+            boolean stringEq = false;
             while (true) {
                 KofOperation op = ctx.ops.get(pos[0]);
                 if (op instanceof KofBinary kb && kb.op() == KofBinaryOp.SUB && stack.size() == 2) {
+                    pos[0]++;
+                    break;
+                }
+                // bug 4: switch de String usa kof_string_equals em vez de SUB
+                // (String - String gerava bytecode inválido no JVM). O call é
+                // pulado aqui: no JS o `switch` já compara strings por valor
+                // (===), então o caseValue coletado é o literal.
+                if (op instanceof KofCall kc && "kof_string_equals".equals(kc.methodName())
+                        && stack.size() == 2) {
+                    stringEq = true;
                     pos[0]++;
                     break;
                 }
@@ -1028,8 +1039,11 @@ class JsBackend implements Backend {
             }
             pos[0]++;
             if (!(ctx.ops.get(pos[0]) instanceof KofConditionalJump cj
-                    && cj.comparison() == KofComparison.EQ)) {
-                throw new IllegalStateException("KofJS: switch case expected CJump(EQ)");
+                    && (stringEq
+                        ? cj.comparison() == KofComparison.NE
+                        : cj.comparison() == KofComparison.EQ))) {
+                throw new IllegalStateException("KofJS: switch case expected CJump("
+                        + (stringEq ? "NE" : "EQ") + ")");
             }
             pos[0]++;
             caseValues.add(caseValue);

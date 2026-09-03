@@ -528,3 +528,9 @@ EXTERNA produz lixo
   `NativeBackend.resolveCalleeName` agora usa `classTypeManglePrefix`
   (package + nome). Prova:
   `NativeE2ETest.nativeConstructorFromImportedPackage`.
+- **Bug 4** (`switch` com String gera bytecode inválido no JVM) —
+  **corrigido 03/09**: o lowering do switch não-enum usava `SUB`
+  (`switchValue - caseValue == 0`) para testar igualdade → `String - String`
+  invalidava o bytecode. String agora usa `kof_string_equals` (por conteúdo),
+  como enums. JS backend atualizado para o novo padrão (switch JS já compara
+  strings por valor). Prova: `CoreRegressionE2ETest.stringSwitchOnJvm`.

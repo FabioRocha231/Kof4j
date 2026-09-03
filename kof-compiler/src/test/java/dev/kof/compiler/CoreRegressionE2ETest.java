@@ -462,4 +462,27 @@ class CoreRegressionE2ETest {
                 }
                 """, "3\n1\n0", tempDir, "nullable-generic-arg");
     }
+
+    // known-bugs #4 — `switch` with String values generated invalid bytecode
+    // on JVM (the non-enum path used SUB to test equality → String - String).
+    // String switches must compare by content (kof_string_equals).
+    @Test
+    void stringSwitchOnJvm(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var s = "b"
+                    switch (s) {
+                        case "a": println("A"); break
+                        case "b": println("B"); break
+                        default: println("?")
+                    }
+                    var t = "z"
+                    switch (t) {
+                        case "a": println("A"); break
+                        case "b": println("B"); break
+                        default: println("default")
+                    }
+                }
+                """, "B\ndefault", tempDir, "string-switch");
+    }
 }

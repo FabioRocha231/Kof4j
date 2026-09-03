@@ -2619,6 +2619,16 @@ private Target target = Target.JVM;
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
                         ops.add(new KofConditionalJump(KofComparison.NE, bodyLabels.get(i),
                                 i + 1 < ss.cases().size() ? testLabels.get(i + 1) : defaultLabel));
+                    } else if (Type.isString(switchType)) {
+                        // bug 4: switch de String usava SUB (switchValue - case)
+                        // → String - String gerava bytecode inválido no JVM.
+                        // Igualdade de String é por conteúdo (kof_string_equals).
+                        ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_equals",
+                                List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                                Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
+                        ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                        ops.add(new KofConditionalJump(KofComparison.NE, bodyLabels.get(i),
+                                i + 1 < ss.cases().size() ? testLabels.get(i + 1) : defaultLabel));
                     } else {
                         ops.add(new KofBinary(KofBinaryOp.SUB, switchType));
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
