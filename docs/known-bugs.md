@@ -553,3 +553,22 @@ EXTERNA produz lixo
   ("atribuição é um statement, não uma expressão"). Statements (`a = b`,
   `i = i + 1` no for) seguem passando com o check de assignability intacto
   (SEM012). Prova: `CompilerDriverTest.chainedAssignmentRejectedAsExpression`.
+- **Bug 16** (`List.toArray()` quebrava JVM/Native) — **corrigido 03/09**:
+  `toArray` não é suportado/documentado e caía no caminho genérico → bytecode
+  inválido. Agora `SEM029` limpo ("use um loop com new T[n]"). Interop Java
+  (`stream()`) segue funcionando. Prova:
+  `CompilerDriverTest.toArrayOnCollectionGivesCleanDiagnostic`. Relacionado:
+  `sublist()` (retorno de coleção) também gera bytecode inválido — mesmo
+  tratamento pendente.
+- **Bug 11** (`==` em records usa igualdade de REFERÊNCIA) — **corrigido
+  03/09 (JVM+JS)**: `==`/`!=` em records despacham para `equals` (conteúdo).
+  JVM já gerava equals; o JS agora gera `equals()` por componente (retorna
+  Kof bool 0/1). **Gap Native**: records não geram `equals` lá → `==` dá
+  `undefined reference Ponto_equals` (COMP001) — gerar equals no NativeBackend
+  é pendência (coordenar com agente nativo). Prova:
+  `CoreRegressionE2ETest.recordEqualityByContent`.
+- **Bug 23** (ExternalClasspath: superclasse fora dos entries perdia
+  referência SILENCIOSAMENTE) — **corrigido 03/09**: `resolveMethod`/
+  `resolveFieldType` emitem warning quando a cadeia de superclasses encontra
+  uma classe ausente do classpath ("may not resolve"). Prova:
+  `AndroidInteropE2ETest.missingSuperclassOnClasspathWarns`.

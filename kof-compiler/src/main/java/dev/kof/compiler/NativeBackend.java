@@ -3572,24 +3572,76 @@ public class NativeBackend implements Backend {
                 sw   t0, 16(a0)
                 ret
 
-            # ---- kof.log (minimal, sem threshold/timestamp — apenas println) ----
+            # ---- kof.log: label [LEVEL] + msg + newline; stderr para warn/error, stdout para info/debug ----
             .globl kof_log_debug
             kof_log_debug:
-                j kof_log_info
+                li   a1, 0
+                j    kof_log_write_lvl
             .globl kof_log_info
             kof_log_info:
-                addi sp, sp, -16
-                sd   ra, 8(sp)
-                call kof_println_string
-                ld   ra, 8(sp)
-                addi sp, sp, 16
-                ret
+                li   a1, 1
+                j    kof_log_write_lvl
             .globl kof_log_warn
             kof_log_warn:
-                j kof_log_info
+                li   a1, 2
+                j    kof_log_write_lvl
             .globl kof_log_error
             kof_log_error:
-                j kof_log_info
+                li   a1, 3
+                j    kof_log_write_lvl
+            # helper: a0=msg*, a1=level (0..3)
+            kof_log_write_lvl:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)      # msg
+                sd   s1, 8(sp)       # level
+                mv   s0, a0
+                mv   s1, a1
+                # fd = level >= 2 ? 2(stderr) : 1(stdout)
+                li   t0, 2
+                bge  s1, t0, .Llw_stderr
+                li   s2, 1
+                j    .Llw_write
+            .Llw_stderr:
+                li   s2, 2
+            .Llw_write:
+                # escolhe label
+                la   t0, .Llog_lbl_debug
+                li   t1, 0
+                beq  s1, t1, .Llw_have_lbl
+                la   t0, .Llog_lbl_info
+                li   t1, 1
+                beq  s1, t1, .Llw_have_lbl
+                la   t0, .Llog_lbl_warn
+                li   t1, 2
+                beq  s1, t1, .Llw_have_lbl
+                la   t0, .Llog_lbl_error
+            .Llw_have_lbl:
+                # write(fd, label, 8)
+                mv   a0, s2
+                mv   a1, t0
+                li   a2, 8
+                li   a7, 64
+                ecall
+                # write(fd, msg.data, msg.len)
+                beqz s0, .Llw_skip_msg
+                lw   a2, 16(s0)
+                addi a1, s0, 24
+                mv   a0, s2
+                li   a7, 64
+                ecall
+            .Llw_skip_msg:
+                # newline (usar .Lnewline)
+                mv   a0, s2
+                la   a1, .Lnewline
+                li   a2, 1
+                li   a7, 64
+                ecall
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
+                ret
 
             # ---- kof.config (minimal — retorna default / 0 / false) ----
             .globl kof_config_get
@@ -3977,50 +4029,430 @@ public class NativeBackend implements Backend {
                 call kof_string_from_literal
                 ret
 
-            # ---- kof.cache (minimal stubs) ----
-            .globl kof_cache_get
-            kof_cache_get:
-                li   a0, 0
-                ret
+            # ---- kof.cache riscv64/aarch64: 64 slots de 24B em .bss ([key*][val*][expira_ms]) ----
+            # set(key, val): grava; get(key): lê; set_ttl(key,val,ttl): guarda com expiração real
             .globl kof_cache_set
             kof_cache_set:
-                ret
-            .globl kof_cache_set_ttl
-            kof_cache_set_ttl:
-                ret
-            .globl kof_cache_ttl
-            kof_cache_ttl:
-                li   a0, 0
-                ret
-            .globl kof_cache_delete
-            kof_cache_delete:
-                ret
-            .globl kof_cache_clear
-            kof_cache_clear:
+                addi sp, sp, -48
+                sd   ra, 40(sp)
+                sd   s0, 32(sp)      # key
+                sd   s1, 24(sp)      # val
+                sd   s2, 16(sp)      # ponteiro slot
+                mv   s0, a0
+                mv   s1, a1
+                la   s2, .Lcache_area
+                li   t2, 0
+                li   t3, 64
+            .Lcs_scan:
+                bge  t2, t3, .Lcs_write
+                ld   t4, 0(s2)
+                beqz t4, .Lcs_write       # vazio
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lcs_write       # mesma key, overwrite
+                addi t2, t2, 1
+                addi s2, s2, 24
+                j    .Lcs_scan
+            .Lcs_write:
+                sd   s0, 0(s2)
+                sd   s1, 8(s2)
+                li   t4, 0
+                sd   t4, 16(s2)           # sem ttl
+                ld   s2, 16(sp)
+                ld   s1, 24(sp)
+                ld   s0, 32(sp)
+                ld   ra, 40(sp)
+                addi sp, sp, 48
                 ret
 
-            # ---- kof.mq (minimal stubs — já tem core mas faltam alguns) ----
+            # kof_cache_set_ttl(key, val, ttl_seconds)
+            .globl kof_cache_set_ttl
+            kof_cache_set_ttl:
+                addi sp, sp, -64
+                sd   ra, 56(sp)
+                sd   s0, 48(sp)      # key
+                sd   s1, 40(sp)      # val
+                sd   s2, 32(sp)      # ttl seconds
+                sd   s3, 24(sp)      # slot ptr
+                sd   s4, 16(sp)      # expira em ms
+                mv   s0, a0
+                mv   s1, a1
+                mv   s2, a2
+                # expira = now + ttl*1000
+                call kof_time_now
+                li   t4, 1000
+                mul  t4, s2, t4
+                add  s4, a0, t4
+                # grava
+                la   s3, .Lcache_area
+                li   t2, 0
+                li   t3, 64
+            .Lcst_scan:
+                bge  t2, t3, .Lcst_write
+                ld   t5, 0(s3)
+                beqz t5, .Lcst_write
+                mv   a0, t5
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lcst_write
+                addi t2, t2, 1
+                addi s3, s3, 24
+                j    .Lcst_scan
+            .Lcst_write:
+                sd   s0, 0(s3)
+                sd   s1, 8(s3)
+                sd   s4, 16(s3)
+                ld   s4, 16(sp)
+                ld   s3, 24(sp)
+                ld   s2, 32(sp)
+                ld   s1, 40(sp)
+                ld   s0, 48(sp)
+                ld   ra, 56(sp)
+                addi sp, sp, 64
+                ret
+
+            # kof_cache_get(key) -> val* ou 0
+            .globl kof_cache_get
+            kof_cache_get:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                sd   s1, 8(sp)
+                mv   s0, a0
+                la   s1, .Lcache_area
+                li   t2, 0
+                li   t3, 64
+            .Lcg_scan:
+                bge  t2, t3, .Lcg_miss
+                ld   t4, 0(s1)
+                beqz t4, .Lcg_next
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lcg_hit
+            .Lcg_next:
+                addi t2, t2, 1
+                addi s1, s1, 24
+                j    .Lcg_scan
+            .Lcg_hit:
+                # checa expiração
+                ld   t4, 16(s1)
+                beqz t4, .Lcg_hit_val
+                ld   t5, 16(s1)
+                mv   a0, t5
+                mv   t5, t4
+                ld   ra, 24(sp)      # salva ra p/ chamar time
+                addi sp, sp, -16     # abre frame auxiliar
+                sd   ra, 8(sp)
+                sd   s1, 0(sp)
+                sd   t4, 0(sp)
+                mv   s2, s1          # move ponteiro pra s2 — safe under calls
+                call kof_time_now
+                ld   s1, 0(sp)
+                ld   t4, 0(sp)
+                ld   ra, 8(sp)
+                addi sp, sp, 16
+                # se now >= expira → miss
+                bge  a0, t4, .Lcg_miss
+                # devolve val
+                ld   a0, 8(s1)
+                j    .Lcg_ret
+            .Lcg_hit_val:
+                ld   a0, 8(s1)
+                j    .Lcg_ret
+            .Lcg_miss:
+                li   a0, 0
+            .Lcg_ret:
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
+                ret
+
+            # kof_cache_ttl(key) -> segundos restantes, 0 default
+            .globl kof_cache_ttl
+            kof_cache_ttl:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                sd   s1, 8(sp)
+                mv   s0, a0
+                la   s1, .Lcache_area
+                li   t2, 0
+                li   t3, 64
+            .Lct_scan:
+                bge  t2, t3, .Lct_miss
+                ld   t4, 0(s1)
+                beqz t4, .Lct_next
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lct_found
+            .Lct_next:
+                addi t2, t2, 1
+                addi s1, s1, 24
+                j    .Lct_scan
+            .Lct_found:
+                ld   t4, 16(s1)
+                beqz t4, .Lct_miss     # sem ttl (expira=0) → 0
+                addi sp, sp, -16
+                sd   ra, 8(sp)
+                sd   t4, 0(sp)
+                mv   s2, s1
+                call kof_time_now
+                ld   t4, 0(sp)         # expira_ms
+                ld   ra, 8(sp)
+                addi sp, sp, 16
+                # resta_ms = expira - now (ms)
+                sub  t4, t4, a0
+                blez t4, .Lct_miss
+                li   t5, 1000
+                div  a0, t4, t5
+                j    .Lct_ret
+            .Lct_miss:
+                li   a0, 0
+            .Lct_ret:
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
+                ret
+
+            # kof_cache_delete(key)
+            .globl kof_cache_delete
+            kof_cache_delete:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                sd   s1, 8(sp)
+                mv   s0, a0
+                la   s1, .Lcache_area
+                li   t2, 0
+                li   t3, 64
+            .Lcd_scan:
+                bge  t2, t3, .Lcd_done
+                ld   t4, 0(s1)
+                beqz t4, .Lcd_next
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lcd_clear
+            .Lcd_next:
+                addi t2, t2, 1
+                addi s1, s1, 24
+                j    .Lcd_scan
+            .Lcd_clear:
+                li   t0, 0
+                sd   t0, 0(s1)
+                sd   t0, 8(s1)
+                sd   t0, 16(s1)
+            .Lcd_done:
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
+                ret
+
+            # kof_cache_clear()
+            .globl kof_cache_clear
+            kof_cache_clear:
+                la   t0, .Lcache_area
+                li   t1, 0
+                li   t2, 64
+            .Lclr_loop:
+                bge  t1, t2, .Lclr_done
+                li   t3, 0
+                sd   t3, 0(t0)
+                sd   t3, 8(t0)
+                sd   t3, 16(t0)
+                addi t1, t1, 1
+                addi t0, t0, 24
+                j    .Lclr_loop
+            .Lclr_done:
+                ret
+            # ---- kof.mq riscv64/aarch64: pub/sub + filas em .bss (64 slots cada) ----
             .globl kof_mq_subscribe
             kof_mq_subscribe:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                sd   s1, 8(sp)
+                mv   s0, a0           # topic
+                mv   s1, a1           # fn
+                la   s2, .Lmq_subs
+                li   t2, 0            # i
+                li   t3, 64
+            .Lmss_find:
+                bge  t2, t3, .Lmss_new
+                ld   t4, 0(s2)
+                beqz t4, .Lmss_new
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lmss_addfn
+                addi t2, t2, 1
+                addi s2, s2, 16
+                j    .Lmss_find
+            .Lmss_new:
+                # grava topic + nova lista c/ fn
+                sd   s0, 0(s2)
+                addi sp, sp, -16
+                sd   ra, 8(sp)
+                mv   a0, zero
+                call kof_list_new
+                ld   ra, 8(sp)
+                addi sp, sp, 16
+                sd   a0, 8(s2)
+                mv   a1, s1
+                call kof_list_add
+                j    .Lmss_done
+            .Lmss_addfn:
+                ld   t4, 8(s2)
+                mv   a0, t4
+                mv   a1, s1
+                call kof_list_add
+            .Lmss_done:
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
                 ret
+
             .globl kof_mq_unsubscribe
             kof_mq_unsubscribe:
                 ret
+
             .globl kof_mq_publish
             kof_mq_publish:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)       # topic
+                sd   s1, 8(sp)        # msg
+                mv   s0, a0
+                mv   s1, a1
+                la   s2, .Lmq_subs
+                li   t2, 0
+                li   t3, 64
+            .Lmp_find:
+                bge  t2, t3, .Lmp_done
+                ld   t4, 0(s2)
+                beqz t4, .Lmp_done
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lmp_dispatch
+                addi t2, t2, 1
+                addi s2, s2, 16
+                j    .Lmp_find
+            .Lmp_dispatch:
+                ld   s3, 8(s2)       # lista de fn
+                li   s4, 0
+            .Lmp_iter:
+                mv   a0, s3
+                call kof_list_size
+                bge  s4, a0, .Lmp_done
+                mv   a0, s3
+                mv   a1, s4
+                call kof_list_get
+                mv   t5, a0          # fn
+                mv   a0, s1          # msg
+                jalr t5
+                addi s4, s4, 1
+                j    .Lmp_iter
+            .Lmp_done:
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
                 ret
+
             .globl kof_mq_queue
             kof_mq_queue:
-                la   a0, .Lstr_mq
-                li   a1, 4
-                call kof_string_from_literal
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                sd   s1, 8(sp)
+                mv   s0, a0
+                mv   s1, a1
+                la   s2, .Lmq_queues
+                li   t2, 0
+                li   t3, 64
+            .Lmq_find2:
+                bge  t2, t3, .Lmq_new2
+                ld   t4, 0(s2)
+                beqz t4, .Lmq_new2
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lmq_add2
+                addi t2, t2, 1
+                addi s2, s2, 16
+                j    .Lmq_find2
+            .Lmq_new2:
+                sd   s0, 0(s2)
+                call kof_list_new
+                sd   a0, 8(s2)
+                mv   s2, a0
+                mv   a1, s1
+                mv   a0, s2
+                call kof_list_add
+                mv   a0, s0
+                j    .Lmq_ret2
+            .Lmq_add2:
+                mv   a1, s1
+                ld   a0, 8(s2)
+                call kof_list_add
+                mv   a0, s0
+            .Lmq_ret2:
+                ld   s1, 8(sp)
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
                 ret
+
+            # kof_mq_push(name, item) — add na lista da fila
             .globl kof_mq_push
             kof_mq_push:
-                ret
+                j    kof_mq_queue    # mesma ação nosso modelo: topic/controle igual
+
+            # kof_mq_pop(name) -> KofString* ou 0 — lê primeiro suspeito
             .globl kof_mq_pop
             kof_mq_pop:
+                addi sp, sp, -32
+                sd   ra, 24(sp)
+                sd   s0, 16(sp)
+                mv   s0, a0
+                la   s1, .Lmq_queues
+                li   t2, 0
+                li   t3, 64
+            .Lmpf_find2:
+                bge  t2, t3, .Lmpf_null
+                ld   t4, 0(s1)
+                beqz t4, .Lmpf_null
+                mv   a0, t4
+                mv   a1, s0
+                call kof_string_equals
+                bnez a0, .Lmpf_found
+                addi t2, t2, 1
+                addi s1, s1, 16
+                j    .Lmpf_find2
+            .Lmpf_found:
+                ld   s2, 8(s1)       # lista
+                mv   a0, s2
+                call kof_list_size
+                beqz a0, .Lmpf_null
+                # kof.mq pop: primeiro item, depois segue (lista em ordem)
+                mv   a0, s2
+                li   a1, 0
+                call kof_list_get
+                j    .Lmpf_ret
+            .Lmpf_null:
                 li   a0, 0
+            .Lmpf_ret:
+                ld   s0, 16(sp)
+                ld   ra, 24(sp)
+                addi sp, sp, 32
                 ret
 
             # ---- kof.validation (13 predicados) ----
@@ -4310,6 +4742,9 @@ public class NativeBackend implements Backend {
             kof_exc_chain: .quad 0
             .section .bss
             _kof_heap: .space 262144
+            .Lmq_subs:    .space 1024
+            .Lmq_queues:  .space 1024
+            .Lcache_area: .space 1536
             kof_obs_counter_name: .quad 0
             kof_obs_counter_val: .word 0
             .align 3
@@ -4337,9 +4772,13 @@ public class NativeBackend implements Backend {
             .Lstr_span_handle: .asciz "000000000000000000000000000000000000000000000000"
             .Lstr_mq: .asciz "mq-0"
             .Lstr_space: .asciz " "
-            .Lstr_nl: .asciz "\n"
+            .Lstr_nl: .asciz "\\n"
             .Lstr_count: .asciz "_count"
             .Lstr_sum: .asciz "_sum"
+            .Llog_lbl_debug: .ascii "[DEBUG] "
+            .Llog_lbl_info:  .ascii "[INFO ] "
+            .Llog_lbl_warn:  .ascii "[WARN ] "
+            .Llog_lbl_error: .ascii "[ERROR] "
             """;
 
     private void emitAarch64(IRModule module, Path outputDir) throws IOException {
@@ -4527,10 +4966,15 @@ public class NativeBackend implements Backend {
 
     private static List<String> translateRiscvToAarch64(String line) {
         String indent = line.substring(0, line.length() - line.stripLeading().length());
+        // strip trailing comment rest-stripped before anything else
         String s = line.strip();
         if (s.isEmpty()) return List.of(line);
         if (s.startsWith("#")) return List.of(indent + "//" + s.substring(1));
+        // remove qualquer comentário inline (riscv ` # ...` → nada)
+        int ci = s.indexOf('#');
+        if (ci > 0) s = s.substring(0, ci).stripTrailing();
         if (s.endsWith(":") && !s.contains(" ")) return List.of(line);
+        if (s.isEmpty()) return List.of(line);
         // label com diretiva (ex: "kof_alloc_ptr: .quad ...")
         if (s.matches("^\\S+:\\s+\\.\\w+.*")) {
             int colon = s.indexOf(':');

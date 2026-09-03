@@ -1850,6 +1850,28 @@ private Target target = Target.JVM;
         return !enumConstantsOf(ct.name()).isEmpty();
     }
 
+    /**
+     * O tipo é um RECORD (dados imutáveis com equals/hashCode gerados)? Usado
+     * no lowering de `==`/`!=` (bug 11) para despachar para equals (conteúdo)
+     * em vez de igualdade de referência.
+     */
+    private boolean isRecordType(Type t) {
+        if (!(t instanceof Type.ClassType ct) || ct.typeArguments() != null && !ct.typeArguments().isEmpty()) return false;
+        if (currentUnit != null) {
+            for (AstNode d : currentUnit.declarations()) {
+                if (d instanceof RecordDeclarationNode r && r.name().equals(ct.name())) return true;
+            }
+        }
+        if (semanticAnalyzer != null) {
+            SymbolTable.ClassSymbol cs = semanticAnalyzer.getClass(ct.name());
+            if (cs != null && cs.superClass() != null
+                    && (cs.superClass().equals("Record") || cs.superClass().endsWith("Record"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Nome da constante de enum representada por um rótulo de case. */
     private String enumConstantOfExpr(ExpressionNode e) {
         if (e instanceof FieldAccessExpr fa && fa.receiver() instanceof IdentifierExpr rid
@@ -2909,6 +2931,21 @@ private Target target = Target.JVM;
                         ops.add(new KofPop());
                         boolean eq = "==".equals(be.operator());
                         ops.add(new KofLoadLiteral(Type.PrimitiveType.BOOL, eq ? 0 : 1));
+                        accType = Type.PrimitiveType.BOOL;
+                    } else if (("==".equals(be.operator()) || "!=".equals(be.operator()))
+                            && (isRecordType(accType) || isRecordType(rightType))) {
+                        // bug 11: `==` em records é igualdade de CONTEÚDO →
+                        // left.equals(right) (o record gera equals no JVM e no
+                        // JS). Antes emitia referência (if_acmpeq) → false.
+                        localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
+                        Type recordType = isRecordType(accType) ? accType : rightType;
+                        Type objT = new Type.ClassType("java.lang", "Object", List.of());
+                        ops.add(new KofCall(recordType, "equals", List.of(objT),
+                                Type.PrimitiveType.BOOL, KofCallKind.INSTANCE));
+                        if ("!=".equals(be.operator())) {
+                            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+                            ops.add(new KofBinary(KofBinaryOp.EQ, Type.PrimitiveType.INT));
+                        }
                         accType = Type.PrimitiveType.BOOL;
                     } else if (("==".equals(be.operator()) || "!=".equals(be.operator()))
                             && (Type.isString(accType) || Type.isString(rightType)
@@ -4823,6 +4860,20 @@ private Target target = Target.JVM;
                             ops.add(new KofCall(recvType, setFn, argTypes, retType, KofCallKind.INSTANCE));
                             yield localIdx;
                         }
+                    }
+                    // bug 16: `toArray()` não é suportado (nem documentado) e
+                    // caía no caminho genérico → bytecode inválido (JVM) /
+                    // undefined reference (Native). Diagnóstico limpo em vez de
+                    // saída quebrada.
+                    if ("toArray".equals(mc.methodName())
+                            && (BuiltinTypes.isList(recvType) || BuiltinTypes.isSet(recvType))
+                            && currentDiagnostics != null) {
+                        currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                mc.position() != null ? mc.position().line() : 0,
+                                mc.position() != null ? mc.position().column() : 0, 0,
+                                "método '" + mc.methodName() + "' não é suportado em coleções;"
+                                        + " use um loop com new T[n] para materializar um array",
+                                "SEM029");
                     }
                     Type methodReturnType = Type.UnknownType.UNKNOWN;
                     List<Type> methodParamTypes = new ArrayList<>();

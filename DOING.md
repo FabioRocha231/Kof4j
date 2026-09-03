@@ -20,7 +20,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
-| **NATIVE002** — paridade stdlib riscv64/aarch64 (log/config/time/cache/mq stubs→real) | `EM CURSO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`), `NativeRiscv64E2ETest.java`, `NativeAarch64E2ETest.java` | validação 13/13 + observability real (b20aa49); preparando stubs p/ implementação real (mqtt/sse/interval/cron via `translateRiscvToAarch64`) |
+| **NATIVE002** — paridade stdlib riscv64/aarch64 (log/config/time/cache/mq stubs→real) | `FEITO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`) | qemu riscv64+aarch64 OK; suíte 842/0. Detalhe: log `[LEVEL] msg` + stderr; config env real (`/proc/self/environ` syscall); cache TTL via `kof_time_now`, mq pub/sub c/ list (libera NATIVE002 residual) |
 
 ## Concluídos recentemente
 
@@ -40,10 +40,28 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
 | **HTTP002 restante** | média | `delete/put/patch/options`/`status` + `timeout/retry/circuit` (knobs reais) no Native | get/post/status já fecham a linha zero — o resto é cauda |
+| **WEB002** — kof.web no Native | alta | server HTTP/1.1 accept/parse/dispatch em `NativeWebRuntime` (novo, ≤500 linhas) | agente-planning reivindicou |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gap documentado |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
-| **Debugger DWARF** variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
-| **OpenTelemetry export** | baixa | spans feitos; falta OTLP export | |
+| **MySQL query binário** (resultset EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | ✅ FEITO 03/09 (`02b9ddb`) |
+| **Portar stdlib riscv64/aarch64** | média | `translateRiscvToAarch64` existe | agente-nativo-val |
+| Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
+| OpenTelemetry export | baixa | spans feitos; falta OTLP export | |
+
+### Trilha universal — Tier 1 e o estágio SYSTEMS
+
+Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
+
+| Pendência | Escopo | Estado |
+|---|---|---|
+| WEB002 | kof.web server nativo | EM CURSO (agente-planning) |
+| WEB001 | kof.web JS real | pendente |
+| MEDIA001/002/003 | media Native/JS | pendente |
+| HTTP002 cauda | delete/put/patch/options + resilience no Native | pendente |
+| GC auto-collect | safe-points | pendente |
+| DB001/ORM001 (JS) | db/orm no JS | pendente |
+
+Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
 ## Regras de convivência (já em AGENTS.md)
 
