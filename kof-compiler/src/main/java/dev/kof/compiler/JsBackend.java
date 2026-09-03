@@ -2252,6 +2252,7 @@ class JsBackend implements Backend {
                 || name.startsWith("kof_time_")
                 || name.startsWith("kof_scheduler_")
                 || name.startsWith("kof_mq_")
+                || name.startsWith("kof_log_")
                 || name.equals("kof_ui_color_to_css")
                 || name.equals("kof_now") || name.equals("kof_read_line")
                 || name.equals("kof_read_file") || name.equals("kof_write_file")
@@ -2744,6 +2745,20 @@ class JsBackend implements Backend {
             export function kofPrintln(x) {
                 console.log(x);
             }
+
+            let kofLogLevel = 1; // default "info": 0 debug, 1 info, 2 warn, 3 error, 4 off
+            try {
+                const lv = (process.env.KOF_LOG_LEVEL || "info").trim().toLowerCase();
+                if (lv === "debug") kofLogLevel = 0;
+                else if (lv === "warn") kofLogLevel = 2;
+                else if (lv === "error") kofLogLevel = 3;
+                else if (lv === "off") kofLogLevel = 4;
+            } catch (e) { /* non-node env: keep default */ }
+
+            export function kofLogDebug(msg) { if (kofLogLevel <= 0) console.log(String(msg)); }
+            export function kofLogInfo(msg)  { if (kofLogLevel <= 1) console.log(String(msg)); }
+            export function kofLogWarn(msg)  { if (kofLogLevel <= 2) (console.warn || console.log)(String(msg)); }
+            export function kofLogError(msg) { if (kofLogLevel <= 3) (console.error || console.log)(String(msg)); }
 
             export function kofUiWindowNew(title) {
                 if (typeof document === "undefined") {
@@ -4030,13 +4045,14 @@ class JsBackend implements Backend {
             }
 
             export function kofSchedulerEvery(ms, fn) {
-                const id = String(setInterval(() => { if (typeof fn.invoke === 'function') fn.invoke(); else if (typeof fn === 'function') fn(); }, ms));
-                return id;
+                // delega ao kofTimeInterval: fila cooperativa bombeada por
+                // kofTimeSleep no GraalJS (sem setInterval), nativa no browser
+                return kofTimeInterval(ms, fn);
             }
             export function kofSchedulerAt(cron, fn) {
                 return kofSchedulerEvery(60000, fn);
             }
-            export function kofSchedulerCancel(id) { clearInterval(Number(id)); }
+            export function kofSchedulerCancel(id) { kofTimeCancel(id); }
 
             export function kofEnumValueOf(values, name) {
                 if (values != null && name != null) {
@@ -4056,20 +4072,49 @@ class JsBackend implements Backend {
             }
 
             export function kofTimeSleep(ms) {
-                const start = Date.now();
-                while (Date.now() - start < ms) {}
+                const end = Date.now() + ms;
+                // bombeia a fila cooperativa de timers durante o wait (GraalJS
+                // single-thread: sem isso, time.interval nunca dispara)
+                while (Date.now() < end) {
+                    kofTimePump();
+                }
+                kofTimePump();
             }
 
+            // ── Cooperative timers (TIME001 fechado): GraalJS não tem
+            // event loop nativo nem setInterval, então os jobs vivem numa
+            // fila bombeada por kofTimeSleep (que já bloqueia). Em browser/
+            // Node, onde setInterval existe, os timers disparam assíncronos.
+            const kofTimeJobs = new Map();
+            const kofTimeSeq = { value: 0 };
+            function kofTimeRunJob(fn) {
+                if (typeof fn.invoke === 'function') fn.invoke();
+                else if (typeof fn === 'function') fn();
+            }
             export function kofTimeInterval(ms, fn) {
-                const id = setInterval(() => {
-                    if (typeof fn.invoke === 'function') fn.invoke();
-                    else if (typeof fn === 'function') fn();
-                }, ms);
-                return String(id);
+                if (typeof setInterval === 'function') {
+                    return "n" + String(setInterval(() => kofTimeRunJob(fn), ms));
+                }
+                const id = "c" + (++kofTimeSeq.value);
+                kofTimeJobs.set(id, { ms: ms, run: () => kofTimeRunJob(fn), next: Date.now() + ms });
+                return id;
             }
-
+            function kofTimePump() {
+                const now = Date.now();
+                for (const [id, job] of kofTimeJobs) {
+                    if (now >= job.next) {
+                        job.next = now + job.ms;
+                        job.run();
+                    }
+                }
+            }
             export function kofTimeCancel(id) {
-                clearInterval(Number(id));
+                const key = String(id);
+                if (key.charAt(0) === "n") {
+                    if (typeof clearInterval === 'function') clearInterval(Number(key.substring(1)));
+                    return;
+                }
+                kofTimeJobs.delete(key);
             }
 
             export function kofConfigGet(key) {
@@ -5013,6 +5058,32 @@ class JsBackend implements Backend {
                 const h = __kofObsHistograms[name] || (__kofObsHistograms[name] = { sum: 0, count: 0 });
                 h.sum += value;
                 h.count += 1;
+            }
+
+            const __kofObsSpans = new Map();
+            let __kofObsActiveTrace = null;
+
+            export function kofObservabilitySpanStart(name) {
+                const id = kofObservabilityTraceId() + kofObservabilitySpanId();
+                __kofObsSpans.set(id, Date.now() * 1000);
+                return id;
+            }
+
+            export function kofObservabilitySpanEnd(handle) {
+                const start = __kofObsSpans.get(handle);
+                if (start === undefined) return "{}";
+                __kofObsSpans.delete(handle);
+                const end = Date.now() * 1000;
+                const trace = __kofObsActiveTrace || kofObservabilityTraceId();
+                return JSON.stringify({
+                    traceId: trace,
+                    spanId: handle.substring(32),
+                    parentSpanId: "",
+                    name: "span",
+                    startMicros: start,
+                    endMicros: end,
+                    durationMicros: end - start
+                });
             }
 
             function __kofPromName(name, suffix) {

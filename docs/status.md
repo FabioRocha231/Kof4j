@@ -262,7 +262,7 @@ Bool positivo(Int x) = x > 0         // expression body
 | JSON encode/decode (objetos/records no JVM) + arrays nativos | ✅ | ✅ | ✅ |
 | JSON decode `List<User>` (objetos aninhados) | ✅ | — | ✅ |
 | kof.io (File/Path/Directory, readFile, writeFile) | ✅ | ✅ | ✅ |
-| kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep/**interval** — reusa o scheduler, SCHED001) | ✅ (now/sleep; interval = `TIME001`) |
+| kof.time (now/sleep/interval) | ✅ | ✅ (now/sleep/**interval** — reusa o scheduler, SCHED001) | ✅ (now/sleep/**interval** — fila cooperativa bombeada por `time.sleep` no GraalJS; `setInterval` no browser/Node, TIME001 fechado 02/09) |
 | kof.web (`web.app()`, rotas, middleware) | ✅ | — | — |
 | kof.http (`http.get/post/put/delete/status` + `timeout/retry/circuit`) | ✅ | HTTP002 | ✅ (27/08 JS via `Java HttpClient` interop; 30/08 retry/circuit paridade) |
 | kof.config (env, arquivos, profiles, typed) | ✅ | ✅ (asm próprio) | ✅ |
@@ -512,7 +512,7 @@ main() { /* ignorado pelo kof test */ }
 | KofCacheE2ETest | 5 | suíte E2E/compilação |
 | KofHigherOrderTest | 5 | funções de ordem superior (map/filter/reduce) |
 | KofIntOverflowNativeTest | 5 | aritmética Int 32 bits no Native |
-| KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native; JS now/sleep — interval gap TIME001) |
+| KofTimeE2ETest | 5 | time now/sleep/interval (JVM/Native/**JS** — TIME001 fechado 02/09: fila cooperativa bombeada por `time.sleep` no GraalJS) |
 | KofWebTlsTest | 5 | TLS/HTTPS: listenSecure + kof.http sobre TLS |
 | KofObservabilityTest | 4 | health/metrics/histogram/requestId/traceId+spanId (W3C) (JVM/Native/JS) |
 | FunctionSyntaxTest | 4 | formas de declaração de função |
@@ -653,8 +653,8 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 12. ~~MySQL/MariaDB nativo (handshake+query)~~ — ✅ 31/08 (wire protocol: handshake+scramble+auth-switch+COM_QUERY+resultset); restam **prepared statements** + binds `?` no MySQL nativo
 
  **P4 — Observabilidade:**
- 13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS + **Native** — `OBS002` fechado: store asm 32B + export via `kof_string_concat`, paridade de conteúdo com o JVM). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial. `KofObservabilityTest` 4/4
-  14. ✅ Health `app.health("/health")` + tracing leve — ✅ 01/09 `app.health(path)` (built-in, responde `{"status":"UP","ready":true,"alive":true}` **antes dos middlewares** — sonda de load balancer não passa por auth); `observability.health()/readiness()/liveness()` (3 targets). **Tracing W3C**: `observability.traceId()` (32 hex) + `observability.spanId()` (16 hex) — IDs puros, sem store, **3 targets** (JVM `SecureRandom`, JS `Math.random`, Native `getrandom`); `KofObservabilityTest.tracingJvmNativeJs`. **OpenTelemetry** (spans com timing/propagação) pendente
+ 13. ✅ Métricas `histogram` + endpoint `/metrics` (Prometheus) — ✅ 01/09: `observability.histogram(name, value)` (sum+count) + `observability.metrics()` exportando counters/gauges/histograms em **text exposition format** (JVM + JS + **Native** — `OBS002` fechado: store asm 32B + export via `kof_string_concat`, paridade de conteúdo com o JVM). O app expõe via `app.get("/metrics") { return observability.metrics() }` — sem endpoint especial.
+  14. ✅ Health `app.health("/health")` + tracing leve — ✅ 01/09 `app.health(path)` (built-in, responde `{"status":"UP","ready":true,"alive":true}` **antes dos middlewares** — sonda de load balancer não passa por auth); `observability.health()/readiness()/liveness()` (3 targets). **Tracing W3C**: `observability.traceId()` (32 hex) + `observability.spanId()` (16 hex) — IDs puros, sem store, **3 targets** (JVM `SecureRandom`, JS `Math.random`, Native `getrandom`); **spans com timing** `spanStart/spanEnd` (JSON {traceId, spanId, durationMicros}, 3 targets — 01/09) + **lifecycle** `application { onStart/onShutdown }` (desugar → prólogo/epílogo do main, 3 targets — 01/09); `KofObservabilityTest.tracingJvmNativeJs` + `spansWithTiming` + `applicationLifecycle*`. **OpenTelemetry** (export/propagação completa) pendente
 
  **P5 — DX:**
  15. ✅ `kof fmt` (parser real) + `kof init` + `REPL` — ✅ todos implementados (`Fmt.java`, `init` em `Main.java:694`, `repl` em `Main.java:839`); `fmt` idempotente

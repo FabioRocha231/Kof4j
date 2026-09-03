@@ -29,7 +29,7 @@ class KofWsFrameTest {
     private static Class<?> loadWsFrame() {
         try {
             Path out = Files.createTempDirectory("kof-ws-frame-test");
-            JvmRuntime.ensureCompiled(out, List.of());
+            JvmRuntime.ensureCompiled(out, List.of(), false);
             URLClassLoader loader = new URLClassLoader(
                     new URL[]{out.toUri().toURL()},
                     KofWsFrameTest.class.getClassLoader());

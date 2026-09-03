@@ -48,7 +48,7 @@ CONC001, JSN00x) — nunca comportamento silenciosamente diferente.
 | `kof.core` | ✅ | println, strings, arrays, aritmética; `enum Name { A, B }` + `values()/valueOf()/name()` + `==` por conteúdo — 3 targets (`KofEnumTest`); **0.2.0**: pattern matching `case String s` + `Point(x,y)` e `String?` básica (3 targets) |
 | `kof.collections` | ✅ | `List<T>` `listOf` + `map/filter/reduce` (0.2.0, 3 targets); `Map<K,V>` (mapOf + put/get/remove/contains/size/keys/values/clear/isEmpty) e `Set<T>` (setOf + add/contains/remove/size/clear/isEmpty) — **3 targets** (Native: asm próprio sobre layout List; Set usa tag de tipo p/ equals); `Box<T>` via `substituteTypeVariable` `CompilerDriver.java:3972` |
 | `kof.io` | ✅ | `File/Path/Directory`, readFile/writeFile — JVM/Native/JS |
-| `kof.time` | ✅ | `now()`, `sleep` (3 targets), `interval`/`cancel` (JVM; `TIME001` Native/JS) — `KofTimeE2ETest` |
+| `kof.time` | ✅ | `now()`, `sleep`, `interval`/`cancel` (3 targets — JS via fila cooperativa bombeada por `time.sleep`, TIME001 fechado) — `KofTimeE2ETest` |
 | `kof.json` | ✅ | encode/decode; objetos/records JVM+Native+JS (JSN002), Float/Double + arrays `Double[]`/`Float[]` (JSN001) e arrays `Int[]/Long[]/Bool[]/String[]` (JSN003) — Native completo 31/08 |
 | `kof.http` | ✅ | `kof serve` (KofHttpServer, thread pool) — JVM; `kof.http` client `http.get/post/put/delete/patch/options/status` + `timeout/retry/circuit` — JVM+JS (JS via `Java HttpClient` interop; retry/circuit paridade 30/08) — Native `HTTP002` |
 | `kof.web` | ✅ | `web.app()`, rotas, middleware `app.use`, `listenSecure(port)` TLS, `status(code[, body])`/`headerSet`, `app.ws` (WebSocket RFC 6455) + `app.sse` (SSE) — JVM (Native `WEB001/002`, JS `WEB001`/`WEB003`/`WEB004`) |

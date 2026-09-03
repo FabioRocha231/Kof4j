@@ -267,7 +267,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | metrics (runtime API) | ✅ `kof.observability.counter/increment/gauge` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | health checks / readiness / liveness | ✅ `kof.observability.health/readiness/liveness` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | tracing / OpenTelemetry | `PLANNED` | — | — | — | — | — |
-| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | y (asm, UTC) | – LOG001 | KofLogE2ETest, NativeLogE2ETest | — |
+| structured logging | `log.debug/info/warn/error` (níveis, stderr) | y | y (asm, UTC) | y (console.*, 01/09) | KofLogE2ETest, NativeLogE2ETest | — |
 | correlation IDs / request IDs | ✅ `kof.observability.requestId/correlationId` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | request IDs | ✅ `kof.observability.requestId` — JVM/Native/JS | y | y | y | KofObservabilityTest | observability.md |
 | profiling / runtime diagnostics | `PARTIAL` (`kof profile`) | y | y | – | — | performance.md |
@@ -343,7 +343,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | G5 | ~~**Observabilidade runtime parcial**~~ — ✅ **implementado**: `kof.observability` (health/readiness/liveness, counter/increment/gauge, requestId/correlationId — JVM/Native/JS; `KofObservabilityTest` 3/3) | — | `KofObservabilityTest` |
 | G6 | ~~**kof.test estruturado** inexistente~~ — ✅ **implementado**: `test "nome" { }` nos 3 targets; runner sintetizado em compile-time; PASS/FAIL por nome + exit code (`StructuredTestE2ETest`) | testes como cidadãos de primeira classe | próximo: suites nomeadas por diretório, timeouts, fixtures |
 | G7 | ~~**Diagnósticos de target incompletos no security/web**~~ — ✅ **fechado**: `jwt.*` com entrada explícita (SECN004 no Native); `csrf/cors/auth/headers` já cobertos; WEB001 emitido para web.app() e métodos de app fora do JVM | viola "nunca silencioso" | manter: toda função nova entra em `supportedOn` no mesmo PR |
-| G8 | ~~**Scheduling** inexistente~~ — ✅ `kof.time.sleep` + `interval`/`cancel` (scheduler JVM; `KofTimeE2ETest` 4/4); Native/JS reportam TIME001 | jobs periódicos | próximos: scheduler nativo, cron (P1) |
+| G8 | ~~**Scheduling** inexistente~~ — ✅ `kof.time.sleep` + `interval`/`cancel` 3 targets (`KofTimeE2ETest` 5/5; Native reusa scheduler, JS fila cooperativa — TIME001 fechado 02/09) | jobs periódicos | próximos: cron (P1) |
 | G9 | ~~**Rate limiting / sessions / API keys** inexistentes~~ — ✅ **implementado**: `security.rateLimit`/`sessionCreate`/`sessionGet`/`sessionDestroy`/`apiKeyGenerate`/`apiKeyValid` — JVM/Native/JS (`KofSecurityG9Test` 3/3) | — | `KofSecurityG9Test` |
 | G10 | ~~kof.security no Native~~ — ✅ **fechado**: PBKDF2, SHA-512, JWT HS256 e AES-GCM em asm (SECN001-004) | — | manter os vetores de teste (FIPS 197, NIST SP 800-38D, RFC 7519) |
 | G11 | ~~**Lambdas com captura**~~ — ✅ **captura implementada** (mutable via box sintético `BoxN` + captura por valor; `Lambda0`/`Box0` gerados); **Map/Set** e **await/join** seguem em aberto | expressividade | compilador (documentado em backend-parity.md) |
@@ -439,7 +439,7 @@ Princípios mantidos:
    MongoDB); próximo: query DSL tipada, pools, portabilidade Native/JS.
 6. ~~G4~~ — ✅ `kof.validation` (13 predicados nos 3 targets; `KofValidationTest` 3/3).
 7. ~~G5~~ — ✅ `kof.observability` (health/readiness/liveness, counter/increment/gauge, requestId/correlationId — JVM/Native/JS; `KofObservabilityTest` 3/3).
-8. ~~G8~~ — ✅ `kof.time.sleep` + `interval`/`cancel` (JVM); Native/JS TIME001.
+8. ~~G8~~ — ✅ `kof.time.sleep` + `interval`/`cancel` 3 targets (JS: fila cooperativa — TIME001 fechado 02/09).
 9. ~~G10~~ — ✅ security no Native (PBKDF2, SHA-512, JWT HS256, AES-GCM em asm — `KofSecurityTest` E2E nativos) + config/log (asm).
 10. ~~G9~~ — ✅ rate limiting, sessions, API keys (`security.rateLimit`, `sessionCreate`/`sessionGet`/`sessionDestroy`, `apiKeyGenerate`/`apiKeyValid` — JVM/Native/JS; `KofSecurityG9Test` 3/3).
 11. ~~G12~~ — ✅ TLS/HTTPS (`web.listenSecure(port)` — JVM, `SSLServerSocket` + self-signed; `kof.http` HTTPS trust-all; `KofWebTlsTest` 5/5; Native/JS `WEB002`).

@@ -526,6 +526,39 @@ final class JvmStringRuntime {
                     }
                 }
 
+                // ── spans W3C com timing (tracing leve) ─────────────────
+                // spanStart(name) → handle (id); spanEnd(handle) → JSON
+                // {"traceId":..,"spanId":..,"parentSpanId":..,"name":..,
+                //  "startMicros":..,"endMicros":..,"durationMicros":..}.
+                // Propaga o traceId atual num ThreadLocal (requests web e
+                // spawn herdam o trace).
+                private static final java.lang.ThreadLocal<String> KOF_OBS_ACTIVE_TRACE = new java.lang.ThreadLocal<>();
+                private static final java.util.concurrent.ConcurrentHashMap<String, long[]> KOF_OBS_SPANS = new java.util.concurrent.ConcurrentHashMap<>();
+
+                public static String kof_observability_span_start(String name) {
+                    String id = kof_observability_trace_id() + kof_observability_span_id();
+                    long[] span = { System.nanoTime() };
+                    KOF_OBS_SPANS.put(id, span);
+                    return id;
+                }
+
+                public static String kof_observability_span_end(String handle) {
+                    long[] span = KOF_OBS_SPANS.remove(handle);
+                    if (span == null) return "{}";
+                    long endNanos = System.nanoTime();
+                    long durUs = (endNanos - span[0]) / 1000;
+                    String trace = KOF_OBS_ACTIVE_TRACE.get();
+                    if (trace == null) trace = kof_observability_trace_id();
+                    return "{\\"traceId\\":\\"" + trace + "\\",\\"spanId\\":\\"" + handle.substring(32)
+                            + "\\",\\"parentSpanId\\":\\"\\",\\"name\\":\\"span\\",\\"startMicros\\":"
+                            + span[0] / 1000 + ",\\"endMicros\\":" + endNanos / 1000
+                            + ",\\"durationMicros\\":" + durUs + "}";
+                }
+
+                public static void kof_observability_set_trace(String traceId) {
+                    if (traceId != null) KOF_OBS_ACTIVE_TRACE.set(traceId);
+                }
+
                 /** Exporta counters, gauges e histograms em formato Prometheus
                  *  (text exposition format). Histogramas sem buckets: expostos
                  *  como name_count (counter) + name_sum (gauge). */

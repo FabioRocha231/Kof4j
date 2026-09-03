@@ -95,7 +95,12 @@ final class JvmVkRuntime {
                     // spv path: env KOF_GPU_SPV ou default gpu/shaders/matmul.spv
                     String spv = System.getenv("KOF_GPU_SPV");
                     if (spv == null || spv.isEmpty()) spv = "gpu/shaders/matmul.spv";
-                    var off = arena.allocateFrom(spv);
+                    // JDK 21: Arena não tem allocateFrom(String) (API JDK 22+);
+                    // ofArray + copy mantém compatibilidade com release 21.
+                    byte[] spvBytes = spv.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] spvNul = new byte[spvBytes.length + 1];
+                    System.arraycopy(spvBytes, 0, spvNul, 0, spvBytes.length);
+                    var off = java.lang.foreign.MemorySegment.ofArray(spvNul);
                     int rc;
                     try {
                         rc = (int) VK_INIT.invoke(off);
