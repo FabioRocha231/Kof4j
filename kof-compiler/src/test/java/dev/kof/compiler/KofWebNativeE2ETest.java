@@ -16,8 +16,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * WEB002 — kof.web servidor para o target Nativo.
  *
- * T1: accept loop bloqueante que responde 200 "hello" a qualquer request.
- * T2/T3/T4 fecham parse + routing + handler dispatch.
+ * T1: accept loop + resposta 200/hello (commit 89ac0d9)
+ * T2: parse METHOD+PATH + match literal → 200/404 (commit 6ad63f8)
+ * T3 (em andamento): dispatch do handler lambda via trampolim invoke().
  */
 class KofWebNativeE2ETest {
 
@@ -29,8 +30,7 @@ class KofWebNativeE2ETest {
             serverProcess.destroy();
             try {
                 serverProcess.waitFor(3, TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {
-            }
+            } catch (InterruptedException ignored) { }
             serverProcess.destroyForcibly();
             serverProcess = null;
         }
@@ -53,13 +53,15 @@ class KofWebNativeE2ETest {
             }
             """;
 
+    // ---------------- helpers ----------------
+
     private static int freePort() throws IOException {
         try (java.net.ServerSocket s = new java.net.ServerSocket(0)) {
             return s.getLocalPort();
         }
     }
 
-    private Process startNativeServer(Path tempDir, String source) throws Exception {
+    private Process startServer(Path tempDir, String source) throws Exception {
         int port = freePort();
         Path src = tempDir.resolve("App.kf");
         Files.writeString(src, source.replace("PORT", String.valueOf(port)));
@@ -67,7 +69,7 @@ class KofWebNativeE2ETest {
         CompilationResult result = driver.compile(src, tempDir.resolve("classes"), Target.NATIVE);
         assertTrue(result.success(), "compile: " + result.diagnostics().getDiagnostics());
         Path binary = tempDir.resolve("classes/Default/Main");
-        assertTrue(Files.exists(binary));
+        assertTrue(Files.exists(binary), "native binary should exist");
         ProcessBuilder pb = new ProcessBuilder(binary.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
@@ -75,31 +77,35 @@ class KofWebNativeE2ETest {
         while (System.currentTimeMillis() < deadline) {
             if (!p.isAlive()) throw new IOException("server died early");
             try (Socket probe = new Socket()) {
-                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 200);
+                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 100);
                 return p;
             } catch (IOException e) { Thread.sleep(50); }
         }
         p.destroyForcibly();
-        throw new IOException("server did not come up on port " + port);
+        throw new IOException("did not come up on port " + port);
+    }
+
+    private int portFromServer(String source) throws IOException {
+        return Integer.parseInt(source.split("app.listen\\(")[1].split("\\)")[0]);
     }
 
     private String httpGet(int port, String path) throws IOException {
         try (Socket s = new Socket("127.0.0.1", port)) {
-            String req = "GET " + path + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n";
-            s.getOutputStream().write(req.getBytes(StandardCharsets.UTF_8));
+            s.getOutputStream().write(("GET " + path + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+                    .getBytes(StandardCharsets.UTF_8));
             s.getOutputStream().flush();
             return new String(s.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
-    // WEB002 T1: accept loop + hello fixo (commit 89ac0d9)
+    // ---------------- testes ----------------
+
     @Test
     void nativeServerAcceptsAndResponds200(@TempDir Path tempDir) throws Exception {
-        serverProcess = startNativeServer(tempDir, SERVER_T1);
-        assertTrue(true); // chegou até aqui = porta responde
+        serverProcess = startServer(tempDir, SERVER_T1);
+        assertTrue(true);
     }
 
-    // WEB002 T2: parse METHOD+PATH + match rota literal
     @Test
     void nativeServerMatchesLiteralRoute(@TempDir Path tempDir) throws Exception {
         int port = freePort();
@@ -111,7 +117,6 @@ class KofWebNativeE2ETest {
         ProcessBuilder pb = new ProcessBuilder(tempDir.resolve("classes/Default/Main").toString());
         pb.redirectErrorStream(true);
         serverProcess = pb.start();
-        // aguarda a porta abrir
         long deadline = System.currentTimeMillis() + 5000;
         boolean up = false;
         while (System.currentTimeMillis() < deadline && !up) {
@@ -123,9 +128,34 @@ class KofWebNativeE2ETest {
         assertTrue(up, "server should accept connections");
         String match = httpGet(port, "/hello");
         assertTrue(match.contains("200"), "match: " + match);
-        assertTrue(match.endsWith("route-match"), "match body: " + match);
+        assertTrue(match.endsWith("ok-matched"), "match body: " + match);
         String miss = httpGet(port, "/estanaoexiste");
         assertTrue(miss.contains("404"), "miss: " + miss);
         assertTrue(miss.endsWith("Not Found"), "miss body: " + miss);
+    }
+
+    @Test
+    void nativeServerDispatchesLambdaHandler(@TempDir Path tempDir) throws Exception {
+        int port = freePort();
+        Path src = tempDir.resolve("App.kf");
+        Files.writeString(src, SERVER_T2.replace("PORT", String.valueOf(port)));
+        CompilerDriver driver = new CompilerDriver();
+        CompilationResult result = driver.compile(src, tempDir.resolve("classes"), Target.NATIVE);
+        assertTrue(result.success(), "compile: " + result.diagnostics().getDiagnostics());
+        ProcessBuilder pb = new ProcessBuilder(tempDir.resolve("classes/Default/Main").toString());
+        pb.redirectErrorStream(true);
+        serverProcess = pb.start();
+        long deadline = System.currentTimeMillis() + 5000;
+        boolean up = false;
+        while (System.currentTimeMillis() < deadline && !up) {
+            try (Socket probe = new Socket()) {
+                probe.connect(new java.net.InetSocketAddress("127.0.0.1", port), 100);
+                up = true;
+            } catch (IOException e) { Thread.sleep(50); }
+        }
+        assertTrue(up);
+        String r = httpGet(port, "/hello");
+        assertTrue(r.contains("HTTP/1.1 200"), "status: " + r);
+        assertTrue(r.endsWith("ok-matched"), "body should come from handler, got: " + r);
     }
 }
