@@ -56,7 +56,7 @@ Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
 | Pendência | Escopo | Estado |
 |---|---|---|
 | WEB002 | kof.web server nativo | ✅ 03/09 (sem path params, sse/ws, keepalive; ver gaps) |
-| WEB001 | kof.web JS | 🔴 EM CURSO — sobre backbone not.js, eu proximo session vou sistematicamente (nesta som mis). Especifica do dispatch handler in discover e keep-alive real. **NÃO FECHADO** — Ver nota abaixo |
+| WEB001 | kof.web JS | 🚫 **ABERTO** — implementação GraalJS+HttpServer real exige wrapper Java side elaborado; scaffolding já existe em JsBackend; design limpo é nova sessão (1h+) |
 | CONC003 | async JS real | pendente |
 | MEDIA001/002/003 | media Native/JS | pendente |
 | HTTP002 cauda | delete/put/patch/options + resilience no Native | pendente |
