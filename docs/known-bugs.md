@@ -522,3 +522,9 @@ EXTERNA produz lixo
   `Parser.looksLikeGenericCall` rejeitava o token `?` no lookahead de call
   genérico → `<` virava comparação. `QUESTION` agora é aceito. Prova:
   `CoreRegressionE2ETest.nullableGenericArgumentInCall`.
+- **Bug 22** (Native: construtor de classe de outro pacote → `undefined
+  reference`) — **corrigido 03/09**: o mangle do call site usava o nome
+  simples (`C_init_0`) mas a definição usa o internal name (`com_acme_C_init_0`).
+  `NativeBackend.resolveCalleeName` agora usa `classTypeManglePrefix`
+  (package + nome). Prova:
+  `NativeE2ETest.nativeConstructorFromImportedPackage`.

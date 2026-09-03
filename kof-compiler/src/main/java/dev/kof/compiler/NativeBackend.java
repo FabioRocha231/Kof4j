@@ -1751,14 +1751,28 @@ public class NativeBackend implements Backend {
         }
         if (kc.kind() == KofCallKind.CONSTRUCTOR) {
             if (kc.ownerType() instanceof Type.ClassType ct) {
-                return sanitizeName(ct.name()) + "_" + sanitizeName("<init>") + "_" + kc.parameterTypes().size();
+                return classTypeManglePrefix(ct) + "_" + sanitizeName("<init>") + "_" + kc.parameterTypes().size();
             }
         }
         if (kc.ownerType() instanceof Type.ClassType ct) {
             String key = ct.name() + "." + kc.methodName();
-            return functionMangleMap.getOrDefault(key, sanitizeName(ct.name()) + "_" + sanitizeName(kc.methodName()));
+            return functionMangleMap.getOrDefault(key,
+                    classTypeManglePrefix(ct) + "_" + sanitizeName(kc.methodName()));
         }
         return sanitizeName(kc.methodName());
+    }
+
+    /**
+     * Prefixo de mangle de uma classe com PACKAGE: o call site precisa do
+     * internal name (com/acme/User → com_acme_User), não do nome simples
+     * (User) — senão `C()` de uma classe importada vira undefined reference
+     * `C_init_0` (a definição usa clazz.name()). Bug 22.
+     */
+    private String classTypeManglePrefix(Type.ClassType ct) {
+        String internal = ct.packageName() != null && !ct.packageName().isEmpty()
+                ? ct.packageName().replace('.', '/') + "/" + ct.name()
+                : ct.name();
+        return sanitizeName(internal);
     }
 
     private int resolveFieldOffset(Type ownerType, String fieldName) {
