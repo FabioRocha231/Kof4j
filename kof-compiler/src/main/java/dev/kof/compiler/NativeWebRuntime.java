@@ -300,16 +300,114 @@ final class NativeWebRuntime {
                 incl %eax
                 jmp .Lwh_cp
             .Lwh_cpdone:
-                jmp .Lwh_match                   # match completo
+                # ------- MATCH: invoca handler via trampolim -------
+                # handler obj está em 16(%r14,%rax-slot-atual) — reaponto:
+                movq %rcx, %rax
+                imulq $32, %rax, %rax
+                leaq .Lweb_routes(%rip), %r11
+                addq %rax, %r11
+                movq 16(%r11), %rdi              # handler object
+                testq %rdi, %rdi
+                jz .Lwh_hello
+                movq 8(%rdi), %rax               # vtable
+                movq (%rax), %rax                # invoke
+                # ABI SysV: call *%rax — precisa rsp alinhado; estamos após 5 pushes+1
+                subq $8, %rsp
+                call *%rax
+                addq $8, %rsp
+                # rax = KofString (body)
+                testq %rax, %rax
+                jz .Lwh_hello                    # null → hello
+                movq %rbx, %rdi
+                movq %rax, %rsi                  # body ptr (String)
+                call kof_web_write_body_response
+                jmp .Lwh_done
+
+            # ------- 404 -------
             .Lwh_next:
                 incq %rcx
                 jmp .Lwh_loop
 
-            # ------- MATCH: responde 200 "route-match" -------
-            .Lwh_match:
+            # ------- MATCH fallback: responde "hello" se handler null -------
+            .Lwh_hello:
                 movq %rbx, %rdi
-                call kof_web_send_match
+                leaq .Lweb_body_hello_lit(%rip), %rsi
+                call kof_web_write_body_response
                 jmp .Lwh_done
+
+            # ---------------------------------------
+            # write_body_response: rdi=client_fd, rsi=KofString(body)
+            # Escreve header 200 + Content-Length + CRLF + body
+            # ---------------------------------------
+            kof_web_write_body_response:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                movq %rdi, %rbx                  # fd
+                movq %rsi, %r12                  # body String
+                leaq .Lweb_skb(%rip), %r13
+                # cabecalho 200 OK (sem literais CRLF aqui no asm-comment)
+                leaq .Lweb_h1(%rip), %rsi
+                movq %r13, %rdi
+                call kof_web_append_cstr
+                movq %rax, %r13
+                leaq .Lweb_ok(%rip), %rsi
+                movq %r13, %rdi
+                call kof_web_append_cstr
+                movq %rax, %r13
+                leaq .Lweb_hct(%rip), %rsi
+                movq %r13, %rdi
+                call kof_web_append_cstr
+                movq %rax, %r13
+                leaq .Lweb_hnl(%rip), %rsi
+                movq %r13, %rdi
+                call kof_web_append_cstr
+                movq %rax, %r13
+                # Content-Length value (kof_int_to_string)
+                movl 16(%r12), %edi              # body len (Int32)
+                call kof_int_to_string
+                # rax=String; append
+                movl 16(%rax), %edx              # len deste String
+                leaq 24(%rax), %rsi              # chars
+            .Lwb_resp_cl:
+                movb (%rsi), %cl
+                movb %cl, (%r13)
+                incq %r13
+                incq %rsi
+                decl %edx
+                jnz .Lwb_resp_cl
+                # CRLF CRLF
+                movb $13, (%r13); incq %r13
+                movb $10, (%r13); incq %r13
+                movb $13, (%r13); incq %r13
+                movb $10, (%r13); incq %r13
+                # Body bytes (len da KofString)
+                movl 16(%r12), %r14d             # len
+                leaq 24(%r12), %rsi              # chars
+                xorq %rdx, %rdx
+            .Lwb_body:
+                cmpl %edx, %r14d
+                jle .Lwb_body_done
+                movb (%rsi,%rdx), %cl
+                movb %cl, (%r13)
+                incq %r13
+                incq %rdx
+                jmp .Lwb_body
+            .Lwb_body_done:
+                # write(f, skb, cursor - skb)
+                leaq .Lweb_skb(%rip), %rsi
+                movq %r13, %rdx
+                subq %rsi, %rdx
+                movq %rbx, %rdi
+                movl $1, %eax                    # SYS_write
+                syscall
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
 
             # ------- 404 -------
             .Lwh_404:
@@ -426,6 +524,7 @@ final class NativeWebRuntime {
 
             .section .data
             .Lweb_nfbody: .asciz "Not Found"
+            .Lweb_body_hello_lit: .asciz "hello"
             .section .text
             """);
     }
