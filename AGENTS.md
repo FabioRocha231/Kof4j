@@ -66,6 +66,45 @@ Bool isQuery(String op) {
 
 ---
 
+## Invariantes da plataforma (visão universal — `docs/future/PLAN-UNIVERSAL-PLATFORM.md`)
+
+Estas regras **sempre** se aplicam, mesmo quando não há código de domínio novo
+em jogo. São o mecanismo anti-"god language":
+
+1. **Fronteira core → stdlib base → plataforma → pacotes oficiais → interop**
+   (R1). Domínio pesado (`ml`, `bio`, `hpc`, `infra-<cloud>`) vai para
+   **pacote oficial**, nunca para a stdlib base. Só entra na stdlib o que é
+   "essencial à plataforma e pequeno".
+2. **Interop-first** (R9). Para qualquer capacidade, a primeira pergunta é
+   "já existe por fora e é melhor?" → FFI/interop (`kof.process`, `.so`, JVM,
+   GraalJS). Nunca reimplementar Arrow/Parquet/BLAS/LAPACK/CUDA/NumPy/
+   alinhadores/frameworks de ML.
+3. **Escopo honesto por target** (R7): capacidades pesadas chegam **JVM-first**
+   (interop), **Native** para sistemas/deploy, **JS** só web/edge. Nunca
+   prometer paridade JS para domínios pesados.
+4. **Nunca silencioso por domínio** (R6): todo gap de domínio tem código
+   (`INFRA00x`, `DATA00x`, `SCI00x`, `BIO00x`, `SECPQ`, ...) + entrada na
+   matriz de paridade. Nunca stub silencioso, nunca fallback fraco.
+5. **Tiers de estabilidade** (R5): namespace/pacote é `stable` ou
+   `experimental`. Camada de pacotes oficiais nasce `experimental` e só
+   promove a `stable` com DoD completo (3 targets ou gap diagnosticado, E2E
+   por target, benchmark quando plausível, docs+training sincronizadas).
+6. **Core pequeno e estável** (R12): nenhum item de plano futuro é **ação**
+   sobre o trabalho atual. Frentes novas (infra/data/sci/bio, plataforma de
+   migração legado) **não** abrem antes do estágio SYSTEMS (gaps de paridade,
+   GC mark-sweep, package manager) fechar.
+7. **Segurança: defesa primeiro** (R11). Cripto nunca caseira — toda primitiva
+   nova é FFI a lib auditada (JCA/liboqs/libsodium/SubtleCrypto). Default
+   seguro, constante de tempo, formato versionado, gaps `SECN00x`/`SECPQ`.
+8. **Correto e determinístico por padrão** (R10): em ciência/ML, correção
+   numérica e determinismo são requisito de aceite (property-based + golden).
+
+**Non-goals permanentes:** sem macros abertas, type-classes, annotations como
+fundação, ownership/borrowing, effect system completo; sem "Kali em Kof"; sem
+target por domínio; sem motor SQL/Arrow/ML próprio.
+
+---
+
 ## Antes de escrever código (obrigatório)
 
 1. Leia `training/idioms/<area>.md` da área do problema
@@ -315,6 +354,8 @@ use o harness do projeto ou crie um teste E2E mínimo no pacote da área.
 | `training/anti-patterns/java-like-code.md` | Java traduzido → Kof |
 | `learn/` | Tutorials passo a passo (00-introduction → 37-kofjs) |
 | `docs/security-plan.md`, `docs/native-multiarch.md` etc. | Domínios específicos |
+| `docs/future/` (plans) | Planos futuros: migração legado (decompiler/translator/IR/differential) + plataforma universal |
+| `docs/future/ACTION_PLAN.md` | Ordem de implementação de `docs/future` (Tiers 0–12) |
 
 ---
 

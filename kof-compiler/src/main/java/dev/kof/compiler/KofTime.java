@@ -17,7 +17,8 @@ import java.util.List;
  *
  * <p>Internally every call maps to a static {@code kof_time_*} function of the
  * generated {@code dev.kof.runtime.KofRuntime} class (JVM target).
- * Native and JS targets report {@code TIME001} at compile time.
+ * Native reuses the scheduler (SCHED001); JS runs a cooperative timer queue
+ * pumped by {@code time.sleep} (GraalJS has no event loop — TIME001 closed).
  */
 final class KofTime {
 
@@ -45,16 +46,13 @@ final class KofTime {
     record TimeCall(String function, Type returnType, List<Type> parameterTypes) {}
 
     /** kof.time: now/sleep em todos targets; interval/cancel em JVM+Native
-     *  (reaproveita o scheduler — SCHED001); JS ainda sem event-loop assíncrono
-     *  (TIME001). */
+     *  (reaproveita o scheduler — SCHED001) + JS (fila cooperativa bombeada
+     *  por time.sleep — GraalJS não expõe setInterval; TIME001 fechado). */
     static boolean supportedOn(Target target) {
         return true;
     }
 
     static boolean supportedOn(String method, Target target) {
-        if ("interval".equals(method) || "cancel".equals(method)) {
-            return target == Target.JVM || target.isNative();
-        }
         return true;
     }
 

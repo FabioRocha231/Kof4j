@@ -58,19 +58,32 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.equals("kof_args_list");
     }
 
-    static void ensureCompiled(Path outputDir, List<IRClass> classes) throws IOException {
+    static void ensureCompiled(Path outputDir, List<IRClass> classes, boolean usesVk) throws IOException {
         Path runtimeDir = outputDir.resolve("dev/kof/runtime");
         if (Files.exists(runtimeDir.resolve("KofRuntime.class"))) return;
         Files.createDirectories(runtimeDir);
         Path sourceFile = outputDir.resolve("KofRuntime.java");
-        Files.writeString(sourceFile, source(classes));
+        Files.writeString(sourceFile, source(classes, usesVk));
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             throw new IOException("JVM runtime requires a full JDK (javac not available)");
         }
         java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
-        int rc = compiler.run(null, null, err, "-d", outputDir.toString(),
-                "-classpath", outputDir.toString(), sourceFile.toString());
+        // O bloco Vulkan usa FFM (java.lang.foreign), preview API no JDK 21
+        // (final apenas no 22+). Por isso o flag só é aplicado quando o programa
+        // realmente chama kof.vk (capability/link-por-uso — R2): aplicar
+        // --enable-preview sempre marcaria o classfile 65.65535 e exigiria o
+        // flag também em runtime, quebrando todo programa JVM comum.
+        List<String> args = new java.util.ArrayList<>(List.of("-d", outputDir.toString()));
+        if (usesVk) {
+            args.add("--release");
+            args.add("21");
+            args.add("--enable-preview");
+        }
+        args.add("-classpath");
+        args.add(outputDir.toString());
+        args.add(sourceFile.toString());
+        int rc = compiler.run(null, null, err, args.toArray(new String[0]));
         if (rc != 0) {
             String detail = err.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
             throw new IOException("failed to compile KofRuntime helper (javac exit " + rc + "): "
@@ -333,6 +346,7 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_observability_counter" -> "(Ljava/lang/String;)I";
             case "kof_observability_increment" -> "(Ljava/lang/String;I)I";
             case "kof_observability_gauge", "kof_observability_histogram" -> "(Ljava/lang/String;I)V";
+            case "kof_observability_span_start", "kof_observability_span_end" -> "(Ljava/lang/String;)Ljava/lang/String;";
             // ── kof.security G9 (rate limiting / sessions / API keys) ──
             case "kof_sec_rate_limit" -> "(Ljava/lang/String;II)Z";
             case "kof_sec_session_create" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -463,7 +477,8 @@ static boolean hasRuntimeFn(String methodName) {
             // ── kof.observability (G5) ────────────────────────────────
             case "kof_observability_health", "kof_observability_request_id", "kof_observability_correlation_id",
                     "kof_observability_trace_id", "kof_observability_span_id",
-                    "kof_observability_metrics" -> "Ljava/lang/String;";
+                    "kof_observability_metrics",
+                    "kof_observability_span_start", "kof_observability_span_end" -> "Ljava/lang/String;";
             case "kof_observability_readiness", "kof_observability_liveness", "kof_observability_counter", "kof_observability_increment" -> "I";
             case "kof_observability_gauge", "kof_observability_histogram" -> "V";
             // ── kof.media ─────────────────────────────────────────────
@@ -494,7 +509,7 @@ static boolean hasRuntimeFn(String methodName) {
         };
     }
 
-    private static String source(List<IRClass> classes) {
+    private static String source(List<IRClass> classes, boolean usesVk) {
         StringBuilder decoders = new StringBuilder();
         for (IRClass clazz : classes) {
             String internal = clazz.name();
@@ -1071,7 +1086,7 @@ static boolean hasRuntimeFn(String methodName) {
                 + JvmOrmRuntime.source()
                 + JvmTimeRuntime.source()
                 + JvmStringRuntime.source()
-                + JvmVkRuntime.source();
+                + (usesVk ? JvmVkRuntime.source() : "\n            }");
     }
 
     private static String sourceCore(String decoders) {

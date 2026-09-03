@@ -1,8 +1,8 @@
 # stdlib log — Logging Nativo do Kof
 
-**Última atualização:** 2 de setembro de 2026
-**Versão:** 0.2.6-beta  (810 testes)
-**Status:** implementado (Fase 4 do plano de independência do Spring) — JVM+Native (Native asm UTC `kof_log_*`, 27/08); JS `LOG001`
+**Última atualização:** 3 de setembro de 2026
+**Versão:** 0.2.6-beta  (re-medir após merge; idiomatic-fixes 819)
+**Status:** implementado (Fase 4 do plano de independência do Spring) — JVM+Native (Native asm UTC `kof_log_*`, 27/08); JS `console.*` (LOG001 fechado 01/09)
 
 ---
 
@@ -65,14 +65,14 @@ app.get("/users") {
 | JVM | ✅ completo | `KofRuntime` gerado, JSON + correlation ID |
 | Native x86_64 | ✅ completo (asm, 27/08) | `kof_log_*` asm próprio (data civil Hinnant, env scan), timestamp UTC; `KOF_LOG_JSON` sem efeito ainda |
 | Native riscv64/aarch64 | ✅/placeholder | riscv64 `li a7`; aarch64 placeholder |
-| JS | LOG001 (gap documentado) | reporta `LOG001` em compile-time |
+| JS | ✅ 01/09 (LOG001 fechado) | `kofLog*` console.* com `KOF_LOG_LEVEL`; warn→console.warn, error→console.error |
 
 ## 6. Testes
 
-`KofLogE2ETest` 10 (JVM) + `NativeLogE2ETest` 7 (Native asm, 0.2.6-beta) —
+`KofLogE2ETest` 11 (JVM + JS, 01/09) + `NativeLogE2ETest` 7 (Native asm, 0.2.6-beta) —
 nível default, debug visível com `KOF_LOG_LEVEL=debug`, supressão em
 `error`, `off` silencioso, warn no stderr, log dentro de handler web, JSON
-estruturado + correlation ID (JVM) e LOG001 no JS.
+estruturado + correlation ID (JVM) e JS via `console.*`.
 
 ## 7. Arquitetura
 
@@ -81,6 +81,7 @@ Kof source (.kf) → KofLog (tabela compile-time)
    → SemanticAnalyzer (tipos) → CompilerDriver (KofCall kof_log_*)
    → JvmRuntime (gerado): nível + timestamp + stream
    → NativeRuntime (asm): kof_log_* + env scan + Hinnant date (NativeRuntime.java:1)
+   → JsBackend (kof-runtime.mjs): kofLog* console.* + KOF_LOG_LEVEL
 ```
 
 Evolução planejada (Fase 4 completa): structured logging JSON `KOF_LOG_JSON` no Native, correlation ID por request, contexto por tarefa.

@@ -167,13 +167,14 @@ class JvmBackend implements Backend {
         for (IRClass clazz : module.classes()) {
             emitClass(clazz, outputDir);
         }
-        if (usesJson) {
-            JvmRuntime.ensureCompiled(outputDir, module.classes());
+        if (usesJson || usesVk) {
+            JvmRuntime.ensureCompiled(outputDir, module.classes(), usesVk);
         }
     }
 
     private boolean debugInfoEnabled = true;
     private boolean usesJson = false;
+    private boolean usesVk = false;
     private String sourceName;
 
     private void emitClass(IRClass clazz, Path outputDir) throws IOException {
@@ -843,6 +844,9 @@ class JvmBackend implements Backend {
             }
         } else if (op instanceof KofCall kc && JvmRuntime.hasRuntimeFn(kc.methodName())) {
             usesJson = true;
+            if (kc.methodName().startsWith("kof_vk_")) {
+                usesVk = true;
+            }
             mv.visitMethodInsn(INVOKESTATIC, "dev/kof/runtime/KofRuntime", kc.methodName(),
                     JvmRuntime.callDescriptor(kc.methodName()), false);
             if ("Ljava/lang/Object;".equals(JvmRuntime.callReturnDescriptor(kc.methodName()))) {

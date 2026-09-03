@@ -1,20 +1,19 @@
 # Kof Native — Multi-Arch (RISC-V 64 e ARM64/AArch64)
 
-> **Status:** `EM DESENVOLVIMENTO (parcial)` — **riscv64 com core completo (02/09)**: classes/arrays/List/strings/instanceof/switch/try-catch/FP/recursão em asm puro; aarch64 pendente (portando o mesmo core).
-> **Versão:** 0.2.6-beta · **Data:** 2026-09-02
-> **Gap:** `NATIVE002` (riscv64 core ✅; aarch64 stub; paridade total x86 — JSON/DB/HTTP/concorrência/UI/net — pendente nos dois).
-> **Progresso 02/09:** toolchain cruzada + qemu + **codegen riscv64** (stack machine,
-> `sp`=operandos/`s11`=frame pointer, modelo idêntico ao x86_64) + **runtime asm puro** —
-> `NativeRiscv64E2ETest 13/13` (`qemu-riscv64`): println(String/Int), `var`, `if/else`,
+> **Status:** `EM DESENVOLVIMENTO (parcial)` — **riscv64 + aarch64 com core completo (03/09)**: classes/arrays/List/strings/instanceof/switch/try-catch/FP/recursão em asm puro nos dois; paridade avançada pendente.
+> **Versão:** 0.2.6-beta · **Data:** 2026-09-03
+> **Gap:** `NATIVE002` (riscv64 core ✅ 02/09; aarch64 core ✅ 03/09 via tradução riscv→aarch64; paridade total x86 — JSON/DB/HTTP/concorrência/UI/net — pendente nos dois).
+> **Progresso 03/09:** toolchain cruzada + qemu + **codegen riscv64 + aarch64** (stack machine,
+> `sp`=operandos/`s11`/`x29`=frame pointer, modelo idêntico ao x86_64) + **runtime asm puro** —
+> `NativeRiscv64E2ETest 13/13` (`qemu-riscv64`) + `NativeAarch64E2ETest 13/13` (`qemu-aarch64`): println(String/Int), `var`, `if/else`,
 > aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List,
 > switch, try/catch/throw, pattern matching (`switch String s`/`instanceof`/`as`),
 > String methods, recursão**. Ver §2.3.
 > **Decisão (02/09):** runtime por arch **em assembly puro**, no mesmo estilo do x86_64
 > (`NativeRuntime.generateRuntimeAssembly`) — **sem C** ("Kof é Kof"; o `kof-c-compiler`
 > é outra ferramenta, não um runtime). O C compilado com gcc cruzado que foi usado em
-> 02/09 como validação de ABI foi descartado: o riscv64 passa a emitir runtime asm
-> (bump allocator + syscalls/PLT libc) e linka com `ld -dynamic-linker ... -lc`,
-> idêntico ao caminho x86_64.
+> 02/09 como validação de ABI foi descartado: riscv64/aarch64 passam a emitir runtime asm
+> puro (bump allocator + raw syscalls `write`/`exit`, sem PLT/libc) e linkam estático via `ld`, idêntico ao modelo x86_64 (sem dependência de libc).
 > **Escopo:** expandir o `NativeBackend` (hoje `x86_64` em asm puro) para
 > `riscv64` e `aarch64` Linux, preservando `frontend → Kof IR → backend` e
 > paridade `JVM/Native/JS`. Este doc vive em `docs/` (não em `docs/future/`)
@@ -59,12 +58,12 @@ funciona de ponta a ponta.
 | Peça | Estado | Detalhe |
 |------|--------|---------|
 | **Lowering real riscv64 (core)** | ✅ completo 02/09 | `emitRiscv` emite o IR em asm: stack machine (`sp`=pilha de operandos, `s11`=frame pointer, `ra`/`s11` salvos no frame — modelo idêntico ao x86_64) + `.macro pop`; todos os ops do core: literal/local/field/binary (int+FP+bitwise)/unary/condjump/jump/label/call (println/print/valueOf/String methods/coleções/construtor/vtable virtual/FUNCTION/STATIC)/new_object/dup/pop/checkcast/instanceof/arrays/throw/try/catch/return. `NativeRiscv64E2ETest 13/13` |
-| **Lowering real aarch64** | ❌ STUB | `emitAarch64` gera só `_start` + `main: mov x0,#0; ret` — **não** emite o IR (mesma estratégia do riscv64 a portar) |
-| Ops fora do core riscv64 (JSON/DB/HTTP/concorrência/UI/net) | ❌ diagnóstico `NATIVE002` | ops desconhecidos emitem comentário `# NATIVE002: op fora do caminho feliz` (nunca binário mudo) |
+| **Lowering real aarch64 (core)** | ✅ completo 03/09 | `emitAarch64` = **tradução linha-a-linha do riscv64** (mesmo modelo/lowering, ISA ARMv8-A: `sp`=pilha/`x29`=frame pointer, `x30`/`x29` salvos, `.macro pop` → `ldr`/`add`, `sp` já 16-alinhado no `_start`, `str sp` via temp `x17`). `translateRiscvToAarch64` cobre int+FP (`slt`/`sle`/`seqz`/`snez`/`sext.w`/`fcvt`/`fmv`/`fadd`/`feq`…), `andi`/`ori` via `movk x17`, `sd sp` via `mov x17,sp`. `NativeAarch64E2ETest 13/13` (`qemu-aarch64`) |
+| Ops fora do core riscv64/aarch64 (JSON/DB/HTTP/concorrência/UI/net) | ❌ diagnóstico `NATIVE002` | ops desconhecidos emitem comentário `# NATIVE002: op fora do caminho feliz` (nunca binário mudo) |
 | Os 18 métodos `emit*` reais (x86_64) | ✅ | `emitBinary`/`emitOperation`/`emitMethod`/`emitConditionalJump`/vcall… — o caminho completo continua só em x86_64 |
-| Extração de `NativeBase` (layout/`kof_alloc`/mangle comum) | ❌ não existe | `NativeBackend` ainda é monolítico x86_64 |
-| Runtime por arch (asm) | ⚠️ riscv64 core | `kof_alloc`(bump)/`kof_memcpy`/strings (literal/concat/equals/charAt/substring/contains/startsWith/endsWith/indexOf/toInt/length)/int-long-bool→string/print/objects (`init_object`/`instanceof`/super_table/vtables)/arrays (alloc/get/set/length+bounds)/List (new/add/get/set/size/contains/grow)/exceções (`throw`/exc_chain/`null_error`/`bounds_error`) em **asm riscv64 puro** (raw syscalls, sem libc); `qemu-riscv64` (ver §2.3). aarch64 pendente |
-| Testes E2E `qemu` (aarch64/riscv64) | ❌ não existem | nenhum `NativeAarch64E2ETest`/`NativeRiscv64E2ETest` |
+| Extração de `NativeBase` (layout/`kof_alloc`/mangle comum) | ❌ não existe | `NativeBackend` ainda é monolítico x86_64 (riscv/aarch64 reusam o mesmo lowering via tradução) |
+| Runtime por arch (asm) | ✅ riscv64 + aarch64 core | `kof_alloc`(bump)/`kof_memcpy`/strings (literal/concat/equals/charAt/substring/contains/startsWith/endsWith/indexOf/toInt/length)/int-long-bool→string/print/objects (`init_object`/`instanceof`/super_table/vtables)/arrays (alloc/get/set/length+bounds)/List (new/add/get/set/size/contains/grow)/exceções (`throw`/exc_chain/`null_error`/`bounds_error`) em **asm puro** riscv64 **e** aarch64 (raw syscalls, sem libc; aarch64 via `translateRiscvToAarch64` — `adrp`+`add :lo12:`, `svc #0`, `and sp` skip, `str sp` via `x17`); `qemu-riscv64`/`qemu-aarch64` (ver §2.3). |
+| Testes E2E `qemu` (aarch64/riscv64) | ✅ | `NativeRiscv64E2ETest` 13/13 + `NativeAarch64E2ETest` 13/13 (26 testes cross) |
 | CI com cross toolchains | ❌ não existe | `aarch64/riscv64` não entram no pipeline |
 | `backend-parity.md` colunas por arch | ⚠️ parcial | delta citado, colunas `NATIVE_X86_64/AARCH64/RISCV64` separadas pendentes |
 
@@ -99,19 +98,19 @@ Main.s  (programa: kof_main + seções .data/.rodata)
    └─ qemu-<arch> → saída esperada (exit 0)
 ```
 
-Detalhes do runtime riscv64 (inc-0, 02/09):
+Detalhes do runtime riscv64/aarch64 (inc-0 02/09 + 03/09):
 - alocação: **bump allocator** em `.bss` (sem `mmap` — evita problemas de
-  qemu estático; o x86_64 usa `mmap`+free-list, e o riscv64 segue o modelo
+  qemu estático; o x86_64 usa `mmap`+free-list, e riscv64/aarch64 seguem o modelo
   com bump até a paridade de GC).
 - strings: layout **idêntico ao x86_64** — `[typeId@0 i32][super@4 i32]
   [vtable@8 ptr][len@16 i32][data@24 …]` (`KOF_STRING_TYPE_ID=1`).
-- saída: raw syscall `write(1, …)` — binário estático, sem libc.
-- validação: `NativeRiscv64E2ETest 13/13` via `qemu-riscv64` (core completo).
+- saída: raw syscall `write(1, …)` (`a7=64` riscv / `x8=64` arm) + `exit` (`a7/x8=93`) — binário **estático**, sem libc/PLT.
+- aarch64: **tradução mecânica** do runtime riscv64 (`riscv2arm.py` validado + `translateRiscvToAarch64` em `NativeBackend.java:3650`): `la`→`adrp`+`add :lo12:`, `ecall`→`svc #0`, `and sp` skip (sp já 16-alinhado), `str sp` via `mov x17,sp`, `andi -16` via `movk x17`+`and`, `rem`→`sdiv`+`msub`, `slt/sle`→`cmp`+`cset`, FP `fcvt`→`scvtf`/`fmv`→`fmov`/`fadd`→`fadd`/`feq`→`fcmp`+`cset`.
+- validação: `NativeRiscv64E2ETest 13/13` via `qemu-riscv64` + `NativeAarch64E2ETest 13/13` via `qemu-aarch64` (core completo).
 
 O que **restou** para os próximos incrementos:
-- riscv64: Map/Set, higher-order (map/filter/reduce), JSON/DB/HTTP/concorrência/
-  UI/net — paridade total com o x86_64.
-- aarch64: runtime + lowering completos (hoje stub) — portar o core riscv64.
+- riscv64 + aarch64: Map/Set, higher-order (map/filter/reduce), JSON/DB/HTTP/concorrência/
+  UI/net — paridade total com o x86_64 (mesmo gap nos dois; hoje diagnóstico `NATIVE002`).
 
 ## 3. Arquitetura (alvo)
 
@@ -127,8 +126,8 @@ Target enum:
 
 IRModule → NativeBackend.emit (select por target):
   NATIVE          → lowering x86_64 (completo, 18 emit*)   [FEITO]
-  NATIVE_RISCV64  → emitRiscv   (STUB — falta lowering)     [PENDENTE]
-  NATIVE_AARCH64  → emitAarch64 (STUB — falta lowering)     [PENDENTE]
+  NATIVE_RISCV64  → emitRiscv   (core completo 02/09, 13/13) [FEITO]
+  NATIVE_AARCH64  → emitAarch64 (core completo 03/09, 13/13 via tradução) [FEITO]
   → (meta) extrair NativeBase: ClassLayout, kof_alloc, mangle, resolveFieldOffset
 ```
 
@@ -139,7 +138,7 @@ IRModule → NativeBackend.emit (select por target):
 | Aspecto | x86_64 (atual) | AArch64 | RISC-V 64 |
 |---------|----------------|---------|-----------|
 | **Assembler** | `as` GNU | `aarch64-linux-gnu-as` | `riscv64-linux-gnu-as` |
-| **Linker** | `ld -dynamic-linker /lib64/ld-linux-x86-64.so.2 -lc` | `aarch64-linux-gnu-ld -dynamic-linker /lib/ld-linux-aarch64.so.1 -lc` | `riscv64-linux-gnu-ld -dynamic-linker /lib/ld-linux-riscv64-lp64d.so.1 -lc` |
+| **Linker** | `ld -dynamic-linker /lib64/ld-linux-x86-64.so.2 -lc` (x86_64 usa PLT/libc) | `aarch64-linux-gnu-ld` **estático** (raw syscalls, sem `-lc`) | `riscv64-linux-gnu-ld` **estático** (raw syscalls, sem `-lc`) |
 | **Regs args** | `rdi rsi rdx rcx r8 r9` | `x0 x1 x2 x3 x4 x5` | `a0 a1 a2 a3 a4 a5` |
 | **Regs temp** | `rax rcx rbx r10` | `x9 x10 x11 x12` | `t0 t1 t2 t3` |
 | **Ret** | `rax` | `x0` | `a0` |

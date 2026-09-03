@@ -367,7 +367,9 @@ kof update
 
 Arquivo próprio da linguagem (`kofdeps`). Para Kof4J, o sistema poderá gerar `pom.xml` temporário em memória durante o build e utilizar Maven para resolução/download.
 
-Estado atual: ❌ não implementado
+Estado atual: 🟡 MVP 01/09 — `kof deps init/add/remove/list/resolve` (arquivo
+`kofdeps`, resolução Maven Central → `~/.kof/deps`, classpath via
+`kof build|run --deps`); dependências transitivas do POM e registry pendentes.
 
 ---
 
@@ -485,7 +487,7 @@ Estado atual: ✅ JVM funcional, Native funcional
 APIs nativas para log, metric, trace, health, audit. Integração com OpenTelemetry.
 
 Estado atual: 🟡 parcial — `kof.log` com níveis (JVM: JSON estruturado +
-correlation ID; Native: asm, UTC — LOG001 no JS) e `kof.observability`
+correlation ID; Native: asm, UTC — JS `console.*` 01/09) e `kof.observability`
 (health/readiness/liveness, counter/increment/gauge, requestId/
 correlationId — 3 targets). Faltam: histogram + endpoint `/metrics`
 (Prometheus), tracing/OpenTelemetry e `app.health("/health")`.
@@ -786,3 +788,31 @@ sistemas legados para Kof — **fora do escopo 0.0.x**.
 
 **Não implementar nada desta seção antes da consolidação da linguagem,
 compilador, runtime, stdlib e tooling.**
+
+---
+
+## 22. Plataforma Universal (plano futuro)
+
+Visão de longo prazo — Kof como plataforma universal (uma linguagem para
+aplicações **e** sistemas, infraestrutura, automação, dados, segurança e
+ciência) **sem** destruir a simplicidade da linguagem.
+
+- Documento central: `docs/future/PLAN-UNIVERSAL-PLATFORM.md` (arquitetura,
+  **não** ordem de implementação)
+- Estágios por capacidade/maturidade: `FOUNDATION ✅` → `SYSTEMS` (em
+  andamento) → `AUTOMATION` → `INFRAESTRUTURA` → `DATA` → `SECURITY` →
+  `SCIENTIFIC` → `BIO` → `UNIVERSAL`
+- Mecanismo de expansão: **stdlib como tabelas de dispatch em compile-time** +
+  FFI/interop + pacotes oficiais — nunca novo target, nunca linguagem nova
+- Invariantes (R1–R12): fronteira core/plataforma, interop-first, escopo
+  honesto por target (JVM-first/Native/JS-web), nunca silencioso por domínio
+  (`INFRA00x`/`DATA00x`/`SCI00x`/`BIO00x`/`SECPQ`), tiers de estabilidade
+  (`stable`/`experimental`), core pequeno e estável, segurança defesa primeiro,
+  correto/determinístico em ciência
+- Non-goals permanentes: sem macros abertas/type-classes/annotations/ownership/
+  effect system; sem cripto caseira; sem reimplementar Arrow/BLAS/ML/
+  alinhadores; sem "Kali em Kof"; sem target por domínio; sem motor SQL próprio
+
+**Não implementar nada desta seção antes do estágio SYSTEMS fechar**
+(paridade de gaps, GC mark-sweep, package manager básico — ver
+`docs/plan-platform-completion.md` P0–P5).

@@ -127,6 +127,95 @@ class KofObservabilityTest {
             """, "32\n16\ndone");
     }
 
+@Test
+    void spansWithTiming(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            main() {
+                val h = observability.spanStart("op")
+                var x = 0
+                for (var i = 0; i < 1000; i++) { x = x + i }
+                val json = observability.spanEnd(h)
+                assert(json.contains("\\"traceId\\":"))
+                assert(json.contains("\\"spanId\\":"))
+                assert(json.contains("\\"durationMicros\\":"))
+                assert(json.contains("\\"name\\":\\"span\\""))
+                println("ok")
+            }
+            """, "ok");
+        runJs(tmp, """
+            main() {
+                val h = observability.spanStart("op")
+                val json = observability.spanEnd(h)
+                assert(json.contains("\\"traceId\\":"))
+                assert(json.contains("\\"spanId\\":"))
+                println("done")
+            }
+            """, "done");
+        runNative(tmp, """
+            main() {
+                val h = observability.spanStart("op")
+                val json = observability.spanEnd(h)
+                assert(json.contains("\\"traceId\\":"))
+                assert(json.contains("\\"spanId\\":"))
+                println("ok")
+            }
+            """, "ok");
+    }
+
+@Test
+    void applicationLifecycle(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            application {
+                onStart {
+                    println("started")
+                }
+                onShutdown {
+                    println("stopped")
+                }
+            }
+            main() {
+                println("work")
+            }
+            """, "started\nwork\nstopped");
+        runNative(tmp, """
+            application {
+                onStart {
+                    println("started")
+                }
+                onShutdown {
+                    println("stopped")
+                }
+            }
+            main() {
+                println("work")
+            }
+            """, "started\nwork\nstopped");
+        runJs(tmp, """
+            application {
+                onStart {
+                    println("started")
+                }
+                onShutdown {
+                    println("stopped")
+                }
+            }
+            main() {
+                println("work")
+            }
+            """, "started\nwork\nstopped");
+    }
+
+    @Test
+    void applicationLifecycleEmptyBlocks(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+            application {
+            }
+            main() {
+                println("ok")
+            }
+            """, "ok");
+    }
+
     private String runJvm(Path tempDir, String source, String expected) throws java.io.IOException {
         Path file = tempDir.resolve("Main-" + System.nanoTime() + ".kf");
         Files.writeString(file, source);

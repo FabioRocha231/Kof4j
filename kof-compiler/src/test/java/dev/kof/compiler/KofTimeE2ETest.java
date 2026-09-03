@@ -140,24 +140,36 @@ class KofTimeE2ETest {
     }
 
     @Test
-    void nativeCompilesIntervalAndJsReportsTime001(@TempDir Path tempDir) throws IOException {
-        // TIME001 (01/09): Native agora compila time.interval/cancel (reusa o
-        // scheduler — SCHED001). JS continua gap: event-loop assíncrono +
-        // time.sleep bloqueante são incompatíveis (diagnóstico claro).
+    void jsIntervalRunsPeriodicallyUntilCancelled(@TempDir Path tempDir) throws IOException {
+        // TIME001 fechado (02/09): JS roda time.interval/cancel por fila
+        // cooperativa bombeada dentro de time.sleep (GraalJS não tem
+        // setInterval/event loop; browser/Node usam setInterval nativo).
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
-                    var job = time.interval(100, () -> {})
+                    var ticks = 0
+                    var job = time.interval(100, () -> {
+                        ticks = ticks + 1
+                    })
+                    time.sleep(450)
+                    time.cancel(job)
+                    var after = ticks
+                    time.sleep(300)
+                    println(ticks == after)
+                    println(ticks >= 2)
                 }
                 """);
-        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native2"), Target.NATIVE);
-        assertTrue(nativeResult.success(),
-                "Native should now compile time.interval (TIME001 fechado): "
-                        + nativeResult.diagnostics().getDiagnostics());
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js2"), Target.JS);
-        assertFalse(jsResult.success(), "JS should still reject time.interval");
-        assertTrue(jsResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("TIME001")), "" + jsResult.diagnostics().getDiagnostics());
+        assertTrue(jsResult.success(), "JS should now compile time.interval: "
+                + jsResult.diagnostics().getDiagnostics());
+        try (java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            Path jsEntry = findJsEntry(tempDir.resolve("js2"));
+            int ec = dev.kof.runtime.KofJsRunner.run(jsEntry, buf,
+                    java.io.InputStream.nullInputStream(), new java.io.ByteArrayOutputStream());
+            String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8).trim();
+            assertEquals(0, ec, "JS exit code, output: " + out);
+            assertEquals("true\ntrue", out, "JS output");
+        }
     }
 
     private static Path findJsEntry(Path dir) throws IOException {

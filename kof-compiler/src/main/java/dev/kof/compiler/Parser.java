@@ -34,6 +34,9 @@ class Parser {
             List<AnnotationNode> annos = parseAnnotations();
             if (check(TokenType.IDENTIFIER) && "test".equals(peek().value()) && checkNext(TokenType.STRING_LITERAL)) {
                 declarations.add(parseTestDeclaration());
+            } else if (check(TokenType.IDENTIFIER) && "application".equals(peek().value())
+                    && checkNext(TokenType.LBRACE)) {
+                declarations.add(parseApplicationDeclaration());
             } else if (!annos.isEmpty()
                     && (check(TokenType.CLASS, TokenType.INTERFACE, TokenType.RECORD, TokenType.ENTITY))) {
                 declarations.add(parseTypeDeclaration(annos));
@@ -205,6 +208,41 @@ class Parser {
         Token nameToken = expect(TokenType.STRING_LITERAL, "Expected test name string", "PARSE010");
         List<StatementNode> body = parseBlock();
         return new TestDeclarationNode(p, nameToken.value(), body);
+    }
+
+    /**
+     * `application { onStart { ... } onShutdown { ... } }` — bloco de
+     * lifecycle. Cada bloco nomeado (onStart/onShutdown) é parseado como
+     * bloco de statements; o lowering sintetiza funções chamadas no
+     * prólogo/epílogo do main.
+     */
+    private ApplicationDeclarationNode parseApplicationDeclaration() {
+        SourcePosition p = pos();
+        advance(); // consome 'application'
+        List<StatementNode> onStart = List.of();
+        List<StatementNode> onShutdown = List.of();
+        expect(TokenType.LBRACE, "Expected '{' after application", "PARSE051");
+        while (!check(TokenType.RBRACE) && !atEnd()) {
+            if (check(TokenType.IDENTIFIER)) {
+                String blockName = peek().value();
+                if ("onStart".equals(blockName) || "onShutdown".equals(blockName)) {
+                    advance();
+                    if (check(TokenType.LBRACE)) {
+                        List<StatementNode> body = parseBlock();
+                        if ("onStart".equals(blockName)) onStart = body;
+                        else onShutdown = body;
+                    } else {
+                        expect(TokenType.LBRACE, "Expected '{' after " + blockName, "PARSE051");
+                    }
+                } else {
+                    expect(TokenType.RBRACE, "Expected onStart/onShutdown block in application", "PARSE051");
+                }
+            } else {
+                expect(TokenType.RBRACE, "Expected onStart/onShutdown block in application", "PARSE051");
+            }
+        }
+        expect(TokenType.RBRACE, "Expected '}' after application block", "PARSE051");
+        return new ApplicationDeclarationNode(p, onStart, onShutdown);
     }
 
     private FunctionDeclarationNode parseFunctionDeclaration(List<String> mods) {
