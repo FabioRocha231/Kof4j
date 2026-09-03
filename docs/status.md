@@ -9,7 +9,7 @@
 
 ``` 
 mvn clean package    → PASSA
-mvn test             → 840 testes 823 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas (03/09 pós-merge)
+mvn test             → 854 testes 837 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas (03/09 pós-merge HTTP002/MySQL)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -486,7 +486,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (840 = 823 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 03/09 pós-merge aarch64/kof.deps/lifecycle/observability; suíte completa verde, só KofMediaE2ETest falha por hardware de mic ausente)
+## Testes (854 = 837 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 03/09 pós-merge HTTP002/MySQL/riscv; suíte completa verde, só KofMediaE2ETest falha por hardware de mic ausente)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|

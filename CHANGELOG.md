@@ -66,6 +66,25 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
   tipo de função em generic (`listOf<(Int) -> Int>()`), `throw` não-String,
   captura mutável Native.
 
+- **Noite 03/09 — 14 bugs corrigidos** (todos com teste de regressão que
+  falhava antes/passa depois; `known-bugs.md` atualizado a cada fix):
+  1. `throw <não-String>` → SEM026 (try/catch agora passa por análise
+     semântica — antes corpos de try eram ignorados)
+  2. compound `-=`/`/=`/`%=` (ordem dos operandos invertida)
+  3. `s += "x"` em loop (RHS empurrado duas vezes → crash de frame)
+  4. `switch` de String no JVM (usava SUB em vez de igualdade de conteúdo)
+  5. cast FP→Int/Long (novos ops D2I/F2I/D2L/F2L nos 3 backends)
+  6. sufixos numéricos maiúsculos `42L`/`1.5F` (lexer)
+  7. `listOf<String?>()` não parseia (lookahead de call genérico)
+  10. `!` NOT como valor (fold usava `~i` bitwise)
+  13. `(x as Int) + 1` crashava (flattening de cadeia incluía `as`)
+  14. `Map.size`/`Set.size` propriedade (NoSuchFieldError)
+  17. array `.get()/.set()` → SEM028 (API é `arr[i]`)
+  22. Native: construtor de classe importada (mangle com package)
+  24. `Float f = 3.4` (D2F no widening)
+  25. literal Long fora do range (PARSE084 em vez de crash)
+  Suíte subiu de 840 → **854**; zero regressão (Congelamento de comportamento).
+
 ### Corpus / docs
 
 - `training/datasets/kof-idioms.json` atualizado para 0.2.6-beta (17 → 20
