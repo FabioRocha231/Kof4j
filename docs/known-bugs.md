@@ -512,3 +512,9 @@ EXTERNA produz lixo
   `println`). Agora `m.size`/`s.size` despacham para `kof_map_size`/
   `kof_set_size` (como `List.size`). Prova:
   `CoreRegressionE2ETest.mapAndSetSizeProperty` (JVM+JS+Native).
+- **Bug 1** (`throw <não-String>` gera bytecode inválido no JVM) —
+  **corrigido 03/09**: `SemanticAnalyzer` rejeita `throw <não-String>` com
+  `SEM026` ("exceções são Strings em Kof"). De quebra, corpos de try/catch/
+  finally agora passam pela análise semântica (antes eram ignorados — `throw
+  42` dentro de try escapava). Prova:
+  `CompilerDriverTest.throwNonStringGivesCleanDiagnostic`.

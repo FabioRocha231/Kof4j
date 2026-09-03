@@ -563,6 +563,26 @@ class SemanticAnalyzer {
                 SymbolTable blockScope = scope.enterScope();
                 for (StatementNode s : block.statements()) analyzeStatement(s, blockScope, returnType);
             }
+            case TryStmt tryStmt -> {
+                // corpos de try/catch/finally eram ignorados pela análise
+                // semântica (ex.: `throw 42` dentro de try passava e gerava
+                // bytecode inválido). Analisa os três blocos.
+                SymbolTable tryScope = scope.enterScope();
+                for (StatementNode s : tryStmt.tryBody()) analyzeStatement(s, tryScope, returnType);
+                for (CatchClause cc : tryStmt.catchClauses()) {
+                    SymbolTable catchScope = scope.enterScope();
+                    if (cc.exceptionName() != null) {
+                        Type excType = "String".equals(cc.exceptionType()) ? BuiltinTypes.STRING
+                                : Type.of(cc.exceptionType());
+                        catchScope.define(new SymbolTable.LocalVariableSymbol(cc.exceptionName(), excType, 0));
+                    }
+                    for (StatementNode s : cc.body()) analyzeStatement(s, catchScope, returnType);
+                }
+                if (tryStmt.finallyBody() != null) {
+                    SymbolTable finScope = scope.enterScope();
+                    for (StatementNode s : tryStmt.finallyBody()) analyzeStatement(s, finScope, returnType);
+                }
+            }
             case VarDeclStmt vds -> {
                 Type varType;
                 if (vds.type() != null && !vds.type().isEmpty() && !"var".equals(vds.type())) {
@@ -732,7 +752,20 @@ class SemanticAnalyzer {
                 }
             }
             case ThrowStmt ts -> {
-                if (ts.expression() != null) inferType(ts.expression(), scope);
+                if (ts.expression() != null) {
+                    Type t = inferType(ts.expression(), scope);
+                    // bug 1: `throw <não-String>` gerava bytecode inválido no
+                    // JVM (wrap em RuntimeException assumindo String). Exceções
+                    // são Strings em Kof — rejeita com diagnóstico limpo.
+                    if (diagnostics != null && t != null && !Type.isUnknown(t)
+                            && !BuiltinTypes.isString(t)) {
+                        diagnostics.error("", 0, 0, 0,
+                                "throw exige uma String (exceções são Strings em Kof),"
+                                        + " recebeu " + Type.canonicalPrimitiveName(
+                                        t instanceof Type.ClassType ct ? ct.name() : t.toString()),
+                                "SEM026");
+                    }
+                }
             }
             case SpawnStmt ss -> {
                 if (ss.expression() != null) inferType(ss.expression(), scope);

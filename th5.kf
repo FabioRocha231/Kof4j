@@ -1,0 +1,3 @@
+main() {
+    try { throw "erro" } catch (String e) { println("caught:" + e) }
+}

@@ -117,6 +117,24 @@ class CompilerDriverTest {
         assertFalse(diags.contains("NumberFormatException"), "Must not crash, was: " + diags);
     }
 
+    // known-bugs #1 — `throw <não-String>` gerava bytecode inválido no JVM.
+    // Exceções são Strings em Kof: rejeita em compile-time (SEM026), inclusive
+    // dentro de try (que antes nem passava pela análise semântica).
+    @Test
+    void throwNonStringGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                try { throw 42 } catch (String e) { println("ok") }
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "throw <Int> should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM026"), "Should be a clean diagnostic, was: " + diags);
+        assertFalse(diags.contains("NumberFormatException"), "Must not crash, was: " + diags);
+    }
+
     @Test
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
