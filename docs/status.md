@@ -9,7 +9,7 @@
 
 ```
 mvn clean package    → PASSA
-mvn test             → 792 testes 775 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
+mvn test             → 801 testes 784 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())
@@ -468,7 +468,7 @@ main() { /* ignorado pelo kof test */ }
 
 ---
 
-## Testes (792 = 775 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
+## Testes (801 = 784 kof-compiler + 8 kof-script + 5 kof-c-compiler + 4 kof-cli — medição real 02/09, suíte completa verde)
 
 | Suíte | Quantidade | Cobertura |
 |-------|-----------|-----------|
@@ -542,12 +542,12 @@ main() { /* ignorado pelo kof test */ }
 | NativeDebugTest4 | 1 | harnesses de debug nativo (4) |
 | NativeDebugTest5 | 1 | harnesses de debug nativo (5) |
  | NativeDwarfLineInfoTest | 1 | **DWARF nativo**: `.debug_line` real no binário (`objdump --dwarf=decodedline` → arquivo Kof + linha por instrução) |
-  | NativeRiscv64E2ETest | 4 | **riscv64 real (qemu)**: `kof_main` + runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações Int (NATIVE002) |
-  | **Total kof-compiler** | **775** | |
+  | NativeRiscv64E2ETest | 13 | **riscv64 real (qemu)**: runtime em **asm puro** (raw syscalls, sem C; `as`+`ld` estático) — println(String/Int), var, if/else, aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List, switch, try/catch/throw, pattern matching (switch String s/instanceof/as), String methods, recursão** (NATIVE002 core) |
+  | **Total kof-compiler** | **784** | |
   | kof-script | 8 | KofScriptGlobals / repl / --watch |
   | kof-c-compiler | 5 | KofC C subset → ELF |
   | kof-cli | 4 | LSP references + rename (mock) |
-  | **Total** | **792** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
+  | **Total** | **801** (+3 skips condicionais: Mongo/MySQL/Postgres; conferir total no CI a cada release) | |
 ## Consolidação idiomática (guidelines 0.0.5)
 
 Princípio: `intenção → Kof → compiler → backend` — nunca detalhes da

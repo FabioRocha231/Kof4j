@@ -1,11 +1,14 @@
 # Kof Native — Multi-Arch (RISC-V 64 e ARM64/AArch64)
 
-> **Status:** `EM DESENVOLVIMENTO (parcial)` — **riscv64 com codegen real (02/09)**; aarch64 pendente.
+> **Status:** `EM DESENVOLVIMENTO (parcial)` — **riscv64 com core completo (02/09)**: classes/arrays/List/strings/instanceof/switch/try-catch/FP/recursão em asm puro; aarch64 pendente (portando o mesmo core).
 > **Versão:** 0.2.6-beta · **Data:** 2026-09-02
-> **Gap:** `NATIVE002` (riscv64 parcial — caminho feliz; aarch64 e ops fora do caminho feliz pendentes).
-> **Progresso 02/09:** toolchain cruzada + qemu + **codegen riscv64** (stack machine) —
-> `NativeRiscv64E2ETest 4/4` (`qemu-riscv64`): println(String/Int), `var`, `if/else`,
-> aritmética/comparações Int. Ver §2.3.
+> **Gap:** `NATIVE002` (riscv64 core ✅; aarch64 stub; paridade total x86 — JSON/DB/HTTP/concorrência/UI/net — pendente nos dois).
+> **Progresso 02/09:** toolchain cruzada + qemu + **codegen riscv64** (stack machine,
+> `sp`=operandos/`s11`=frame pointer, modelo idêntico ao x86_64) + **runtime asm puro** —
+> `NativeRiscv64E2ETest 13/13` (`qemu-riscv64`): println(String/Int), `var`, `if/else`,
+> aritmética/comparações, **classes (virtual dispatch/fields/métodos), arrays, List,
+> switch, try/catch/throw, pattern matching (`switch String s`/`instanceof`/`as`),
+> String methods, recursão**. Ver §2.3.
 > **Decisão (02/09):** runtime por arch **em assembly puro**, no mesmo estilo do x86_64
 > (`NativeRuntime.generateRuntimeAssembly`) — **sem C** ("Kof é Kof"; o `kof-c-compiler`
 > é outra ferramenta, não um runtime). O C compilado com gcc cruzado que foi usado em
@@ -55,12 +58,12 @@ funciona de ponta a ponta.
 
 | Peça | Estado | Detalhe |
 |------|--------|---------|
-| **Lowering real riscv64 (caminho feliz)** | ✅ parcial 02/09 | `emitRiscv` emite o IR em asm: stack machine riscv64 (`s11`=fp locais, `s2`=pilha de operandos callee-saved, `ra`/`s2` preservados no frame) + `.macro pop`; `KofLoadLiteral`/`KofBinary`/`KofConditionalJump`/`KofCall(println, String.valueOf)`/`KofLoadLocal`/`KofStoreLocal`/`KofReturn`. `NativeRiscv64E2ETest 4/4` |
+| **Lowering real riscv64 (core)** | ✅ completo 02/09 | `emitRiscv` emite o IR em asm: stack machine (`sp`=pilha de operandos, `s11`=frame pointer, `ra`/`s11` salvos no frame — modelo idêntico ao x86_64) + `.macro pop`; todos os ops do core: literal/local/field/binary (int+FP+bitwise)/unary/condjump/jump/label/call (println/print/valueOf/String methods/coleções/construtor/vtable virtual/FUNCTION/STATIC)/new_object/dup/pop/checkcast/instanceof/arrays/throw/try/catch/return. `NativeRiscv64E2ETest 13/13` |
 | **Lowering real aarch64** | ❌ STUB | `emitAarch64` gera só `_start` + `main: mov x0,#0; ret` — **não** emite o IR (mesma estratégia do riscv64 a portar) |
-| Ops fora do caminho feliz riscv64 (coleções/classe/`instanceof`/`switch`/FP) | ❌ diagnóstico `NATIVE002` | ops desconhecidos emitem comentário `# NATIVE002: op fora do caminho feliz` (nunca binário mudo) |
+| Ops fora do core riscv64 (JSON/DB/HTTP/concorrência/UI/net) | ❌ diagnóstico `NATIVE002` | ops desconhecidos emitem comentário `# NATIVE002: op fora do caminho feliz` (nunca binário mudo) |
 | Os 18 métodos `emit*` reais (x86_64) | ✅ | `emitBinary`/`emitOperation`/`emitMethod`/`emitConditionalJump`/vcall… — o caminho completo continua só em x86_64 |
 | Extração de `NativeBase` (layout/`kof_alloc`/mangle comum) | ❌ não existe | `NativeBackend` ainda é monolítico x86_64 |
-| Runtime por arch (asm) | ⚠️ riscv64 happy-path | `kof_alloc`(bump)/`kof_memcpy`/`kof_string_from_literal`/`kof_int_to_string`/`kof_println_string` em **asm riscv64** (bump allocator em `.bss` + PLT `fwrite`/`snprintf`); `qemu-riscv64` (ver §2.3). aarch64 pendente |
+| Runtime por arch (asm) | ⚠️ riscv64 core | `kof_alloc`(bump)/`kof_memcpy`/strings (literal/concat/equals/charAt/substring/contains/startsWith/endsWith/indexOf/toInt/length)/int-long-bool→string/print/objects (`init_object`/`instanceof`/super_table/vtables)/arrays (alloc/get/set/length+bounds)/List (new/add/get/set/size/contains/grow)/exceções (`throw`/exc_chain/`null_error`/`bounds_error`) em **asm riscv64 puro** (raw syscalls, sem libc); `qemu-riscv64` (ver §2.3). aarch64 pendente |
 | Testes E2E `qemu` (aarch64/riscv64) | ❌ não existem | nenhum `NativeAarch64E2ETest`/`NativeRiscv64E2ETest` |
 | CI com cross toolchains | ❌ não existe | `aarch64/riscv64` não entram no pipeline |
 | `backend-parity.md` colunas por arch | ⚠️ parcial | delta citado, colunas `NATIVE_X86_64/AARCH64/RISCV64` separadas pendentes |
@@ -102,15 +105,13 @@ Detalhes do runtime riscv64 (inc-0, 02/09):
   com bump até a paridade de GC).
 - strings: layout **idêntico ao x86_64** — `[typeId@0 i32][super@4 i32]
   [vtable@8 ptr][len@16 i32][data@24 …]` (`KOF_STRING_TYPE_ID=1`).
-- saída: PLT `fwrite`/`snprintf` (libc dinâmica), como no x86_64.
-- validação: `NativeRiscv64E2ETest 4/4` via `qemu-riscv64`.
+- saída: raw syscall `write(1, …)` — binário estático, sem libc.
+- validação: `NativeRiscv64E2ETest 13/13` via `qemu-riscv64` (core completo).
 
 O que **restou** para os próximos incrementos:
-- runtime riscv64 completo (objects/arrays/instanceof/strings completas/
-  coleções/JSON/DB/HTTP/concorrência — paridade total com o x86_64).
-- runtime + lowering completos do aarch64 (hoje stub).
-- ops fora do caminho feliz riscv64 (coleções, classe, `instanceof`,
-  `switch`) — mesmo escopo do §2.2.
+- riscv64: Map/Set, higher-order (map/filter/reduce), JSON/DB/HTTP/concorrência/
+  UI/net — paridade total com o x86_64.
+- aarch64: runtime + lowering completos (hoje stub) — portar o core riscv64.
 
 ## 3. Arquitetura (alvo)
 
