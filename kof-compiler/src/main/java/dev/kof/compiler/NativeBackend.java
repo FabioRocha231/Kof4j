@@ -284,6 +284,7 @@ public class NativeBackend implements Backend {
         }
         if (usesDb) {
             NativeRuntime.emitDbSqlite(sb);
+            NativeDbPrepared.emitMysqlPrepared(sb);
         }
         IRClass mainClass = null;
         // pré-registro do mangle de TODOS os métodos antes de emitir —
