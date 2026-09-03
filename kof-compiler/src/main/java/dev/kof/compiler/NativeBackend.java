@@ -19,6 +19,7 @@ public class NativeBackend implements Backend {
     private Type lastPushedType = Type.UnknownType.UNKNOWN;
     private IRClass currentClass = null;
     private boolean usesDb = false;
+    private boolean usesHttp = false;
     private boolean usesMysql = false;
     private boolean usesConcurrency = false;
     private final Map<String, String> functionMangleMap = new HashMap<>();
@@ -267,6 +268,9 @@ public class NativeBackend implements Backend {
                     List<KofOperation> ops = block.operations();
                     for (int i = 0; i < ops.size(); i++) {
                         KofOperation op = ops.get(i);
+                        if (op instanceof KofCall kc && kc.methodName().startsWith("kof_http_")) {
+                            usesHttp = true;
+                        }
                         if (op instanceof KofCall kc && kc.methodName().startsWith("kof_db_")) {
                             usesDb = true;
                             if (kc.methodName().equals("kof_db_connect")
@@ -284,6 +288,9 @@ public class NativeBackend implements Backend {
         }
         if (usesDb) {
             NativeRuntime.emitDbSqlite(sb);
+        }
+        if (usesHttp) {
+            NativeHttpRuntime.emitHttpFunctions(sb);
         }
         IRClass mainClass = null;
         // pré-registro do mangle de TODOS os métodos antes de emitir —

@@ -20,14 +20,13 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
-| **HTTP002** — `kof.http` no Native | `EM CURSO` | agente-planning | planning-future | `NativeHttpRuntime.java` (novo), `KofHttp.java`, `CompilerDriver.java`, `KofHttpE2ETest.java` | Cliente HTTP/1.1 sem TLS: parse URL, socket (reusa `kof_net_*`), request/response, status; segue padrão MySQL wire. **Escreve em módulo NOVO** (regra ≤500 linhas/classe — NativeRuntime já viola). http:// só (https = diagnóstico, sem TLS em asm). |
-| **NATIVE002** — validação 13/13 + observability real (riscv64/aarch64) | `EM CURSO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`), `KofValidation.java`, `KofObservability.java`, `NativeAarch64E2ETest.java`, `NativeRiscv64E2ETest.java` | 13/13 validation qemu OK (riscv/aarch64), observability counter/gauge/histogram/metrics/health/readiness/liveness/trace/span OK; 79e101a stubs + b20aa49 real; próximo: MySQL prepared |
-| **MySQL Native prepared** — COM_STMT_PREPARE/EXECUTE binário | `EM CURSO` | agente-nativo-val | main | `NativeDbRuntime.java` (novo, ≤500 linhas), `KofDb.java`, `CompilerDriver.java`, `NativeRuntime.java` | wire handshake/COM_QUERY OK, falta binário PREPARE/EXECUTE (01/09 revertido). Segue padrão HTTP002 (módulo novo, sem violar 500 linhas) |
+| **HTTP002 restante** — retry/circuit/timeout + https/TLS + DNS real no Native | `ABERTO` | — | — | `NativeHttpRuntime.java` | MVP está fechado (ver Concluídos) |
 
 ## Concluídos recentemente
 
 | Gap/Item | Estado | Dono | Data | Prova |
 |---|---|---|---|---|
+| **HTTP002** — `kof.http` no Native | `FEITO` | agente-planning | 03/09 | `NativeHttpRuntime.java` (asm HTTP/1.1: parse URL, IPv4, socket/connect, read-all, status/body); `KofHttpE2ETest` 6/6 (get/post/status reais num server Kof real) |
 | **TIME001** — time.interval/cancel no JS | `FEITO` | agente-planning | 03/09 | `c1db297` — fila cooperativa `kofTimeJobs` bombeada por `kofTimeSleep` (GraalJS sem `setInterval`); scheduler JS delega. `KofTimeE2ETest` 5/5 |
 | **NATIVE002 core** — riscv64 + aarch64 13/13 | `FEITO` | outro agente | 02–03/09 | `3fbc29a`, `ac6c598` — asm puro via `translateRiscvToAarch64` |
 | **LOG001** — kof.log no JS | `FEITO` | agente-planning | 01/09 | `console.*` + `KOF_LOG_LEVEL` |

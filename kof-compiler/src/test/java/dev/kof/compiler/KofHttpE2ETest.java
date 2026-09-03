@@ -145,19 +145,74 @@ class KofHttpE2ETest {
     }
 
     @Test
-    void nativeAndJsReportHttp002(@TempDir Path tempDir) throws IOException {
+    void nativeCompilesAndServesGet(@TempDir Path tempDir) throws IOException {
+        // HTTP002 (Native): asm puro — socket+connect+read/parse HTTP/1.1.
+        // Sobe o servidor KofJVM (existente) e bate nele com um binário nativo.
+        int port = startServer(tempDir);
+        Path source = tempDir.resolve("NatCli.kf");
+        Files.writeString(source, """
+                main() {
+                    println(http.get("http://127.0.0.1:%d/hello"))
+                    println(http.status("http://127.0.0.1:%d/hello"))
+                    println(http.get("http://127.0.0.1:%d/nope"))
+                }
+                """.formatted(port, port, port));
+        Path outDir = tempDir.resolve("nat-out");
+        // driver fresco: o driver deste teste já carregou as rotas do server
+        // (web.app lambdas) e o IR vaza para o binario nativo do cliente.
+        CompilationResult result = new CompilerDriver().compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native should compile http.get: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default").resolve("Main");
+        Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+        try {
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "exit, out=" + out);
+            assertEquals("Hello from Kof\n200\n{\"error\": \"not found\"}", out);
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
+    }
+
+    @Test
+    void nativePostEcho(@TempDir Path tempDir) throws IOException {
+        int port = startServer(tempDir);
+        Path source = tempDir.resolve("NatPost.kf");
+        Files.writeString(source, """
+                main() {
+                    println(http.post("http://127.0.0.1:%d/echo", "abc"))
+                }
+                """.formatted(port));
+        Path outDir = tempDir.resolve("nat-post");
+        CompilationResult result = new CompilerDriver().compile(source, outDir, Target.NATIVE);
+        assertTrue(result.success(), "Native should compile http.post: " + result.diagnostics().getDiagnostics());
+        Path bin = outDir.resolve("Default").resolve("Main");
+        Process p = new ProcessBuilder(bin.toString()).redirectErrorStream(true).start();
+        try {
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").trim();
+            int ec = p.waitFor();
+            assertEquals(0, ec, "exit, out=" + out);
+            assertEquals("got:abc", out);
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
+    }
+
+    @Test
+    void nativeAndJsSupportHttp(@TempDir Path tempDir) throws IOException {
+        // HTTP002: agora os 3 targets compilam http.get (Native via asm puro).
         Path source = tempDir.resolve("Main.kf");
         Files.writeString(source, """
                 main() {
                     println(http.get("http://example.com"))
                 }
                 """);
-        CompilationResult nativeResult = driver.compile(source, tempDir.resolve("native"), Target.NATIVE);
-        assertFalse(nativeResult.success(), "Native should reject http.get");
-        assertTrue(nativeResult.diagnostics().getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("HTTP002")), "" + nativeResult.diagnostics().getDiagnostics());
+        CompilationResult nativeResult = new CompilerDriver().compile(source, tempDir.resolve("native"), Target.NATIVE);
+        assertTrue(nativeResult.success(), "Native should compile http.get: " + nativeResult.diagnostics().getDiagnostics());
         CompilationResult jsResult = driver.compile(source, tempDir.resolve("js"), Target.JS);
-        assertTrue(jsResult.success(), "JS should now support http.get via fetch/Java HttpClient: " + jsResult.diagnostics().getDiagnostics());
+        assertTrue(jsResult.success(), "JS should support http.get via fetch/Java HttpClient: " + jsResult.diagnostics().getDiagnostics());
     }
 
     @Test

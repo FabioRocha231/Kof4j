@@ -47,9 +47,11 @@ final class KofHttp {
 
     record HttpCall(String function, Type returnType, List<Type> parameterTypes) {}
 
-    /** kof.http: JVM + JS (JS via Java HttpClient interop / fetch), Native reporta HTTP002. */
+    /** kof.http: JVM + JS (JS via Java HttpClient interop / fetch),
+     *  Native via HTTP/1.1 puro em asm (HTTP002 parcial — http somente,
+     *  https em TLS gap; DNS host≠IPv4 cai em 127.0.0.1). */
     static boolean supportedOn(Target target) {
-        return target == Target.JVM || target == Target.JS;
+        return true;
     }
 
     static String gapCode() {
