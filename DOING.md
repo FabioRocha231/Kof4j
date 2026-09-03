@@ -20,8 +20,8 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
-| **NATIVE002 residual** — MySQL query binário (resultset de EXECUTE) | `EM CURSO` | agente-nativo-val | main | `NativeDbPrepared.java` + wire | valid/observ FEITO 03/09 (b20aa49+79e101a); prepared FEITO 4ce1f25; segue com exec binário |
-| **GC mark-sweep** Native | `FEITO` | agente-planning | planning-future | `NativeRuntime.java` (`kof_gc_sweep` real + flag) | sweep real funciona; **auto-collect no alloc desligado** (precisa safe-points/mapas de raiz — fora do escopo). `KofGcE2ETest` 3/3. status.md Bugs #8. |
+| **NATIVE002 residual** — MySQL query binário (resultset de EXECUTE) | `EM CURSO` | agente-nativo-val | main | `NativeDbPrepared.java` + wire | valid/observ FEITO 03/09; prepared FEITO 4ce1f25; segue com exec binário |
+| **WEB002** — kof.web server no Native | `EM CURSO` | agente-planning | planning-future | `NativeWebRuntime.java` (novo, ≤500) + `KofWeb.java` + `KofWebE2ETest.java` | server HTTP/1.1 asm: listen/accept, parse METHOD+PATH, rota por string literal (mapa path→handler), dispatch com trampolim pro lambda; MVP: `app.get("/x") { return "hi" }` funciona end-to-end |
 
 ## Concluídos recentemente
 
@@ -41,7 +41,13 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 |---|---|---|---|
 | ~~GC mark-sweep~~ Native | ~~alta~~ | ✅ fechado 03/09 | ver Concluídos |
 | **HTTP002** parcial restante | média | `delete/put/patch/options` + headers + `timeout/retry/circuit` Native | após get/post/status fecharem |
-| **WEB002** — kof.web no Native | média | server HTTP/1.1 listen/accept sobre `kof_net_*` | **grande** — precisa handler→closure trampoline, não só socket. HTTP002 client fechou; este é maior — trabalhar sozinho e só trocar se ocorrer conflito de arquivo (NativeBackend/NativeRuntime) |
+| **WEB002** — kof.web no Native | média | server HTTP/1.1 listen/accept sobre `kof_net_*` | **grande** — handlers passam contexto via closure; requer trampolines/discussão. Alguém precisa pegar com tempo |
+
+## Em curso agora
+
+| Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
+|---|---|---|---|---|---|
+| **WEB002:** kof.web server no Native (paridade) | `EM CURSO` | agente-planning | planning-future | `NativeWebRuntime.java` (novo, ≤500) + `KofWeb.java` + `KofWebE2ETest.java` | Implementar listen+accept+parse path/method+rotas estáticas com closure thru trampolim; primeiro caso: `app.get("/x") { return "hi" }` → HTTP response com body do handler |
 | **CONC003** — JS async real | média | Promises/event-loop GraalJS | design primeiro |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 |
