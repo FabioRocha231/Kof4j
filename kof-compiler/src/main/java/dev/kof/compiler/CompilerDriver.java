@@ -4315,7 +4315,10 @@ private Target target = Target.JVM;
                 } else if (mc.receiver() instanceof IdentifierExpr rid && !isLocalVarName(rid.name(), locals)
                             && KofWeb.isWebNamespace(rid.name())) {
                     if ("app".equals(mc.methodName()) && mc.arguments().isEmpty()) {
-                        if (target != Target.JVM && target != Target.ANDROID) {
+                        if (target != Target.JVM && target != Target.ANDROID
+                                && target != Target.NATIVE
+                                && target != Target.NATIVE_RISCV64
+                                && target != Target.NATIVE_AARCH64) {
                             if (currentDiagnostics != null) {
                                 currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
                                         mc.position() != null ? mc.position().line() : 0,
@@ -4519,7 +4522,11 @@ private Target target = Target.JVM;
                         for (ExpressionNode arg : mc.arguments()) webArgTypes.add(inferExprType(arg, locals));
                         KofWeb.WebCall webCall = KofWeb.instanceMethod(mc.methodName(), webArgTypes);
                         if (webCall != null) {
-                            if (target != Target.JVM && target != Target.ANDROID) {
+                            boolean nativeWebT1 = (target == Target.NATIVE
+                                    || target == Target.NATIVE_RISCV64
+                                    || target == Target.NATIVE_AARCH64)
+                                    && webCall.function().equals("kof_web_listen");
+                            if (target != Target.JVM && target != Target.ANDROID && !nativeWebT1) {
                                 String webCode = KofWeb.gapCode(webCall.function());
                                 String webMsg = switch (webCode) {
                                     case "WEB002" -> "web TLS: not available on the " + target
