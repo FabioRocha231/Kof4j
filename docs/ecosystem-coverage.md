@@ -160,7 +160,7 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 | REST verbs | get/post/put/delete/patch/options | y | – | – | KofWebE2ETest | web |
 | JSON body | automático (Content-Type) | y | – | – | KofWebE2ETest | web |
 | middleware | `app.use` | y | – | – | KofWebE2ETest | web |
-| HTTP client | ✅ `kof.http` (get/post/put/delete/patch/options/status/timeout + retry/circuit, headers, JSON; HTTP002 Native) | y | – HTTP002 | y (GraalJS `Java HttpClient` + fetch) | KofHttpE2ETest (4) + KofHttpResilienceE2ETest (3, JVM+JS) | http.md |
+| HTTP client | ✅ `kof.http` (get/post/put/delete/patch/options/status; 3 targets — Native via HTTP/1.1 asm, https/retry) | y | y (asm `NativeHttpRuntime`) | y (GraalJS `Java HttpClient` + fetch) | KofHttpE2ETest (6) + KofHttpResilienceE2ETest (3, JVM+JS) | http.md |
 | typed path/query/body | `PLANNED` (hoje strings) | — | — | — | — | web |
 | status codes custom | ✅ `status(201, body)` (27/08) | y | – WEB002 | – WEB001 | KofWebE2ETest | web |
 | headers de resposta custom | ✅ `headerSet("X","y")` (27/08) | y | – WEB002 | – WEB001 | KofWebE2ETest | web |
@@ -246,9 +246,9 @@ Legenda nas colunas de target: `y` = suportado, `~` = parcial, `–` = não.
 
 | Capacidade | Kof | JVM | Native | JS | Tests | Docs |
 |-----------|-----|-----|--------|----|-------|------|
-| HTTP integrations | ✅ `kof.http` client (JVM+JS; HTTP002 Native) | y | – HTTP002 | y | KofHttpE2ETest | http.md |
+| HTTP integrations | ✅ `kof.http` client (3 targets — Native asm HTTP/1.1) | y | y | y | KofHttpE2ETest | http.md |
 | file adapters | `DONE` (kof.io) | y | y | y | IoE2ETest | stdlib/IO.md |
-| retry / timeout | ✅ `kof.http` `retry`/`timeout` (JVM+JS, 30/08) | y | – HTTP002 | y | KofHttpResilienceE2ETest | http.md |
+| retry / timeout / circuit | ✅ `kof.http` `retry`/`timeout`/`circuit` (JVM+JS, 30/08); Native aceita como no-op (gap HTTP003 — não silencioso: debug `syserr`) | y | no-op | y | KofHttpResilienceE2ETest | http.md |
 | circuit breaker / bulkhead | ✅ circuit breaker `kof.http` (30/08, 30s window, fail-fast); bulkhead `PLANNED` | y | – HTTP002 | y | KofHttpResilienceE2ETest | http.md |
 | idempotency | `PLANNED` | — | — | — | — | — |
 

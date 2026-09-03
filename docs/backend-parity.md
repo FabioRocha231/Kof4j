@@ -52,7 +52,7 @@
 | `readLine`, `readFile`, `writeFile` | ✅ | ✅ | ✅ | |
 | `kof.validation` (13 preds) | ✅ | ✅ | ✅ | `KofValidationTest` |
 | `kof.observability` (health/metrics/requestId) | ✅ | ✅ | ✅ | `KofObservabilityTest` |
-| `kof.http` client | ✅ | HTTP002 | ✅ (GraalJS via `Java HttpClient` interop + fetch fallback) | `KofHttpE2ETest` 4/4 (JVM+JS); retry/circuit paridade 30/08 (`KofHttpResilienceE2ETest` 3/3) |
+| `kof.http` client | ✅ | Native HTTP/1.1 asm (socket/recv/send parse; https→throw; DNS não-IP→127.0.0.1; retry knob no-op) | ✅ (GraalJS via `Java HttpClient` interop + fetch fallback) | `KofHttpE2ETest` 6/6 (JVM+JS+Native real resp); retry/circuit paridade 30/08 |
 | `kof.cache` (get/set/ttl/delete/clear) | ✅ | ✅ 30/08 (fix clobber `%rax`/`%rdi`) | ✅ | `KofCacheE2ETest` 5/5 x3 targets |
 | `kof.mq` (pub/sub + queue) | ✅ | ✅ (01/09, pub/sub + filas in-process, asm) | ✅ | `KofMqE2ETest` 4/4 (JVM+Native+JS) |
 | `kof.config` (typed) | ✅ | ✅ (asm próprio) | CONF001 | precedência total Native (`KOF_CONFIG` > env > profile > `kof.config`); `NativeConfigE2ETest` 8 |
@@ -82,7 +82,7 @@
 | spawn/await no Native | ✅ 31/08 (CONC001 fechado — pthread_create + trampoline + pthread_join + allocator thread-safe futex; join implícito) | |
 | spawn/await no JS | ✅ sequencial (stmt + spawn-expr + await/poll/cancel/selectAny) | event-loop async real é `CONC003` (evolução futura) |
 | web no Native/JS (server, TLS, ws/sse) | `WEB002` / `WEB001` | planned |
-| kof.http no Native | `HTTP002` | planned (JVM+JS ✅, retry/circuit 30/08) |
+| kof.http no Native | ✅ HTTP/1.1 asm (`NativeHttpRuntime.java`, 03/09) | https + DNS real + retry ficam como gaps (`HTTP003`) |
 | kof.db/orm no JS | `DB001` / `ORM001` | planned |
 | JSON Float/Double | ✅ 31/08 (JSN001 fechado — XMM + parser fração/expoente) | |
 | JSON objetos/records no Native | ✅ 31/08 (JSN002 fechado — composição em compile-time) | |
