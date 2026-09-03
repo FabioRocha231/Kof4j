@@ -10,6 +10,16 @@ final class NativeRuntime {
 
     static String generateRuntimeAssembly() {
         StringBuilder sb = new StringBuilder();
+        // marcador de início da área de raízes estáticas: o GC mark conservador
+        // precisa varrer .data (cache/config/mq além de .bss). As emissões de
+        // .data acontecem abaixo; o primeiro rótulo fica aqui (antes de tudo).
+        // IMPORTANTE: voltar pra .text — senão emitPrint grava kof_print em .data
+        // e o executável inteiro quebra (visto: SIGSEGV em println "a").
+        sb.append("            .section .data\n");
+        sb.append("            .globl kof_heap_root_start\n");
+        sb.append("            kof_heap_root_start:\n");
+        sb.append("            .quad 0\n");
+        sb.append("            .section .text\n");
         emitPrint(sb);
         emitPrintln(sb);
         emitPrintInt(sb);
@@ -488,6 +498,8 @@ final class NativeRuntime {
             kof_heap_low: .quad 0
             .balign 8
             kof_heap_high: .quad 0
+            .balign 8
+            kof_main_tid: .quad 0              # tid do main thread p/ o GC (conservador lê a stack)
             .section .data
             .Lstr_alloc_fail: .asciz "Runtime error: out of memory"
             .section .rodata
@@ -519,6 +531,7 @@ final class NativeRuntime {
                 syscall
                 jmp .Lkof_alloc_lock_try
             .Lkof_alloc_locked:
+                movq $0, 8(%rsp)                 # flag: GC ainda nao tentou
                 movq (%rsp), %r12
                 addq $7, %r12
                 andq $~7, %r12
@@ -528,7 +541,7 @@ final class NativeRuntime {
                 movq $1048576, %r11
             .Lkof_alloc_search:
                 testq %r13, %r13
-                je .Lkof_alloc_mmap
+                je .Lkof_alloc_maybe_gc
                 decq %r11
                 je .Lkof_alloc_mmap
                 movq 0(%r13), %r15
@@ -568,6 +581,20 @@ final class NativeRuntime {
                 movq %r13, %r14
                 movq 8(%r13), %r13
                 jmp .Lkof_alloc_search
+            .Lkof_alloc_maybe_gc:
+                jmp .Lkof_alloc_mmap
+                # GC auto-collect: mark+sweep real existe (kof_gc_collect_now),
+                # mas auto-invogar DENTRO de kof_alloc é inseguro:
+                # kof_alloc tem um ponteiro NAO ainda na stack (o ponteiro do
+                # bloco livre) — a mark conservadora nao o ve, o sweep o
+                # enfileira na free list e o alloc o reusa DUPLO. O hang
+                # documentado em status.md era exatamente isso. Fechar GC
+                # completamente exige safe-points: (a) inserção de collect
+                # antes de toda kof_alloc em loop, ou (b) geração de mapa de
+                # raízes por frame. Fora do escopo aqui: o comportamento
+                # correto atual é mmap (mais memória, sem corrupção).
+            .Lkof_alloc_maybe_gc_skip:
+                jmp .Lkof_alloc_mmap
             .Lkof_alloc_mmap:
                 movq $0, %rdi
                 movq %r12, %rsi
@@ -642,6 +669,7 @@ final class NativeRuntime {
                 jz .Lkof_free_done
                 movq -32(%rdi), %rsi
                 leaq -32(%rdi), %rdi
+                movb $2, 24(%rdi)           # bit1: esta na free list (sweep nao re-insere)
                 movq kof_free_head(%rip), %rax
                 movq %rax, 8(%rdi)
                 movq %rdi, kof_free_head(%rip)
@@ -724,6 +752,12 @@ final class NativeRuntime {
                 call kof_alloc
                 movq %r13, 0(%rax)              # task
                 movq %rbx, 8(%rax)              # handle
+                # GC: o trampolim só é referenciado pelo arg do pthread_create;
+                # quando o worker executa, nada na stack/bss do main aponta pra
+                # ele → o mark-sweep varreria como morto e o free corromperia o
+                # worker. Ancora no handle (24) — handles ficam na lista global
+                # (bss) até o join, então o bloco continua visível ao GC.
+                movq %rax, 24(%rbx)
                 leaq 8(%rbx), %rdi              # &handle->thread
                 xorl %esi, %esi                 # attr = NULL
                 leaq kof_spawn_trampoline(%rip), %rdx
@@ -1717,7 +1751,11 @@ final class NativeRuntime {
                 addq $8, %r12
                 jmp .Lgc_mark_stack
             .Lgc_mark_stack_done:
-                leaq __bss_start(%rip), %r12
+                # raizes estaticas: varre a area de dados do runtime
+                # (.data+.bss) — cache/mq/config/etc. vivem em .data, NAO bss,
+                # e "kof_heap_root_start" e emitido como primeiro rotulo do
+                # generateRuntimeAssembly, antes de qualquer .data do runtime.
+                leaq kof_heap_root_start(%rip), %r12
                 leaq _end(%rip), %r13
             .Lgc_mark_bss:
                 cmpq %r13, %r12
@@ -1874,6 +1912,65 @@ final class NativeRuntime {
             .globl kof_gc_sweep
             .type kof_gc_sweep, @function
             kof_gc_sweep:
+                # Percorre a GC list; para cada bloco:
+                #   byte flags @24: bit0=mark, bit1=in-free-list
+                #   mark==1       -> limpa mark (sobreviveu ao ciclo)
+                #   mark==0, !free-> insere na free list (morto), seta bit1
+                pushq %rbx
+                pushq %r12
+                movq kof_gc_head(%rip), %rbx
+            .Lgc_sweep_loop:
+                testq %rbx, %rbx
+                je .Lgc_sweep_done
+                movzbl 24(%rbx), %eax
+                testb $1, %al
+                jz .Lgc_sweep_free_it
+                # sobreviveu: limpa mark
+                andb $~1, %al
+                movb %al, 24(%rbx)
+                jmp .Lgc_sweep_next
+            .Lgc_sweep_free_it:
+                testb $2, %al
+                jnz .Lgc_sweep_next         # ja esta na free list
+                # insere na free list
+                movq 0(%rbx), %r12          # size (total)
+                movq kof_free_head(%rip), %rax
+                movq %rax, 8(%rbx)          # next_free = cabeca antiga
+                movq %rbx, kof_free_head(%rip)
+                orb $2, 24(%rbx)            # marca como liberado
+                incq .Lkof_free_count(%rip)
+                addq %r12, .Lkof_free_bytes(%rip)
+            .Lgc_sweep_next:
+                movq 16(%rbx), %rbx         # proximo na gc list
+                jmp .Lgc_sweep_loop
+            .Lgc_sweep_done:
+                popq %r12
+                popq %rbx
+                ret
+
+            # collect sem o tick-guard: usado por kof_alloc quando a free
+            # list esta esgotada (evita mmap quando ha lixo coletavel).
+            # Empilha os callee-saved para que o mark conservador tambem
+            # enxergue ponteiros vivos em %rbx/%r12-%r15/%rbp do caller
+            # (o mark so varre a stack — registrador puro era coletado:
+            # ex.: 2.º alloc do kof_spawn_handle_new perdia o handle em %rbx).
+            .globl kof_gc_collect_now
+            .type kof_gc_collect_now, @function
+            kof_gc_collect_now:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                pushq %r14
+                pushq %r15
+                pushq %rbp
+                call kof_gc_mark
+                call kof_gc_sweep
+                popq %rbp
+                popq %r15
+                popq %r14
+                popq %r13
+                popq %r12
+                popq %rbx
                 ret
 
             .globl kof_gc_collect
@@ -10875,10 +10972,35 @@ final class NativeRuntime {
                 movq %r14, %rax
                 jmp .Ldb_query_done\\n
             .Ldb_query_mysql\\n:
-                # binds '?' -> literais (COM_QUERY texto; EXECUTE retornaria
-                # linhas em formato binario — parse binario p/ resultset fica
-                # como gap documentado em status.md §MySQL)
                 .if \\n >= 1
+                # binario: PREPARE + EXECUTE + parse de linhas binarias
+                leaq .Ldb_prep_args(%rip), %rax
+                movq %r13, 0(%rax)
+                .if \\n >= 2
+                movq %r14, 8(%rax)
+                .endif
+                .if \\n >= 3
+                movq %r15, 16(%rax)
+                .endif
+                .if \\n >= 4
+                movq 16(%rsp), %rcx
+                movq %rcx, 24(%rax)
+                .endif
+                movq 32(%rsp), %rdi
+                movq %r12, %rsi
+                call kof_db_mysql_prepare
+                testl %eax, %eax
+                jz .Ldb_query_subst\\n
+                movq 32(%rsp), %rdi
+                movl %eax, %esi
+                movl $\\n, %edx
+                call kof_db_mysql_prep_query
+                movq %rax, %r14              # list (ou 0)
+                testq %r14, %r14
+                jz .Ldb_query_subst\\n
+                movq %r14, %rax
+                jmp .Ldb_query_done\\n
+            .Ldb_query_subst\\n:
                 movq %r13, %rdi
                 call kof_db_mysql_render
                 movq %rax, %rsi

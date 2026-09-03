@@ -1804,6 +1804,10 @@ public class NativeBackend implements Backend {
                 .anyMatch(m -> !m.parameterTypes().isEmpty());
         sb.append("\n.globl _start\n");
         sb.append("_start:\n");
+        // grava o TID do main thread (SYS_gettid=186) — limita GC ao main
+        sb.append("    movq $186, %rax\n");
+        sb.append("    syscall\n");
+        sb.append("    movq %rax, kof_main_tid(%rip)\n");
         if (mainHasArgs) {
             // N3: passa array vazio — evita segfault ao tratar argc como ponteiro
             sb.append("    xorl %edi, %edi\n");
