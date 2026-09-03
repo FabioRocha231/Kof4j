@@ -50,6 +50,22 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
 | OpenTelemetry export | baixa | spans feitos; falta OTLP export | |
 
+### Trilha universal — Tier 1 e o estágio SYSTEMS
+
+Tier 0 (guardrails) ✅. Para fechar Tier 1 (SYSTEMS), fechar tudo que segue:
+
+| Pendência | Escopo | Estado |
+|---|---|---|
+| WEB002 | kof.web server nativo | EM CURSO (agente-planning) |
+| WEB001 | kof.web JS | pendente |
+| CONC003 | async JS real sobre event-loop | pendente |
+| MEDIA001/002/003 | media Native/JS | pendente |
+| HTTP002 cauda | delete/put/patch/options + timeout/retry/circuit Nativo | pendente |
+| GC auto-collect | safe-points (mappa de raízes por frame) no Native | pendente |
+| DB001/ORM001 | db/orm no JS | pendente |
+
+When ALL suceder => Tier 1 fechado, Tier 2+ abrem.
+
 ## Regras de convivência (já em AGENTS.md)
 
 - **≤500 linhas por classe** (refactor futuro de NativeRuntime: módulo novo por área, ex: `NativeHttpRuntime.java`).
