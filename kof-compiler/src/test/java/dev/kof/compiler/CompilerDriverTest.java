@@ -174,6 +174,24 @@ class CompilerDriverTest {
         assertTrue(diags.contains("SEM027"), "Should be a clean diagnostic, was: " + diags);
     }
 
+    // known-bugs #16 — List.toArray() (unsupported/undocumented) produced
+    // invalid bytecode on JVM and undefined references on Native. Now a clean
+    // SEM029; Java interop methods like stream() must keep working.
+    @Test
+    void toArrayOnCollectionGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var arr = listOf(1, 2, 3).toArray()
+                println(arr.length)
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "toArray should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM029"), "Should be a clean diagnostic, was: " + diags);
+    }
+
     @Test
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");

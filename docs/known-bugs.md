@@ -553,3 +553,10 @@ EXTERNA produz lixo
   ("atribuição é um statement, não uma expressão"). Statements (`a = b`,
   `i = i + 1` no for) seguem passando com o check de assignability intacto
   (SEM012). Prova: `CompilerDriverTest.chainedAssignmentRejectedAsExpression`.
+- **Bug 16** (`List.toArray()` quebrava JVM/Native) — **corrigido 03/09**:
+  `toArray` não é suportado/documentado e caía no caminho genérico → bytecode
+  inválido. Agora `SEM029` limpo ("use um loop com new T[n]"). Interop Java
+  (`stream()`) segue funcionando. Prova:
+  `CompilerDriverTest.toArrayOnCollectionGivesCleanDiagnostic`. Relacionado:
+  `sublist()` (retorno de coleção) também gera bytecode inválido — mesmo
+  tratamento pendente.

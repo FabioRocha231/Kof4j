@@ -4829,6 +4829,20 @@ private Target target = Target.JVM;
                             yield localIdx;
                         }
                     }
+                    // bug 16: `toArray()` não é suportado (nem documentado) e
+                    // caía no caminho genérico → bytecode inválido (JVM) /
+                    // undefined reference (Native). Diagnóstico limpo em vez de
+                    // saída quebrada.
+                    if ("toArray".equals(mc.methodName())
+                            && (BuiltinTypes.isList(recvType) || BuiltinTypes.isSet(recvType))
+                            && currentDiagnostics != null) {
+                        currentDiagnostics.error(mc.position() != null ? mc.position().file() : "",
+                                mc.position() != null ? mc.position().line() : 0,
+                                mc.position() != null ? mc.position().column() : 0, 0,
+                                "método '" + mc.methodName() + "' não é suportado em coleções;"
+                                        + " use um loop com new T[n] para materializar um array",
+                                "SEM029");
+                    }
                     Type methodReturnType = Type.UnknownType.UNKNOWN;
                     List<Type> methodParamTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) {
