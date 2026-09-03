@@ -567,3 +567,8 @@ EXTERNA produz lixo
   `undefined reference Ponto_equals` (COMP001) — gerar equals no NativeBackend
   é pendência (coordenar com agente nativo). Prova:
   `CoreRegressionE2ETest.recordEqualityByContent`.
+- **Bug 23** (ExternalClasspath: superclasse fora dos entries perdia
+  referência SILENCIOSAMENTE) — **corrigido 03/09**: `resolveMethod`/
+  `resolveFieldType` emitem warning quando a cadeia de superclasses encontra
+  uma classe ausente do classpath ("may not resolve"). Prova:
+  `AndroidInteropE2ETest.missingSuperclassOnClasspathWarns`.
