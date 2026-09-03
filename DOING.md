@@ -21,12 +21,12 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
 | **NATIVE002** — paridade stdlib riscv64/aarch64 (log/config/time/cache/mq stubs→real) | `EM CURSO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`), `NativeRiscv64E2ETest.java`, `NativeAarch64E2ETest.java` | validação 13/13 + observability real (b20aa49); preparando stubs p/ implementação real (mqtt/sse/interval/cron via `translateRiscvToAarch64`) |
-| **CONC003** — JS async real (fases 3+4: testes concorrência real) | `EM CURSO` | agente-conc003 | conc003-js-async | `KofAwaitTest.java`, `KofConcurrency2Test.java`, `JsBackend.java` | fases 0–2 commitadas; fase 3+4: asserções reescritas + 7 testes novos; bugs fix: kof_spawn_result sem await, POP descartava JsAwait, poll primitivo ?? 0 |
 
 ## Concluídos recentemente
 
 | Gap/Item | Estado | Dono | Data | Prova |
 |---|---|---|---|---|
+| **CONC003** — JS async real (`async`/`await`/`Promise` do GraalJS) | `FEITO` | agente-conc003 | 03/09 | branch `conc003-js-async`, 6 commits (`bba9d6d`..`663bb2d`): fase 0 coloração async, fase 1+2 codegen+shim+`KofJsRunner`, fase 3+4 testes reescritos + 7 novos provando concorrência real, checklist adversarial manual (5/5: exceção não-esperada, captura mutada, `list.map` com await vira erro `CONC003-JS-01`, fire-and-forget espera antes de sair, `cancel()` cooperativo), docs atualizados em todo o repo. `KofAwaitTest`/`KofConcurrency2Test`/`SpawnE2ETest`/`KofJsE2ETest`: zero regressão fora de Native/x86_64 (ambiental, pré-existente). Falta: fork + PR (pendente confirmação) |
 | **GC mark-sweep** Native | `FEITO` | agente-planning | 03/09 | `461ec3b` — sweep real funciona; auto-collect fica desligado (safe-points fora do escopo) |
 | **HTTP002** — `kof.http` no Native | `FEITO` | agente-planning | 03/09 | `71d27f2` — `NativeHttpRuntime.java` (novo, ≤500): parse URL, IPv4, socket/connect, request/read body/status; `KofHttpE2ETest` 6/6 (get/post/status com server Kof real) |
 | **MySQL Native prepared + query binário** | `FEITO` | agente-nativo-val | 03/09 | `4ce1f25` + `02b9ddb` — `NativeDbPrepared.java` (≤500): PREPARE/EXECUTE binário completo (); `KofDbE2ETest` 12/12 com `nativeMysqlPreparedBinary` (aspas+injection intactos) |
@@ -40,7 +40,6 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
 | **HTTP002 restante** | média | `delete/put/patch/options`/`status` + `timeout/retry/circuit` (knobs reais) no Native | get/post/status já fecham a linha zero — o resto é cauda |
-| **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | JS sequencial já funciona; é evolução futura |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gap documentado |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
 | **Debugger DWARF** variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
