@@ -35,7 +35,7 @@
 | Lambdas `(x: Int) -> expr` | ✅ | ✅ | ✅ | com capturas (box `BoxN`) |
 | Exceptions (throw "msg", try/catch/finally) | ✅ | ✅ | ✅ | Native: unwinding próprio |
 | `assert(cond[, msg])` | ✅ | ✅ | ✅ | |
-| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive / `scheduler.every`+`at`+`cancel` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue; scheduler = ScheduledExecutor) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex; **scheduler SCHED001** = thread por job + `usleep` ms→us + flag `active`) | ✅ sequencial (async real = CONC003; canal = array; scheduler = setInterval) | `KofAwaitTest` 7/7 · `KofConcurrency2Test` 15/15 · `SpawnE2ETest` 4/4 |
+| `spawn` stmt / `spawn f()` / `await` / `poll` / `done` / `cancel`+`cancelled` / `selectAny` / `awaitTimeout` / `channel<T>` send/receive / `scheduler.every`+`at`+`cancel` (Handle<T>, unbox, exceção limpa) | ✅ (virtual threads; canal = LinkedBlockingQueue; scheduler = ScheduledExecutor) | ✅ 31/08 (pthread_create + trampoline + pthread_join, allocator futex — CONC001; awaitTimeout = polling 1ms; canal = FIFO futex; **scheduler SCHED001** = thread por job + `usleep` ms→us + flag `active`) | ✅ 03/09 (CONC003 fechado — async/await/Promise reais; canal = fila de resolvers pendentes; `cancelled()` sempre `0`, limitação conhecida; scheduler = setInterval) | `KofAwaitTest` 8/8 · `KofConcurrency2Test` 25/25 · `SpawnE2ETest` 8/8 |
 | Strings (`+`, `==`, length, charAt, substring, contains, startsWith, endsWith, indexOf, trim, case, replace, split) | ✅ | ✅ | ✅ | `length` diverge: **`STR001`** — Native conta bytes UTF-8; JVM conta unidades UTF-16 (`"Olá".length` = 4 vs 3). Gap explícito, não silencioso. |
 
 | Arrays (`new Int[n]`, `arr[i]`, `.length`) | ✅ | ✅ | ✅ | |
@@ -80,7 +80,7 @@
 | Gap | Diagnostic | Status |
 |-----|-----------|--------|
 | spawn/await no Native | ✅ 31/08 (CONC001 fechado — pthread_create + trampoline + pthread_join + allocator thread-safe futex; join implícito) | |
-| spawn/await no JS | ✅ sequencial (stmt + spawn-expr + await/poll/cancel/selectAny) | event-loop async real é `CONC003` (evolução futura) |
+| spawn/await no JS | ✅ 03/09 (CONC003 fechado — async/await/Promise real; stmt + spawn-expr + await/poll/cancel/selectAny/channel bloqueante) | `cancelled()` sempre `0` (sem thread-local pra task atual); só task-lambdas podem ficar async (`CONC003-JS-01`) |
 | web no Native/JS (server, TLS, ws/sse) | `WEB002` / `WEB001` | planned |
 | kof.http no Native | ✅ HTTP/1.1 asm (`NativeHttpRuntime.java`, 03/09) | https + DNS real + retry ficam como gaps (`HTTP003`) |
 | kof.db/orm no JS | `DB001` / `ORM001` | planned |
