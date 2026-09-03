@@ -518,3 +518,7 @@ EXTERNA produz lixo
   finally agora passam pela análise semântica (antes eram ignorados — `throw
   42` dentro de try escapava). Prova:
   `CompilerDriverTest.throwNonStringGivesCleanDiagnostic`.
+- **Bug 7** (`listOf<String?>()` não parseia — PARSE041) — **corrigido 03/09**:
+  `Parser.looksLikeGenericCall` rejeitava o token `?` no lookahead de call
+  genérico → `<` virava comparação. `QUESTION` agora é aceito. Prova:
+  `CoreRegressionE2ETest.nullableGenericArgumentInCall`.

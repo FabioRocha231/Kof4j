@@ -445,4 +445,21 @@ class CoreRegressionE2ETest {
                 }
                 """, "2\n2\n3\n3\n5", tempDir, "map-set-size-prop");
     }
+
+    // known-bugs #7 — `listOf<String?>()` (nullable type as generic argument in
+    // a method call) didn't parse: looksLikeGenericCall rejected the `?`
+    // token → `<` became a comparison → PARSE041.
+    @Test
+    void nullableGenericArgumentInCall(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var l = listOf<String?>("a", null, "c")
+                    println(l.size)
+                    var m = mapOf<String?, Int>("x", 1)
+                    println(m.size)
+                    List<String?> typed = listOf<String?>()
+                    println(typed.size)
+                }
+                """, "3\n1\n0", tempDir, "nullable-generic-arg");
+    }
 }
