@@ -4045,13 +4045,14 @@ class JsBackend implements Backend {
             }
 
             export function kofSchedulerEvery(ms, fn) {
-                const id = String(setInterval(() => { if (typeof fn.invoke === 'function') fn.invoke(); else if (typeof fn === 'function') fn(); }, ms));
-                return id;
+                // delega ao kofTimeInterval: fila cooperativa bombeada por
+                // kofTimeSleep no GraalJS (sem setInterval), nativa no browser
+                return kofTimeInterval(ms, fn);
             }
             export function kofSchedulerAt(cron, fn) {
                 return kofSchedulerEvery(60000, fn);
             }
-            export function kofSchedulerCancel(id) { clearInterval(Number(id)); }
+            export function kofSchedulerCancel(id) { kofTimeCancel(id); }
 
             export function kofEnumValueOf(values, name) {
                 if (values != null && name != null) {
@@ -4071,20 +4072,49 @@ class JsBackend implements Backend {
             }
 
             export function kofTimeSleep(ms) {
-                const start = Date.now();
-                while (Date.now() - start < ms) {}
+                const end = Date.now() + ms;
+                // bombeia a fila cooperativa de timers durante o wait (GraalJS
+                // single-thread: sem isso, time.interval nunca dispara)
+                while (Date.now() < end) {
+                    kofTimePump();
+                }
+                kofTimePump();
             }
 
+            // ── Cooperative timers (TIME001 fechado): GraalJS não tem
+            // event loop nativo nem setInterval, então os jobs vivem numa
+            // fila bombeada por kofTimeSleep (que já bloqueia). Em browser/
+            // Node, onde setInterval existe, os timers disparam assíncronos.
+            const kofTimeJobs = new Map();
+            const kofTimeSeq = { value: 0 };
+            function kofTimeRunJob(fn) {
+                if (typeof fn.invoke === 'function') fn.invoke();
+                else if (typeof fn === 'function') fn();
+            }
             export function kofTimeInterval(ms, fn) {
-                const id = setInterval(() => {
-                    if (typeof fn.invoke === 'function') fn.invoke();
-                    else if (typeof fn === 'function') fn();
-                }, ms);
-                return String(id);
+                if (typeof setInterval === 'function') {
+                    return "n" + String(setInterval(() => kofTimeRunJob(fn), ms));
+                }
+                const id = "c" + (++kofTimeSeq.value);
+                kofTimeJobs.set(id, { ms: ms, run: () => kofTimeRunJob(fn), next: Date.now() + ms });
+                return id;
             }
-
+            function kofTimePump() {
+                const now = Date.now();
+                for (const [id, job] of kofTimeJobs) {
+                    if (now >= job.next) {
+                        job.next = now + job.ms;
+                        job.run();
+                    }
+                }
+            }
             export function kofTimeCancel(id) {
-                clearInterval(Number(id));
+                const key = String(id);
+                if (key.charAt(0) === "n") {
+                    if (typeof clearInterval === 'function') clearInterval(Number(key.substring(1)));
+                    return;
+                }
+                kofTimeJobs.delete(key);
             }
 
             export function kofConfigGet(key) {
