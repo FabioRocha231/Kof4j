@@ -485,4 +485,26 @@ class CoreRegressionE2ETest {
                 }
                 """, "B\ndefault", tempDir, "string-switch");
     }
+
+    // known-bugs #13 — `(x as Int) + 1` (cast result in arithmetic) crashed
+    // the compiler: the left-assoc chain flattening treated `as` as a chain
+    // member → it fell into the default ADD. `as`/`instanceof` now stop the
+    // flattening.
+    @Test
+    void castInArithmetic(@TempDir Path tempDir) throws IOException {
+        runBoth("""
+                main() {
+                    var x = 5
+                    var y = (x as Int) + 1
+                    println(y)
+                    var d = 3.9
+                    var i = (d as Int) * 2
+                    println(i)
+                    var a = 2
+                    var b = 3
+                    var c = 4
+                    println((a + b) * c)
+                }
+                """, "6\n6\n20", tempDir, "cast-in-arith");
+    }
 }

@@ -534,3 +534,8 @@ EXTERNA produz lixo
   invalidava o bytecode. String agora usa `kof_string_equals` (por conteúdo),
   como enums. JS backend atualizado para o novo padrão (switch JS já compara
   strings por valor). Prova: `CoreRegressionE2ETest.stringSwitchOnJvm`.
+- **Bug 13** (cast `x as T` usado em aritmética crasha o compilador) —
+  **corrigido 03/09**: o flattening de cadeia esquerda-associativa tratava
+  `(x as Int) + 1` como cadeia `[+, as]` — o `as` caía no `default -> ADD`.
+  `as`/`instanceof` agora param o flattening. Prova:
+  `CoreRegressionE2ETest.castInArithmetic` (JVM+JS+Native).

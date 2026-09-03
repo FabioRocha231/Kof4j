@@ -2814,9 +2814,14 @@ private Target target = Target.JVM;
                 // Left-associative chains (huge string concatenations in
                 // generated UIs, editors) are emitted iteratively instead of
                 // recursing: deep chains would overflow the compiler stack.
+                // `as`/`instanceof` NÃO são associativos à esquerda — parar o
+                // flattening neles (bug 13: `(x as Int) + 1` crashava porque o
+                // `as` caía no default ADD do loop).
                 java.util.List<BinaryExpr> chain = new ArrayList<>();
                 ExpressionNode cursor = bin;
-                while (cursor instanceof BinaryExpr be) {
+                while (cursor instanceof BinaryExpr be
+                        && !"as".equals(be.operator())
+                        && !"instanceof".equals(be.operator())) {
                     chain.add(be);
                     cursor = be.left();
                 }
