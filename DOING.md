@@ -21,7 +21,8 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
 | **NATIVE002 residual** — MySQL query binário (resultset de EXECUTE) | `EM CURSO` | agente-nativo-val | main | `NativeDbPrepared.java` + wire | valid/observ FEITO 03/09; prepared FEITO 4ce1f25; segue com exec binário |
-| **WEB002** — kof.web server no Native | `EM CURSO` | agente-planning | planning-future | `NativeWebRuntime.java` (novo, ≤500) + `KofWeb.java` + `KofWebE2ETest.java` | server HTTP/1.1 asm: listen/accept, parse METHOD+PATH, rota por string literal (mapa path→handler), dispatch com trampolim pro lambda; MVP: `app.get("/x") { return "hi" }` funciona end-to-end |
+| **WEB002** — kof.web no Native | `ABERTO` | — | — | `NativeWebRuntime.java` (a criar) + `KofWeb.java` + `KofWebE2ETest.java` | tentativa 03/09 feita e devolvida: escopo além do que cabe "pra já" (accept loop + parse request + dispatch handler via closure trampolim). Estratégia: primeiro `web.app()/get/post/listen` rodando (listen bloqueante OK — o teste E2E usa `Process` externo). NÃO tocar NativeBackend/NativeRuntime — escrever módulo novo |
+| ~~GC mark-sweep~~ Native | ~~alta~~ | ✅ fechado 03/09 | ver Concluídos |
 
 ## Concluídos recentemente
 
