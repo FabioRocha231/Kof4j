@@ -3,14 +3,12 @@ package dev.kof.compiler;
 /**
  * kof.web server para o target Nativo (WEB002).
  *
- * Estratégia de fechamento (incremental):
- *   - T1 (este arquivo): accept loop bloqueante que responde 200 "hello" a
- *     qualquer requisição — prova o caminho: listen→accept→read→write→close.
- *   - T2: parse METHOD/PATH + match de rotas literais (kof_web_route).
- *   - T3: dispatch real (chamando o handler lambda registrado).
- *   - T4: contexto de request (body, param, header, query).
+ * T1 (feito): accept loop + resposta "hello" 200.
+ * T2 (aqui): parse METHOD+PATH na request line e match contra rotas
+ *            registradas; handler só é invocado no T3.
+ * T3 (próximo): dispatch do lambda com trampolim (objeto→vtable[0]→invoke).
  *
- * Módulo separado por regra ≤500 linhas/classe.
+ * Módulo separado (≤500 linhas — AGENTS.md 03/09).
  */
 final class NativeWebRuntime {
 
@@ -18,36 +16,92 @@ final class NativeWebRuntime {
 
     static void emitWebFunctions(StringBuilder sb) {
         sb.append("""
+            # ================= Web Runtime (WEB002) =================
+            # Layout das entradas de rotas:
+            #   .Lweb_routes[i] = { method_ptr(8), path_ptr(8), handler_ptr(8), pad(8) }
+            # method/path vivem no heap (kof strings); o handler é o
+            # objeto Lambda* Kof (ainda não invocado aqui).
+
             .section .data
-            .Lweb_nroutes:   .quad 0
-            .Lweb_routes:    .space 8192                     # 256 entradas de 32B
-            .Lweb_okres:     .asciz "HTTP/1.1 200 OK\\r\\nContent-Length: 5\\r\\nConnection: close\\r\\n\\r\\nhello"
-            .Lweb_reqlen:    .quad 0
+            .Lweb_nroutes:     .quad 0
+            .Lweb_routes:      .space 16384   # 512 rotas de 32B
+            # resposta fixos
+            .Lweb_h1:  .asciz "HTTP/1.1 "
+            .Lweb_ok:  .asciz "200 OK\\r\\n"
+            .Lweb_nf:  .asciz "404 Not Found\\r\\n"
+            .Lweb_hct: .asciz "Content-Type: text/plain\\r\\n"
+            .Lweb_hcc: .asciz "Connection: close\\r\\n"
+            .Lweb_hnl: .asciz "Content-Length: "
+            .Lweb_body_ok: .asciz "route-match"
+            .Lweb_crlfx2: .asciz "\\r\\n\\r\\n"
+
             .section .bss
-            .Lweb_reqbuf:    .space 16384
+            .Lweb_reqbuf:  .space 16384
+            .Lweb_skb:     .space 8192
 
             .section .text
 
-            # ---------- util ----------
-            # strlen: rdi=cstr → rax=len
-            kof_web_cstrlen:
+            # ------------------------------------------------------------------
+            # strlen c-string: rdi → rax
+            # ------------------------------------------------------------------
+            kof_web_strlen:
                 xorq %rax, %rax
-            .Lwcs:
+            .Lwsloop:
                 cmpb $0, (%rdi,%rax)
-                je .Lwcsd
+                je .Lwsdone
                 incq %rax
-                jmp .Lwcs
-            .Lwcsd:
+                jmp .Lwsloop
+            .Lwsdone:
                 ret
 
-            # ---------- kof_web_app_new() → sentinel ----------
+            # ------------------------------------------------------------------
+            # int→cstr: rdi=dst, rsi=val → rax=novo_cursor
+            # (mínimo 4 dígitos significativos, sem sinal)
+            # ------------------------------------------------------------------
+            kof_web_i32str:
+                pushq %rbx
+                pushq %r12
+                pushq %r13
+                movq %rdi, %rbx
+                movq %rsi, %r12
+                # como int32 non-negative
+                movl %r12d, %eax
+                # 10k divisor
+                movl $10000, %ecx
+                # gera dígitos por divisão
+                xorl %edx, %edx
+                divl %ecx                # eax=high, edx=low
+                movl %eax, %r13d         # saída hi
+                # primeiro (hi)
+                movl %r13d, %eax
+                addl $'0', %eax
+                movb %al, (%rbx)
+                incq %rbx
+                # segundo (lo)
+                movl %edx, %eax
+                addl $'0', %eax
+                movb %al, (%rbx)
+                incq %rbx
+                # terminar
+                movq %rbx, %rax
+                popq %r13
+                popq %r12
+                popq %rbx
+                ret
+
+            # ------------------------------------------------------------------
+            # app_new sentinel — único "objeto" real
+            # ------------------------------------------------------------------
             .globl kof_web_app_new
             .type kof_web_app_new, @function
             kof_web_app_new:
                 movq $1, %rax
                 ret
 
-            # kof_web_route(rdi=app(ign), rsi=method_str, rdx=path_str, rcx=handler_obj)
+            # ------------------------------------------------------------------
+            # route(app_ign rdi, method_string rsi, path_string rdx, handler rcx)
+            # Registra 1 slot
+            # ------------------------------------------------------------------
             .globl kof_web_route
             .type kof_web_route, @function
             kof_web_route:
@@ -55,77 +109,94 @@ final class NativeWebRuntime {
                 imulq $32, %r8, %r9
                 leaq .Lweb_routes(%rip), %r10
                 addq %r9, %r10
-                movq %rsi, 0(%r10)          # method (Kof string ptr)
-                movq %rdx, 8(%r10)          # path (Kof string ptr)
-                movq %rcx, 16(%r10)         # handler object
+                movq %rsi, 0(%r10)
+                movq %rdx, 8(%r10)
+                movq %rcx, 16(%r10)
                 movq $0, 24(%r10)
                 incq %r8
                 movq %r8, .Lweb_nroutes(%rip)
                 ret
 
-            # kof_web_listen(app_ignored: rdi, port: rsi)
+            # ------------------------------------------------------------------
+            # my_strlen vs Kof-String (Kof Expands tipo String em (char*, len))
+            # Calcula uma string C em rdi e devolve rax=ptr; len em rdx.
+            # ------------------------------------------------------------------
+            # Não sei — uso o que existe: kof_string_to_cstring? Não sei se existe.
+            # Build-to-order: apenas retorno o body nochamlot.
+
+            # ------------------------------------------------------------------
+            # listen(row_ptr rdi, port_int rsi)
+            # Estratégia: criar socket direto; só sem raw syscalls.
+            # ------------------------------------------------------------------
             .globl kof_web_listen
             .type kof_web_listen, @function
             kof_web_listen:
                 pushq %rbx
                 pushq %r12
                 pushq %r13
-                movq %rsi, %r13                  # port
-                # socket(2, 1, 0)
+                pushq %r14
+                movq %rsi, %r14                  # port (rbx = align16 lixo)
                 movl $2, %edi
                 movl $1, %esi
                 xorl %edx, %edx
                 movl $41, %eax                   # SYS_socket
                 syscall
                 testq %rax, %rax
-                js .Lwlf
-                movq %rax, %rbx                  # server fd
+                js .Lwl_fail
+                movq %rax, %rbx                  # server_fd
                 # bind
                 subq $16, %rsp
-                movw $2, (%rsp)                  # AF_INET
-                movq %r13, %rax
+                movw $2, (%rsp)
+                movq %r14, %rax
                 movzx %ax, %eax
                 xchgb %al, %ah                   # htons
                 movw %ax, 2(%rsp)
                 movl $0, 4(%rsp)                 # 0.0.0.0
-                movq $0, 8(%rsp)                 # pad
+                movq $0, 8(%rsp)
                 movq %rbx, %rdi
                 movq %rsp, %rsi
                 movl $16, %edx
                 movl $49, %eax                   # SYS_bind
                 syscall
                 testq %rax, %rax
-                js .Lwlbf
+                js .Lwl_bf
                 addq $16, %rsp
-                # listen( serverfd, 64 )
+                # listen
                 movq %rbx, %rdi
                 movl $64, %esi
                 movl $50, %eax                   # SYS_listen
                 syscall
-            .Lwla:                                # accept loop
+            # ---- accept loop ----
+            .Lwl_accept:
                 movq %rbx, %rdi
-                xorq %rsi, %rsi
-                xorq %rdx, %rdx
+                xorl %esi, %esi
+                xorl %edx, %edx
+                xorl %r10d, %r10d
                 movl $43, %eax                   # SYS_accept
                 syscall
                 testq %rax, %rax
-                js .Lwla
-                movq %rax, %r12                  # client fd
-                movq %r12, %rdi
+                js .Lwl_accept
+                movq %rax, %r12                  # client_fd
+                movq %r12, %rdi                  # passa para handle_client
                 call kof_web_handle_client
                 movq %r12, %rdi
                 movl $3, %eax                    # SYS_close
                 syscall
-                jmp .Lwla
-            .Lwlbf:
+                jmp .Lwl_accept
+            .Lwl_bf:
                 addq $16, %rsp
-            .Lwlf:
+            .Lwl_fail:
+                popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
                 ret
 
-            # kof_web_handle_client: rdi=client_fd → lê, parse, match rota, dispatch
+            # ------------------------------------------------------------------
+            # handle_client(rdi = client_fd)
+            # Fluxo: lê request → parseia method+path → pesquisa em routes
+            # → responde (200 "route-match" se achou, 404 senão).
+            # ------------------------------------------------------------------
             .globl kof_web_handle_client
             .type kof_web_handle_client, @function
             kof_web_handle_client:
@@ -133,109 +204,229 @@ final class NativeWebRuntime {
                 pushq %r12
                 pushq %r13
                 pushq %r14
-                movq %rdi, %rbx                  # client fd
-                # read(fd, reqbuf, 16384)
+                pushq %r15
+                movq %rdi, %rbx                  # fd
+
+                # read
                 movq %rbx, %rdi
                 leaq .Lweb_reqbuf(%rip), %rsi
                 movl $16384, %edx
-                xorl %eax, %eax
+                xorl %eax, %eax                  # SYS_read
                 syscall
                 testq %rax, %rax
-                jle .Lwhc404
-                movq %rax, %r12                  # req len
-                # --- parse request line: METHOD SP PATH SP HTTP/1.1 \r\n ---
-                # rsi = cursor
-                leaq .Lweb_reqbuf(%rip), %rsi
-                # guarda METHOD span (rsi até espaço)
-                movq %rsi, %r13                  # method start
-            .Lwhc_m:
-                movb (%rsi), %al
+                jle .Lwh_404
+                movq %rax, %r15                  # len total
+
+                # ------- parse METHOD -------
+                leaq .Lweb_reqbuf(%rip), %r8     # cursor
+                movq %r8, %r9                    # method_start
+            .Lwh_m:
+                movb (%r8), %al
                 cmpb $32, %al                    # ' '
-                je .Lwhc_md
-                cmpb $'\r', %al
-                je .Lwhc404
-                incq %rsi
-                jmp .Lwhc_m
-            .Lwhc_md:
-                movq %rsi, %r14                  # method end (exclusive); r13/reg e r14 são os fatos
-                incq %rsi                        # skip space
-                # path start
-                movq %rsi, %r15                  # NOTE: %r15 (callee saved? aqui ok, sem chama asm mais)
-            .Lwhc_p:
-                movb (%rsi), %al
+                je .Lwh_m_done
+                incq %r8
+                jmp .Lwh_m
+            .Lwh_m_done:
+                movq %r8, %r10                   # method_end
+                incq %r8                         # skip space
+                # ------- parse PATH -------
+                movq %r8, %r11                   # path_start
+            .Lwh_p:
+                movb (%r8), %al
                 cmpb $32, %al
-                je .Lwhc_pd
-                cmpb $'\r', %al
-                je .Lwhc_pd
-                incq %rsi
-                jmp .Lwhc_p
-            .Lwhc_pd:
-                # %r15 = path start, %rsi = path end
-                # ---- match em .Lweb_routes ----
-                xorq %r9, %r9                    # idx
-                leaq .Lweb_routes(%rip), %r10
-            .Lwhc_iter:
-                cmpq .Lweb_nroutes(%rip), %r9
-                jae .Lwhc404
-                # entry base = routes + idx*32
-                movq %r9, %rax
+                je .Lwh_p_done
+                cmpb $'\\r', %al
+                je .Lwh_p_done
+                incq %r8
+                jmp .Lwh_p
+            .Lwh_p_done:
+                movq %r8, %r12                   # path_end
+
+                # r9=method_start r10=method_end r11=path_start r12=path_end
+
+                # ------- lookup -------
+                movq .Lweb_nroutes(%rip), %r13   # count
+                leaq .Lweb_routes(%rip), %r14    # base
+                xorq %rcx, %rcx                  # idx
+            .Lwh_loop:
+                cmpq %r13, %rcx
+                jae .Lwh_404
+                # r14 + rcx*32
+                movq %rcx, %rax
                 imulq $32, %rax, %rax
-                leaq (%r10,%rax), %r11
-                # carrega method/path Kof-strings
-                movq 0(%r11), %rdi               # method Kof string ptr
-                movq 8(%r11), %r12               # path Kof string ptr (sobrescrevo r12 depois)
-                # --- cmp method: Kof len(16) + chars(24) ---
+                leaq (%r14,%rax), %r8            # route[i] (entry)
+                # kof method
+                movq 0(%r8), %rdi                # method ptr (kof string)
+                # method string é (len14 %rdi, chars @ 24(%rdi))
                 movl 16(%rdi), %eax              # kof len
-                movq %r14, %rdx
-                subq %r13, %rdx                  # req-method-len = end - start
+                movq %r10, %rdx                  # method_end
+                subq %r9, %rdx                   # method_req_len
                 cmpl %eax, %edx
-                jne .Lwhc_next
-                leaq 24(%rdi), %rsi              # kof method chars
-                movq %r13, %rcx                  # req method cur
-                movq %r14, %r8                   # req method end
-            .Lwhc_cm1:
-                cmpq %r8, %rcx
-                jae .Lwhc_cmdone
-                movb (%rsi), %al
-                cmpb (%rcx), %al
-                jne .Lwhc_next
-                incq %rsi
+                jne .Lwh_next
+                # compara chars
+                leaq 24(%rdi), %rsi              # src chars
+                leaq 0(%r9), %rdi                # req method chars
+                # loop
+                xorl %eax, %eax
+            .Lwh_cm:
+                cmpl %edx, %eax
+                jae .Lwh_cmdone
+                movb (%rsi,%rax), %r8b
+                cmpb (%rdi,%rax), %r8b
+                jne .Lwh_next
+                incl %eax
+                jmp .Lwh_cm
+            .Lwh_cmdone:
+                # Se matchou method, compara path
+                movq 8(%r8), %rdi                # path kof ptr  — mas r8 mudou... rei_load_from rcx
+                movq %rcx, %rax
+                imulq $32, %rax, %rax
+                leaq (%r14,%rax), %r8
+                movq 8(%r8), %rdi                # path ptr
+                movl 16(%rdi), %eax              # kof path len
+                movq %r12, %rdx                  # path_end
+                subq %r11, %rdx                  # path_req_len
+                cmpl %eax, %edx
+                jne .Lwh_next
+                leaq 24(%rdi), %rsi
+                movq %r11, %rdi                  # req path start
+                xorl %eax, %eax
+            .Lwh_cp:
+                cmpl %edx, %eax
+                jae .Lwh_cpdone
+                movb (%rsi,%rax), %r8b
+                cmpb (%rdi,%rax), %r8b
+                jne .Lwh_next
+                incl %eax
+                jmp .Lwh_cp
+            .Lwh_cpdone:
+                jmp .Lwh_match                   # match completo
+            .Lwh_next:
                 incq %rcx
-                jmp .Lwhc_cm1
-            .Lwhc_cmdone:
-                # --- cmp path: mesma lógica ---
-                movl 16(%r12), %eax              # kof len(path)
-                movq %rsi, %rdx                  # rsi é lixo; recalculo abaixo
-                movq %rsi, %r8                   # não, uso r8
-                leaq .Lweb_reqbuf(%rip), %rsi    # reset? simplifico: preciso dos spans
-                # recalculo: path span = [r15_copy] até [%r12_copy]? — guardo antes!
-                # (o código da parse movimentou %rsi; recupero através das spans salvas)
-                jmp .Lwhc_callrx                 # simplificação: confio que spans foram salvos
+                jmp .Lwh_loop
 
-            .Lwhc_callrx:
-                # A forma correta: os spans estão nas variáveis salvas em registradores:
-                # method start=r13, end=r14; path start=r15, end foi em %rsi. Mas %rsi
-                # já rolou. Refatorar: guardar o fim de path em outro reg antes do loop
-                jmp .Lwhc_next                   # (ipen placeholder)
-
-            .Lwhc_next:
-                incq %r9
-                jmp .Lwhc_iter
-
-            .Lwhc404:
-                # 404 not found
-                leaq .Lweb_nf(%rip), %rdi
-                call kof_web_cstrlen
-                movq %rax, %rdx
+            # ------- MATCH: responde 200 "route-match" -------
+            .Lwh_match:
                 movq %rbx, %rdi
-                leaq .Lweb_nf(%rip), %rsi
-                movl $1, %eax                    # SYS_write
-                syscall
+                call kof_web_send_match
+                jmp .Lwh_done
+
+            # ------- 404 -------
+            .Lwh_404:
+                movq %rbx, %rdi
+                call kof_web_send_404
+            .Lwh_done:
+                popq %r15
                 popq %r14
                 popq %r13
                 popq %r12
                 popq %rbx
                 ret
+
+            # ------------------------------------------------------------------
+            # helpers send (rdi = client_fd)
+            # ------------------------------------------------------------------
+            # grava CRLF e retorna cursor+2 (além de rdi)
+            _kof_web_crlf:
+                movb $13, (%rdi)
+                incq %rdi
+                movb $10, (%rdi)
+                incq %rdi
+                ret
+
+            # copia cstr (rsi) para dst (rdi) byte a byte; retorna fim do dst
+            kof_web_append_cstr:
+            .Lwa:
+                movzbl (%rsi), %eax
+                testb %al, %al
+                jz .Lwadone
+                movb %al, (%rdi)
+                incq %rdi
+                incq %rsi
+                jmp .Lwa
+            .Lwadone:
+                movq %rdi, %rax
+                ret
+
+            # 200 route-match: escreve resposta com "route-match"
+            kof_web_send_match:
+                pushq %rbx
+                movq %rdi, %rbx
+                leaq .Lweb_skb(%rip), %rdi
+                leaq .Lweb_h1(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_ok(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_hct(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_hcc(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_hnl(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                # Content-Length: 11
+                movb $'1', (%rdi)
+                incq %rdi
+                movb $'1', (%rdi)
+                incq %rdi
+                call _kof_web_crlf
+                call _kof_web_crlf      # header-end LF+LF
+                # body
+                leaq .Lweb_body_ok(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                # write(f, skb, cursor - skb)
+                leaq .Lweb_skb(%rip), %rsi
+                movq %rdi, %rdx
+                subq %rsi, %rdx
+                movq %rbx, %rdi
+                movl $1, %eax                    # SYS_write
+                syscall
+                popq %rbx
+                ret
+
+            # 404 Not Found (corpo curto)
+            kof_web_send_404:
+                pushq %rbx
+                movq %rdi, %rbx
+                leaq .Lweb_skb(%rip), %rdi
+                leaq .Lweb_h1(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_nf(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_hcc(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_hnl(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                # Content-Length: 9
+                movb $'9', (%rdi)
+                incq %rdi
+                call _kof_web_crlf
+                call _kof_web_crlf
+                # body "Not Found"
+                leaq .Lweb_nfbody(%rip), %rsi
+                call kof_web_append_cstr
+                movq %rax, %rdi
+                leaq .Lweb_skb(%rip), %rsi
+                movq %rdi, %rdx
+                subq %rsi, %rdx
+                movq %rbx, %rdi
+                movl $1, %eax
+                syscall
+                popq %rbx
+                ret
+
+            .section .data
+            .Lweb_nfbody: .asciz "Not Found"
+            .section .text
             """);
     }
 }
