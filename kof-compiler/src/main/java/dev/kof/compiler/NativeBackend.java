@@ -519,19 +519,33 @@ public class NativeBackend implements Backend {
         }
 
         int intArgIdx = 0;
-        for (IRLocalVariable lv : method.localVariables()) {
+        // bug 9: capturas de lambda NÃO são args de entrada (são carregadas
+        // dos campos do objeto via ops). O prologue antigo iterava os locals
+        // na ordem de inserção [this, capture, param] e consumia rsi/rdx para
+        // a captura — o param real ficava com registro errado (lixo).
+        // Params ocupam os slots 1..(soma das larguras) — só eles recebem
+        // registros; capturas (slots acima) são preenchidas pelas ops.
+        int paramSlotMax = 1;
+        for (Type pt : method.parameterTypes()) paramSlotMax += isDoubleWidthSlot(pt) ? 2 : 1;
+        String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+        java.util.List<IRLocalVariable> sortedLocals = new java.util.ArrayList<>(method.localVariables());
+        sortedLocals.sort(java.util.Comparator.comparingInt(lv -> lv.index()));
+        for (IRLocalVariable lv : sortedLocals) {
             if (lv.name().equals("this")) {
                 sb.append("    movq %rdi, -").append((lv.index() + 1) * 8).append("(%rbp)\n");
                 intArgIdx++;
                 continue;
             }
-            String[] intRegs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            if (lv.index() >= paramSlotMax) {
+                // captura de lambda: preenchida pelas ops (KofLoadField) —
+                // NÃO consome registro de entrada
+                continue;
+            }
             if (intArgIdx < 6) {
                 sb.append("    movq ").append(intRegs[intArgIdx]).append(", -").append((lv.index() + 1) * 8).append("(%rbp)\n");
             } else {
                 // Args beyond register capacity are on the stack.
                 // After push %rbp, stack layout is: [saved_rbp][ret_addr][arg7][arg8]...
-                // Stack arg index: 7th arg = 16(%rbp), 8th = 24(%rbp), etc.
                 int stackOffset = 16 + (intArgIdx - 6) * 8;
                 sb.append("    movq ").append(stackOffset).append("(%rbp), %rax\n");
                 sb.append("    movq %rax, -").append((lv.index() + 1) * 8).append("(%rbp)\n");
@@ -806,6 +820,16 @@ public class NativeBackend implements Backend {
     }
     private static boolean isDoubleType(Type t) {
         return t instanceof Type.PrimitiveType pt && "double".equals(Type.canonicalPrimitiveName(pt.name()));
+    }
+
+    /** Slots de frame que um tipo de PARAM ocupa (espelha isDoubleWidth do
+     * CompilerDriver — os índices locais do IR usam essa convenção). */
+    private static boolean isDoubleWidthSlot(Type t) {
+        if (t instanceof Type.PrimitiveType pt) {
+            String n = Type.canonicalPrimitiveName(pt.name());
+            return "long".equals(n) || "double".equals(n);
+        }
+        return false;
     }
     private static boolean isInt32Type(Type t) {
         return t instanceof Type.PrimitiveType pt && "int".equals(Type.canonicalPrimitiveName(pt.name()));

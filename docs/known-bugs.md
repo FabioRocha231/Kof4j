@@ -598,3 +598,10 @@ EXTERNA produz lixo
   `s: (Int) -> Int`) requer dispatch por interface (classes sintéticas de
   lambda são separadas) — hoje dá SEM032 limpo (não mais bytecode quebrado).
   Prova: `CompilerDriverTest.functionTypeSyntax`.
+- **Bug 9** (captura mutável no Native → lixo) — **corrigido 03/09**: o
+  prologue nativo iterava os locals na ORDEM DE INSERÇÃO [this, capture, param]
+  e consumia rsi/rdx para a CAPTURA (que na verdade é carregada dos campos do
+  objeto via ops). O param real ficava com rdx (lixo). Agora o prologue salva
+  registros apenas nos slots de PARAMS (1..soma das larguras), ordenando os
+  locals por índice; capturas (slots acima) são preenchidas pelas ops. Prova:
+  `NativeE2ETest.nativeLambdaMutableCapture`.
