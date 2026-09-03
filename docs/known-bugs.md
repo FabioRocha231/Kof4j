@@ -539,3 +539,7 @@ EXTERNA produz lixo
   `(x as Int) + 1` como cadeia `[+, as]` — o `as` caía no `default -> ADD`.
   `as`/`instanceof` agora param o flattening. Prova:
   `CoreRegressionE2ETest.castInArithmetic` (JVM+JS+Native).
+- **Bug 17** (array `.get()`/`.set()` — não existem, mas compilavam e geravam
+  saída quebrada) — **corrigido 03/09**: o SemanticAnalyzer rejeita method
+  call sobre tipo array com `SEM028` ("use o operador arr[i]"). Prova:
+  `CompilerDriverTest.arrayMethodCallGivesCleanDiagnostic`.

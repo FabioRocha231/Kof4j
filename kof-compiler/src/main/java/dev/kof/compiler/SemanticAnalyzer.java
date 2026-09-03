@@ -933,6 +933,16 @@ class SemanticAnalyzer {
                 // F10: métodos de instância do handle de process.spawn
                 if (mc.receiver() != null) {
                     Type recv = inferType(mc.receiver(), scope);
+                    // bug 17: array não tem método get()/set() — a API é o
+                    // operador arr[i]. Antes o compilador aceitava e emitia
+                    // bytecode inválido (ClassFormatError no JVM, undefined
+                    // reference no Native).
+                    if (recv instanceof Type.ArrayType && diagnostics != null) {
+                        diagnostics.error("", 0, 0, 0,
+                                "array não tem método '" + mc.methodName()
+                                        + "()'; use o operador arr[i] / arr[i] = v",
+                                "SEM028");
+                    }
                     if (KofProcess.isHandle(recv)) {
                         List<Type> argTypes = new ArrayList<>();
                         for (ExpressionNode arg : mc.arguments()) argTypes.add(inferType(arg, scope));

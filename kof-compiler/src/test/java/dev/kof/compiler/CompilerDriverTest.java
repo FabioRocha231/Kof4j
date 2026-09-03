@@ -135,6 +135,25 @@ class CompilerDriverTest {
         assertFalse(diags.contains("NumberFormatException"), "Must not crash, was: " + diags);
     }
 
+    // known-bugs #17 — array has no get()/set() methods (API is arr[i]); the
+    // compiler used to accept them and emit broken bytecode (ClassFormatError
+    // JVM / undefined reference Native). Now a clean SEM028.
+    @Test
+    void arrayMethodCallGivesCleanDiagnostic(@TempDir Path tempDir) throws IOException {
+        Path source = tempDir.resolve("Bad.kf");
+        Files.writeString(source, """
+            main() {
+                var arr = new Int[3]
+                arr.set(0, 5)
+                println(arr.get(0))
+            }
+            """);
+        CompilationResult result = driver.compile(source, tempDir.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "arr.get()/set() should fail to compile");
+        String diags = result.diagnostics().getDiagnostics().toString();
+        assertTrue(diags.contains("SEM028"), "Should be a clean diagnostic, was: " + diags);
+    }
+
     @Test
     void failsOnTypeMismatchAssignment(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Bad.kf");
