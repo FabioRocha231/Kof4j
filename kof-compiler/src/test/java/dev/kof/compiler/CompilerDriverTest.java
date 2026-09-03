@@ -4046,4 +4046,41 @@ class CompilerDriverTest {
         assertTrue(result.diagnostics().getDiagnostics().toString().contains("SEM032"),
                 "Should be a clean SEM032, got: " + result.diagnostics().getDiagnostics());
     }
+
+    // known-bugs #15 — primitive assigned to Object must box (JVM); String
+    // must still reject Int. Also: no-initializer declarations get a default
+    // (0 primitive / null reference) — they used to crash the frame.
+    @Test
+    void primitiveAssignableToObject(@TempDir Path tempDir) throws IOException {
+        Path ok = tempDir.resolve("obj.kf");
+        Files.writeString(ok, """
+            main() {
+                Object n = 42
+                Object d = 3.14
+                Object b = true
+                Object o
+                o = 7
+                println("ok")
+                Int x
+                println(x)
+            }
+            """);
+        Path outJvm = tempDir.resolve("outjvm");
+        Path outNat = tempDir.resolve("outnat");
+        assertTrue(driver.compile(ok, outJvm, Target.JVM).success(),
+                "primitive → Object should compile on JVM");
+        assertTrue(driver.compile(ok, outNat, Target.NATIVE).success(),
+                "primitive → Object should compile on Native");
+
+        Path bad = tempDir.resolve("bad.kf");
+        Files.writeString(bad, """
+            main() {
+                String s = 42
+            }
+            """);
+        CompilationResult result = driver.compile(bad, tempDir.resolve("out2"), Target.JVM);
+        assertFalse(result.success(), "Int → String must still be rejected");
+        assertTrue(result.diagnostics().getDiagnostics().toString().contains("SEM021"),
+                "Int → String should be SEM021");
+    }
 }
