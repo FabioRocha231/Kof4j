@@ -2033,6 +2033,11 @@ class SemanticAnalyzer {
             // compatibilidade real (aridade/tipos) é validada na emissão
             return true;
         }
+        if (from instanceof Type.PrimitiveType && to instanceof Type.ClassType ct
+                && "Object".equals(ct.name()) && "java.lang".equals(ct.packageName())) {
+            // bug 15: primitivo → Object (auto-boxing no emit) — `Object n = 42`
+            return true;
+        }
         if (from instanceof Type.PrimitiveType fp
                 && "double".equals(fp.name())
                 && to instanceof Type.PrimitiveType tp

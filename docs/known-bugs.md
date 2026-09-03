@@ -605,3 +605,10 @@ EXTERNA produz lixo
   registros apenas nos slots de PARAMS (1..soma das larguras), ordenando os
   locals por índice; capturas (slots acima) são preenchidas pelas ops. Prova:
   `NativeE2ETest.nativeLambdaMutableCapture`.
+- **Bug 15** (primitivo não atribuível a Object — sem auto-boxing) —
+  **corrigido 03/09**: `isAssignable` aceita primitivo→`java.lang.Object` e o
+  emit boxa (`emitErasureBox` no JVM; JS/Native já são untyped) no var-decl e
+  na atribuição. De quebra, declaração SEM inicializador (`Int x`, `Object o`)
+  agora recebe default (0/null) — antes crashava o frame. `Int → String`
+  continua rejeitado (SEM021). Prova:
+  `CompilerDriverTest.primitiveAssignableToObject`.

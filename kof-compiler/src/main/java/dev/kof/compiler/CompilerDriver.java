@@ -2211,6 +2211,21 @@ private Target target = Target.JVM;
                         emitWideningIfNeeded(ops, inferExprType(vds.initializer(), locals), varType);
                     }
                 }
+                // bug 15: `Object n = 42` — primitivo atribuído a referência:
+                // boxa no JVM (JS/Native já são untyped). Sem isso o store de
+                // int num slot Object invalidava o bytecode.
+                if (erasesToReference(varType)
+                        && vds.initializer() != null
+                        && isPrimitiveType(inferExprType(vds.initializer(), locals))) {
+                    emitErasureBox(ops, inferExprType(vds.initializer(), locals));
+                }
+                // declaração sem inicializador: default (0 primitivo / null
+                // referência) — antes o store saía de pilha vazia (frame crash)
+                if (vds.initializer() == null) {
+                    ops.add(erasesToReference(varType)
+                            ? new KofLoadLiteral(varType, null)
+                            : new KofLoadLiteral(varType, 0));
+                }
                 ops.add(new KofStoreLocal(varType, localIdx));
                 locals.add(new IRLocalVariable(localIdx, vds.name(), varType));
                 yield localIdx + (isDoubleWidth(varType) ? 2 : 1);
@@ -5477,6 +5492,11 @@ private Target target = Target.JVM;
                     for (int i = locals.size() - 1; i >= 0; i--) {
                         if (locals.get(i).name().equals(sie.name())) {
                             emitWideningIfNeeded(ops, inferExprType(ae.value(), locals), locals.get(i).type());
+                            // bug 15: `Object o; o = 7` — box primitivo p/ referência
+                            if (erasesToReference(locals.get(i).type())
+                                    && isPrimitiveType(inferExprType(ae.value(), locals))) {
+                                emitErasureBox(ops, inferExprType(ae.value(), locals));
+                            }
                             ops.add(new KofStoreLocal(locals.get(i).type(), locals.get(i).index()));
                             yield localIdx;
                         }
