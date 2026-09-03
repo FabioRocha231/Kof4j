@@ -58,6 +58,14 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
   runtime em asm puro (sem C), `NativeRiscv64E2ETest 4/4` via qemu
   (`NATIVE002` parcial); aarch64 segue placeholder.
 
+- **Bug-hunt 02/09 — 9 bugs documentados para o próximo agente** em
+  `docs/known-bugs.md` (reprodução + causa provável + arquivos): compound
+  assignment `-=`/`/=`/`%=` (resultado errado, JVM+Native), `s += "x"` em loop
+  (crash do compilador), `switch` de String (bytecode inválido), cast FP→Int,
+  sufixo numérico maiúsculo `42L`/`1.5F`, `listOf<String?>()` (não parseia),
+  tipo de função em generic (`listOf<(Int) -> Int>()`), `throw` não-String,
+  captura mutável Native.
+
 ### Corpus / docs
 
 - `training/datasets/kof-idioms.json` atualizado para 0.2.6-beta (17 → 20
