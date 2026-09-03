@@ -69,13 +69,14 @@ static boolean hasRuntimeFn(String methodName) {
             throw new IOException("JVM runtime requires a full JDK (javac not available)");
         }
         java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
-        // O bloco Vulkan usa FFM (java.lang.foreign), preview API no JDK 21
-        // (final apenas no 22+). Por isso o flag só é aplicado quando o programa
-        // realmente chama kof.vk (capability/link-por-uso — R2): aplicar
-        // --enable-preview sempre marcaria o classfile 65.65535 e exigiria o
-        // flag também em runtime, quebrando todo programa JVM comum.
+        // O bloco Vulkan usa FFM (java.lang.foreign). No JDK 21 é preview API:
+        // exige --release 21 --enable-preview. No JDK 22+ é API FINAL (JEP 454)
+        // e NENHUM flag é necessário — o usuário dessa sessão roda JDK 25, e o
+        // caminho antigo quebrava com "invalid source release 21 with
+        // --enable-preview" (COMP001). Capability/link-por-uso (R2) mantido:
+        // o bloco só entra no source quando o programa realmente chama kof.vk.
         List<String> args = new java.util.ArrayList<>(List.of("-d", outputDir.toString()));
-        if (usesVk) {
+        if (usesVk && Runtime.version().feature() < 22) {
             args.add("--release");
             args.add("21");
             args.add("--enable-preview");
