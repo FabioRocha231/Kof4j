@@ -44,7 +44,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | **CONC003** — JS async real | média | Promises/event-loop GraalJS | design primeiro |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 |
-| **MySQL query binário** (resultset de EXECUTE) | média | `kof_db_mysql_read_binary_rows` (parse de lenenc + types) | resultset de COM_STMT_EXECUTE é binário; hoje fica em substituição client-side via `COM_QUERY` — gap documentado |
+| **MySQL query binário** (resultset de EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | `FEITO` 03/09 — `02b9ddb`: coldefs+tipos capturados no PREPARE; rows binárias (marker 0x00, null-bitmap +2, valores crus por coltype); `KofDbE2ETest.nativeMysqlPreparedBinary`; suíte 822/0. Fallback COM_QUERY substituição se PREPARE falhar |
 | Portar stdlib p/ riscv64/aarch64 (web/db/mq/cache/time/log/config/observability) | média | `translateRiscvToAarch64` já existe | NATIVE002 paridade avançada — em curso por agente-nativo-val (validation+observability ✅ `b20aa49`) |
 | Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
 | OpenTelemetry export | baixa | spans já feitos; falta OTLP export | |
