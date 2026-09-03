@@ -867,7 +867,8 @@ class JvmBackend implements Backend {
             }
         } else if (op instanceof KofCall kc && JvmRuntime.hasRuntimeFn(kc.methodName())) {
             usesJson = true;
-            if (kc.methodName().startsWith("kof_vk_")) {
+            if (kc.methodName().startsWith("kof_vk_")
+                    || kc.methodName().startsWith("kof_mv64_")) {
                 usesVk = true;
             }
             mv.visitMethodInsn(INVOKESTATIC, "dev/kof/runtime/KofRuntime", kc.methodName(),

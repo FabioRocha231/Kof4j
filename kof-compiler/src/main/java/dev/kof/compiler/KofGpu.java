@@ -21,7 +21,8 @@ final class KofGpu {
 
     static boolean isGpuMethod(String name) {
         return switch (name) {
-            case "available", "dispatchMatmul", "dispatchMatmul64", "failReason" -> true;
+            case "available", "dispatchMatmul", "dispatchMatmul64", "failReason",
+                 "mvSetShape", "mvLoadW", "mvMatvec" -> true;
             default -> false;
         };
     }
@@ -48,6 +49,19 @@ final class KofGpu {
                     ? new GpuCall("kof_vk_dispatch64", INT,
                         List.of(new Type.ArrayType(LONG), new Type.ArrayType(LONG), new Type.ArrayType(LONG),
                                 INT, INT, INT))
+                    : null;
+            // M36 FASE C: matvec residente — W fica no buffer mapeado (GPU lê
+            // via PCIe sem copia por dispatch; 30x nos shapes koflama)
+            case "mvSetShape" -> argTypes.size() == 2
+                    ? new GpuCall("kof_mv64_set_shape", INT, List.of(INT, INT))
+                    : null;
+            case "mvLoadW" -> argTypes.size() == 3
+                    ? new GpuCall("kof_mv64_load_w", INT,
+                        List.of(new Type.ArrayType(LONG), INT, INT))
+                    : null;
+            case "mvMatvec" -> argTypes.size() == 4
+                    ? new GpuCall("kof_mv64_matvec", INT,
+                        List.of(new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT))
                     : null;
             default -> null;
         };

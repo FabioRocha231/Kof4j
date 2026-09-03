@@ -50,6 +50,17 @@ final class JvmVkRuntime {
                 private static java.lang.invoke.MethodHandle VK_INIT64;
                 private static volatile boolean VK64_INITED = false;
                 private static volatile boolean VK64_OK = false;
+                // M36 FASE C: API matvec residente (vkchain64 v2: set_shape +
+                // mapped_w + matvec; W fica no buffer host-visible mapeado —
+                // a GPU lê via PCIe sem copia por dispatch)
+                private static java.lang.invoke.MethodHandle MV64_SETSHAPE;
+                private static java.lang.invoke.MethodHandle MV64_LOADW;
+                private static java.lang.invoke.MethodHandle MV64_MATVEC;
+                private static java.lang.invoke.MethodHandle MV64_REASON;
+                private static volatile boolean MV64_INITED = false;
+                private static volatile boolean MV64_OK = false;
+                private static volatile int MV64_CURM = 0;
+                private static volatile int MV64_CURK = 0;
 
                 public static boolean kof_vk_available() {
                     if (!VK_INITED) {
@@ -115,6 +126,107 @@ final class JvmVkRuntime {
                         return rc;
                     } catch (Throwable t) {
                         return -1;
+                    }
+                }
+
+                // M36 FASE C: matvec residente — vkchain64 v2 (matvec64.spv).
+                // W por call: load_w copia p/ buffer mapeado (DMA); x/y 8B-elem.
+                public static int kof_mv64_set_shape(int m, int k) {
+                    if (!kof_mv64_ready() || MV64_SETSHAPE == null) return -1;
+                    try {
+                        int rc = (int) MV64_SETSHAPE.invoke(m, k);
+                        if (rc == 0) {
+                            MV64_CURM = m;
+                            MV64_CURK = k;
+                        }
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                public static int kof_mv64_load_w(long[] w, int m, int k) {
+                    if (!kof_mv64_ready() || MV64_LOADW == null) return -1;
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var seg = arena.allocate((long) w.length * 8);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(w),
+                                0, seg, 0, (long) w.length * 8);
+                        int rc = (int) MV64_LOADW.invoke(seg, m, k);
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                public static int kof_mv64_matvec(long[] x, long[] y, int m, int k) {
+                    if (!kof_mv64_ready() || MV64_MATVEC == null) return -1;
+                    if (MV64_CURM != m || MV64_CURK != k) return -2; // shape divergente
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var sx = arena.allocate((long) x.length * 8);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(x),
+                                0, sx, 0, (long) x.length * 8);
+                        var sy = arena.allocate((long) Math.max(m, y.length) * 8);
+                        int rc = (int) MV64_MATVEC.invoke(sx, sy, m, k);
+                        if (rc == 0) {
+                            java.lang.foreign.MemorySegment.copy(sy, 0,
+                                    java.lang.foreign.MemorySegment.ofArray(y), 0, (long) m * 8);
+                        }
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                private static boolean kof_mv64_ready() {
+                    if (!MV64_INITED) {
+                        try {
+                            MV64_OK = kof_mv64_init();
+                        } catch (Throwable t) {
+                            MV64_OK = false;
+                        }
+                        MV64_INITED = true;
+                    }
+                    return MV64_OK;
+                }
+
+                private static boolean kof_mv64_init() {
+                    if (MV64_SETSHAPE != null) return true; // handles já ligados
+                    var arena = java.lang.foreign.Arena.global();
+                    var linker = java.lang.foreign.Linker.nativeLinker();
+                    var P = java.lang.foreign.ValueLayout.ADDRESS;
+                    var I = java.lang.foreign.ValueLayout.JAVA_INT;
+                    var J = java.lang.foreign.ValueLayout.JAVA_LONG;
+                    java.lang.foreign.SymbolLookup lib = null;
+                    try {
+                        lib = java.lang.foreign.SymbolLookup.libraryLookup("libvkchain64.so", arena);
+                    } catch (Throwable t) {
+                        return false;
+                    }
+                    try {
+                        // init(spv_path): SPV do matvec64 (env KOF_GPU_SPV64,
+                        // default gpu/shaders/matvec64.spv)
+                        var init64 = linker.downcallHandle(lib.find("vkchain64_init").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, P));
+                        MV64_REASON = linker.downcallHandle(lib.find("vkchain64_fail_reason").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(P));
+                        MV64_SETSHAPE = linker.downcallHandle(lib.find("vkchain64_set_shape").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, I, I));
+                        MV64_MATVEC = linker.downcallHandle(lib.find("vkchain64_matvec").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, I, I));
+                        String spv = System.getenv("KOF_GPU_SPV64");
+                        if (spv == null || spv.isEmpty()) spv = "gpu/shaders/matvec64.spv";
+                        int rc = (int) init64.invoke(nativeCstr(arena, spv));
+                        if (rc != 0) return false;
+                        // load_w(long* w, m, k) — copia p/ buffer mapeado interno
+                        MV64_LOADW = linker.downcallHandle(lib.find("vkchain64_load_w").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, P, I, I));
+                        return true;
+                    } catch (Throwable t) {
+                        return false;
                     }
                 }
 

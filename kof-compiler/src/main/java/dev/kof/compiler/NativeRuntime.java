@@ -7733,6 +7733,23 @@ final class NativeRuntime {
             kof_vk_dispatch64:
                 movl $-1, %eax
                 ret
+
+            # M36 FASE C: stubs matvec residente (GPU001 no native)
+            .globl kof_mv64_set_shape
+            .type kof_mv64_set_shape, @function
+            kof_mv64_set_shape:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_load_w
+            .type kof_mv64_load_w, @function
+            kof_mv64_load_w:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_matvec
+            .type kof_mv64_matvec, @function
+            kof_mv64_matvec:
+                movl $-1, %eax
+                ret
             """);
     }
 
