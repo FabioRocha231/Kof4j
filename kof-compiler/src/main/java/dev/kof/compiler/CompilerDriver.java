@@ -250,6 +250,19 @@ private Target target = Target.JVM;
             diagnostics.error(sources.get(0).toString(), 0, 0, 0,
                     "Error reading source file: " + e.getMessage(), "COMP001");
             return new CompilationResult(false, diagnostics, outputDir);
+        } catch (IllegalStateException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith("CONC003-JS-01")) {
+                // Erro de usuário esperado (lambda comum precisaria virar
+                // async), não um bug do compilador — sem stack trace, sem o
+                // wrapper genérico de COMP002.
+                diagnostics.error(sources.get(0).toString(), 0, 0, 0,
+                        e.getMessage(), "CONC003-JS-01");
+                return new CompilationResult(false, diagnostics, outputDir);
+            }
+            e.printStackTrace();
+            diagnostics.error(sources.get(0).toString(), 0, 0, 0,
+                    "Internal compiler error: " + e.getMessage(), "COMP002");
+            return new CompilationResult(false, diagnostics, outputDir);
         } catch (Exception e) {
             e.printStackTrace();
             diagnostics.error(sources.get(0).toString(), 0, 0, 0,
