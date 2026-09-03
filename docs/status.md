@@ -625,10 +625,11 @@ Docs: `debugger-architecture.md`, `debugging.md`, `debug-adapter.md`,
 ## Bugs Restantes (reais)
 
 > **Lista completa com reprodução + correção sugerida: `docs/known-bugs.md`**
-> (17 bugs verificados 02/09 — pós-merge riscv64: `!` NOT como valor sempre
-> `true`, `==` de records por referência, assignment encadeado crasha, cast em
-> aritmética crasha, `Map.size` propriedade, primitivo→Object, `List.toArray()`
-> quebra JVM+Native, array `.get()/.set()` geram saída quebrada).
+> (23 bugs verificados 02/09 — rodada 3 de usuários: kof-ui reutiliza ID de
+> widget após remove, lambda→lambda e lambda-em-lista invocados quebram, PKG005
+> rejeita nomes iguais em pacotes diferentes, Native perde construtor de
+> classe de outro pacote (undefined reference), ExternalClasspath não resolve
+> superclasse fora dos entries).
 
 1. GC automático no Native — free-list `kof_free_head` implementado 27/08 (reuso `mmap`), GC mark-sweep pendente (memória ainda devolvida só no `munmap` fallback)
 2. ~~`spawn` no Native: CONC001~~ — ✅ fechado 31/08: pthread_create + trampoline + await/pthread_join + allocator thread-safe (futex) + join implícito + `done`/`poll`/`cancel`/`cancelled`/`selectAny` (cancel cooperativo por TID + selectAny polling 1ms; `SemanticAnalyzer` desambigua `cancel(Handle<T>)→Bool` vs `scheduler.cancel(String)→VOID`)

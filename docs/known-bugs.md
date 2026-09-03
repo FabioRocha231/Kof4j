@@ -350,6 +350,111 @@ EXTERNA produz lixo
 
 ---
 
+## Investigação de usuários (02/09, rodada 3) — packages, lambda, kof-ui
+
+### 18. kof-ui: ID de widget é reutilizado após `remove()` → colisão de nós
+
+- **Sintoma:** `kofUiLabelNew`/`Link`/`Image`/`Icon`/`Font` geram o ID com
+  `Object.keys(window.__kofNodes).length + 1`. Como `remove()` faz
+  `delete __kofNodes[id]`, o length encolhe e o próximo widget **reusa um ID
+  que já pertence a um nó vivo**, sobrescrevendo-o.
+- **Reprodução (JS/DOM):**
+  1. `var a = Label("A")` → id 1; `var b = Label("B")` → id 2
+  2. `a.remove()` → `delete __kofNodes[1]` (length volta a 1)
+  3. `var c = Label("C")` → id **2 de novo** → `__kofNodes[2]` agora é C; o
+     handle de `b` passou a apontar para C.
+- **Causa provável:** ID alocado por `length + 1` em vez de contador
+  monotônico (`kofUiSeq` já existe e é monotônico — usar a mesma fonte).
+- **Arquivos:** `JsBackend.java` (runtime JS `kofUiLabelNew` etc., ~linhas
+  3219, 3255, 3311, 3378, 3463).
+
+---
+
+### 19. Lambda retornando lambda → bytecode inválido (JVM) / COMP001 (Native)
+
+- **Sintoma:** `var make = (x: Int) -> ((y: Int) -> x + y); make(5)(3)` falha:
+  JVM `ClassFormatError: Illegal class name ""`; Native `undefined reference`.
+- **Reprodução:**
+  ```kof
+  main() {
+      var make = (x: Int) -> ((y: Int) -> x + y)
+      var add5 = make(5)
+      println(add5(3))   // JVM ClassFormatError
+  }
+  ```
+- **Causa provável:** o lambda interno (retornado) vira uma classe sintética
+  com tipo retorno de função; o backend não emite o invocable corretamente.
+- **Arquivos:** `CompilerDriver.java` (synthesizeLambda), `JvmBackend.java`.
+
+---
+
+### 20. Lambda armazenado em coleção e INVOCADO quebra (JVM/Native)
+
+- **Sintoma:** `listOf((x)->x*2).get(0)(4)` → JVM `ClassFormatError`; Native
+  `COMP001`. Guardar sem invocar funciona (`ops.size` ok); lambda em var e
+  chamar funciona; a quebra é **invocar um lambda vindo de expressão
+  (call-on-expression)**.
+- **Reprodução:**
+  ```kof
+  main() {
+      var ops = listOf((x: Int) -> x * 2, (x: Int) -> x + 10)
+      println(ops.get(0)(4))   // JVM ClassFormatError
+  }
+  ```
+- **Causa provável:** call sobre o resultado de `get()` não resolve o tipo
+  SAM para emitir o invoke — cai em caminho genérico.
+- **Arquivos:** `CompilerDriver.java` (call-on-expression com tipo função),
+  `JvmBackend.java`/`NativeBackend.java`.
+
+---
+
+### 21. Nomenclatura: `PKG005` rejeita mesmo nome simples em pacotes DIFERENTES
+
+- **Sintoma:** `package pkgA; class Data` + `package pkgB; class Data` →
+  `duplicate type name 'Data' in packages 'pkgA' and 'pkgB' [PKG005]`. Em
+  Java/JVM isso é perfeitamente legal (nomes fully-qualified distintos).
+- **Reprodução:** dois arquivos `pkgA/Data.kf` e `pkgB/Data.kf` (cada um com
+  seu `package`) compilados juntos.
+- **Causa provável:** `CompilerDriver.java:378-391` faz colisão por **nome
+  simples** (`declarationName`) em vez de fully-qualified.
+- **Impacto:** "arquivos com mesmo nome em pastas diferentes dão erro" —
+  exatamente o relato de usuário. Fix exige nomes FQ internos (IR já guarda
+  package no IRClass).
+- **Arquivos:** `CompilerDriver.java` (PKG005).
+
+---
+
+### 22. Native: chamada de CONSTRUTOR de classe de outro pacote → undefined reference
+
+- **Sintoma:** `import a.b.C; main() { var c = C() }` no target NATIVE →
+  `undefined reference to 'C_init_0'` no ld. O emit usa `sanitizeName(ct.name())`
+  (nome simples "C") no call site, mas a definição usa `clazz.name()`
+  (internal "a/b/C" → `a_b_C_init_0`). JVM funciona (a/b/C.class correto).
+- **Reprodução:** `kof build src --target native` no projeto
+  `src/Main.kf (import a.b.C)` + `src/a/b/C.kf (package a.b)`.
+- **Causa provável:** `NativeBackend.java:1725` (e ~1730 para métodos) monta o
+  símbolo com `ct.name()` simples; deveria usar internal name
+  (`ct.packageName().replace('.','/') + "/" + ct.name()`).
+- **Arquivos:** `NativeBackend.java` (mangle de CONSTRUCTOR/call).
+
+---
+
+### 23. ExternalClasspath: cadeia de superclasses só resolve DENTRO dos entries
+
+- **Sintoma:** `resolveMethod`/`resolveFieldType` seguem a superclasse apenas
+  se ela estiver nos entries (`classBytes`). Se uma superclasse intermediária
+  (ex.: de um .jar A apontando p/ classe de um .jar B não fornecido) estiver
+  fora do classpath, membros herdados NÃO são encontrados → referência perdida
+  silenciosamente (descritor errado / erro de símbolo).
+- **Reprodução:** classpath com `app.jar` (classe extends `LibBase` de
+  `lib.jar`) sem `lib.jar` → `super.metodo()` resolve null.
+- **Nota:** é limitação documentada no código (linha 135 "nos entries"), mas
+  gera falha silenciosa sem aviso ao usuário. Ao menos um warning "superclasse
+  X não encontrada no classpath" deveria ser emitido.
+- **Arquivos:** `ExternalClasspath.java` (resolveMethod/superclassOf).
+
+---
+
 ## Comportamentos que PAREcem bugs mas são esperados (não corrigir)
 
 | Cenário | Comportamento | Por quê |
