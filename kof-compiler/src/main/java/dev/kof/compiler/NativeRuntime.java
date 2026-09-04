@@ -7724,6 +7724,62 @@ final class NativeRuntime {
                 popq %r12
                 popq %rbx
                 ret
+
+            # M36: kof_vk_dispatch64 — stub GPU001 no native: retorna -1 e o
+            # caller usa o golden CPU int64. Implementação asm real é futura
+            # (buffers ivec2 + matmul64.spv; mesmos 6 args do dispatch int32).
+            .globl kof_vk_dispatch64
+            .type kof_vk_dispatch64, @function
+            kof_vk_dispatch64:
+                movl $-1, %eax
+                ret
+
+            # M36 FASE C: stubs matvec residente (GPU001 no native)
+            .globl kof_mv64_set_shape
+            .type kof_mv64_set_shape, @function
+            kof_mv64_set_shape:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_load_w
+            .type kof_mv64_load_w, @function
+            kof_mv64_load_w:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_matvec
+            .type kof_mv64_matvec, @function
+            kof_mv64_matvec:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wput
+            .type kof_mv64_wput, @function
+            kof_mv64_wput:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wrun
+            .type kof_mv64_wrun, @function
+            kof_mv64_wrun:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wput32
+            .type kof_mv64_wput32, @function
+            kof_mv64_wput32:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wrun32
+            .type kof_mv64_wrun32, @function
+            kof_mv64_wrun32:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wputsp
+            .type kof_mv64_wputsp, @function
+            kof_mv64_wputsp:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wrunsp
+            .type kof_mv64_wrunsp, @function
+            kof_mv64_wrunsp:
+                movl $-1, %eax
+                ret
             """);
     }
 

@@ -4284,6 +4284,28 @@ private Target target = Target.JVM;
                             && KofGpu.isGpuNamespace(rid.name())) {
                     List<Type> argTypes = new ArrayList<>();
                     for (ExpressionNode arg : mc.arguments()) argTypes.add(inferExprType(arg, locals));
+                    if (System.getProperty("kof.trace") != null) {
+                        System.err.println("GPU call " + mc.methodName() + " argTypes=" + argTypes);
+                    }
+                    // Unknown (var sem tipo inferido no lowering) casa com
+                    // qualquer array: o staticCall exige tipos concretos, mas
+                    // o `var a = new Long[4]` pode chegar como Unknown quando
+                    // o local foi registrado antes do NewArray. Substitui
+                    // Unknown por Long[]/Int[] conforme o nome do método.
+                    List<Type> candidate = new ArrayList<>();
+                    boolean hasUnknown = false;
+                    for (Type t : argTypes) {
+                        if (t instanceof Type.UnknownType) { hasUnknown = true; break; }
+                    }
+                    if (hasUnknown) {
+                        Type arrType = "dispatchMatmul64".equals(mc.methodName())
+                                ? new Type.ArrayType(Type.PrimitiveType.LONG)
+                                : new Type.ArrayType(Type.PrimitiveType.INT);
+                        for (Type t : argTypes) {
+                            candidate.add(t instanceof Type.UnknownType ? arrType : t);
+                        }
+                        argTypes = candidate;
+                    }
                     KofGpu.GpuCall gpuCall = KofGpu.staticCall(mc.methodName(), argTypes);
                     if (gpuCall != null) {
                         if (!KofGpu.supportedOn(target)) {

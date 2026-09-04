@@ -45,6 +45,7 @@ static boolean hasRuntimeFn(String methodName) {
                 || methodName.startsWith("kof_mq_")
                 || methodName.startsWith("kof_time_")
                 || methodName.startsWith("kof_vk_")
+                || methodName.startsWith("kof_mv64_")
                 || methodName.startsWith("kof_scheduler_")
                 || methodName.equals("kof_now")
                 || methodName.equals("kof_read_line")
@@ -69,13 +70,14 @@ static boolean hasRuntimeFn(String methodName) {
             throw new IOException("JVM runtime requires a full JDK (javac not available)");
         }
         java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
-        // O bloco Vulkan usa FFM (java.lang.foreign), preview API no JDK 21
-        // (final apenas no 22+). Por isso o flag só é aplicado quando o programa
-        // realmente chama kof.vk (capability/link-por-uso — R2): aplicar
-        // --enable-preview sempre marcaria o classfile 65.65535 e exigiria o
-        // flag também em runtime, quebrando todo programa JVM comum.
+        // O bloco Vulkan usa FFM (java.lang.foreign). No JDK 21 é preview API:
+        // exige --release 21 --enable-preview. No JDK 22+ é API FINAL (JEP 454)
+        // e NENHUM flag é necessário — o usuário dessa sessão roda JDK 25, e o
+        // caminho antigo quebrava com "invalid source release 21 with
+        // --enable-preview" (COMP001). Capability/link-por-uso (R2) mantido:
+        // o bloco só entra no source quando o programa realmente chama kof.vk.
         List<String> args = new java.util.ArrayList<>(List.of("-d", outputDir.toString()));
-        if (usesVk) {
+        if (usesVk && Runtime.version().feature() < 22) {
             args.add("--release");
             args.add("21");
             args.add("--enable-preview");
@@ -280,6 +282,16 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_vk_available" -> "()Z";
             case "kof_vk_fail_reason" -> "()Ljava/lang/String;";
             case "kof_vk_dispatch" -> "([I[I[IIII)I";
+            case "kof_vk_dispatch64" -> "([J[J[JIII)I";
+            case "kof_mv64_set_shape" -> "(II)I";
+            case "kof_mv64_load_w" -> "([JII)I";
+            case "kof_mv64_matvec" -> "([J[JII)I";
+            case "kof_mv64_wput" -> "(I[JII)I";
+            case "kof_mv64_wrun" -> "(I[J[JIIJ)I";
+            case "kof_mv64_wput32" -> "(I[III)I";
+            case "kof_mv64_wrun32" -> "(I[J[JIIJ)I";
+            case "kof_mv64_wputsp" -> "(I[I[III)I";
+            case "kof_mv64_wrunsp" -> "(I[J[JIIJ)I";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
                     -> "(Ljava/lang/String;)V";
             case "kof_db_connect" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -412,6 +424,16 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_vk_available" -> "Z";
             case "kof_vk_fail_reason" -> "Ljava/lang/String;";
             case "kof_vk_dispatch" -> "I";
+            case "kof_vk_dispatch64" -> "I";
+            case "kof_mv64_set_shape" -> "I";
+            case "kof_mv64_load_w" -> "I";
+            case "kof_mv64_matvec" -> "I";
+            case "kof_mv64_wput" -> "I";
+            case "kof_mv64_wrun" -> "I";
+            case "kof_mv64_wput32" -> "I";
+            case "kof_mv64_wrun32" -> "I";
+            case "kof_mv64_wputsp" -> "I";
+            case "kof_mv64_wrunsp" -> "I";
             case "kof_http_get", "kof_http_get_headers", "kof_http_delete", "kof_http_delete_headers",
                     "kof_http_options", "kof_http_options_headers", "kof_http_post", "kof_http_post_headers",
                     "kof_http_put", "kof_http_put_headers", "kof_http_patch", "kof_http_patch_headers"
