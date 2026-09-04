@@ -375,24 +375,19 @@ private Target target = Target.JVM;
             // import externo (android.* etc.) — ignora
             continue;
         }
-        // colisão de nomes entre pacotes → diagnóstico honesto
-// colisão de nomes entre pacotes → diagnóstico honesto. Bug 21: nomes
-        // simples iguais em pacotes diferentes exigem resolução por FQ name
-        // (import tracking + referência qualificada) — feature de design
-        // (roadmap), não um fix rápido (resolução ambígua seria nondeterminística).
         java.util.Map<String, String> seen = new java.util.HashMap<>();
         for (AstNode d : decls) {
             String n = declarationName(d);
             if (n == null) continue;
             String pkg = declarationPackages.getOrDefault(d, unit.packageName());
             String prev = seen.get(n);
-            if (prev != null && !prev.equals(pkg) && currentDiagnostics != null) {
-                currentDiagnostics.error("", 0, 0, 0,
-                        "duplicate type name '" + n + "' in packages '" + prev + "' and '"
-                                + pkg + "'. Nomes iguais em pacotes diferentes exigem"
-                                + " resolução por nome totalmente qualificado (FQ) —"
-                                + " feature planejada; renomeie ou use import único por nome.",
-                        "PKG005");
+            if (prev != null && prev.equals(pkg)) {
+                // Mesmo nome simples no MESMO pacote é erro (colisão real)
+                if (currentDiagnostics != null) {
+                    currentDiagnostics.error("", 0, 0, 0,
+                            "duplicate type name '" + n + "' in package '" + pkg + "'",
+                            "PKG005");
+                }
             }
             seen.putIfAbsent(n, pkg);
         }
