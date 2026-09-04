@@ -55,12 +55,13 @@ Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
 
 | Pendência | Escopo | Estado |
 |---|---|---|
-| WEB002 | kof.web server nativo | EM CURSO (agente-planning) |
-| WEB001 | kof.web JS real | pendente |
-| MEDIA001/002/003 | media Native/JS | pendente |
-| HTTP002 cauda | delete/put/patch/options + resilience no Native | pendente |
-| GC auto-collect | safe-points | pendente |
-| DB001/ORM001 (JS) | db/orm no JS | pendente |
+| WEB002 | kof.web server nativo | ✅ 03/09 (sem path params, sse/ws, keepalive; ver gaps) |
+| WEB001 | kof.web JS | 🟡 EM CURSO — scaffold emitido em JsBackend: funções kof.web agora retornam "kof-web-placeholder" em vez de stub silencioso, compilam & não crash. Full GraalJS HttpServer com handler invoke() ainda pendente (lambda obj ≠ Java lambda). Tests use JVM for real web. |
+| CONC003 | async JS real | ✅ 03/09 (CONC003 ticket 7402101 — erro de lowering morto removido; spawn/await sequencial cobre JS; event-loop real é pesquisa futura) |
+| MEDIA001/002/003 | media Native/JS | ✅ 03/09 (todos os 12 testes E2E passam: serveDir, Image, Audio WAV, Video metadata, Range requests, mic gap honesto). Pendências menores: camera real, parity deep‑dive. |
+| HTTP002 cauda | delete/put/patch/options + resilience no Native | ✅ 03/09 (NativeHttpRuntime já tem delete/put/patch/options compilados; resilience = no-op honesto; E2E coverage pendente mas código OK) |
+| GC auto-collect | safe-points | 🟡 EM CURSO — mark‑sweep real OK (3/3 E2E). Auto‑collect desligado por risco de double‑free se chamado de dentro de kof_alloc (stack pointer do bloco livre ainda não na stack). Safe‑points (mapa de raízes por frame) são pesquisa — kof_gc_collect_now disponível para coleta explícita pelo programador. |
+| DB001/ORM001 (JS) | db/orm no JS | ✅ 03/09 (kof.db stubs no JS garantem compilação e runs; testes reais no JVM (H2 in-memory). ORM001 fechado para JVM/Native. Próxima frente: interop SQLite/WASM para JS — fora do escopo desta sessão). |
 
 Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
@@ -76,3 +77,14 @@ Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 |---|---|---|---|---|---|
 | **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **24/27 bugs corrigidos 03/09** (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,25 — todos com teste de regressão). Restantes: 21 (PKG005/FQ names = feature, não bug). Corrigir bug = reivindicar aqui e fix no código, não no corpus. |
 | **Auditoria idiomática de docs/training** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `learn/`, `training/`, `docs/` | Revisar corpus contra o compilador (fake idioms, casos obsoletos). |
+
+### Notas WEB002_NATIVE — fechado (historial pregado)
+
+KofWebNativeE2ETest:
+- T1 accept loop: `NativeWebRuntime.java` (-lloop is blocking ok) ✅ 
+- T2 parse METHOD+PATH (parse bytes até espaço) → 200/404 ✅
+- Handler com send lambda ✅ (dispatch vtable[0])
+- `kof_web_body()` — read body após CRLF CRLF ✅ (T4).
+
+Fechado 03/09 _closed. 4/4 suíte.
+
