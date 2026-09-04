@@ -70,7 +70,28 @@ Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
 - **≤500 linhas por classe** (refactor futuro de NativeRuntime: módulo novo por área, ex: `NativeHttpRuntime.java`).
 - Nunca duas frentes no mesmo arquivo gigante ao mesmo tempo — se for inevitável, combine no chat antes.
-- **Congelamento de comportamento** (AGENTS.md, obrigatório): zero regressão (suíte **840** é gate de merge), features novas **aditivas** (retrocompatibilidade), refactor de 500 linhas preserva semântica (mesma suíte + golden E2E; output mudou = bug do refactor), bugs em `docs/known-bugs.md` são corrigidos **no código** para atingir o comportamento previsto (nunca "documentar em volta"), paridade JVM/Native/JS é regra.
+- **Congelamento de comportamento** (AGENTS.md, obrigatório): zero regressão (suíte **906** é gate de merge), features novas **aditivas** (retrocompatibilidade), refactor de 500 linhas preserva semântica (mesma suíte + golden E2E; output mudou = bug do refactor), bugs em `docs/known-bugs.md` são corrigidos **no código** para atingir o comportamento previsto (nunca "documentar em volta"), paridade JVM/Native/JS é regra.
+
+## Incidentes de processo (bronca registrada — 03/09, agente-switch-expr)
+
+Três violações encontradas ao auditar as branches antes do merge. **Não se repita:**
+
+1. **`fixes-for-kofagent` (`cf5a4cb`) quebrou o build da branch.** `JvmVkRuntime.java`
+   foi reescrito (return → campo `VK_SOURCE`) mas o `;` do text block foi apagado e
+   um `}` sobrou — `mvn compile` falhava em TODA a branch. Commite com
+   `mvn -o -pl kof-compiler -am compile -q` ANTES de pushar. Fix: `3777eea`.
+2. **`idiomatic-fixes` (`2729f32`) mudou semântica sem rodar a suíte completa.**
+   O fix PKG005 passou a flaggar "mesmo nome no MESMO pacote" e quebrou 3 testes de
+   `PackagesE2ETest` (falso-positivo: re-import transitivo de fonte explícita).
+   O commit diz "871/872" — a suíte inteira é gate de merge, não um subset.
+   Fix: `f6f1714` (dedup por arquivo de origem) + testes atualizados.
+3. **Dois agentes no mesmo arquivo gigante sem combinar.** `SYN001` (reivindicado
+   em `1d1343f`) toca `CompilerDriver.java`/`JsBackend.java`; `2729f32` e `bc577aa`
+   avançaram nos mesmos arquivos na mesma janela. A regra de ouro do AGENTS.md é
+   "combine no chat antes" — o merge só não foi pior porque os hunks não colidiram.
+
+**Padrão correto:** reivindicar → trabalhar → `mvn test` COMPLETO → commit → push.
+Se o gate falha, o commit não existe.
 
 ## Frentes de validação/docs (não são gaps de feature — avisar antes de mexer)
 
