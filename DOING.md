@@ -74,5 +74,5 @@ Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
 | Frente | Estado | Dono | Branch | Arquivos | Notas |
 |---|---|---|---|---|---|
-| **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **13/25 bugs corrigidos 03/09** (1,2,3,4,5,6,7,10,13,14,22,24,25 — todos com teste de regressão). Restantes: 8,9,11,12,15,16,17,18,19,20,21,23. Corrigir bug = reivindicar aqui e fix no código, não no corpus. |
+| **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **24/27 bugs corrigidos 03/09** (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,25 — todos com teste de regressão). Restantes: 21 (PKG005/FQ names = feature, não bug). Corrigir bug = reivindicar aqui e fix no código, não no corpus. |
 | **Auditoria idiomática de docs/training** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `learn/`, `training/`, `docs/` | Revisar corpus contra o compilador (fake idioms, casos obsoletos). |

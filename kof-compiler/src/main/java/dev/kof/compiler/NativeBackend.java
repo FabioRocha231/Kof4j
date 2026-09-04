@@ -1575,6 +1575,20 @@ public class NativeBackend implements Backend {
                 sb.append("    movq %rdi, %xmm0\n");
                 sb.append("    call kof_double_to_string\n");
                 sb.append("    pushq %rax\n");
+            } else if (argType instanceof Type.ClassType ct && !BuiltinTypes.isString(argType)) {
+                // valueOf(objeto) → obj.toString() via vtable (records têm
+                // toString no IR; String é identity). Paridade com o JVM.
+                int tosIdx = findVirtualMethodIndex(ct.name(), "toString");
+                if (tosIdx >= 0) {
+                    sb.append("    popq %rax\n");
+                    sb.append("    pushq %rax\n");
+                    sb.append("    movq 8(%rax), %rbx\n");
+                    sb.append("    addq $").append(tosIdx * 8).append(", %rbx\n");
+                    sb.append("    movq (%rbx), %rbx\n");
+                    sb.append("    popq %rdi\n");
+                    sb.append("    call *%rbx\n");
+                    sb.append("    pushq %rax\n");
+                }
             }
             return;
         }

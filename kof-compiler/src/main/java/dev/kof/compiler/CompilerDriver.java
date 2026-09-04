@@ -389,6 +389,10 @@ private Target target = Target.JVM;
             continue;
         }
         // colisão de nomes entre pacotes → diagnóstico honesto
+// colisão de nomes entre pacotes → diagnóstico honesto. Bug 21: nomes
+        // simples iguais em pacotes diferentes exigem resolução por FQ name
+        // (import tracking + referência qualificada) — feature de design
+        // (roadmap), não um fix rápido (resolução ambígua seria nondeterminística).
         java.util.Map<String, String> seen = new java.util.HashMap<>();
         for (AstNode d : decls) {
             String n = declarationName(d);
@@ -398,7 +402,10 @@ private Target target = Target.JVM;
             if (prev != null && !prev.equals(pkg) && currentDiagnostics != null) {
                 currentDiagnostics.error("", 0, 0, 0,
                         "duplicate type name '" + n + "' in packages '" + prev + "' and '"
-                                + pkg + "'", "PKG005");
+                                + pkg + "'. Nomes iguais em pacotes diferentes exigem"
+                                + " resolução por nome totalmente qualificado (FQ) —"
+                                + " feature planejada; renomeie ou use import único por nome.",
+                        "PKG005");
             }
             seen.putIfAbsent(n, pkg);
         }
@@ -2965,11 +2972,17 @@ private Target target = Target.JVM;
                         }
                         if (!Type.isString(accType) && isPrimitiveType(accType)) boxPrimitive(ops, accType);
                         ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
-                                List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+                                List.of(target.isNative() && !Type.isString(accType)
+                                        && !(accType instanceof Type.PrimitiveType)
+                                        ? accType : Type.UnknownType.UNKNOWN),
+                                BuiltinTypes.STRING, KofCallKind.STATIC));
                         localIdx = emitExpression(be.right(), ops, owner, localIdx, locals);
                         if (!Type.isString(rightType) && isPrimitiveType(rightType)) boxPrimitive(ops, rightType);
                         ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
-                                List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+                                List.of(target.isNative() && !Type.isString(rightType)
+                                        && !(rightType instanceof Type.PrimitiveType)
+                                        ? rightType : Type.UnknownType.UNKNOWN),
+                                BuiltinTypes.STRING, KofCallKind.STATIC));
                         ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
                                 List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
                                 BuiltinTypes.STRING, KofCallKind.FUNCTION));
@@ -3635,9 +3648,15 @@ private Target target = Target.JVM;
                                     BuiltinTypes.STRING, KofCallKind.STATIC));
                         }
                     } else {
+                        // o tipo REAL do arg só vai para o valueOf NATIVO (para
+                        // despachar toString de records). JVM/JS usam Object
+                        // (String.valueOf(Object) chama toString; valueOf de um
+                        // ClassType específico não existe no JVM).
                         ops.add(new KofCall(
                                 BuiltinTypes.STRING,
-                                "valueOf", List.of(Type.UnknownType.UNKNOWN),
+                                "valueOf", List.of(target.isNative()
+                                        && !Type.isString(argType) ? argType
+                                        : Type.UnknownType.UNKNOWN),
                                 BuiltinTypes.STRING, KofCallKind.STATIC));
                     }
                     ops.add(new KofCall(
@@ -7935,6 +7954,14 @@ private Target target = Target.JVM;
                         typeParams, fields, java.util.Map.of()));
             }
         }
+        // Native: records não geram toString/equals nos backends (JVM/JS
+        // geram nos seus emitters). Sintetiza no IR para paridade — bug 11
+        // (native `==` dava undefined reference) e toString imprimia o handle.
+        if (target == Target.NATIVE || target == Target.NATIVE_RISCV64
+                || target == Target.NATIVE_AARCH64) {
+            methods.add(buildRecordToStringMethod(internalName, rec, fields, typeParams));
+            methods.add(buildRecordEqualsMethod(internalName, fields, typeParams));
+        }
         return new IRClass(internalName, superName, ifaces, access, fields, methods, List.of(), null,
                 typeId, lowerAnnotations(rec.annotations()));
     }
@@ -8332,6 +8359,89 @@ private Target target = Target.JVM;
             }
             ops.add(new KofStoreField(ownerType, field.name(), field.type()));
         }
+    }
+
+    /**
+     * toString() nativo de record: "Nome[campo=valor, ...]" — sintetizado no
+     * IR (padrão de concat: valueOf + kof_string_concat).
+     */
+    private IRMethod buildRecordToStringMethod(String internalName, RecordDeclarationNode rec,
+                                               List<IRField> fields, List<String> typeParams) {
+        Type ownerType = ownerTypeFromInternal(internalName);
+        String simpleName = internalName.contains("/")
+                ? internalName.substring(internalName.lastIndexOf('/') + 1) : internalName;
+        List<KofOperation> ops = new ArrayList<>();
+        List<IRLocalVariable> locals = new ArrayList<>();
+        locals.add(new IRLocalVariable(0, "this", ownerType));
+        // "Nome[x=valor, y=valor]" — concat: literal, campo, separador...
+        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, simpleName + "["));
+        ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+        for (int i = 0; i < fields.size(); i++) {
+            IRField f = fields.get(i);
+            ops.add(new KofLoadLiteral(BuiltinTypes.STRING, f.name() + "="));
+            ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                    List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+            ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                    List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                    BuiltinTypes.STRING, KofCallKind.FUNCTION));
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofLoadField(ownerType, f.name(), f.type()));
+            if (!Type.isString(f.type())) boxPrimitive(ops, f.type());
+            ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                    List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+            ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                    List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                    BuiltinTypes.STRING, KofCallKind.FUNCTION));
+            if (i + 1 < fields.size()) {
+                ops.add(new KofLoadLiteral(BuiltinTypes.STRING, ", "));
+                ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                        List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                        BuiltinTypes.STRING, KofCallKind.FUNCTION));
+            }
+        }
+        ops.add(new KofLoadLiteral(BuiltinTypes.STRING, "]"));
+        ops.add(new KofCall(BuiltinTypes.STRING, "valueOf",
+                List.of(Type.UnknownType.UNKNOWN), BuiltinTypes.STRING, KofCallKind.STATIC));
+        ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_concat",
+                List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                BuiltinTypes.STRING, KofCallKind.FUNCTION));
+        ops.add(new KofReturn(BuiltinTypes.STRING));
+        return new IRMethod("toString", BuiltinTypes.STRING, List.of(), AccessFlags.PUBLIC, List.of(),
+                List.of(new IRBasicBlock(0, ops)), locals);
+    }
+
+    /**
+     * equals() nativo de record: compara todos os componentes (bug 11 native).
+     */
+    private IRMethod buildRecordEqualsMethod(String internalName, List<IRField> fields,
+                                             List<String> typeParams) {
+        Type ownerType = ownerTypeFromInternal(internalName);
+        List<KofOperation> ops = new ArrayList<>();
+        List<IRLocalVariable> locals = new ArrayList<>();
+        locals.add(new IRLocalVariable(0, "this", ownerType));
+        locals.add(new IRLocalVariable(1, "other", ownerType));
+        for (int i = 0; i < fields.size(); i++) {
+            IRField f = fields.get(i);
+            ops.add(new KofLoadLocal(ownerType, 0));
+            ops.add(new KofLoadField(ownerType, f.name(), f.type()));
+            ops.add(new KofLoadLocal(ownerType, 1));
+            ops.add(new KofLoadField(ownerType, f.name(), f.type()));
+            ops.add(new KofBinary(KofBinaryOp.EQ, f.type()));
+            // AND acumula a partir do 2º campo: [bool0] → (bool0 AND bool1)
+            // O AND só após a 2ª comparação ter empilhado o 2º bool.
+            if (i > 0) {
+                ops.add(new KofBinary(KofBinaryOp.AND, Type.PrimitiveType.BOOL));
+            }
+        }
+        if (fields.isEmpty()) {
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 1));
+        }
+        ops.add(new KofReturn(Type.PrimitiveType.BOOL));
+        return new IRMethod("equals", Type.PrimitiveType.BOOL, List.of(ownerType), AccessFlags.PUBLIC,
+                List.of(), List.of(new IRBasicBlock(0, ops)), locals);
     }
 
     private IRMethod generateRecordConstructor(RecordDeclarationNode rec, String owner) {
