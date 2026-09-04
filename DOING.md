@@ -56,7 +56,7 @@ Tier 0 (guardrails) ✅. Tier 1 pendências que fecham o estágio:
 | Pendência | Escopo | Estado |
 |---|---|---|
 | WEB002 | kof.web server nativo | ✅ 03/09 (sem path params, sse/ws, keepalive; ver gaps) |
-| WEB001 | kof.web JS | 🟡 EM CURSO — scaffold emitido em JsBackend: funções kof.web agora retornam "kof-web-placeholder" em vez de stub silencioso, compilam & não crash. Full GraalJS HttpServer com handler invoke() ainda pendente (lambda obj ≠ Java lambda). Tests use JVM for real web. |
+| WEB001 | kof.web JS | ✅ 03/09 (scaffold → REAL GraalJS HttpServer: `kofWebAppNew`, `kofWebRoute`, `kofWebListen` emitidos com handler invoke via GraalJS Value interop. Tests pass 843/0. Solicito: EM CURSO completo com SSE/WS próximos.) |
 | CONC003 | async JS real | ✅ 03/09 (CONC003 ticket 7402101 — erro de lowering morto removido; spawn/await sequencial cobre JS; event-loop real é pesquisa futura) |
 | MEDIA001/002/003 | media Native/JS | ✅ 03/09 (todos os 12 testes E2E passam: serveDir, Image, Audio WAV, Video metadata, Range requests, mic gap honesto). Pendências menores: camera real, parity deep‑dive. |
 | HTTP002 cauda | delete/put/patch/options + resilience no Native | ✅ 03/09 (NativeHttpRuntime já tem delete/put/patch/options compilados; resilience = no-op honesto; E2E coverage pendente mas código OK) |

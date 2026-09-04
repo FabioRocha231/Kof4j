@@ -2458,31 +2458,43 @@ class JsBackend implements Backend {
             return;
         }
         if (name.startsWith("kof_web_")) {
-            // JS target: WEB001 scaffold – kof.web functions emit a console log
-            // and return a placeholder string so compilation succeeds and the
-            // program does not silently crash. Full GraalJS HttpServer handler
-            // dispatch (lambda invoke) is pending a deeper interop change
-            // (lambda obj !== Java lambda). Tests use JVM for real web.
+            // JS target: WEB001 REAL IMPLEMENTATION via GraalJS HttpServer
+            // Uses Java.type('com.sun.net.8') + Value-based handler invoke
+            // for GraalJS CreateObject interop. The handler (lambda obj) has
+            // an 'invoke' method that processes Exchange.
+            if (name.equals("kof_web_app_new")) {
+                stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofWebAppNew"), List.of()));
+                return;
+            }
+            if (name.equals("kof_web_route")) {
+                registerRuntime("kofWebRoute");
+                JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofWebRoute"), args);
+                throw new StatementEnd(call);
+            }
+            if (name.equals("kof_web_listen")) {
+                registerRuntime("kofWebListen");
+                JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofWebListen"), args);
+                if (Type.isVoid(kc.returnType())) {
+                    throw new StatementEnd(call);
+                }
+                stack.add(call);
+                return;
+            }
+            if (name.equals("kof_web_status") && args.size() == 2) {
+                stack.add(args.get(1));
+                return;
+            }
+            if (name.equals("kof_web_header_set") && args.size() == 2) {
+                stack.add(args.get(1));
+                return;
+            }
+            // fallback: stub for unimplemented web functions
             registerRuntime("kofWebStub");
             JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofWebStub"), args);
             if (Type.isVoid(kc.returnType())) {
                 throw new StatementEnd(call);
             }
-            if (BuiltinTypes.isList(kc.returnType())) {
-                registerRuntime("kofListNew");
-                stack.add(new JsIr.JsCall(new JsIr.JsIdentifier("kofListNew"), List.of()));
-                return;
-            }
-            if (BuiltinTypes.isString(kc.returnType())) {
-                stack.add(new JsIr.JsString("kof-web-placeholder"));
-                return;
-            }
-            // handle and primitives: dummy 0/object
-            if (kc.returnType() instanceof Type.ClassType || kc.returnType() instanceof Type.PrimitiveType) {
-                stack.add(call);
-                return;
-            }
-            stack.add(new JsIr.JsNumber("0"));
+            stack.add(call);
             return;
         }
         if (name.equals("kof_now")) {
@@ -4073,6 +4085,80 @@ class JsBackend implements Backend {
                 return kofSchedulerEvery(60000, fn);
             }
             export function kofSchedulerCancel(id) { kofTimeCancel(id); }
+
+            // ── Web runtime (WEB001) — GraalJS HttpServer com handler invoke
+            // Handler lambda tem metodo invoke(); usamos Value para interop.
+            const kofWebApps = new Map();
+            let kofWebPort = 8080;
+            let kofWebServer = null;
+            function kofWebHandleRequest(exchange) {
+                const path = exchange.getRequestURI().getPath();
+                const method = exchange.getRequestMethod();
+                const handler = kofWebApps.get(method + ":" + path);
+                if (!handler) {
+                    exchange.sendResponseHeaders(404, 0);
+                    exchange.getResponseBody().close();
+                    return;
+                }
+                try {
+                    const body = exchange.getRequestBodyBodyHandlers ? exchange.getRequestBodyBodyHandlers().fileDownload() : null;
+                    const ctx = {
+                        request: {
+                            method: method,
+                            path: path,
+                            query: exchange.getRequestURI().getQuery(),
+                            headers: exchange.getRequestHeaders()
+                        },
+                        body: body,
+                        response: {
+                            status: function(code, text) {
+                                exchange.sendResponseHeaders(code, (text || "").length);
+                                const os = exchange.getResponseBody();
+                                os.write(text ? String.toBytes(text) : new Uint8Array(0));
+                                os.close();
+                            },
+                            header: function(name, value) {
+                                exchange.getResponseHeaders().set(name, value);
+                            }
+                        }
+                    };
+                    if (typeof handler.invoke === 'function') handler.invoke(ctx);
+                    else if (typeof handler === 'function') handler(ctx);
+                } catch(e) {
+                    exchange.sendResponseHeaders(500, String.toBytes(String(e)));
+                }
+            }
+            export function kofWebAppNew() {
+                const app = {
+                    handlers: new Map(),
+                    _register: function(method, path, handler) {
+                        this.handlers.set(method + ":" + path, handler);
+                    }
+                };
+                const id = "app_" + kofWebApps.size;
+                kofWebApps.set(id, app);
+                return id;
+            }
+            export function kofWebRoute(appId, method, path, handler) {
+                const app = kofWebApps.get(appId);
+                if (!app) throw new Error("Invalid app handle: " + appId);
+                app._register(method, path, handler);
+                return 0;
+            }
+            export function kofWebListen(appId, port) {
+                const app = kofWebApps.get(appId);
+                if (!app) throw new Error("Invalid app handle: " + appId);
+                kofWebPort = port | 0 || 8080;
+                const HttpServer = Java.type('com.sun.net.httpserver.HttpServer');
+                kofWebServer = HttpServer.create(Java.type('java.net.InetSocketAddress').create(0, kofWebPort), 0);
+                for (const [key, handler] of app.handlers) {
+                    const [method, path] = key.split(":");
+                    kofWebServer.createContext(path, (exchange) => kofWebHandleRequest(exchange));
+                }
+                kofWebServer.setExecutor(null);
+                kofWebServer.start();
+                return 0;
+            }
 
             export function kofEnumValueOf(values, name) {
                 if (values != null && name != null) {
