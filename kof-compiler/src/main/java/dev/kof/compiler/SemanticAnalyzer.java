@@ -2010,10 +2010,22 @@ class SemanticAnalyzer {
     }
 
     private String enumConstantOfExpr(ExpressionNode e) {
-        if (e instanceof IdentifierExpr ie) return ie.name();
-        if (e instanceof MethodCallExpr mc && mc.receiver() instanceof IdentifierExpr rid
-                && mc.arguments().isEmpty()) {
-            return enumConstantsOf(rid.name()).contains(mc.methodName()) ? mc.methodName() : null;
+        if (e instanceof FieldAccessExpr fa && fa.receiver() instanceof IdentifierExpr rid) {
+            return enumConstantsOf(rid.name()).contains(fa.fieldName()) ? fa.fieldName() : null;
+        }
+        if (e instanceof LiteralExpr l && l.kind() == ConcreteLiteralKind.STRING) {
+            return l.value();
+        }
+        if (e instanceof IdentifierExpr ie) {
+            // não-qualificado: Red quando algum enum declara Red
+            if (currentUnit != null) {
+                for (AstNode d : currentUnit.declarations()) {
+                    if (d instanceof EnumDeclarationNode en && en.constants().contains(ie.name())) {
+                        return ie.name();
+                    }
+                }
+            }
+            return null;
         }
         return null;
     }

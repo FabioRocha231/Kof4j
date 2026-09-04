@@ -327,6 +327,80 @@ class KofSwitchExprE2ETest {
                 "deveria reportar SEM032: " + result.diagnostics().getDiagnostics());
     }
 
+    // ── enum: exaustivo sem default (SEM031/SEM032) ─────────────────
+
+    @Test
+    void enumExhaustiveJvm(@TempDir Path tmp) throws Exception {
+        runJvm(tmp, """
+                enum Color { Red, Green, Blue }
+                String cor(Color c) {
+                    return switch (c) {
+                        case Color.Red -> "vermelho"
+                        case Color.Green -> "verde"
+                        case Color.Blue -> "azul"
+                    }
+                }
+                main() {
+                    println(cor(Color.Red))
+                    println(cor(Color.Green))
+                    println(cor(Color.Blue))
+                }
+                """, "vermelho\nverde\nazul");
+    }
+
+    @Test
+    void enumExhaustiveNative(@TempDir Path tmp) throws Exception {
+        runNative(tmp, """
+                enum Color { Red, Green, Blue }
+                String cor(Color c) {
+                    return switch (c) {
+                        case Color.Red -> "vermelho"
+                        case Color.Green -> "verde"
+                        case Color.Blue -> "azul"
+                    }
+                }
+                main() {
+                    println(cor(Color.Green))
+                }
+                """, "verde");
+    }
+
+    @Test
+    void enumExhaustiveJs(@TempDir Path tmp) throws Exception {
+        runJs(tmp, """
+                enum Color { Red, Green, Blue }
+                String cor(Color c) {
+                    return switch (c) {
+                        case Color.Red -> "vermelho"
+                        case Color.Green -> "verde"
+                        case Color.Blue -> "azul"
+                    }
+                }
+                main() {
+                    println(cor(Color.Blue))
+                }
+                """, "azul");
+    }
+
+    @Test
+    void enumNonExhaustiveFailsToCompile(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("Main.kf");
+        Files.writeString(file, """
+                enum Color { Red, Green, Blue }
+                main() {
+                    var c = Color.Red
+                    var r = switch (c) {
+                        case Color.Red -> "vermelho"
+                    }
+                    println(r)
+                }
+                """);
+        CompilationResult result = driver.compile(file, tmp.resolve("out"), Target.JVM);
+        assertFalse(result.success(), "deveria falhar sem cobrir Green/Blue");
+        assertTrue(result.diagnostics().getDiagnostics().toString().contains("SEM032"),
+                "deveria reportar SEM032: " + result.diagnostics().getDiagnostics());
+    }
+
     // ── harness ────────────────────────────────────────────────────
 
     private String runJvm(Path tempDir, String source, String expected) throws Exception {
