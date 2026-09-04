@@ -431,7 +431,6 @@ class KofMediaE2ETest {
         // marcador do gap), nunca crash silencioso. As duas formulações do
         // gap (linha não suportada / LineUnavailable) carregam MEDIA003.
         assertTrue(r.contains("MEDIA003") || r.startsWith("HTTP/1.1 200"),
-                "gap honesto (MEDIA003) ou sucesso se houver hardware: "
-                        + r.split("\r\n", 2)[0]);
+                "gap honesto (MEDIA003) ou sucesso se houver hardware: " + r);
     }
 }

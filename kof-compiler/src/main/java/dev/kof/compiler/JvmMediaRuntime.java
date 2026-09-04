@@ -486,6 +486,21 @@ final class JvmMediaRuntime {
 
                 /** Captura `seconds` do microfone padrão → Audio (PCM 16k mono). */
                 public static int kof_media_mic_record(int seconds) {
+                    // Qualquer falha de hardware de áudio (linha não suportada,
+                    // LineUnavailable, IllegalArgumentException/IllegalState do
+                    // ALSA dummy, UnsatisfiedLinkError sem lib nativa) é o gap
+                    // honesto MEDIA003 — nunca um 500 sem marcador.
+                    try {
+                        return kof_media_mic_record_impl(seconds);
+                    } catch (RuntimeException e) {
+                        if (e.getMessage() != null && e.getMessage().contains("MEDIA003")) throw e;
+                        throw new RuntimeException("microfone indisponível (MEDIA003): " + e.getMessage(), e);
+                    } catch (Throwable e) {
+                        throw new RuntimeException("microfone indisponível (MEDIA003): " + e, e);
+                    }
+                }
+
+                private static int kof_media_mic_record_impl(int seconds) {
                     javax.sound.sampled.AudioFormat fmt = kof_media_mic_format();
                     javax.sound.sampled.DataLine.Info info =
                             new javax.sound.sampled.TargetDataLine.Info(
@@ -510,12 +525,6 @@ final class JvmMediaRuntime {
                     } catch (javax.sound.sampled.LineUnavailableException e) {
                         throw new RuntimeException(
                                 "microfone indisponível (MEDIA003): " + e.getMessage(), e);
-                    } catch (Exception e) {
-                        // ALSA/Pulse em ambientes sem hardware real lançam
-                        // IllegalArgumentException/IllegalStateException no
-                        // getLine/open/read — o gap continua sendo MEDIA003.
-                        throw new RuntimeException(
-                                "microfone indisponível (MEDIA003): " + e, e);
                     }
                     byte[] pcm = new byte[read];
                     System.arraycopy(buf, 0, pcm, 0, read);
