@@ -389,13 +389,18 @@ private Target target = Target.JVM;
             continue;
         }
         java.util.Map<String, String> seen = new java.util.HashMap<>();
+        java.util.Map<String, String> seenFile = new java.util.HashMap<>();
         for (AstNode d : decls) {
             String n = declarationName(d);
             if (n == null) continue;
             String pkg = declarationPackages.getOrDefault(d, unit.packageName());
             String prev = seen.get(n);
-            if (prev != null && prev.equals(pkg)) {
-                // Mesmo nome simples no MESMO pacote é erro (colisão real)
+            String file = d.position() != null ? d.position().file() : "";
+            if (prev != null && prev.equals(pkg)
+                    && !java.util.Objects.equals(seenFile.get(n), file)) {
+                // Mesmo nome simples no MESMO pacote vindo de ARQUIVOS
+                // diferentes é colisão real. A mesma declaração re-adicionada
+                // via import transitivo (fonte explícita + import) não é.
                 if (currentDiagnostics != null) {
                     currentDiagnostics.error("", 0, 0, 0,
                             "duplicate type name '" + n + "' in package '" + pkg + "'",
@@ -403,6 +408,7 @@ private Target target = Target.JVM;
                 }
             }
             seen.putIfAbsent(n, pkg);
+            seenFile.putIfAbsent(n, file);
         }
         return new CompilationUnitNode(unit.position(), unit.packageName(),
                 imports, decls);
