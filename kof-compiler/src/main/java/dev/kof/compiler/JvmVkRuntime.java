@@ -404,6 +404,5 @@ final class JvmVkRuntime {
                     VK_FENCE = vkRes(fOut);
                     VK_ERR = "ok";
                 }
-            }"""
-    }
+            }""";
 }
