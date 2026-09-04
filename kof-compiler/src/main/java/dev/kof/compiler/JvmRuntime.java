@@ -940,7 +940,16 @@ static boolean hasRuntimeFn(String methodName) {
                         return new WebDispatchResult(RouteKind.HTTP,
                                 kof_web_build(404, "Not Found", "{\\"error\\": \\"not found\\"}"), null);
                     } catch (Exception e) {
-                        String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                        // handler lambda é invocado via reflection: a exceção
+                        // real chega embrulhada em InvocationTargetException —
+                        // sem desempacotar, o 500 diz só "InvocationTargetException"
+                        // e esconde o diagnóstico (violation R6).
+                        Throwable root = e;
+                        while (root instanceof java.lang.reflect.InvocationTargetException
+                                && root.getCause() != null) {
+                            root = root.getCause();
+                        }
+                        String msg = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
                         KOF_WEB_STATUS.remove();
                         KOF_WEB_HEADERS.get().clear();
                         return new WebDispatchResult(RouteKind.HTTP,
