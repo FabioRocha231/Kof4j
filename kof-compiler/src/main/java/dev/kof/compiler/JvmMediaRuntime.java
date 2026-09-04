@@ -510,6 +510,12 @@ final class JvmMediaRuntime {
                     } catch (javax.sound.sampled.LineUnavailableException e) {
                         throw new RuntimeException(
                                 "microfone indisponível (MEDIA003): " + e.getMessage(), e);
+                    } catch (Exception e) {
+                        // ALSA/Pulse em ambientes sem hardware real lançam
+                        // IllegalArgumentException/IllegalStateException no
+                        // getLine/open/read — o gap continua sendo MEDIA003.
+                        throw new RuntimeException(
+                                "microfone indisponível (MEDIA003): " + e, e);
                     }
                     byte[] pcm = new byte[read];
                     System.arraycopy(buf, 0, pcm, 0, read);
