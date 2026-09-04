@@ -20,6 +20,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Estado | Dono | Branch | Arquivos principais | Notas |
 |---|---|---|---|---|---|
+| **SYN001** — `SwitchExpr`: switch como expressão (pattern matching via `case ... ->`) | `EM CURSO` | agente-switch-expr | main | `Parser.java`, `SemanticAnalyzer.java`, `CompilerDriver.java`, `JsBackend.java`, `AstNodes.java` (Δ pequeno e aditivo); novo `KofSwitchExprE2ETest.java` | plano em `docs/planning-switch-expr.md`. **Aditivo**: o `switch` statement (`:`) continua 100% (retrocompatibilidade). Lowering KIR (cobre JVM+Native); JS reusa o caminho `IfExpr` (cadeia `JsConditional`). KofPatternMatchingTest/KofEnumSwitchTest como gate de backward-compat |
 | **NATIVE002** — paridade stdlib riscv64/aarch64 (log/config/time/cache/mq stubs→real) | `FEITO` | agente-nativo-val | main | `NativeBackend.java` (`RISCV_RUNTIME_ASM` + `translateRiscvToAarch64`) | qemu riscv64+aarch64 OK; suíte 842/0. Detalhe: log `[LEVEL] msg` + stderr; config env real (`/proc/self/environ` syscall); cache TTL via `kof_time_now`, mq pub/sub c/ list (libera NATIVE002 residual) |
 
 ## Concluídos recentemente
