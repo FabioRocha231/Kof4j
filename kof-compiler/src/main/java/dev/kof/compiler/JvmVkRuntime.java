@@ -36,11 +36,7 @@ final class JvmVkRuntime {
                 private static volatile boolean VK_OK = false;
                 private static String VK_ERR = "not initialized";
 
-                private static java.lang.invoke.MethodHandle vkCreateInstance;
-                private static java.lang.invoke.MethodHandle vkEnumeratePhysicalDevices;
-                private static java.lang.invoke.MethodHandle vkGetPhysicalDeviceQueueFamilyProperties;
-                private static java.lang.invoke.MethodHandle vkCreateDevice;
-                private static java.lang.invoke.MethodHandle vkGetDeviceQueue;
+                private static java.lang.invoke.MethodHandle vkBoot;
                 private static java.lang.invoke.MethodHandle vkCreateShaderModule;
                 private static java.lang.invoke.MethodHandle vkCreateDescriptorSetLayout;
                 private static java.lang.invoke.MethodHandle vkCreatePipelineLayout;
@@ -66,7 +62,7 @@ final class JvmVkRuntime {
                 private static java.lang.invoke.MethodHandle vkCmdPushConstants;
                 private static java.lang.invoke.MethodHandle vkCmdDispatch;
                 private static java.lang.invoke.MethodHandle vkEndCommandBuffer;
-                private static java.lang.invoke.MethodHandle vkQueueSubmit;
+                private static java.lang.invoke.MethodHandle vkQueueSubmit2;
                 private static java.lang.invoke.MethodHandle vkWaitForFences;
                 private static java.lang.invoke.MethodHandle vkResetFences;
 
@@ -216,53 +212,69 @@ final class JvmVkRuntime {
                         var I = java.lang.foreign.ValueLayout.JAVA_INT;
                         var L = java.lang.foreign.ValueLayout.JAVA_LONG;
                         var P = java.lang.foreign.ValueLayout.ADDRESS;
-                        var F = java.lang.foreign.FunctionDescriptor;
-                        vkCreateInstance = vkFn(lib, "vkCreateInstance", F.of(I, P, P, P));
-                        vkEnumeratePhysicalDevices = vkFn(lib, "vkEnumeratePhysicalDevices",
-                                F.of(I, P, P, P));
-                        vkGetPhysicalDeviceQueueFamilyProperties = vkFn(lib,
-                                "vkGetPhysicalDeviceQueueFamilyProperties", F.ofVoid(P, P, P));
-                        vkCreateDevice = vkFn(lib, "vkCreateDevice", F.of(I, P, P, P, P));
-                        vkGetDeviceQueue = vkFn(lib, "vkGetDeviceQueue", F.ofVoid(P, I, I, P));
-                        vkCreateShaderModule = vkFn(lib, "vkCreateShaderModule", F.of(I, P, P, P));
+                        // bootstrap (instance/phys/dev/queue) via libvkboot:
+                        // o vkCreateDevice via downcall FFM direto produz um
+                        // device cujos SSBOs ficam invisiveis ao GPU de forma
+                        // nao-deterministica (RADV/LVP, JDK 25.0.3; probes
+                        // 18-23) — em C funciona e todo o resto e FFM.
+                        var bootLib = java.util.stream.Stream.of(
+                                "libvkboot.so", "./libvkboot.so")
+                                .map(n2 -> {
+                                    try {
+                                        return java.lang.foreign.SymbolLookup.libraryLookup(
+                                                n2, VK_ARENA);
+                                    } catch (Throwable e) {
+                                        return null;
+                                    }
+                                })
+                                .filter(s2 -> s2 != null)
+                                .findFirst()
+                                .orElseThrow(() -> new RuntimeException(
+                                        "libvkboot.so nao encontrada (instale em /usr/local/lib ou ./)"));
+                        vkBoot = vkFn(bootLib, "vkboot",
+                                java.lang.foreign.FunctionDescriptor.of(I, P));
+                        vkCreateShaderModule = vkFn(lib, "vkCreateShaderModule", java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
                         vkCreateDescriptorSetLayout = vkFn(lib, "vkCreateDescriptorSetLayout",
-                                F.of(I, P, P, P));
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
                         vkCreatePipelineLayout = vkFn(lib, "vkCreatePipelineLayout",
-                                F.of(I, P, P, P));
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
                         vkCreateComputePipelines = vkFn(lib, "vkCreateComputePipelines",
-                                F.of(I, P, P, I, P, P, P));
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, I, P, P, P));
                         vkCreateDescriptorPool = vkFn(lib, "vkCreateDescriptorPool",
-                                F.of(I, P, P, P));
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
                         vkAllocateDescriptorSets = vkFn(lib, "vkAllocateDescriptorSets",
-                                F.of(I, P, P));
-                        vkCreateCommandPool = vkFn(lib, "vkCreateCommandPool", F.of(I, P, P, P));
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, P));
+                        vkCreateCommandPool = vkFn(lib, "vkCreateCommandPool", java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
                         vkAllocateCommandBuffers = vkFn(lib, "vkAllocateCommandBuffers",
-                                F.of(I, P, P));
-                        vkCreateFence = vkFn(lib, "vkCreateFence", F.of(I, P, P, P));
-                        vkCreateBuffer = vkFn(lib, "vkCreateBuffer", F.of(I, P, P, P));
+                                java.lang.foreign.FunctionDescriptor.of(I, P, P, P));
+                        vkCreateFence = vkFn(lib, "vkCreateFence", java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
+                        vkCreateBuffer = vkFn(lib, "vkCreateBuffer", java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
                         vkGetBufferMemoryRequirements = vkFn(lib,
-                                "vkGetBufferMemoryRequirements", F.ofVoid(P, P));
+                                "vkGetBufferMemoryRequirements", java.lang.foreign.FunctionDescriptor.ofVoid(P, P, P));
                         vkGetPhysicalDeviceMemoryProperties = vkFn(lib,
-                                "vkGetPhysicalDeviceMemoryProperties", F.ofVoid(P, P));
-                        vkAllocateMemory = vkFn(lib, "vkAllocateMemory", F.of(I, P, P, P));
-                        vkBindBufferMemory = vkFn(lib, "vkBindBufferMemory", F.of(I, P, P, L, P));
-                        vkMapMemory = vkFn(lib, "vkMapMemory", F.of(I, P, L, L, I, P));
-                        vkUnmapMemory = vkFn(lib, "vkUnmapMemory", F.ofVoid(P, P));
-                        vkDestroyBuffer = vkFn(lib, "vkDestroyBuffer", F.ofVoid(P, P, P));
-                        vkFreeMemory = vkFn(lib, "vkFreeMemory", F.ofVoid(P, P, P));
+                                "vkGetPhysicalDeviceMemoryProperties", java.lang.foreign.FunctionDescriptor.ofVoid(P, P));
+                        vkAllocateMemory = vkFn(lib, "vkAllocateMemory", java.lang.foreign.FunctionDescriptor.of(I, P, P, P, P));
+                        // (device, buffer, memory, offset, pAllocator)
+                        vkBindBufferMemory = vkFn(lib, "vkBindBufferMemory", java.lang.foreign.FunctionDescriptor.of(I, P, P, P, L, P));
+                        // (device, memory, offset, size, flags, ppData)
+                        vkMapMemory = vkFn(lib, "vkMapMemory", java.lang.foreign.FunctionDescriptor.of(I, P, P, L, L, I, P));
+                        vkUnmapMemory = vkFn(lib, "vkUnmapMemory", java.lang.foreign.FunctionDescriptor.ofVoid(P, P));
+                        vkDestroyBuffer = vkFn(lib, "vkDestroyBuffer", java.lang.foreign.FunctionDescriptor.ofVoid(P, P, P));
+                        vkFreeMemory = vkFn(lib, "vkFreeMemory", java.lang.foreign.FunctionDescriptor.ofVoid(P, P, P));
                         vkUpdateDescriptorSets = vkFn(lib, "vkUpdateDescriptorSets",
-                                F.ofVoid(P, I, P, I, P));
-                        vkBeginCommandBuffer = vkFn(lib, "vkBeginCommandBuffer", F.of(I, P, P));
-                        vkCmdBindPipeline = vkFn(lib, "vkCmdBindPipeline", F.ofVoid(P, I, P));
+                                java.lang.foreign.FunctionDescriptor.ofVoid(P, I, P, I, P));
+                        vkBeginCommandBuffer = vkFn(lib, "vkBeginCommandBuffer", java.lang.foreign.FunctionDescriptor.of(I, P, P));
+                        vkCmdBindPipeline = vkFn(lib, "vkCmdBindPipeline", java.lang.foreign.FunctionDescriptor.ofVoid(P, I, P));
                         vkCmdBindDescriptorSets = vkFn(lib, "vkCmdBindDescriptorSets",
-                                F.ofVoid(P, I, P, I, I, P, I, P));
+                                java.lang.foreign.FunctionDescriptor.ofVoid(P, I, P, I, I, P, I, P));
                         vkCmdPushConstants = vkFn(lib, "vkCmdPushConstants",
-                                F.ofVoid(P, P, I, I, I, P));
-                        vkCmdDispatch = vkFn(lib, "vkCmdDispatch", F.ofVoid(P, I, I, I));
-                        vkEndCommandBuffer = vkFn(lib, "vkEndCommandBuffer", F.of(I, P));
-                        vkQueueSubmit = vkFn(lib, "vkQueueSubmit", F.of(I, P, I, P, P));
-                        vkWaitForFences = vkFn(lib, "vkWaitForFences", F.of(I, P, I, I, L));
-                        vkResetFences = vkFn(lib, "vkResetFences", F.of(I, P, I, P));
+                                java.lang.foreign.FunctionDescriptor.ofVoid(P, P, I, I, I, P));
+                        vkCmdDispatch = vkFn(lib, "vkCmdDispatch", java.lang.foreign.FunctionDescriptor.ofVoid(P, I, I, I));
+                        vkEndCommandBuffer = vkFn(lib, "vkEndCommandBuffer", java.lang.foreign.FunctionDescriptor.of(I, P));
+                        vkQueueSubmit2 = vkFn(lib, "vkQueueSubmit2", java.lang.foreign.FunctionDescriptor.of(I, P, I, P, P));
+                        // (device, fenceCount, pFences, waitAll, timeout)
+                        vkWaitForFences = vkFn(lib, "vkWaitForFences", java.lang.foreign.FunctionDescriptor.of(I, P, I, P, I, L));
+                        vkResetFences = vkFn(lib, "vkResetFences", java.lang.foreign.FunctionDescriptor.of(I, P, I, P));
                         vkInitChain();
                         return true;
                     } catch (Throwable t) {
@@ -300,78 +312,19 @@ final class JvmVkRuntime {
                 }
 
                 private static void vkInitChain() throws Throwable {
-                    var a = VK_ARENA;
-
-                    // VkApplicationInfo (48B AMD64): pApplicationName@16,
-                    // applicationVersion@24, pEngineName@32,
-                    // engineVersion@40, apiVersion@44 = VK_API_VERSION_1_3
-                    var ai = vkAlloc(48);
-                    putI(ai, 0, 0);
-                    putI(ai, 44, 0x00403000);
-
-                    // VkInstanceCreateInfo (64B): pApplicationInfo@24
-                    var ici = vkAlloc(64);
-                    putI(ici, 0, 1);
-                    putP(ici, 24, ai);
-                    var instOut = vkOut();
-                    vk((int) vkCreateInstance.invoke(ici, vkNull(), instOut), "instance");
-                    VK_INST = vkRes(instOut);
-
-                    // physical device 0
-                    var nOut = vkAlloc(8);
-                    putI(nOut, 0, 0);
-                    vk((int) vkEnumeratePhysicalDevices.invoke(VK_INST, nOut, vkNull()), "enum0");
-                    int n = getI(nOut, 0);
-                    if (n == 0) {
-                        VK_ERR = "nenhum physical device";
+                    // bootstrap C: {instance, phys, device, queue, qfam}
+                    var bootOut = vkAlloc(40);
+                    putL(bootOut, 0, 0);
+                    int brc = (int) vkBoot.invoke(bootOut);
+                    if (brc != 0) {
+                        VK_ERR = "vkboot falhou";
                         throw new RuntimeException(VK_ERR);
                     }
-                    var physv = a.allocate(8);
-                    vk((int) vkEnumeratePhysicalDevices.invoke(VK_INST, nOut, physv), "enum");
-                    VK_PHYS = getP(physv, 0);
-
-                    // queue family com QUEUE_COMPUTE_BIT (0x2)
-                    var qnOut = vkAlloc(8);
-                    putI(qnOut, 0, 0);
-                    vkGetPhysicalDeviceQueueFamilyProperties.invoke(VK_PHYS, qnOut, vkNull());
-                    int qn = Math.min(getI(qnOut, 0), 8);
-                    var qf = a.allocate(8L * qn);   // VkQueueFamilyProperties 8B
-                    vkGetPhysicalDeviceQueueFamilyProperties.invoke(VK_PHYS, qnOut, qf);
-                    int qfam = -1;
-                    for (int i = 0; i < qn; i++) {
-                        if ((getI(qf, (long) i * 8) & 0x2) != 0) {
-                            qfam = i;
-                            break;
-                        }
-                    }
-                    if (qfam < 0) {
-                        VK_ERR = "sem compute queue";
-                        throw new RuntimeException(VK_ERR);
-                    }
-
-                    // VkDeviceQueueCreateInfo (40B): queueFamilyIndex@20,
-                    // queueCount@24, pQueuePriorities@32
-                    var prio = a.allocate(4);
-                    prio.set(java.lang.foreign.ValueLayout.JAVA_FLOAT, 0, 1.0f);
-                    var qci = vkAlloc(40);
-                    putI(qci, 0, 2);
-                    putI(qci, 20, qfam);
-                    putI(qci, 24, 1);
-                    putP(qci, 32, prio);
-
-                    // VkDeviceCreateInfo (72B): queueCreateInfoCount@20,
-                    // pQueueCreateInfos@24, pEnabledFeatures@64 NULL
-                    var dci = vkAlloc(72);
-                    putI(dci, 0, 3);
-                    putI(dci, 20, 1);
-                    putP(dci, 24, qci);
-                    putL(dci, 64, 0);
-                    var devOut = vkOut();
-                    vk((int) vkCreateDevice.invoke(VK_PHYS, dci, vkNull(), devOut), "device");
-                    VK_DEV = vkRes(devOut);
-                    var qOut = vkOut();
-                    vkGetDeviceQueue.invoke(VK_DEV, qfam, 0, qOut);
-                    VK_QUEUE = vkRes(qOut);
+                    VK_INST = getP(bootOut, 0);
+                    VK_PHYS = getP(bootOut, 8);
+                    VK_DEV = getP(bootOut, 16);
+                    VK_QUEUE = getP(bootOut, 24);
+                    int qfam = getI(bootOut, 32);
 
                     // layouts + pipelines (SPVs default gpu/shaders/*.spv ou env)
                     VK_PL3 = vkMakeLayout(3);
@@ -402,9 +355,7 @@ final class JvmVkRuntime {
                             VK_DSET12 = vkMakeSet(3, VK_PL12);
                         }
                     }
-                    // matmul64: KOF_GPU_SPV64_MM, senão KOF_GPU_SPV64 (o
-                    // matmul64 e o matvec64 vivem no mesmo dir; o desenho
-                    // antigo usava a env 64 p/ ambos)
+                    // matmul64: KOF_GPU_SPV64_MM, senão KOF_GPU_SPV64
                     String spvMM64 = envSpvOpt("KOF_GPU_SPV64_MM",
                             envSpvOpt("KOF_GPU_SPV64", "gpu/shaders/matmul64.spv"));
                     if (spvMM64 != null) {
@@ -439,6 +390,7 @@ final class JvmVkRuntime {
                     VK_ERR = "ok";
                 }
 
+
                 // VkDescriptorSetLayoutBinding (24B): binding@0,
                 // descriptorType@4 = STORAGE_BUFFER(7), descriptorCount@8,
                 // stageFlags@12 = COMPUTE(0x20), pImmutableSamplers@16
@@ -460,7 +412,7 @@ final class JvmVkRuntime {
                         putI(binds, o + 12, 0x20);
                     }
                     var li = vkAlloc(32);
-                    putI(li, 0, 24);
+                    putI(li, 0, 32);
                     putI(li, 20, nbinds);
                     putP(li, 24, binds);
                     var lo = vkOut();
@@ -468,13 +420,19 @@ final class JvmVkRuntime {
                             "desc layout");
                     var dsl = vkRes(lo);
 
-                    var pcr = vkAlloc(12);      // VkPushConstantRange: offset@4, size@8
+                    // VkPushConstantRange (12B): stageFlags@0, offset@4, size@8
+                    var pcr = vkAlloc(12);
+                    putI(pcr, 0, 0x20);         // SHADER_STAGE_COMPUTE
                     putI(pcr, 4, 0);
                     putI(pcr, 8, pushSize);
+                    // pSetLayouts é pointer P/ ARRAY de layouts (o handle NÃO
+                    // vai embutido no campo — lição do debug RADV/LVP)
+                    var setArr = vkAlloc(8);
+                    putP(setArr, 0, dsl);
                     var pli = vkAlloc(48);
-                    putI(pli, 0, 26);
+                    putI(pli, 0, 30);
                     putI(pli, 20, 1);
-                    putP(pli, 24, dsl);
+                    putP(pli, 24, setArr);
                     putI(pli, 32, 1);
                     putP(pli, 40, pcr);
                     var plo = vkOut();
@@ -492,7 +450,7 @@ final class JvmVkRuntime {
                     // VkShaderModuleCreateInfo (40B): flags@16,
                     // codeSize@24 (size_t), pCode@32
                     var smci = vkAlloc(40);
-                    putI(smci, 0, 21);
+                    putI(smci, 0, 16);
                     putL(smci, 24, spv.length);
                     var code = vkAlloc(spv.length);
                     java.lang.foreign.MemorySegment.copy(
@@ -503,13 +461,17 @@ final class JvmVkRuntime {
                             "shader module");
                     var sm = vkRes(smOut);
 
+                    // VkPushConstantRange (12B): stageFlags@0, offset@4, size@8
                     var pcr = vkAlloc(12);
+                    putI(pcr, 0, 0x20);
                     putI(pcr, 4, 0);
                     putI(pcr, 8, pushSize);
+                    var setArr = vkAlloc(8);
+                    putP(setArr, 0, layout);
                     var pli = vkAlloc(48);
-                    putI(pli, 0, 26);
+                    putI(pli, 0, 30);
                     putI(pli, 20, 1);
-                    putP(pli, 24, layout);
+                    putP(pli, 24, setArr);
                     putI(pli, 32, 1);
                     putP(pli, 40, pcr);
                     var plo = vkOut();
@@ -518,24 +480,28 @@ final class JvmVkRuntime {
                     var pl = vkRes(plo);
 
                     var stage = vkAlloc(48);
-                    putI(stage, 20, 5);
+                    putI(stage, 0, 18);         // PIPELINE_SHADER_STAGE_CREATE_INFO
+                    putI(stage, 20, 0x20);      // VK_SHADER_STAGE_COMPUTE_BIT
                     putP(stage, 24, sm);
                     putP(stage, 32, vkCstr("main"));
                     var cpci = vkAlloc(96);
-                    putI(cpci, 0, 25);
+                    putI(cpci, 0, 29);
                     java.lang.foreign.MemorySegment.copy(stage, 0, cpci, 24, 48);
                     putP(cpci, 72, pl);
                     var po = vkOut();
-                    vk((int) vkCreateComputePipelines.invoke(VK_DEV, vkNull(), cpci, 1,
+                    // (device, cache, createInfoCount, pCreateInfos, pAlloc, pOut)
+                    vk((int) vkCreateComputePipelines.invoke(VK_DEV, vkNull(), 1, cpci,
                             vkNull(), po), "pipeline");
                     return vkRes(po);
                 }
 
                 private static java.lang.foreign.MemorySegment vkCstr(String s) {
-                    byte[] b = (s + "\\0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    var seg = VK_ARENA.allocate(b.length);
+                    // NUL real (\\0 num text block viraria barra+zero)
+                    byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    var seg = VK_ARENA.allocate(b.length + 1);
                     java.lang.foreign.MemorySegment.copy(
                             java.lang.foreign.MemorySegment.ofArray(b), 0, seg, 0, b.length);
+                    seg.set(java.lang.foreign.ValueLayout.JAVA_BYTE, b.length, (byte) 0);
                     return seg;
                 }
 
@@ -549,7 +515,7 @@ final class JvmVkRuntime {
                     putI(psize, 0, 7);
                     putI(psize, 4, nbinds);
                     var dpi = vkAlloc(40);
-                    putI(dpi, 0, 22);
+                    putI(dpi, 0, 33);
                     putI(dpi, 20, nbinds);
                     putI(dpi, 24, 1);
                     putP(dpi, 32, psize);
@@ -559,10 +525,13 @@ final class JvmVkRuntime {
                     var pool = vkRes(dpo);
 
                     var dsai = vkAlloc(40);
-                    putI(dsai, 0, 32);
+                    putI(dsai, 0, 34);
                     putP(dsai, 16, pool);
                     putI(dsai, 24, 1);
-                    putP(dsai, 32, layout);
+                    // pSetLayouts é pointer p/ array de layouts
+                    var layArr = vkAlloc(8);
+                    putP(layArr, 0, layout);
+                    putP(dsai, 32, layArr);
                     var dso = vkAlloc(8);
                     vk((int) vkAllocateDescriptorSets.invoke(VK_DEV, dsai, dso), "desc set");
                     return getP(dso, 0);
@@ -575,7 +544,7 @@ final class JvmVkRuntime {
                     // VkBufferCreateInfo (56B): flags@16, size@24 (DeviceSize),
                     // usage@32 = STORAGE_BUFFER(0x80), sharingMode@36 = EXCLUSIVE(0)
                     var bci = vkAlloc(56);
-                    putI(bci, 0, 15);
+                    putI(bci, 0, 12);
                     putL(bci, 24, bytes);
                     putI(bci, 32, 0x80);
                     putI(bci, 36, 0);
@@ -591,13 +560,13 @@ final class JvmVkRuntime {
 
                     var pdmp = vkAlloc(520);    // VkPhysicalDeviceMemoryProperties:
                                                 // memoryTypeCount@0, types@4 (32×8B:
-                                                // propertyFlags@4 de cada)
+                                                // propertyFlags@0+o, heapIndex@4+o)
                     vkGetPhysicalDeviceMemoryProperties.invoke(VK_PHYS, pdmp);
                     int nTypes = Math.min(getI(pdmp, 0), 32);
                     int memIdx = -1;
                     for (int t = 0; t < nTypes; t++) {
                         long o = 4L + (long) t * 8;
-                        int props = getI(pdmp, o + 4);
+                        int props = getI(pdmp, o);
                         if ((memTypeBits & (1 << t)) != 0
                                 && (props & 0x6) == 0x6) {  // HOST_VISIBLE|COHERENT
                             memIdx = t;
@@ -620,7 +589,9 @@ final class JvmVkRuntime {
                             "bind mem");
                     var mpOut = vkOut();
                     vk((int) vkMapMemory.invoke(VK_DEV, slot[1], 0L, size, 0, mpOut), "map");
-                    slot[2] = vkRes(mpOut);
+                    // o mapped sai zero-length do downcall — reinterpret com
+                    // o size real (a memória é nossa até o unmap)
+                    slot[2] = vkRes(mpOut).reinterpret(size);
                 }
 
                 private static void vkDrop(java.lang.foreign.MemorySegment[] slot) throws Throwable {
@@ -690,13 +661,16 @@ final class JvmVkRuntime {
                     putL(dbi, 8, 0L);
                     putL(dbi, 16, -1L);
                     var w = vkAlloc(64);
-                    putI(w, 0, 56);
+                    putI(w, 0, 35);
                     putP(w, 16, dset);
                     putI(w, 24, binding);
                     putI(w, 28, 0);
                     putI(w, 32, 1);
                     putI(w, 36, 7);
                     putP(w, 48, dbi);
+                    System.err.println("[vkdbg] bind b=" + binding + " buf=" + buf.address()
+                            + " dbi=" + dbi.address() + " wds=" + w.address()
+                            + " dset=" + dset.address());
                     vkUpdateDescriptorSets.invoke(VK_DEV, 1, w, 0, vkNull());
                 }
 
@@ -733,10 +707,10 @@ final class JvmVkRuntime {
                     putI(bbi, 0, 42);
                     putI(bbi, 16, 1);
                     vk((int) vkBeginCommandBuffer.invoke(VK_CMD, bbi), "begin");
-                    vkCmdBindPipeline.invoke(VK_CMD, 6, pipe);
+                    vkCmdBindPipeline.invoke(VK_CMD, 1, pipe);
                     var dsets = vkAlloc(8);
                     putP(dsets, 0, dset);
-                    vkCmdBindDescriptorSets.invoke(VK_CMD, 6, layout, 0, 1, dsets, 0, vkNull());
+                    vkCmdBindDescriptorSets.invoke(VK_CMD, 1, layout, 0, 1, dsets, 0, vkNull());
                     int divId = (div == 1_000_000_000L) ? 0 : ((div == 1_000_000L) ? 1 : 2);
                     var push = vkAlloc(24);
                     putI(push, 0, m);
@@ -757,10 +731,10 @@ final class JvmVkRuntime {
                     putI(bbi, 0, 42);
                     putI(bbi, 16, 1);
                     vk((int) vkBeginCommandBuffer.invoke(VK_CMD, bbi), "begin");
-                    vkCmdBindPipeline.invoke(VK_CMD, 6, pipe);
+                    vkCmdBindPipeline.invoke(VK_CMD, 1, pipe);
                     var dsets = vkAlloc(8);
                     putP(dsets, 0, dset);
-                    vkCmdBindDescriptorSets.invoke(VK_CMD, 6, layout, 0, 1, dsets, 0, vkNull());
+                    vkCmdBindDescriptorSets.invoke(VK_CMD, 1, layout, 0, 1, dsets, 0, vkNull());
                     var push = vkAlloc(12);
                     putI(push, 0, m);
                     putI(push, 4, n);
@@ -772,18 +746,22 @@ final class JvmVkRuntime {
 
                 private static void vkEndAndWait() throws Throwable {
                     vk((int) vkEndCommandBuffer.invoke(VK_CMD), "end");
-                    // VkSubmitInfo (72B): waitSemaphoreCount@16,
-                    // pWaitSemaphores@24, pWaitDstStageMask@32,
-                    // commandBufferCount@40, pCommandBuffers@48,
-                    // signalSemaphoreCount@56, pSignalSemaphores@64
-                    var si = vkAlloc(72);
-                    putI(si, 0, 4);
-                    putI(si, 40, 1);
-                    putP(si, 48, VK_CMD);
-                    vk((int) vkQueueSubmit.invoke(VK_QUEUE, 1, si, VK_FENCE), "submit");
-                    vk((int) vkWaitForFences.invoke(VK_DEV, 1, VK_FENCE, 1, 5_000_000_000L),
+                    // vkQueueSubmit2: VkCommandBufferSubmitInfo (32B, cmd@16)
+                    // + VkSubmitInfo2 (64B: flags@16, cmdCount@32, pCmdInfos@40)
+                    var cbsi = vkAlloc(32);
+                    putI(cbsi, 0, 1000314006);
+                    putP(cbsi, 16, VK_CMD);
+                    var si = vkAlloc(64);
+                    putI(si, 0, 1000314004);
+                    putI(si, 32, 1);
+                    putP(si, 40, cbsi);
+                    vk((int) vkQueueSubmit2.invoke(VK_QUEUE, 1, si, VK_FENCE), "submit");
+                    // pFences é pointer p/ array de fences
+                    var rf = vkAlloc(8);
+                    putP(rf, 0, VK_FENCE);
+                    vk((int) vkWaitForFences.invoke(VK_DEV, 1, rf, 1, 5_000_000_000L),
                             "wait fence");
-                    vkResetFences.invoke(VK_DEV, 1, VK_FENCE);
+                    vkResetFences.invoke(VK_DEV, 1, rf);
                 }
 
                 // ── matvec residente (contrato do vkchain64.c) ────────────────
@@ -821,10 +799,14 @@ final class JvmVkRuntime {
                         vkGrow(S_X, C_X, (long) k * 8);
                         vkGrow(S_Y, C_Y, (long) m * 8);
                         putLongs(S_X[2], x, k);
+                        System.err.println("[vkdbg] matvec: x0map=" + S_X[2].getAtIndex(java.lang.foreign.ValueLayout.JAVA_LONG, 0)
+                                + " xbuf=" + S_X[0].address() + " wbuf=" + S_W[0].address()
+                                + " ybuf=" + S_Y[0].address() + " w0map=" + S_W[2].getAtIndex(java.lang.foreign.ValueLayout.JAVA_LONG, 0));
                         vkRunMV(VK_PIPE64, VK_DSET3, false,
                                 new java.lang.foreign.MemorySegment[]{S_W[0], S_X[0], S_Y[0]},
                                 m, k, 0L);
                         getLongs(S_Y[2], y, m);
+                        System.err.println("[vkdbg] matvec: y0map=" + S_Y[2].getAtIndex(java.lang.foreign.ValueLayout.JAVA_LONG, 0));
                         return 0;
                     } catch (Throwable t) {
                         return -1;
@@ -955,6 +937,7 @@ final class JvmVkRuntime {
                         }
                         return 0;
                     } catch (Throwable t) {
+                        VK_ERR = "dispatch32: " + t;
                         return -1;
                     }
                 }
@@ -975,10 +958,10 @@ final class JvmVkRuntime {
                         putI(bbi, 0, 42);
                         putI(bbi, 16, 1);
                         vk((int) vkBeginCommandBuffer.invoke(VK_CMD, bbi), "begin");
-                        vkCmdBindPipeline.invoke(VK_CMD, 6, VK_PIPEMM64);
+                        vkCmdBindPipeline.invoke(VK_CMD, 1, VK_PIPEMM64);
                         var dsets = vkAlloc(8);
                         putP(dsets, 0, VK_DSET12);
-                        vkCmdBindDescriptorSets.invoke(VK_CMD, 6, VK_PL12, 0, 1, dsets, 0, vkNull());
+                        vkCmdBindDescriptorSets.invoke(VK_CMD, 1, VK_PL12, 0, 1, dsets, 0, vkNull());
                         var push = vkAlloc(12);
                         putI(push, 0, m);
                         putI(push, 4, n);
@@ -989,9 +972,9 @@ final class JvmVkRuntime {
                         getLongs(S_C64[2], c, m * n);
                         return 0;
                     } catch (Throwable t) {
+                        VK_ERR = "dispatch64: " + t;
                         return -1;
                     }
                 }
-            }"""
-    }
+            }""";
 }
