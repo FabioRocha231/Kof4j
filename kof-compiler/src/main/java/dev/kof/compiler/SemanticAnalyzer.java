@@ -1897,8 +1897,125 @@ class SemanticAnalyzer {
                 }
                 yield thenType;
             }
+            case SwitchExpr se -> {
+                Type subjectType = inferType(se.expression(), scope);
+                Type result = Type.UnknownType.UNKNOWN;
+                int armCount = 0;
+                for (SwitchExprCase sc : se.cases()) {
+                    SymbolTable caseScope = scope.enterScope();
+                    if (sc.value() instanceof PatternExpr pe) {
+                        bindPatternVars(pe, caseScope);
+                    } else {
+                        inferType(sc.value(), scope);
+                    }
+                    Type t = inferType(sc.body(), caseScope);
+                    if (armCount == 0) result = t;
+                    armCount++;
+                }
+                if (se.defaultValue() != null) {
+                    SymbolTable defaultScope = scope.enterScope();
+                    inferType(se.defaultValue(), defaultScope);
+                } else {
+                    // exaustividade: sem default, switch sobre enum precisa cobrir
+                    // todas as constantes (mesma regra do statement, SEM031).
+                    if (subjectType instanceof Type.ClassType sct && sct.packageName().isEmpty()
+                            && currentUnit != null) {
+                        java.util.Set<String> covered = new java.util.HashSet<>();
+                        for (SwitchExprCase sc : se.cases()) {
+                            String cn = enumConstantOfExpr(sc.value());
+                            if (cn != null) covered.add(cn);
+                        }
+                        List<String> constants = enumConstantsOf(sct.name());
+                        List<String> missing = constants.stream().filter(c -> !covered.contains(c)).toList();
+                        if (!missing.isEmpty()) {
+                            reportError(se, "switch expressão sobre '" + sct.name()
+                                    + "' não cobre: " + String.join(", ", missing)
+                                    + " (adicione default ou os casos faltantes)", "SEM032");
+                        }
+                    } else {
+                        reportError(se, "switch expressão exige 'default' (ou exaustividade de enum)", "SEM032");
+                    }
+                }
+                yield result;
+            }
             default -> Type.UnknownType.UNKNOWN;
         };
+    }
+
+    /** Reporta erro de análise sem posição precisa (estilo dos demais SEM*xx). */
+    private void reportError(AstNode n, String message, String code) {
+        if (diagnostics == null) return;
+        SourcePosition p = n.position();
+        String file = p != null ? p.file() : "";
+        int line = p != null ? p.line() : 0;
+        int col = p != null ? p.column() : 0;
+        int len = p != null ? p.length() : 0;
+        diagnostics.error(file, line, col, len, message, code);
+    }
+
+    /**
+     * Define no escopo do case as variáveis de um pattern:
+     * {@code case T v} → {@code v:T}; {@code case T(var x, var y)} → campos por
+     * índice (record) ou por nome. Espelha a lógica do {@code SwitchStmt}.
+     */
+    private void bindPatternVars(PatternExpr pe, SymbolTable scope) {
+        Type patType = resolveType(pe.typeName(), scope);
+        if (patType == null) patType = Type.UnknownType.UNKNOWN;
+        if (pe.varName() != null) {
+            scope.define(new SymbolTable.LocalVariableSymbol(pe.varName(), patType, 0));
+            return;
+        }
+        if (pe.fieldVars().isEmpty()) return;
+        String simple = patType instanceof Type.ClassType ct ? ct.name() : pe.typeName();
+        SymbolTable.ClassSymbol cls = getClass(simple);
+        java.util.List<String> fieldNames = pe.fieldVars();
+        for (int i = 0; i < fieldNames.size(); i++) {
+            String fv = fieldNames.get(i);
+            Type fieldType = Type.UnknownType.UNKNOWN;
+            if (cls != null) {
+                var members = cls.members();
+                java.util.List<SymbolTable.Symbol> fields = new java.util.ArrayList<>();
+                for (var e : members.localSymbols().values()) {
+                    if (e instanceof SymbolTable.FieldSymbol) fields.add(e);
+                }
+                if (fields.size() == fieldNames.size() && i < fields.size()) {
+                    fieldType = fields.get(i).type();
+                } else {
+                    SymbolTable.Symbol sym = members.resolve(fv);
+                    if (sym != null) fieldType = sym.type();
+                    else {
+                        for (AstNode d : currentUnit.declarations()) {
+                            if (d instanceof RecordDeclarationNode rec && rec.name().equals(simple)) {
+                                if (i < rec.components().size()) {
+                                    fieldType = resolveType(rec.components().get(i).type(), scope);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            scope.define(new SymbolTable.LocalVariableSymbol(fv, fieldType, 0));
+        }
+    }
+
+    private java.util.List<String> enumConstantsOf(String name) {
+        if (name == null || currentUnit == null) return List.of();
+        for (AstNode d : currentUnit.declarations()) {
+            if (d instanceof EnumDeclarationNode en && en.name().equals(name)) {
+                return en.constants();
+            }
+        }
+        return List.of();
+    }
+
+    private String enumConstantOfExpr(ExpressionNode e) {
+        if (e instanceof IdentifierExpr ie) return ie.name();
+        if (e instanceof MethodCallExpr mc && mc.receiver() instanceof IdentifierExpr rid
+                && mc.arguments().isEmpty()) {
+            return enumConstantsOf(rid.name()).contains(mc.methodName()) ? mc.methodName() : null;
+        }
+        return null;
     }
 
     private Type inferLiteralType(LiteralExpr lit) {

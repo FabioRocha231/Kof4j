@@ -1081,55 +1081,8 @@ class Parser {
             if (check(TokenType.CASE)) {
                 SourcePosition cp = pos();
                 advance();
-                ExpressionNode value;
-                // pattern matching: case Type var :  or  case Type(var1, var2) :
-                if (check(TokenType.IDENTIFIER) && pos + 2 < tokens.size()
-                        && tokens.get(pos + 1).type() == TokenType.IDENTIFIER
-                        && tokens.get(pos + 2).type() == TokenType.COLON) {
-                    String typeName = advance().value();
-                    String varName = advance().value();
-                    value = new PatternExpr(cp, typeName, varName, java.util.List.of());
-                } else if (check(TokenType.IDENTIFIER) && pos + 1 < tokens.size()
-                        && tokens.get(pos + 1).type() == TokenType.LPAREN) {
-                    // Try destructuring: case Type(var1, var2) :
-                    String typeName = tokens.get(pos).value();
-                    int depth = 0;
-                    int rparenPos = -1;
-                    for (int k = pos + 1; k < tokens.size() && k < pos + 20; k++) {
-                        TokenType tt = tokens.get(k).type();
-                        if (tt == TokenType.LPAREN) depth++;
-                        else if (tt == TokenType.RPAREN) {
-                            depth--;
-                            if (depth == 0) { rparenPos = k; break; }
-                        }
-                    }
-                    if (rparenPos != -1 && rparenPos + 1 < tokens.size()
-                            && tokens.get(rparenPos + 1).type() == TokenType.COLON) {
-                        java.util.List<String> fieldVars = new java.util.ArrayList<>();
-                        for (int q = pos + 2; q < rparenPos; q++) {
-                            if (tokens.get(q).type() == TokenType.IDENTIFIER) {
-                                String v = tokens.get(q).value();
-                                if (("var".equals(v) || "val".equals(v)) && q + 1 < rparenPos
-                                        && tokens.get(q + 1).type() == TokenType.IDENTIFIER) {
-                                    fieldVars.add(tokens.get(q + 1).value());
-                                    q++;
-                                } else {
-                                    fieldVars.add(v);
-                                }
-                            }
-                        }
-                        advance(); // Type
-                        advance(); // LPAREN
-                        while (!check(TokenType.RPAREN) && !atEnd()) advance();
-                        if (check(TokenType.RPAREN)) advance();
-                        value = new PatternExpr(cp, typeName, null, java.util.List.copyOf(fieldVars));
-                    } else {
-                        value = parseExpression();
-                    }
-                } else {
-                    value = parseExpression();
-                }
-                expect(TokenType.COLON, "Expected ':'", "PARSE073");
+                ExpressionNode value = parseSwitchCasePatternOrValue(cp);
+                expect(TokenType.COLON, "Expected ':' (switch statement) ou '->' (switch expressão)", "PARSE073");
                 List<StatementNode> caseBody = new ArrayList<>();
                 while (!check(TokenType.CASE) && !check(TokenType.DEFAULT) && !check(TokenType.RBRACE) && !atEnd()) {
                     caseBody.add(parseStatement());
@@ -1148,6 +1101,103 @@ class Parser {
         }
         expect(TokenType.RBRACE, "Expected '}'", "PARSE075");
         return new SwitchStmt(p, expr, cases, defaultBody);
+    }
+
+    /**
+     * Valor ou pattern de um case de switch (compartilhado pela forma statement
+     * {@code case X:} e pela forma expressão {@code case X ->}):
+     * <ul>
+     *   <li>{@code case Type var} — pattern simples ({@link PatternExpr})</li>
+     *   <li>{@code case Type(var1, var2)} — pattern de destructuring</li>
+     *   <li>senão, uma expressão comum (literal, constante, {@code x instanceof T})</li>
+     * </ul>
+     */
+    private ExpressionNode parseSwitchCasePatternOrValue(SourcePosition cp) {
+        // pattern matching: case Type var  /  case Type(var1, var2)
+        if (check(TokenType.IDENTIFIER) && pos + 2 < tokens.size()
+                && tokens.get(pos + 1).type() == TokenType.IDENTIFIER
+                && (tokens.get(pos + 2).type() == TokenType.COLON
+                        || tokens.get(pos + 2).type() == TokenType.ARROW)) {
+            String typeName = advance().value();
+            String varName = advance().value();
+            return new PatternExpr(cp, typeName, varName, java.util.List.of());
+        }
+        if (check(TokenType.IDENTIFIER) && pos + 1 < tokens.size()
+                && tokens.get(pos + 1).type() == TokenType.LPAREN) {
+            // Try destructuring: case Type(var1, var2)
+            String typeName = tokens.get(pos).value();
+            int depth = 0;
+            int rparenPos = -1;
+            for (int k = pos + 1; k < tokens.size() && k < pos + 20; k++) {
+                TokenType tt = tokens.get(k).type();
+                if (tt == TokenType.LPAREN) depth++;
+                else if (tt == TokenType.RPAREN) {
+                    depth--;
+                    if (depth == 0) { rparenPos = k; break; }
+                }
+            }
+            if (rparenPos != -1 && rparenPos + 1 < tokens.size()
+                    && (tokens.get(rparenPos + 1).type() == TokenType.COLON
+                            || tokens.get(rparenPos + 1).type() == TokenType.ARROW)) {
+                java.util.List<String> fieldVars = new java.util.ArrayList<>();
+                for (int q = pos + 2; q < rparenPos; q++) {
+                    if (tokens.get(q).type() == TokenType.IDENTIFIER) {
+                        String v = tokens.get(q).value();
+                        if (("var".equals(v) || "val".equals(v)) && q + 1 < rparenPos
+                                && tokens.get(q + 1).type() == TokenType.IDENTIFIER) {
+                            fieldVars.add(tokens.get(q + 1).value());
+                            q++;
+                        } else {
+                            fieldVars.add(v);
+                        }
+                    }
+                }
+                advance(); // Type
+                advance(); // LPAREN
+                while (!check(TokenType.RPAREN) && !atEnd()) advance();
+                if (check(TokenType.RPAREN)) advance();
+                return new PatternExpr(cp, typeName, null, java.util.List.copyOf(fieldVars));
+            }
+            return parseExpression();
+        }
+        return parseExpression();
+    }
+
+    /**
+     * Switch como expressão (SYN001): {@code switch (e) { case A -> b; case T v -> c;
+     * default -> d }}. Forma aditiva — os cases usam {@code ->} e o corpo de cada
+     * caso é UMA expressão (o valor do caso). O {@code default} é obrigatório
+     * (validado no analyzer, SEM032) — uma expressão não pode "cair" sem valor.
+     */
+    private ExpressionNode parseSwitchExpression() {
+        SourcePosition p = pos();
+        advance(); // switch
+        expect(TokenType.LPAREN, "Expected '(' after 'switch'", "PARSE070");
+        ExpressionNode expr = parseExpression();
+        expect(TokenType.RPAREN, "Expected ')'", "PARSE071");
+        expect(TokenType.LBRACE, "Expected '{'", "PARSE072");
+        List<SwitchExprCase> cases = new ArrayList<>();
+        ExpressionNode defaultValue = null;
+        while (!check(TokenType.RBRACE) && !atEnd()) {
+            if (check(TokenType.CASE)) {
+                SourcePosition cp = pos();
+                advance();
+                ExpressionNode value = parseSwitchCasePatternOrValue(cp);
+                expect(TokenType.ARROW,
+                        "Switch expressão exige '->' (a forma statement usa ':')", "PARSE076");
+                ExpressionNode body = parseExpression();
+                cases.add(new SwitchExprCase(cp, value, body));
+            } else if (check(TokenType.DEFAULT)) {
+                advance();
+                expect(TokenType.ARROW, "Expected '->' after 'default'", "PARSE077");
+                defaultValue = parseExpression();
+            } else {
+                error("Esperava 'case' ou 'default' em switch expressão", "PARSE078");
+                advance();
+            }
+        }
+        expect(TokenType.RBRACE, "Expected '}'", "PARSE075");
+        return new SwitchExpr(p, expr, cases, defaultValue);
     }
 
     private StatementNode parseVarDecl() {
@@ -1225,6 +1275,9 @@ class Parser {
     }
 
     private ExpressionNode parseExpression() {
+        if (check(TokenType.SWITCH)) {
+            return parseSwitchExpression();
+        }
         return parseAssignment();
     }
 
