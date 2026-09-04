@@ -7760,6 +7760,26 @@ final class NativeRuntime {
             kof_mv64_wrun:
                 movl $-1, %eax
                 ret
+            .globl kof_mv64_wput32
+            .type kof_mv64_wput32, @function
+            kof_mv64_wput32:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wrun32
+            .type kof_mv64_wrun32, @function
+            kof_mv64_wrun32:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wputsp
+            .type kof_mv64_wputsp, @function
+            kof_mv64_wputsp:
+                movl $-1, %eax
+                ret
+            .globl kof_mv64_wrunsp
+            .type kof_mv64_wrunsp, @function
+            kof_mv64_wrunsp:
+                movl $-1, %eax
+                ret
             """);
     }
 

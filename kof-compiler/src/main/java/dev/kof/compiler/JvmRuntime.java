@@ -287,7 +287,11 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_mv64_load_w" -> "([JII)I";
             case "kof_mv64_matvec" -> "([J[JII)I";
             case "kof_mv64_wput" -> "(I[JII)I";
-            case "kof_mv64_wrun" -> "(I[J[JII)I";
+            case "kof_mv64_wrun" -> "(I[J[JIIJ)I";
+            case "kof_mv64_wput32" -> "(I[III)I";
+            case "kof_mv64_wrun32" -> "(I[J[JIIJ)I";
+            case "kof_mv64_wputsp" -> "(I[I[III)I";
+            case "kof_mv64_wrunsp" -> "(I[J[JIIJ)I";
             case "kof_log_debug", "kof_log_info", "kof_log_warn", "kof_log_error"
                     -> "(Ljava/lang/String;)V";
             case "kof_db_connect" -> "(Ljava/lang/String;)Ljava/lang/String;";
@@ -426,6 +430,10 @@ static boolean hasRuntimeFn(String methodName) {
             case "kof_mv64_matvec" -> "I";
             case "kof_mv64_wput" -> "I";
             case "kof_mv64_wrun" -> "I";
+            case "kof_mv64_wput32" -> "I";
+            case "kof_mv64_wrun32" -> "I";
+            case "kof_mv64_wputsp" -> "I";
+            case "kof_mv64_wrunsp" -> "I";
             case "kof_http_get", "kof_http_get_headers", "kof_http_delete", "kof_http_delete_headers",
                     "kof_http_options", "kof_http_options_headers", "kof_http_post", "kof_http_post_headers",
                     "kof_http_put", "kof_http_put_headers", "kof_http_patch", "kof_http_patch_headers"

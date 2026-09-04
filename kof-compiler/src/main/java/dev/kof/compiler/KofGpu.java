@@ -22,7 +22,7 @@ final class KofGpu {
     static boolean isGpuMethod(String name) {
         return switch (name) {
             case "available", "dispatchMatmul", "dispatchMatmul64", "failReason",
-                 "mvSetShape", "mvLoadW", "mvMatvec", "mvPutW", "mvRun" -> true;
+                 "mvSetShape", "mvLoadW", "mvMatvec", "mvPutW", "mvRun", "mvPut32", "mvRun32", "mvPutSp", "mvRunSp" -> true;
             default -> false;
         };
     }
@@ -67,9 +67,25 @@ final class KofGpu {
                     ? new GpuCall("kof_mv64_wput", INT,
                         List.of(INT, new Type.ArrayType(LONG), INT, INT))
                     : null;
-            case "mvRun" -> argTypes.size() == 5
+            case "mvRun" -> argTypes.size() == 6
                     ? new GpuCall("kof_mv64_wrun", INT,
-                        List.of(INT, new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT))
+                        List.of(INT, new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT, LONG))
+                    : null;
+            case "mvPut32" -> argTypes.size() == 4
+                    ? new GpuCall("kof_mv64_wput32", INT,
+                        List.of(INT, new Type.ArrayType(INT), INT, INT))
+                    : null;
+            case "mvRun32" -> argTypes.size() == 6
+                    ? new GpuCall("kof_mv64_wrun32", INT,
+                        List.of(INT, new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT, LONG))
+                    : null;
+            case "mvPutSp" -> argTypes.size() == 5
+                    ? new GpuCall("kof_mv64_wputsp", INT,
+                        List.of(INT, new Type.ArrayType(INT), new Type.ArrayType(INT), INT, INT))
+                    : null;
+            case "mvRunSp" -> argTypes.size() == 6
+                    ? new GpuCall("kof_mv64_wrunsp", INT,
+                        List.of(INT, new Type.ArrayType(LONG), new Type.ArrayType(LONG), INT, INT, LONG))
                     : null;
             default -> null;
         };

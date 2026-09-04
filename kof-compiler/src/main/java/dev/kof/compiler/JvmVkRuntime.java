@@ -58,6 +58,10 @@ final class JvmVkRuntime {
                 private static java.lang.invoke.MethodHandle MV64_MATVEC;
                 private static java.lang.invoke.MethodHandle MV64_WPUT;
                 private static java.lang.invoke.MethodHandle MV64_WRUN;
+                private static java.lang.invoke.MethodHandle MV64_WPUT32;
+                private static java.lang.invoke.MethodHandle MV64_WRUN32;
+                private static java.lang.invoke.MethodHandle MV64_WPUTSP;
+                private static java.lang.invoke.MethodHandle MV64_WRUNSP;
                 private static java.lang.invoke.MethodHandle MV64_REASON;
                 private static volatile boolean MV64_INITED = false;
                 private static volatile boolean MV64_OK = false;
@@ -179,7 +183,7 @@ final class JvmVkRuntime {
                     }
                 }
 
-                public static int kof_mv64_wrun(int id, long[] x, long[] y, int m, int k) {
+                public static int kof_mv64_wrun(int id, long[] x, long[] y, int m, int k, long div) {
                     if (!kof_mv64_ready() || MV64_WRUN == null) return -1;
                     try {
                         var arena = java.lang.foreign.Arena.ofConfined();
@@ -187,7 +191,82 @@ final class JvmVkRuntime {
                         java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(x),
                                 0, sx, 0, (long) x.length * 8);
                         var sy = arena.allocate((long) Math.max(m, y.length) * 8);
-                        int rc = (int) MV64_WRUN.invoke(id, sx, sy, m, k);
+                        int rc = (int) MV64_WRUN.invoke(id, sx, sy, m, k, div);
+                        if (rc == 0) {
+                            java.lang.foreign.MemorySegment.copy(sy, 0,
+                                    java.lang.foreign.MemorySegment.ofArray(y), 0, (long) m * 8);
+                        }
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                // M36.1: caminho i32 — W/x/y de 4 bytes (metade do PCIe)
+                public static int kof_mv64_wput32(int id, int[] w, int m, int k) {
+                    if (!kof_mv64_ready() || MV64_WPUT32 == null) return -1;
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var seg = arena.allocate((long) w.length * 4);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(w),
+                                0, seg, 0, (long) w.length * 4);
+                        int rc = (int) MV64_WPUT32.invoke(id, seg, m, k);
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                public static int kof_mv64_wrun32(int id, long[] x, long[] y, int m, int k, long div) {
+                    if (!kof_mv64_ready() || MV64_WRUN32 == null) return -1;
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var sx = arena.allocate((long) x.length * 8);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(x),
+                                0, sx, 0, (long) x.length * 8);
+                        var sy = arena.allocate((long) Math.max(m, y.length) * 8);
+                        int rc = (int) MV64_WRUN32.invoke(id, sx, sy, m, k, div);
+                        if (rc == 0) {
+                            java.lang.foreign.MemorySegment.copy(sy, 0,
+                                    java.lang.foreign.MemorySegment.ofArray(y), 0, (long) m * 8);
+                        }
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                // M36.3: caminho split pre-computado (bit-exato com o CPU)
+                public static int kof_mv64_wputsp(int id, int[] wh, int[] wl, int m, int k) {
+                    if (MV64_WPUTSP == null) return -1;
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var sh = arena.allocate((long) wh.length * 4);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(wh),
+                                0, sh, 0, (long) wh.length * 4);
+                        var sl = arena.allocate((long) wl.length * 4);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(wl),
+                                0, sl, 0, (long) wl.length * 4);
+                        int rc = (int) MV64_WPUTSP.invoke(id, sh, sl, m, k);
+                        arena.close();
+                        return rc;
+                    } catch (Throwable t) {
+                        return -1;
+                    }
+                }
+
+                public static int kof_mv64_wrunsp(int id, long[] x, long[] y, int m, int k, long div) {
+                    if (MV64_WRUNSP == null) return -1;
+                    try {
+                        var arena = java.lang.foreign.Arena.ofConfined();
+                        var sx = arena.allocate((long) x.length * 8);
+                        java.lang.foreign.MemorySegment.copy(java.lang.foreign.MemorySegment.ofArray(x),
+                                0, sx, 0, (long) x.length * 8);
+                        var sy = arena.allocate((long) Math.max(m, y.length) * 8);
+                        int rc = (int) MV64_WRUNSP.invoke(id, sx, sy, m, k, div);
                         if (rc == 0) {
                             java.lang.foreign.MemorySegment.copy(sy, 0,
                                     java.lang.foreign.MemorySegment.ofArray(y), 0, (long) m * 8);
@@ -259,7 +338,15 @@ final class JvmVkRuntime {
                         MV64_WPUT = linker.downcallHandle(lib.find("vkchain64_wput").orElseThrow(),
                                 java.lang.foreign.FunctionDescriptor.of(I, I, P, I, I));
                         MV64_WRUN = linker.downcallHandle(lib.find("vkchain64_wrun").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, I, P, P, I, I, J));
+                        MV64_WPUT32 = linker.downcallHandle(lib.find("vkchain64_wput32").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, I, P, I, I));
+                        MV64_WRUN32 = linker.downcallHandle(lib.find("vkchain64_wrun32").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, I, P, P, I, I, J));
+                        MV64_WPUTSP = linker.downcallHandle(lib.find("vkchain64_wputsp").orElseThrow(),
                                 java.lang.foreign.FunctionDescriptor.of(I, I, P, P, I, I));
+                        MV64_WRUNSP = linker.downcallHandle(lib.find("vkchain64_wrunsp").orElseThrow(),
+                                java.lang.foreign.FunctionDescriptor.of(I, I, P, P, I, I, J));
                         String spv = System.getenv("KOF_GPU_SPV64");
                         if (spv == null || spv.isEmpty()) spv = "gpu/shaders/matvec64.spv";
                         int rc = (int) init64.invoke(nativeCstr(arena, spv));
