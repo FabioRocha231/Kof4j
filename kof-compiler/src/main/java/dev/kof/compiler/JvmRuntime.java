@@ -991,6 +991,16 @@ static boolean hasRuntimeFn(String methodName) {
                         Throwable real = (e instanceof java.lang.reflect.InvocationTargetException && e.getCause() != null)
                                 ? e.getCause() : e;
                         String msg = real.getMessage() == null ? real.getClass().getSimpleName() : real.getMessage();
+                        // handler lambda é invocado via reflection: a exceção
+                        // real chega embrulhada em InvocationTargetException —
+                        // sem desempacotar, o 500 diz só "InvocationTargetException"
+                        // e esconde o diagnóstico (violation R6).
+                        Throwable root = e;
+                        while (root instanceof java.lang.reflect.InvocationTargetException
+                                && root.getCause() != null) {
+                            root = root.getCause();
+                        }
+                        String msg = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
                         KOF_WEB_STATUS.remove();
                         KOF_WEB_HEADERS.get().clear();
                         return new WebDispatchResult(RouteKind.HTTP,
