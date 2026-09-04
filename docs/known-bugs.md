@@ -413,14 +413,12 @@ EXTERNA produz lixo
 - **Sintoma:** `package pkgA; class Data` + `package pkgB; class Data` →
   `duplicate type name 'Data' in packages 'pkgA' and 'pkgB' [PKG005]`. Em
   Java/JVM isso é perfeitamente legal (nomes fully-qualified distintos).
-- **Reprodução:** dois arquivos `pkgA/Data.kf` e `pkgB/Data.kf` (cada um com
-  seu `package`) compilados juntos.
-- **Causa provável:** `CompilerDriver.java:378-391` faz colisão por **nome
-  simples** (`declarationName`) em vez de fully-qualified.
-- **Impacto:** "arquivos com mesmo nome em pastas diferentes dão erro" —
-  exatamente o relato de usuário. Fix exige nomes FQ internos (IR já guarda
-  package no IRClass).
-- **Arquivos:** `CompilerDriver.java` (PKG005).
+
+- **Corrigido 03/09**: o compilador agora aceita nomes com o mesmo nome
+  simples em pacotes diferentes. Só rejeita nomes duplicados no MESMO
+  pacote. O nome interno (FQ) é usado para todas as referências.
+  
+- **Arquivos:** `CompilerDriver.java` (PKG005) --- REMOVIDO.
 
 ---
 

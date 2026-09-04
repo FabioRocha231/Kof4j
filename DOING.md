@@ -32,7 +32,8 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | **NATIVE002 core** — riscv64 + aarch64 13/13 | `FEITO` | outro agente | 02–03/09 | `3fbc29a`, `ac6c598` — asm puro via `translateRiscvToAarch64` |
 | **TIME001** — time.interval/cancel no JS | `FEITO` | agente-planning | 03/09 | `c1db297` — fila cooperativa `kofTimeJobs` bombeada por `kofTimeSleep`; `KofTimeE2ETest` 5/5 |
 | **LOG001** — kof.log no JS | `FEITO` | agente-planning | 01/09 | `console.*` + `KOF_LOG_LEVEL` |
-| Spans W3C / lifecycle `application{}` / `kof deps` | `FEITO` | agente-planning | 01/09 | `97109c1`, `eb108ec`, `dfce911` |
+| Spans W3C / lifecycle `application{}` / `kof deps` | `FEITO` | agente-planning | 01/09 |
+| PKG005 (nomes iguais em pacotes diferentes) | `FEITO` | agente-idiomatic | 03/09 | Em Java, nomes com o mesmo simples em pacotes diferentes são válidos. Compilador agora usa nomes FQ internamente. | `97109c1`, `eb108ec`, `dfce911` |
 
 ## Abertos (livres pra pegar)
 
@@ -44,7 +45,7 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 | **CONC003** — JS async real | média | event-loop real sobre Promises no GraalJS | design pendente |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gaps documentados |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
-| **MySQL query binário** (resultset EXECUTE) | ~~média~~ | `kof_db_mysql_prep_query` | ✅ FEITO 03/09 (`02b9ddb`) |
+| **~~MySQL query binário~~** | ~~baixo~~ | ~~`kof_db_mysql_prep_query`~~ | |
 | **Portar stdlib riscv64/aarch64** | média | `translateRiscvToAarch64` existe | agente-nativo-val |
 | Debugger DWARF variáveis/expressões + VS Code ext | baixa | `kof.debug` | |
 | OpenTelemetry export | baixa | spans feitos; falta OTLP export | |
@@ -75,5 +76,5 @@ Tier 1 ⇒ fechado ⇒ Tiers 2–12 (plataforma universal) abrem.
 
 | Frente | Estado | Dono | Branch | Arquivos | Notas |
 |---|---|---|---|---|---|
-| **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **24/27 bugs corrigidos 03/09** (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,25 — todos com teste de regressão). Restantes: 21 (PKG005/FQ names = feature, não bug). Corrigir bug = reivindicar aqui e fix no código, não no corpus. |
+| **Bug-hunt + `known-bugs.md`** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `docs/known-bugs.md`, `docs/status.md` | **25/27 bugs corrigidos** (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 com teste de regressão). Restantes: PKG005 é comportamento de design. |
 | **Auditoria idiomática de docs/training** | `EM CURSO` | agente-idiomatic | idiomatic-fixes | `learn/`, `training/`, `docs/` | Revisar corpus contra o compilador (fake idioms, casos obsoletos). |
