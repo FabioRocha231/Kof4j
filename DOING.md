@@ -41,8 +41,9 @@ Estados: `ABERTO` · `EM CURSO` · `FEITO` · `BLOQUEADO`.
 
 | Gap/Item | Prioridade | Escopo | Notas |
 |---|---|---|---|
-| **HTTP002 restante** | média | `delete/put/patch/options`/`status` + `timeout/retry/circuit` (knobs reais) no Native | get/post/status já fecham a linha zero — o resto é cauda |
-| **WEB002** — kof.web no Native | alta | server HTTP/1.1 accept/parse/dispatch em `NativeWebRuntime` (novo, ≤500 linhas) | agente-planning reivindicou |
+| **HTTP003** — kof.http Native cauda | média | `https` + DNS real + `timeout/retry/circuit` (knobs reais) no Native | HTTP/1.1 get/post/status ✅ 03/09 (`NativeHttpRuntime.java`); delete/put/patch/options compilados; cauda = TLS/DNS/retry |
+| **WEB002 residual** — kof.web Native avançado | média | TLS `listenSecure`, ws/sse, path params, keepalive no `NativeWebRuntime` | server base ✅ 03/09 (accept/route/lambda/body — `KofWebNativeE2ETest` 4/4); resto é cauda |
+| **WEB001 residual** — kof.web JS avançado | média | ws/sse + TLS no JS | GraalJS HttpServer real ✅ 03/09 (`bc577aa`); ws/sse pendentes |
 | **MEDIA001/2/3** | baixa | paridade media Native/JS | gap documentado |
 | **SECPQ** | baixa | PQC via liboqs FFI | Tier 9 (futuro) |
 | **~~MySQL query binário~~** | ~~baixo~~ | ~~`kof_db_mysql_prep_query`~~ | |
