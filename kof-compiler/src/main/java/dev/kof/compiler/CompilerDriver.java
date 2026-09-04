@@ -1516,6 +1516,19 @@ private Target target = Target.JVM;
             collectCapturesExpr(iex.condition(), outerLocals, captures, captured, shadowed);
             collectCapturesExpr(iex.thenExpr(), outerLocals, captures, captured, shadowed);
             collectCapturesExpr(iex.elseExpr(), outerLocals, captures, captured, shadowed);
+        } else if (expr instanceof SwitchExpr sex) {
+            collectCapturesExpr(sex.expression(), outerLocals, captures, captured, shadowed);
+            for (SwitchExprCase sc : sex.cases()) {
+                java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+                if (sc.value() instanceof PatternExpr pe) {
+                    if (pe.varName() != null) inner.add(pe.varName());
+                    inner.addAll(pe.fieldVars());
+                }
+                collectCapturesExpr(sc.body(), outerLocals, captures, captured, inner);
+            }
+            if (sex.defaultValue() != null) {
+                collectCapturesExpr(sex.defaultValue(), outerLocals, captures, captured, shadowed);
+            }
         } else if (expr instanceof NewExpr ne) {
             for (ExpressionNode arg : ne.arguments()) {
                 collectCapturesExpr(arg, outerLocals, captures, captured, shadowed);
@@ -1636,6 +1649,10 @@ private Target target = Target.JVM;
             collectDeclaredVarNamesExpr(iex.condition());
             collectDeclaredVarNamesExpr(iex.thenExpr());
             collectDeclaredVarNamesExpr(iex.elseExpr());
+        } else if (expr instanceof SwitchExpr sex) {
+            collectDeclaredVarNamesExpr(sex.expression());
+            for (SwitchExprCase sc : sex.cases()) collectDeclaredVarNamesExpr(sc.body());
+            if (sex.defaultValue() != null) collectDeclaredVarNamesExpr(sex.defaultValue());
         } else if (expr instanceof ArrayAccessExpr aa) {
             collectDeclaredVarNamesExpr(aa.receiver());
             collectDeclaredVarNamesExpr(aa.index());
@@ -1726,6 +1743,10 @@ private Target target = Target.JVM;
             collectLambdasExpr(iex.condition(), out);
             collectLambdasExpr(iex.thenExpr(), out);
             collectLambdasExpr(iex.elseExpr(), out);
+        } else if (expr instanceof SwitchExpr sex) {
+            collectLambdasExpr(sex.expression(), out);
+            for (SwitchExprCase sc : sex.cases()) collectLambdasExpr(sc.body(), out);
+            if (sex.defaultValue() != null) collectLambdasExpr(sex.defaultValue(), out);
         } else if (expr instanceof ArrayAccessExpr aa) {
             collectLambdasExpr(aa.receiver(), out);
             collectLambdasExpr(aa.index(), out);
@@ -1832,6 +1853,19 @@ private Target target = Target.JVM;
             collectMutatedCapturesExpr(iex.condition(), shadowed, inLambda);
             collectMutatedCapturesExpr(iex.thenExpr(), shadowed, inLambda);
             collectMutatedCapturesExpr(iex.elseExpr(), shadowed, inLambda);
+        } else if (expr instanceof SwitchExpr sex) {
+            collectMutatedCapturesExpr(sex.expression(), shadowed, inLambda);
+            for (SwitchExprCase sc : sex.cases()) {
+                java.util.Set<String> inner = new java.util.HashSet<>(shadowed);
+                if (sc.value() instanceof PatternExpr pe) {
+                    if (pe.varName() != null) inner.add(pe.varName());
+                    inner.addAll(pe.fieldVars());
+                }
+                collectMutatedCapturesExpr(sc.body(), inner, inLambda);
+            }
+            if (sex.defaultValue() != null) {
+                collectMutatedCapturesExpr(sex.defaultValue(), shadowed, inLambda);
+            }
         } else if (expr instanceof NewExpr ne) {
             for (ExpressionNode arg : ne.arguments()) collectMutatedCapturesExpr(arg, shadowed, inLambda);
         } else if (expr instanceof NewArrayExpr nae) {
@@ -2743,6 +2777,123 @@ private Target target = Target.JVM;
             }
             default -> localIdx;
         };
+    }
+
+    /**
+     * Switch como expressão (SYN001). Baixa como cadeia de if-expressões no
+     * formato exato do {@code IfExpr} — cada nível é
+     * {@code <test>; load 0; CJump(NE, body, else); Label(body); [binding];
+     * <expr>; Jump(end); Label(else); <else-chain>; Label(end)}, que o backend
+     * JS reconhece via {@code tryParseIfExpr} e renderiza como ternários
+     * aninhados. Cada braço deixa EXATAMENTE 1 valor na pilha (o switch é o
+     * valor — sem KofPop).
+     */
+    private int emitSwitchExpr(SwitchExpr se, List<KofOperation> ops, String owner,
+                               int localIdx, List<IRLocalVariable> locals) {
+        Type switchType = inferExprType(se.expression(), locals);
+        int switchTmp = localIdx++;
+        localIdx = emitExpression(se.expression(), ops, owner, localIdx, locals);
+        ops.add(new KofStoreLocal(switchType, switchTmp));
+        locals.add(new IRLocalVariable(switchTmp, "#switchExpr", switchType));
+        return emitSwitchChain(se.cases(), 0, se.defaultValue(), switchType, switchTmp,
+                ops, owner, localIdx, locals);
+    }
+
+    private int emitSwitchChain(List<SwitchExprCase> cases, int i, ExpressionNode defaultValue,
+                                Type switchType, int switchTmp, List<KofOperation> ops, String owner,
+                                int localIdx, List<IRLocalVariable> locals) {
+        if (i >= cases.size()) {
+            if (defaultValue != null) {
+                return emitExpression(defaultValue, ops, owner, localIdx, locals);
+            }
+            ops.add(defaultValueOp(switchType));
+            return localIdx;
+        }
+        SwitchExprCase sc = cases.get(i);
+        LabelId bodyLabel = LabelId.create();
+        LabelId elseLabel = LabelId.create();
+        LabelId endLabel = LabelId.create();
+        if (sc.value() instanceof PatternExpr pe) {
+            Type patType = toType(pe.typeName());
+            if (patType instanceof Type.UnknownType) patType = BuiltinTypes.STRING;
+            ops.add(new KofLoadLocal(switchType, switchTmp));
+            ops.add(new KofInstanceOf(patType));
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+            ops.add(new KofConditionalJump(KofComparison.NE, bodyLabel, elseLabel));
+            ops.add(new KofLabel(bodyLabel));
+            localIdx = emitPatternBinding(pe, patType, switchType, switchTmp, ops, localIdx, locals);
+        } else {
+            ops.add(new KofLoadLocal(switchType, switchTmp));
+            localIdx = emitExpression(sc.value(), ops, owner, localIdx, locals);
+            Type caseType = inferExprType(sc.value(), locals);
+            if (Type.isString(switchType) || isEnumType(switchType) || isEnumType(caseType)) {
+                // igualdade de String/enum é por conteúdo (bug 4 do statement)
+                ops.add(new KofCall(BuiltinTypes.STRING, "kof_string_equals",
+                        List.of(BuiltinTypes.STRING, BuiltinTypes.STRING),
+                        Type.PrimitiveType.BOOL, KofCallKind.FUNCTION));
+            } else {
+                ops.add(new KofBinary(KofBinaryOp.EQ, switchType));
+            }
+            ops.add(new KofLoadLiteral(Type.PrimitiveType.INT, 0));
+            ops.add(new KofConditionalJump(KofComparison.NE, bodyLabel, elseLabel));
+            ops.add(new KofLabel(bodyLabel));
+        }
+        localIdx = emitExpression(sc.body(), ops, owner, localIdx, locals);
+        ops.add(new KofJump(endLabel));
+        ops.add(new KofLabel(elseLabel));
+        localIdx = emitSwitchChain(cases, i + 1, defaultValue, switchType, switchTmp,
+                ops, owner, localIdx, locals);
+        ops.add(new KofLabel(endLabel));
+        return localIdx;
+    }
+
+    /**
+     * Prologue de binding de um case pattern de switch-expressão:
+     * {@code case T v ->} → {@code v = (T)#switchExpr};
+     * {@code case T(var x, var y) ->} → cast p/ {@code #patCast} + um
+     * {@code getfield} por componente. No JS os slots são pré-declarados no
+     * topo da função, então o {@code store} vira atribuição na sequência do
+     * braço (ver parseExpressionFragment).
+     */
+    private int emitPatternBinding(PatternExpr pe, Type patType, Type switchType, int switchTmp,
+                                   List<KofOperation> ops, int localIdx, List<IRLocalVariable> locals) {
+        if (pe.varName() != null) {
+            ops.add(new KofLoadLocal(switchType, switchTmp));
+            ops.add(new KofCheckCast(patType));
+            int varIdx = localIdx++;
+            locals.add(new IRLocalVariable(varIdx, pe.varName(), patType));
+            ops.add(new KofStoreLocal(patType, varIdx));
+            return localIdx;
+        }
+        int castTmp = localIdx++;
+        locals.add(new IRLocalVariable(castTmp, "#patCast", patType));
+        ops.add(new KofLoadLocal(switchType, switchTmp));
+        ops.add(new KofCheckCast(patType));
+        ops.add(new KofStoreLocal(patType, castTmp));
+        String simple = patType instanceof Type.ClassType ct ? ct.name() : pe.typeName();
+        for (int fi = 0; fi < pe.fieldVars().size(); fi++) {
+            String fieldVar = pe.fieldVars().get(fi);
+            Type fieldType = Type.UnknownType.UNKNOWN;
+            String fieldName = fieldVar;
+            if (currentUnit != null) {
+                for (AstNode d : currentUnit.declarations()) {
+                    if (d instanceof RecordDeclarationNode rec && rec.name().equals(simple)) {
+                        if (fi < rec.components().size()) {
+                            fieldType = toType(rec.components().get(fi).type());
+                            fieldName = rec.components().get(fi).name();
+                        }
+                        break;
+                    }
+                }
+            }
+            if (fieldType instanceof Type.UnknownType) fieldType = BuiltinTypes.STRING;
+            ops.add(new KofLoadLocal(patType, castTmp));
+            ops.add(new KofLoadField(patType, fieldName, fieldType));
+            int varIdx = localIdx++;
+            locals.add(new IRLocalVariable(varIdx, fieldVar, fieldType));
+            ops.add(new KofStoreLocal(fieldType, varIdx));
+        }
+        return localIdx;
     }
 
     private int emitExpression(ExpressionNode expr, List<KofOperation> ops, String owner, int localIdx,
@@ -5841,6 +5992,10 @@ private Target target = Target.JVM;
                 ops.add(new KofLabel(endLabel));
                 yield localIdx;
             }
+            case SwitchExpr se -> {
+                localIdx = emitSwitchExpr(se, ops, owner, localIdx, locals);
+                yield localIdx;
+            }
             case LambdaExpr le -> {
                 Type.FunctionType ft = (Type.FunctionType) inferExprType(le, locals);
                 List<IRLocalVariable> captures = collectCaptures(le, locals);
@@ -6621,6 +6776,13 @@ private Target target = Target.JVM;
                 Type thenType = inferExprType(ie.thenExpr(), locals);
                 Type elseType = inferExprType(ie.elseExpr(), locals);
                 yield thenType;
+            }
+            case SwitchExpr se -> {
+                if (!se.cases().isEmpty()) {
+                    yield inferExprType(se.cases().get(0).body(), locals);
+                }
+                yield se.defaultValue() != null ? inferExprType(se.defaultValue(), locals)
+                        : Type.UnknownType.UNKNOWN;
             }
             default -> Type.UnknownType.UNKNOWN;
         };

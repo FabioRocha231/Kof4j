@@ -243,6 +243,30 @@ class NativeAarch64E2ETest {
     }
 
     @Test
+    void aarch64SwitchExpression(@TempDir Path tempDir) throws IOException {
+        assumeToolchain();
+        String out = runAarch64(tempDir, """
+            record Point(Int x, Int y)
+            main() {
+                var op = "GET"
+                var r = switch (op) {
+                    case "GET" -> "buscar"
+                    case "POST" -> "criar"
+                    default -> "x"
+                }
+                println(r)
+                var p = Point(3, 4)
+                var s = switch (p) {
+                    case Point(var x, var y) -> "pt:" + x + "," + y
+                    default -> "other"
+                }
+                println(s)
+            }
+            """);
+        assertEquals("buscar\npt:3,4", out);
+    }
+
+    @Test
     void aarch64StringMethods(@TempDir Path tempDir) throws IOException {
         assumeToolchain();
         String out = runAarch64(tempDir, """

@@ -1825,13 +1825,18 @@ class JsBackend implements Backend {
         while (pos[0] < ctx.ops.size()) {
             KofOperation op = ctx.ops.get(pos[0]);
             if (op instanceof KofJump || op instanceof KofLabel || op instanceof KofPop
-                    || op instanceof KofStoreLocal || op instanceof KofStoreField
+                    || (op instanceof KofStoreLocal && stack.isEmpty()) || op instanceof KofStoreField
                     || op instanceof KofPutStatic || op instanceof KofArrayStore
                     || op instanceof KofReturn || op instanceof KofReturnVoid
                     || op instanceof KofThrow || op instanceof KofTryStart
                     || op instanceof KofCatchStart) {
                 break;
             }
+            // Mid-expression store (switch-expression pattern binding, nested
+            // switch subject): consumeExpressionOp turns it into an assignment
+            // expression that stays on the stack; the fragment's final
+            // JsSequence renders it as `(v = x, <expr>)`. Slots are
+            // pre-declared at the function top, so the binding is a valid var.
             if (op instanceof KofConditionalJump && pos[0] + 1 < ctx.ops.size()
                     && ctx.ops.get(pos[0] + 1) instanceof KofLabel kl
                     && kl.label().equals(((KofConditionalJump) op).trueLabel())) {
