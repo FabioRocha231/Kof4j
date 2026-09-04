@@ -65,6 +65,7 @@
 | UI Fase 7 Router (`go/replace/back/forward/param/current/depth`) | no-op | — | ✅ 31/08 | `RouterE2ETest` |
 | `switch` pattern matching `case String s` | ✅ | ✅ | ✅ | 0.2.6-beta |
 | `switch` record destructuring `Point(x,y)` | ✅ | ✅ | ✅ | 0.2.6-beta |
+| `switch` como expressão `case X -> v` (SYN001) | ✅ | ✅ (x86_64/riscv64/aarch64) | ✅ (ternários aninhados) | 03/09 — `default` obrigatório ou exaustividade enum (`SEM032`); `KofSwitchExprE2ETest` 19 + riscv64/aarch64 14/14 |
 | `String?` null safety básica | ✅ | ✅ | ✅ | 0.2.6-beta (`Type?`) |
 | `List map/filter/reduce` | ✅ | ✅ | ✅ | 0.2.6-beta |
 | `Box<T>` generic | ✅ | ✅ | ✅ | `substituteTypeVariable` |

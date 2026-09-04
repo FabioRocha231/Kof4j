@@ -9,7 +9,7 @@
 
 ``` 
 mvn clean package    → PASSA
-mvn test             → 854 testes 837 kof-compiler +8 kof-script +5 kof-c-compiler +4 kof-cli, 0 falhas (03/09 pós-merge HTTP002/MySQL)
+mvn test             → 906 testes 885 kof-compiler +8 kof-script +5 kof-c-compiler +8 kof-cli, 0 falhas (03/09 SYN001 switch-expr + fix PKG005)
 kof build            → PASS (--target jvm|native|js|native.risc|native.arm) [--release]
 kof run              → PASS (jvm|native|js|native.risc|native.arm) [--release]
 kof serve            → PASS (web.app() nativo + API legada handle())

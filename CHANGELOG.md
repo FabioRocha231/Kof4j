@@ -9,6 +9,22 @@ de commits do projeto (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
 
 ## [0.2.6-beta] - 2026-09-02
 
+### Feature — switch como expressão (SYN001)
+
+- **`case ... ->` produzindo valor** (`feat`): `var r = switch (x) { case 1 ->
+  "um"; default -> "outro" }` — pattern matching via expressão, no espírito do
+  switch expression do Java 14. Cada caso é uma única expressão (sem `break`,
+  sem escopo de bloco, sem fallthrough); `default` obrigatório ou exaustividade
+  de enum (senão `SEM032`). Funciona nos 3 targets + riscv64/aarch64 (JS
+  renderiza como ternários aninhados). **Aditivo**: a forma statement
+  (`case X:`) está intocada. Prova: `KofSwitchExprE2ETest` 19/19 +
+  `NativeRiscv64E2ETest`/`NativeAarch64E2ETest` 14/14. Plano em
+  `docs/planning-switch-expr.md`.
+- **PKG005: re-import transitivo não é colisão** (`fix`): `compileSources` com
+  fonte explícita + `import` da mesma declaração disparava falso-positivo de
+  "duplicate type name"; agora só colide quando os **arquivos** diferem
+  (`PackagesE2ETest` 7/7).
+
 ### Fix — filosofia idiomática (revisão do corpus)
 
 - **`Set<T>` como tipo declarado no JVM** (`feat`): descriptor `kof.Set`

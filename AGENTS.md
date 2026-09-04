@@ -3,7 +3,7 @@
 Este é o guia **obrigatório** para qualquer agente de IA (ou humano) que
 escreva código Kof neste repositório. Leia antes de gerar qualquer `.kf`.
 
-**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**, **Congelamento de comportamento**)
+**Versão:** 0.2.6-beta · Última atualização: 03/09/2026 (casts primitivos, Long[], String.valueOf builtin, **DOING.md**, **Congelamento de comportamento**, **switch-expressão SYN001**)
 
 ---
 
@@ -234,6 +234,12 @@ switch (obj) {
     case Point(var x, var y): println(x + "," + y); break
     default:                  println("outro")
 }
+// switch-EXPRESSION (SYN001) — quando o switch produz valor:
+var desc = switch (obj) {
+    case String s -> "str:" + s
+    case Point(var x, var y) -> x + "," + y
+    default -> "outro"
+}
 ```
 
 ### Strings
@@ -443,7 +449,7 @@ Kof = intenção + simplicidade.
 - Null:    String?  +  if (x != null)
 - Cast:    x as Char / big as Int  (conversões numéricas reais)
 - Concorr: spawn / await   (sem Thread)
-- Loops:   for (var x in coll)  /  if-expr
+- Loops:   for (var x in coll)  /  if-expr  /  switch-expr (case ->)
 - Top-level: SÓ class e função (sem val/var/let)
 
 Se parece Java, está errado. Compile antes de entregar.
