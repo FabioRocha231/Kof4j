@@ -2457,9 +2457,12 @@ class JsBackend implements Backend {
             stack.add(args.get(1));
             return;
         }
-        if (name.startsWith("kof_web_") || name.startsWith("kof_db_")) {
-            // JS target stub: kof.web/db are no-ops on JS (parity via compilation, runtime is stub)
-            // Keeps KofJS 100%: code compiles and runs, parity tests use JVM for real web/db.
+        if (name.startsWith("kof_web_")) {
+            // JS target: WEB001 scaffold – kof.web functions emit a console log
+            // and return a placeholder string so compilation succeeds and the
+            // program does not silently crash. Full GraalJS HttpServer handler
+            // dispatch (lambda invoke) is pending a deeper interop change
+            // (lambda obj !== Java lambda). Tests use JVM for real web.
             registerRuntime("kofWebStub");
             JsIr.JsExpression call = new JsIr.JsCall(new JsIr.JsIdentifier("kofWebStub"), args);
             if (Type.isVoid(kc.returnType())) {
@@ -2471,7 +2474,7 @@ class JsBackend implements Backend {
                 return;
             }
             if (BuiltinTypes.isString(kc.returnType())) {
-                stack.add(new JsIr.JsString(""));
+                stack.add(new JsIr.JsString("kof-web-placeholder"));
                 return;
             }
             // handle and primitives: dummy 0/object
