@@ -9,7 +9,7 @@ SHADERS="$ROOT/gpu/shaders"
 mkdir -p "$SHADERS"
 gcc -O1 -shared -fPIC -o "$DIR/libvkchain.so" "$DIR/vkchain.c" -lvulkan
 gcc -O1 -shared -fPIC -o "$DIR/libvkchain64.so" "$DIR/vkchain64.c" -lvulkan
-for f in matvec64 matvecw32 matvecsplit; do
+for f in matvec64 matvecw32 matvecsplit matmul matmul64; do
     glslc --target-spv=spv1.0 -o "$SHADERS/$f.spv" "$DIR/$f.comp"
     echo "spv: $SHADERS/$f.spv"
 done
