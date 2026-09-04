@@ -561,12 +561,12 @@ EXTERNA produz lixo
   `sublist()` (retorno de coleção) também gera bytecode inválido — mesmo
   tratamento pendente.
 - **Bug 11** (`==` em records usa igualdade de REFERÊNCIA) — **corrigido
-  03/09 (JVM+JS)**: `==`/`!=` em records despacham para `equals` (conteúdo).
-  JVM já gerava equals; o JS agora gera `equals()` por componente (retorna
-  Kof bool 0/1). **Gap Native**: records não geram `equals` lá → `==` dá
-  `undefined reference Ponto_equals` (COMP001) — gerar equals no NativeBackend
-  é pendência (coordenar com agente nativo). Prova:
-  `CoreRegressionE2ETest.recordEqualityByContent`.
+  03/09 (JVM+JS+Native)**: `==`/`!=`/`equals` em records despacham para o
+  `equals` gerado (comparação de conteúdo). JVM já gerava equals; JS gera
+  `equals()` por componente (retorna Kof bool 0/1); Native agora gera e
+  dispatcha `equals` via vtable. O `println(record)` também funciona em
+  Native (usa o toString gerado). Prova:
+  `CoreRegressionE2ETest.recordEqualityByContent` (JVM+JS+Native).
 - **Bug 23** (ExternalClasspath: superclasse fora dos entries perdia
   referência SILENCIOSAMENTE) — **corrigido 03/09**: `resolveMethod`/
   `resolveFieldType` emitem warning quando a cadeia de superclasses encontra
@@ -581,14 +581,7 @@ EXTERNA produz lixo
   (3) o JVM `kof_list_get` não fazia CHECKCAST para a classe sintética da
   lambda (verifier: Object onde Lambda0). Prova:
   `CoreRegressionE2ETest.lambdaStoredInCollectionAndInvoked`.
-- **Bug 19** (lambda retornando lambda) — **parcialmente corrigido 03/09
-  (JVM+JS)**: o `returnType` do invoke do lambda externo era destruído por
-  `toType(typeToString(...))` e o className do lambda interno (sintetizado
-  durante a emissão do corpo) não era propagado → descriptor
-  `(I)Ljava/lang/Object;` ≠ call site `(I)LLambda1;` (NoSuchMethodError).
-  Agora preserva a FunctionType e preenche o className pós-corpo. **Gap
-  Native**: `Lambda0.invoke` devolve lixo (retorno de FunctionType no
-  NativeBackend) — pendência coordenada com agente nativo. Prova:
+- **Bug 19** (lambda retornando lambda) — **investigado no Native**: o caso simples `make(5)(3)` funciona após a preservação do FunctionType e className (commit recente). Testes complexos (triple-nested ou retorna Fun1) produzem lixo no Native — precisa de mais verificação. JVM/JS funciona conforme teste `lambdaReturningLambda`. Prova:
   `CoreRegressionE2ETest.lambdaReturningLambda` (JVM+JS).
 - **Bug 8** (tipo de função `(Int) -> Int` não parseava como tipo) —
   **parcialmente corrigido 03/09**: `Parser.parseTypeRef` agora aceita
